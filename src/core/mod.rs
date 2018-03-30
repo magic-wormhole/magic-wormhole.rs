@@ -1,4 +1,18 @@
 mod traits;
+mod allocator;
+mod boss;
+mod code;
+mod input;
+mod key;
+mod lister;
+mod mailbox;
+mod nameplate;
+mod order;
+mod receive;
+mod rendezvous;
+mod send;
+mod terminator;
+mod wordlist;
 
 use std::collections::VecDeque;
 use core::traits::{Action, WSHandle};
