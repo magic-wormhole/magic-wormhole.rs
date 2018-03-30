@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 
 pub struct WSHandle;
+#[derive(Debug)]
 pub struct TimerHandle;
 
 pub trait Core {
