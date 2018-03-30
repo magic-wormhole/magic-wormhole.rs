@@ -1,6 +1,7 @@
 
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub struct WSHandle;
 #[derive(Debug)]
 pub struct TimerHandle;

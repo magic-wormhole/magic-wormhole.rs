@@ -16,10 +16,23 @@ mod wordlist;
 
 use std::collections::VecDeque;
 use core::traits::{Action, WSHandle, TimerHandle};
+
 pub struct WormholeCore {
     appid: String,
-    relay_url: String,
+    rendezvous: rendezvous::Rendezvous,
     actions: VecDeque<Action>,
+}
+
+pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
+    let mut action_queue = VecDeque::new();
+
+    let mut wc = WormholeCore{
+        rendezvous: rendezvous::create(relay_url, 5.0),
+        appid: String::from(appid),
+        actions: action_queue,
+    };
+    wc.rendezvous.start(&mut wc.actions);
+    wc
 }
 
 impl traits::Core for WormholeCore {
@@ -42,28 +55,10 @@ impl traits::Core for WormholeCore {
     fn websocket_message_received(&mut self, handle: WSHandle, message: &Vec<u8>) -> () {
     }
     fn websocket_connection_lost(&mut self, handle: WSHandle) -> () {
-        let wsh = WSHandle{};
-        // I.. don't know how to copy a String
-        let open = Action::WebSocketOpen(wsh, self.relay_url.to_lowercase());
-        self.actions.push_back(open);
+        self.rendezvous.connection_lost(&mut self.actions, handle);
     }
 }
 
-
-pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
-    let mut action_queue = VecDeque::new();
-    // we use a handle here just in case we need to open multiple connections
-    // in the future. For now we ignore it, but the IO layer is supposed to
-    // pass this back in websocket_* messages
-    let wsh = WSHandle{};
-    action_queue.push_back(Action::WebSocketOpen(wsh, String::from(relay_url)));
-
-    WormholeCore{
-        appid: String::from(appid),
-        relay_url: String::from(relay_url),
-        actions: action_queue,
-    }
-}
 
 
 #[cfg(test)]
