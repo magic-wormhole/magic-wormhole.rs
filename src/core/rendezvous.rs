@@ -7,8 +7,8 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use core::traits::TimerHandle;
-
+use std::collections::VecDeque;
+use core::traits::{TimerHandle, WSHandle, Action};
 
 #[derive(Debug)]
 enum State {
@@ -22,28 +22,56 @@ enum State {
 
 #[derive(Debug)]
 pub struct Rendezvous {
+    wsh: WSHandle,
+    relay_url: String,
     retry_timer: f32,
-    state: Option<Box<State>>,
+    state: State,
     connected_at_least_once: bool,
     reconnect_timer: Option<TimerHandle>,
 }
 
-pub fn create(retry_timer: f32) -> Rendezvous {
+pub fn create(relay_url: &str, retry_timer: f32) -> Rendezvous {
+    // we use a handle here just in case we need to open multiple connections
+    // in the future. For now we ignore it, but the IO layer is supposed to
+    // pass this back in websocket_* messages
+    let wsh = WSHandle{};
     Rendezvous {
+        relay_url: relay_url.to_string(),
+        wsh: wsh,
         retry_timer: retry_timer,
-        state: Some(Box::new(State::Idle)),
+        state: State::Idle,
         connected_at_least_once: false,
         reconnect_timer: None,
     }
 }
 
 impl Rendezvous {
-    pub fn start(&mut self) -> () {
-        /*match self.state {
-            ref Idle => {
-                self.state = State::Connecting;
+    pub fn start(&mut self, actions: &mut VecDeque<Action>) -> () {
+        let newstate: State;
+        // I want this to be stable, but that makes the lifetime weird
+        //let wsh = self.wsh;
+        let wsh = WSHandle{};
+        match self.state {
+            State::Idle => {
+                newstate = State::Connecting;
+                let open = Action::WebSocketOpen(wsh,
+                                                 self.relay_url.to_lowercase());
+                //"url".to_string());
+                actions.push_back(open);
             },
             _ => panic!("bad transition from {:?}", self),
-        }*/
+        }
+        self.state = newstate;
+    }
+
+    pub fn connection_lost(&mut self,
+                           actions: &mut VecDeque<Action>,
+                           handle: WSHandle) -> () {
+        // TODO: assert handle == self.handle
+        let new_handle = WSHandle{};
+        // I.. don't know how to copy a String
+        let open = Action::WebSocketOpen(new_handle,
+                                         self.relay_url.to_lowercase());
+        actions.push_back(open);
     }
 }
