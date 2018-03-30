@@ -15,7 +15,7 @@ mod terminator;
 mod wordlist;
 
 use std::collections::VecDeque;
-use core::traits::{Action, WSHandle};
+use core::traits::{Action, WSHandle, TimerHandle};
 pub struct WormholeCore {
     appid: String,
     relay_url: String,
@@ -32,6 +32,9 @@ impl traits::Core for WormholeCore {
 
     fn get_action(&mut self) -> Option<Action> {
         self.actions.pop_front()
+    }
+
+    fn timer_expired(&mut self, handle: TimerHandle) -> () {
     }
 
     fn websocket_connection_made(&mut self, handle: WSHandle) -> () {

@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 
 pub struct WSHandle;
+pub struct TimerHandle;
 
 pub trait Core {
     fn allocate_code(&mut self) -> ();
@@ -10,6 +11,8 @@ pub trait Core {
     fn close(&mut self) -> ();
 
     fn get_action(&mut self) -> Option<Action>;
+
+    fn timer_expired(&mut self, handle: TimerHandle) -> ();
 
     fn websocket_connection_made(&mut self, handle: WSHandle) -> ();
     fn websocket_message_received(&mut self, handle: WSHandle, message: &Vec<u8>) -> ();
@@ -24,6 +27,9 @@ pub enum Action {
     GotVersions(HashMap<String, String>), // actually anything JSON-able
     GotMessage(Vec<u8>),
     GotClosed(Result),
+
+    StartTimer(TimerHandle, f32),
+    CancelTimer(TimerHandle),
 
     WebSocketOpen(WSHandle, String),
     WebSocketSendMessage(WSHandle, Vec<u8>),
