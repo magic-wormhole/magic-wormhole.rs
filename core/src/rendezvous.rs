@@ -25,17 +25,19 @@ pub struct Rendezvous {
     wsh: WSHandle,
     relay_url: String,
     retry_timer: f32,
+    appid: String,
     state: State,
     connected_at_least_once: bool,
     reconnect_timer: Option<TimerHandle>,
 }
 
-pub fn create(relay_url: &str, retry_timer: f32) -> Rendezvous {
+pub fn create(appid: &str, relay_url: &str, retry_timer: f32) -> Rendezvous {
     // we use a handle here just in case we need to open multiple connections
     // in the future. For now we ignore it, but the IO layer is supposed to
     // pass this back in websocket_* messages
     let wsh = WSHandle::new(1);
     Rendezvous {
+        appid: appid.to_string(),
         relay_url: relay_url.to_string(),
         wsh: wsh,
         retry_timer: retry_timer,
@@ -47,7 +49,6 @@ pub fn create(relay_url: &str, retry_timer: f32) -> Rendezvous {
 
 impl Rendezvous {
     pub fn start(&mut self, actions: &mut VecDeque<Action>) -> () {
-        let newstate: State;
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
         //let wsh = WSHandle{};
@@ -66,11 +67,16 @@ impl Rendezvous {
 
     pub fn connection_made(&mut self,
                            actions: &mut VecDeque<Action>,
-                           handle: WSHandle) -> () {
+                           _handle: WSHandle) -> () {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
-                // TODO: send BIND
+                let mut m = String::new();
+                m.push_str(r#"{"type": "bind", "appid": ""#);
+                m.push_str(&self.appid);
+                m.push_str(r#"", "side": "side1"}"#);
+                let bind = Action::WebSocketSendMessage(self.wsh, m);
+                actions.push_back(bind);
                 State::Connected
             },
             _ => panic!("bad transition from {:?}", self),
@@ -80,7 +86,7 @@ impl Rendezvous {
 
     pub fn connection_lost(&mut self,
                            actions: &mut VecDeque<Action>,
-                           handle: WSHandle) -> () {
+                           _handle: WSHandle) -> () {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting | State::Connected => {
@@ -101,7 +107,7 @@ impl Rendezvous {
 
     pub fn timer_expired(&mut self,
                          actions: &mut VecDeque<Action>,
-                         handle: TimerHandle) -> () {
+                         _handle: TimerHandle) -> () {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Waiting => {
@@ -136,7 +142,6 @@ impl Rendezvous {
             State::Disconnecting => {
                 State::Disconnecting
             },
-            _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
     }
@@ -148,13 +153,14 @@ impl Rendezvous {
 mod test {
     use std::collections::VecDeque;
     use super::super::traits::Action;
-    use super::super::traits::Action::{WebSocketOpen, StartTimer};
+    use super::super::traits::Action::{WebSocketOpen, StartTimer,
+                                       WebSocketSendMessage};
     use super::super::traits::{WSHandle, TimerHandle};
 
     #[test]
     fn create() {
         let mut actions: VecDeque<Action> = VecDeque::new();
-        let mut r = super::create("url", 5.0);
+        let mut r = super::create("appid", "url", 5.0);
 
         let mut wsh: WSHandle;
         let mut th: TimerHandle;
@@ -168,16 +174,17 @@ mod test {
             },
             _ => panic!(),
         }
-        match actions.pop_front() {
-            None => (),
-            _ => panic!(),
-        }
+        if let Some(_) = actions.pop_front() { panic!() };
 
         r.connection_made(&mut actions, wsh);
-        match actions.pop_front() { // this will change to: send BIND
-            None => (),
+        match actions.pop_front() {
+            Some(WebSocketSendMessage(handle, m)) => {
+                //assert_eq!(handle, wsh);
+                assert_eq!(m, r#"{"type": "bind", "appid": "appid", "side": "side1"}"#);
+            },
             _ => panic!(),
         }
+        if let Some(_) = actions.pop_front() { panic!() };
 
         r.connection_lost(&mut actions, wsh);
         match actions.pop_front() {
@@ -187,10 +194,7 @@ mod test {
             },
             _ => panic!(),
         }
-        match actions.pop_front() {
-            None => (),
-            _ => panic!(),
-        }
+        if let Some(_) = actions.pop_front() { panic!() };
 
         r.timer_expired(&mut actions, th);
         match actions.pop_front() {
@@ -200,10 +204,9 @@ mod test {
             },
             _ => panic!(),
         }
-        match actions.pop_front() {
-            None => (),
-            _ => panic!(),
-        }
+        if let Some(_) = actions.pop_front() { panic!() };
+
+        r.stop(&mut actions);
 
     }
 }
