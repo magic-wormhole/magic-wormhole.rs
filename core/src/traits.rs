@@ -45,8 +45,8 @@ pub enum Action {
     StartTimer(TimerHandle, f32),
     CancelTimer(TimerHandle),
 
-    WebSocketOpen(WSHandle, String),
-    WebSocketSendMessage(WSHandle, Vec<u8>),
+    WebSocketOpen(WSHandle, String), // url
+    WebSocketSendMessage(WSHandle, String),
     WebSocketClose(WSHandle),
 }
 
