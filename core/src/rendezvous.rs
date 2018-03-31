@@ -155,7 +155,7 @@ impl Rendezvous {
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
-    use server_messages::bind_from_str;
+    use server_messages::{deserialize, Message};
     use super::super::traits::Action;
     use super::super::traits::Action::{WebSocketOpen, StartTimer,
                                        WebSocketSendMessage};
@@ -184,10 +184,12 @@ mod test {
         match actions.pop_front() {
             Some(WebSocketSendMessage(handle, m)) => {
                 //assert_eq!(handle, wsh);
-                let b = bind_from_str(&m);
-                assert_eq!(b.msg_type, "bind");
-                assert_eq!(b.appid, "appid");
-                assert_eq!(b.side, "side1");
+                if let Message::Bind{appid, side} = deserialize(&m) {
+                    assert_eq!(appid, "appid");
+                    assert_eq!(side, "side1");
+                } else {
+                    panic!();
+                }
             },
             _ => panic!(),
         }
