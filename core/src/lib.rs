@@ -47,7 +47,10 @@ impl traits::Core for WormholeCore {
     fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
         Vec::new()
     }
-    fn close(&mut self) -> () {}
+    fn close(&mut self) -> () {
+        self.rendezvous.stop(&mut self.actions);
+        // eventually signals GotClosed
+    }
 
     fn get_action(&mut self) -> Option<Action> {
         self.actions.pop_front()
