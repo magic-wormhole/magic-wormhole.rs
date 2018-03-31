@@ -8,7 +8,7 @@
 // more code and more states here
 
 use std::collections::VecDeque;
-use core::traits::{TimerHandle, WSHandle, Action};
+use super::traits::{TimerHandle, WSHandle, Action};
 
 #[derive(Debug)]
 enum State {
