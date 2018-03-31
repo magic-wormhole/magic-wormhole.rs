@@ -30,9 +30,10 @@ pub struct WormholeCore {
 
 pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
     let action_queue = VecDeque::new();
+    let side = "side1"; // TODO: generate randomly
 
     let mut wc = WormholeCore{
-        rendezvous: rendezvous::create(appid, relay_url, 5.0),
+        rendezvous: rendezvous::create(appid, relay_url, side, 5.0),
         actions: action_queue,
     };
     wc.rendezvous.start(&mut wc.actions);
