@@ -10,6 +10,7 @@
 use std::collections::VecDeque;
 use serde_json;
 use super::traits::{TimerHandle, WSHandle, Action};
+use server_messages::{bind};
 
 #[derive(Debug)]
 enum State {
@@ -31,15 +32,6 @@ pub struct Rendezvous {
     connected_at_least_once: bool,
     wsh: WSHandle,
     reconnect_timer: Option<TimerHandle>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all="kebab-case")]
-struct Bind {
-    #[serde(rename="type")]
-    msg_type: String,
-    appid: String,
-    side: String,
 }
 
 pub fn create(appid: &str, relay_url: &str, side: &str,
@@ -84,10 +76,8 @@ impl Rendezvous {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
-                let bind = Bind{msg_type: "bind".to_owned(),
-                                appid: self.appid.to_string(),
-                                side: self.side.to_string()};
-                let m = serde_json::to_string(&bind).unwrap();
+                let b = bind(&self.appid, &self.side);
+                let m = serde_json::to_string(&b).unwrap();
                 let bind = Action::WebSocketSendMessage(self.wsh, m);
                 actions.push_back(bind);
                 State::Connected
@@ -165,13 +155,11 @@ impl Rendezvous {
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
-    use super::Bind;
+    use server_messages::bind_from_str;
     use super::super::traits::Action;
     use super::super::traits::Action::{WebSocketOpen, StartTimer,
                                        WebSocketSendMessage};
     use super::super::traits::{WSHandle, TimerHandle};
-    use serde_json;
-    use serde_json::Value;
 
     #[test]
     fn create() {
@@ -196,7 +184,7 @@ mod test {
         match actions.pop_front() {
             Some(WebSocketSendMessage(handle, m)) => {
                 //assert_eq!(handle, wsh);
-                let b: Bind = serde_json::from_str(&m).unwrap();
+                let b = bind_from_str(&m);
                 assert_eq!(b.msg_type, "bind");
                 assert_eq!(b.appid, "appid");
                 assert_eq!(b.side, "side1");
