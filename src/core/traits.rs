@@ -9,8 +9,13 @@ impl WSHandle {
     }
 }
 
-#[derive(Debug)]
-pub struct TimerHandle;
+#[derive(Debug, Copy, Clone)]
+pub struct TimerHandle {id: u32}
+impl TimerHandle {
+    pub fn new(id: u32) -> TimerHandle {
+        TimerHandle{id: id}
+    }
+}
 
 pub trait Core {
     fn allocate_code(&mut self) -> ();

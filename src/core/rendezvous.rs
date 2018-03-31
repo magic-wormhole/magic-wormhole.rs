@@ -15,8 +15,8 @@ enum State {
     Idle,
     Connecting,
     Connected,
-    Disconnecting,
     Waiting,
+    Disconnecting,
     Stopped,
 }
 
@@ -86,6 +86,24 @@ impl Rendezvous {
         let newstate: State;
         match self.state {
             State::Connected => {
+                let new_handle = TimerHandle::new(2);
+                // I.. don't know how to copy a String
+                let wait = Action::StartTimer(new_handle, self.retry_timer);
+                actions.push_back(wait);
+                newstate = State::Waiting;
+            },
+            _ => panic!("bad transition from {:?}", self),
+        }
+        self.state = newstate;
+    }
+
+    pub fn timer_expired(&mut self,
+                         actions: &mut VecDeque<Action>,
+                         handle: TimerHandle) -> () {
+        // TODO: assert handle == self.handle
+        let newstate: State;
+        match self.state {
+            State::Waiting => {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
                 let open = Action::WebSocketOpen(new_handle,
@@ -97,4 +115,5 @@ impl Rendezvous {
         }
         self.state = newstate;
     }
+
 }
