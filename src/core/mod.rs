@@ -48,6 +48,9 @@ impl traits::Core for WormholeCore {
     }
 
     fn timer_expired(&mut self, handle: TimerHandle) -> () {
+        // TODO: dispatch to whatever is waiting for this particular timer.
+        // Maybe TimerHandle should be an enum of different sub-machines.
+        self.rendezvous.timer_expired(&mut self.actions, handle);
     }
 
     fn websocket_connection_made(&mut self, handle: WSHandle) -> () {
@@ -66,13 +69,15 @@ impl traits::Core for WormholeCore {
 mod test {
     use core::create_core;
     use core::traits::Core;
-    use core::traits::Action::WebSocketOpen;
-    use core::traits::WSHandle;
+    use core::traits::Action::{WebSocketOpen, StartTimer};
+    use core::traits::{WSHandle, TimerHandle};
 
     #[test]
     fn create() {
         let mut w = create_core("appid", "url");
         let mut wsh: WSHandle;
+        let mut th: TimerHandle;
+
         match w.get_action() {
             Some(WebSocketOpen(handle, url)) => {
                 assert_eq!(url, "url");
@@ -92,6 +97,19 @@ mod test {
         }
 
         w.websocket_connection_lost(wsh);
+        match w.get_action() {
+            Some(StartTimer(handle, duration)) => {
+                assert_eq!(duration, 5.0);
+                th = handle;
+            },
+            _ => panic!(),
+        }
+        match w.get_action() {
+            None => (),
+            _ => panic!(),
+        }
+
+        w.timer_expired(th);
         match w.get_action() {
             Some(WebSocketOpen(handle, url)) => {
                 assert_eq!(url, "url");
