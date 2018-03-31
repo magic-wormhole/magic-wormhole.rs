@@ -90,7 +90,7 @@ mod test {
     fn create() {
         let mut w = create_core("appid", "url");
         let mut wsh: WSHandle;
-        let mut th: TimerHandle;
+        let th: TimerHandle;
 
         match w.get_action() {
             Some(WebSocketOpen(handle, url)) => {
@@ -103,7 +103,7 @@ mod test {
 
         w.websocket_connection_made(wsh);
         match w.get_action() {
-            Some(WebSocketSendMessage(handle, m)) => {
+            Some(WebSocketSendMessage(_handle, m)) => {
                 //assert_eq!(handle, wsh);
                 let b: Value = serde_json::from_str(&m).unwrap();
                 assert_eq!(b["type"], "bind");
