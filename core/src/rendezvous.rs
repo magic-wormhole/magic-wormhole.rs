@@ -142,3 +142,68 @@ impl Rendezvous {
     }
 
 }
+
+
+#[cfg(test)]
+mod test {
+    use std::collections::VecDeque;
+    use super::super::traits::Action;
+    use super::super::traits::Action::{WebSocketOpen, StartTimer};
+    use super::super::traits::{WSHandle, TimerHandle};
+
+    #[test]
+    fn create() {
+        let mut actions: VecDeque<Action> = VecDeque::new();
+        let mut r = super::create("url", 5.0);
+
+        let mut wsh: WSHandle;
+        let mut th: TimerHandle;
+
+        r.start(&mut actions);
+
+        match actions.pop_front() {
+            Some(WebSocketOpen(handle, url)) => {
+                assert_eq!(url, "url");
+                wsh = handle;
+            },
+            _ => panic!(),
+        }
+        match actions.pop_front() {
+            None => (),
+            _ => panic!(),
+        }
+
+        r.connection_made(&mut actions, wsh);
+        match actions.pop_front() { // this will change to: send BIND
+            None => (),
+            _ => panic!(),
+        }
+
+        r.connection_lost(&mut actions, wsh);
+        match actions.pop_front() {
+            Some(StartTimer(handle, duration)) => {
+                assert_eq!(duration, 5.0);
+                th = handle;
+            },
+            _ => panic!(),
+        }
+        match actions.pop_front() {
+            None => (),
+            _ => panic!(),
+        }
+
+        r.timer_expired(&mut actions, th);
+        match actions.pop_front() {
+            Some(WebSocketOpen(handle, url)) => {
+                assert_eq!(url, "url");
+                wsh = handle;
+            },
+            _ => panic!(),
+        }
+        match actions.pop_front() {
+            None => (),
+            _ => panic!(),
+        }
+
+    }
+}
