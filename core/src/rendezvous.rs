@@ -182,7 +182,7 @@ mod test {
         let mut r = super::create("appid", "url", "side1", 5.0);
 
         let mut wsh: WSHandle;
-        let mut th: TimerHandle;
+        let th: TimerHandle;
 
         r.start(&mut actions);
 
@@ -197,7 +197,7 @@ mod test {
 
         r.connection_made(&mut actions, wsh);
         match actions.pop_front() {
-            Some(WebSocketSendMessage(handle, m)) => {
+            Some(WebSocketSendMessage(_handle, m)) => {
                 //assert_eq!(handle, wsh);
                 if let Message::Bind{appid, side} = deserialize(&m) {
                     assert_eq!(appid, "appid");
