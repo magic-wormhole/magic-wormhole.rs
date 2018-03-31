@@ -1,9 +1,8 @@
-extern crate ws;
-extern crate url;
 extern crate magic_wormhole_core;
-use magic_wormhole_core::{WSHandle, WormholeCore, create_core, Core};
-use magic_wormhole_core::Action::{WebSocketOpen, WebSocketClose,
-                                  WebSocketSendMessage};
+extern crate url;
+extern crate ws;
+use magic_wormhole_core::{create_core, Core, WSHandle, WormholeCore};
+use magic_wormhole_core::Action::{WebSocketClose, WebSocketOpen, WebSocketSendMessage};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
@@ -16,7 +15,7 @@ struct MyFactory {
     wsh: WSHandle,
     wcr: Rc<RefCell<WormholeCore>>,
 }
-    
+
 struct MyHandler {
     wsh: WSHandle,
     wcr: Rc<RefCell<WormholeCore>>,
@@ -28,7 +27,7 @@ fn main() {
     // for now, pretend that the WormholeCore is only ever going to ask us to
     // make a single connection. Eventually, it will manage reconnects too,
     // and we must be prepared to make multiple connections when it asks.
-        
+
     let mut wc = create_core(APPID, MAILBOX_SERVER);
     let wsh;
     let ws_url;
@@ -40,7 +39,10 @@ fn main() {
             panic!();
         }
     }
-    let f = MyFactory { wsh: wsh, wcr: Rc::new(RefCell::new(wc)) };
+    let f = MyFactory {
+        wsh: wsh,
+        wcr: Rc::new(RefCell::new(wc)),
+    };
 
     // connect() blocks until disconnect, so the Manager drives everything
     // connect() requires a closure, use Builder to provide a real Factory
@@ -50,14 +52,16 @@ fn main() {
     let mut w1 = b.build(f).unwrap();
     w1.connect(ws_url).unwrap();
     w1.run().unwrap();
-
-
 }
 
 impl ws::Factory for MyFactory {
     type Handler = MyHandler;
     fn connection_made(&mut self, out: ws::Sender) -> MyHandler {
-        MyHandler { wsh: self.wsh, wcr: Rc::clone(&self.wcr), out: out }
+        MyHandler {
+            wsh: self.wsh,
+            wcr: Rc::clone(&self.wcr),
+            out: out,
+        }
     }
 }
 
@@ -89,13 +93,13 @@ fn process_actions(wc: &mut WormholeCore, out: &ws::Sender) {
             WebSocketSendMessage(_wsh, msg) => {
                 println!("sending {:?}", msg);
                 out.send(msg).unwrap();
-            },
+            }
             WebSocketClose(_wsh) => {
                 out.close(ws::CloseCode::Normal).unwrap();
-            },
+            }
             _ => {
                 println!("action {:?}", a);
-            },
+            }
         }
     }
 }

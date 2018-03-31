@@ -1,7 +1,7 @@
 extern crate serde;
-extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
+extern crate serde_json;
 
 mod traits;
 mod allocator;
@@ -33,7 +33,7 @@ pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
     let action_queue = VecDeque::new();
     let side = "side1"; // TODO: generate randomly
 
-    let mut wc = WormholeCore{
+    let mut wc = WormholeCore {
         rendezvous: rendezvous::create(appid, relay_url, side, 5.0),
         actions: action_queue,
     };
@@ -65,24 +65,21 @@ impl traits::Core for WormholeCore {
     fn websocket_connection_made(&mut self, handle: WSHandle) -> () {
         self.rendezvous.connection_made(&mut self.actions, handle);
     }
-    fn websocket_message_received(&mut self, handle: WSHandle,
-                                  message: &str) -> () {
-        self.rendezvous.message_received(&mut self.actions, handle, message);
+    fn websocket_message_received(&mut self, handle: WSHandle, message: &str) -> () {
+        self.rendezvous
+            .message_received(&mut self.actions, handle, message);
     }
     fn websocket_connection_lost(&mut self, handle: WSHandle) -> () {
         self.rendezvous.connection_lost(&mut self.actions, handle);
     }
 }
 
-
-
 #[cfg(test)]
 mod test {
     use super::create_core;
     use super::traits::Core;
-    use super::traits::Action::{WebSocketOpen, StartTimer,
-                                WebSocketSendMessage};
-    use super::traits::{WSHandle, TimerHandle};
+    use super::traits::Action::{StartTimer, WebSocketOpen, WebSocketSendMessage};
+    use super::traits::{TimerHandle, WSHandle};
     use serde_json;
     use serde_json::Value;
 
@@ -96,10 +93,12 @@ mod test {
             Some(WebSocketOpen(handle, url)) => {
                 assert_eq!(url, "url");
                 wsh = handle;
-            },
+            }
             _ => panic!(),
         }
-        if let Some(_) = w.get_action() { panic!() };
+        if let Some(_) = w.get_action() {
+            panic!()
+        };
 
         w.websocket_connection_made(wsh);
         match w.get_action() {
@@ -107,30 +106,35 @@ mod test {
                 //assert_eq!(handle, wsh);
                 let b: Value = serde_json::from_str(&m).unwrap();
                 assert_eq!(b["type"], "bind");
-            },
+            }
             _ => panic!(),
         }
-        if let Some(_) = w.get_action() { panic!() };
+        if let Some(_) = w.get_action() {
+            panic!()
+        };
 
         w.websocket_connection_lost(wsh);
         match w.get_action() {
             Some(StartTimer(handle, duration)) => {
                 assert_eq!(duration, 5.0);
                 th = handle;
-            },
+            }
             _ => panic!(),
         }
-        if let Some(_) = w.get_action() { panic!() };
+        if let Some(_) = w.get_action() {
+            panic!()
+        };
 
         w.timer_expired(th);
         match w.get_action() {
             Some(WebSocketOpen(handle, url)) => {
                 assert_eq!(url, "url");
                 wsh = handle;
-            },
+            }
             _ => panic!(),
         }
-        if let Some(_) = w.get_action() { panic!() };
-        
+        if let Some(_) = w.get_action() {
+            panic!()
+        };
     }
 }
