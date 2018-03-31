@@ -1,8 +1,7 @@
 use serde_json;
-use serde_json::{Value, Number};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Nameplate {
+pub struct Nameplate {
     id: String,
 }
 

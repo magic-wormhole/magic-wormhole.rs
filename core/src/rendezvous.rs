@@ -86,7 +86,7 @@ impl Rendezvous {
     }
 
     pub fn message_received(&mut self,
-                            mut actions: &mut VecDeque<Action>,
+                            _actions: &mut VecDeque<Action>,
                             _handle: WSHandle,
                             message: &str) -> () {
         let m = deserialize(&message);
