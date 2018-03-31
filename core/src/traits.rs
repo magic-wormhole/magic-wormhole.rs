@@ -1,19 +1,22 @@
-
 use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone)]
-pub struct WSHandle {id: u32}
+pub struct WSHandle {
+    id: u32,
+}
 impl WSHandle {
     pub fn new(id: u32) -> WSHandle {
-        WSHandle{id: id}
+        WSHandle { id: id }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct TimerHandle {id: u32}
+pub struct TimerHandle {
+    id: u32,
+}
 impl TimerHandle {
     pub fn new(id: u32) -> TimerHandle {
-        TimerHandle{id: id}
+        TimerHandle { id: id }
     }
 }
 
@@ -35,7 +38,7 @@ pub trait Core {
 #[derive(Debug)]
 pub enum Action {
     GotWelcome(HashMap<String, String>), // actually anything JSON-able
-    GotCode(String), // must be easy to canonically encode into UTF-8 bytes
+    GotCode(String),                     // must be easy to canonically encode into UTF-8 bytes
     GotUnverifiedKey(Vec<u8>),
     GotVerifier(Vec<u8>),
     GotVersions(HashMap<String, String>), // actually anything JSON-able
@@ -53,5 +56,5 @@ pub enum Action {
 #[derive(Debug)]
 pub enum Result {
     Happy,
-    Error
+    Error,
 }
