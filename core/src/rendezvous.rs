@@ -23,12 +23,13 @@ enum State {
 
 #[derive(Debug)]
 pub struct Rendezvous {
-    wsh: WSHandle,
-    relay_url: String,
-    retry_timer: f32,
     appid: String,
+    relay_url: String,
+    side: String,
+    retry_timer: f32,
     state: State,
     connected_at_least_once: bool,
+    wsh: WSHandle,
     reconnect_timer: Option<TimerHandle>,
 }
 
@@ -41,7 +42,8 @@ struct Bind {
     side: String,
 }
 
-pub fn create(appid: &str, relay_url: &str, retry_timer: f32) -> Rendezvous {
+pub fn create(appid: &str, relay_url: &str, side: &str,
+              retry_timer: f32) -> Rendezvous {
     // we use a handle here just in case we need to open multiple connections
     // in the future. For now we ignore it, but the IO layer is supposed to
     // pass this back in websocket_* messages
@@ -49,10 +51,11 @@ pub fn create(appid: &str, relay_url: &str, retry_timer: f32) -> Rendezvous {
     Rendezvous {
         appid: appid.to_string(),
         relay_url: relay_url.to_string(),
-        wsh: wsh,
+        side: side.to_string(),
         retry_timer: retry_timer,
         state: State::Idle,
         connected_at_least_once: false,
+        wsh: wsh,
         reconnect_timer: None,
     }
 }
@@ -83,7 +86,7 @@ impl Rendezvous {
             State::Connecting => {
                 let bind = Bind{msg_type: "bind".to_owned(),
                                 appid: self.appid.to_string(),
-                                side: "side1".to_owned()};
+                                side: self.side.to_string()};
                 let m = serde_json::to_string(&bind).unwrap();
                 let bind = Action::WebSocketSendMessage(self.wsh, m);
                 actions.push_back(bind);
@@ -173,7 +176,7 @@ mod test {
     #[test]
     fn create() {
         let mut actions: VecDeque<Action> = VecDeque::new();
-        let mut r = super::create("appid", "url", 5.0);
+        let mut r = super::create("appid", "url", "side1", 5.0);
 
         let mut wsh: WSHandle;
         let mut th: TimerHandle;
