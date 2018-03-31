@@ -16,7 +16,7 @@ enum State {
     Connecting,
     Connected,
     Waiting,
-    Disconnecting,
+    Disconnecting, // -> Stopped
     Stopped,
 }
 
@@ -85,12 +85,16 @@ impl Rendezvous {
         // TODO: assert handle == self.handle
         let newstate: State;
         match self.state {
-            State::Connected => {
+            State::Connecting | State::Connected => {
                 let new_handle = TimerHandle::new(2);
+                self.reconnect_timer = Some(new_handle);
                 // I.. don't know how to copy a String
                 let wait = Action::StartTimer(new_handle, self.retry_timer);
                 actions.push_back(wait);
                 newstate = State::Waiting;
+            },
+            State::Disconnecting => {
+                newstate = State::Stopped;
             },
             _ => panic!("bad transition from {:?}", self),
         }
@@ -110,6 +114,31 @@ impl Rendezvous {
                                                  self.relay_url.to_lowercase());
                 actions.push_back(open);
                 newstate = State::Connecting;
+            },
+            _ => panic!("bad transition from {:?}", self),
+        }
+        self.state = newstate;
+    }
+
+    pub fn stop(&mut self,
+                actions: &mut VecDeque<Action>) -> () {
+        let newstate: State;
+        match self.state {
+            State::Idle | State::Stopped => {
+                newstate = State::Stopped;
+            },
+            State::Connecting | State::Connected => {
+                let close = Action::WebSocketClose(self.wsh);
+                actions.push_back(close);
+                newstate = State::Disconnecting;
+            },
+            State::Waiting => {
+                let cancel = Action::CancelTimer(self.reconnect_timer.unwrap());
+                actions.push_back(cancel);
+                newstate = State::Stopped;
+            },
+            State::Disconnecting => {
+                newstate = State::Disconnecting;
             },
             _ => panic!("bad transition from {:?}", self),
         }
