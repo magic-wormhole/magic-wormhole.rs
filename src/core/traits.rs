@@ -1,8 +1,14 @@
 
 use std::collections::HashMap;
 
-#[derive(Debug)]
-pub struct WSHandle;
+#[derive(Debug, Copy, Clone)]
+pub struct WSHandle {id: u32}
+impl WSHandle {
+    pub fn new(id: u32) -> WSHandle {
+        WSHandle{id: id}
+    }
+}
+
 #[derive(Debug)]
 pub struct TimerHandle;
 
