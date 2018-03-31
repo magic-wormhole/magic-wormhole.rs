@@ -8,6 +8,7 @@
 // more code and more states here
 
 use std::collections::VecDeque;
+use serde_json;
 use super::traits::{TimerHandle, WSHandle, Action};
 
 #[derive(Debug)]
@@ -29,6 +30,15 @@ pub struct Rendezvous {
     state: State,
     connected_at_least_once: bool,
     reconnect_timer: Option<TimerHandle>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all="kebab-case")]
+struct Bind {
+    #[serde(rename="type")]
+    msg_type: String,
+    appid: String,
+    side: String,
 }
 
 pub fn create(appid: &str, relay_url: &str, retry_timer: f32) -> Rendezvous {
@@ -71,12 +81,11 @@ impl Rendezvous {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
-                let bind = json!({"type": "bind",
-                                  "appid": &self.appid,
-                                  "side": "side1",
-                                  });
-                let bind = Action::WebSocketSendMessage(self.wsh,
-                                                        bind.to_string());
+                let bind = Bind{msg_type: "bind".to_owned(),
+                                appid: self.appid.to_string(),
+                                side: "side1".to_owned()};
+                let m = serde_json::to_string(&bind).unwrap();
+                let bind = Action::WebSocketSendMessage(self.wsh, m);
                 actions.push_back(bind);
                 State::Connected
             },
@@ -153,6 +162,7 @@ impl Rendezvous {
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
+    use super::Bind;
     use super::super::traits::Action;
     use super::super::traits::Action::{WebSocketOpen, StartTimer,
                                        WebSocketSendMessage};
@@ -183,10 +193,10 @@ mod test {
         match actions.pop_front() {
             Some(WebSocketSendMessage(handle, m)) => {
                 //assert_eq!(handle, wsh);
-                let b: Value = serde_json::from_str(&m).unwrap();
-                assert_eq!(b["type"], "bind");
-                assert_eq!(b["appid"], "appid");
-                assert_eq!(b["side"], "side1");
+                let b: Bind = serde_json::from_str(&m).unwrap();
+                assert_eq!(b.msg_type, "bind");
+                assert_eq!(b.appid, "appid");
+                assert_eq!(b.side, "side1");
             },
             _ => panic!(),
         }
