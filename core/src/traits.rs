@@ -28,10 +28,11 @@ pub trait Core {
     fn timer_expired(&mut self, handle: TimerHandle) -> ();
 
     fn websocket_connection_made(&mut self, handle: WSHandle) -> ();
-    fn websocket_message_received(&mut self, handle: WSHandle, message: &Vec<u8>) -> ();
+    fn websocket_message_received(&mut self, handle: WSHandle, message: &str) -> ();
     fn websocket_connection_lost(&mut self, handle: WSHandle) -> ();
 }
 
+#[derive(Debug)]
 pub enum Action {
     GotWelcome(HashMap<String, String>), // actually anything JSON-able
     GotCode(String), // must be easy to canonically encode into UTF-8 bytes
@@ -49,6 +50,7 @@ pub enum Action {
     WebSocketClose(WSHandle),
 }
 
+#[derive(Debug)]
 pub enum Result {
     Happy,
     Error

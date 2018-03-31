@@ -15,7 +15,8 @@ mod terminator;
 mod wordlist;
 
 use std::collections::VecDeque;
-use self::traits::{Action, WSHandle, TimerHandle};
+//use self::traits::{Action, WSHandle, TimerHandle};
+pub use self::traits::*;
 
 pub struct WormholeCore {
     appid: String,
@@ -56,7 +57,7 @@ impl traits::Core for WormholeCore {
     fn websocket_connection_made(&mut self, handle: WSHandle) -> () {
         self.rendezvous.connection_made(&mut self.actions, handle);
     }
-    fn websocket_message_received(&mut self, handle: WSHandle, message: &Vec<u8>) -> () {
+    fn websocket_message_received(&mut self, handle: WSHandle, message: &str) -> () {
     }
     fn websocket_connection_lost(&mut self, handle: WSHandle) -> () {
         self.rendezvous.connection_lost(&mut self.actions, handle);
