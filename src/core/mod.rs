@@ -51,6 +51,7 @@ impl traits::Core for WormholeCore {
     }
 
     fn websocket_connection_made(&mut self, handle: WSHandle) -> () {
+        self.rendezvous.connection_made(&mut self.actions, handle);
     }
     fn websocket_message_received(&mut self, handle: WSHandle, message: &Vec<u8>) -> () {
     }
@@ -66,16 +67,42 @@ mod test {
     use core::create_core;
     use core::traits::Core;
     use core::traits::Action::WebSocketOpen;
+    use core::traits::WSHandle;
+
     #[test]
     fn create() {
         let mut w = create_core("appid", "url");
+        let mut wsh: WSHandle;
         match w.get_action() {
-            Some(WebSocketOpen(_, url)) => assert_eq!(url, "url"),
-            _ => assert!(false),
+            Some(WebSocketOpen(handle, url)) => {
+                assert_eq!(url, "url");
+                wsh = handle;
+            },
+            _ => panic!(),
         }
         match w.get_action() {
             None => (),
-            _ => assert!(false),
+            _ => panic!(),
         }
+
+        w.websocket_connection_made(wsh);
+        match w.get_action() { // this will change to: send BIND
+            None => (),
+            _ => panic!(),
+        }
+
+        w.websocket_connection_lost(wsh);
+        match w.get_action() {
+            Some(WebSocketOpen(handle, url)) => {
+                assert_eq!(url, "url");
+                wsh = handle;
+            },
+            _ => panic!(),
+        }
+        match w.get_action() {
+            None => (),
+            _ => panic!(),
+        }
+        
     }
 }

@@ -34,7 +34,7 @@ pub fn create(relay_url: &str, retry_timer: f32) -> Rendezvous {
     // we use a handle here just in case we need to open multiple connections
     // in the future. For now we ignore it, but the IO layer is supposed to
     // pass this back in websocket_* messages
-    let wsh = WSHandle{};
+    let wsh = WSHandle::new(1);
     Rendezvous {
         relay_url: relay_url.to_string(),
         wsh: wsh,
@@ -50,14 +50,29 @@ impl Rendezvous {
         let newstate: State;
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
-        let wsh = WSHandle{};
+        //let wsh = WSHandle{};
         match self.state {
             State::Idle => {
-                newstate = State::Connecting;
-                let open = Action::WebSocketOpen(wsh,
+                let open = Action::WebSocketOpen(self.wsh,
                                                  self.relay_url.to_lowercase());
                 //"url".to_string());
                 actions.push_back(open);
+                newstate = State::Connecting;
+            },
+            _ => panic!("bad transition from {:?}", self),
+        }
+        self.state = newstate;
+    }
+
+    pub fn connection_made(&mut self,
+                           actions: &mut VecDeque<Action>,
+                           handle: WSHandle) -> () {
+        // TODO: assert handle == self.handle
+        let newstate: State;
+        match self.state {
+            State::Connecting => {
+                // TODO: send BIND
+                newstate = State::Connected;
             },
             _ => panic!("bad transition from {:?}", self),
         }
@@ -68,10 +83,18 @@ impl Rendezvous {
                            actions: &mut VecDeque<Action>,
                            handle: WSHandle) -> () {
         // TODO: assert handle == self.handle
-        let new_handle = WSHandle{};
-        // I.. don't know how to copy a String
-        let open = Action::WebSocketOpen(new_handle,
-                                         self.relay_url.to_lowercase());
-        actions.push_back(open);
+        let newstate: State;
+        match self.state {
+            State::Connected => {
+                let new_handle = WSHandle::new(2);
+                // I.. don't know how to copy a String
+                let open = Action::WebSocketOpen(new_handle,
+                                                 self.relay_url.to_lowercase());
+                actions.push_back(open);
+                newstate = State::Connecting;
+            },
+            _ => panic!("bad transition from {:?}", self),
+        }
+        self.state = newstate;
     }
 }
