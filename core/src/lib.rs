@@ -15,7 +15,7 @@ mod terminator;
 mod wordlist;
 
 use std::collections::VecDeque;
-use core::traits::{Action, WSHandle, TimerHandle};
+use self::traits::{Action, WSHandle, TimerHandle};
 
 pub struct WormholeCore {
     appid: String,
@@ -67,10 +67,10 @@ impl traits::Core for WormholeCore {
 
 #[cfg(test)]
 mod test {
-    use core::create_core;
-    use core::traits::Core;
-    use core::traits::Action::{WebSocketOpen, StartTimer};
-    use core::traits::{WSHandle, TimerHandle};
+    use super::create_core;
+    use super::traits::Core;
+    use super::traits::Action::{WebSocketOpen, StartTimer};
+    use super::traits::{WSHandle, TimerHandle};
 
     #[test]
     fn create() {

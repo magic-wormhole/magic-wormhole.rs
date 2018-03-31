@@ -1,6 +1,6 @@
 [workspace]
 members = [
         "core",
-        "io/tokio",
-        "cli"
+#        "io/tokio",
+#        "cli",
 ]
