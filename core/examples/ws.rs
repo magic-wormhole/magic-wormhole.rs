@@ -64,6 +64,8 @@ impl ws::Factory for MyFactory {
 impl ws::Handler for MyHandler {
     fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
         println!("on_open");
+        let mut wc = self.wcr.borrow_mut();
+        wc.websocket_connection_made(self.wsh);
         Ok(())
     }
     fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
@@ -85,10 +87,11 @@ fn process_actions(wc: &mut WormholeCore, out: &ws::Sender) {
     while let Some(a) = wc.get_action() {
         match a {
             WebSocketSendMessage(_wsh, msg) => {
-                out.send(msg);
+                println!("sending {:?}", msg);
+                out.send(msg).unwrap();
             },
             WebSocketClose(_wsh) => {
-                out.close(ws::CloseCode::Normal);
+                out.close(ws::CloseCode::Normal).unwrap();
             },
             _ => {
                 println!("action {:?}", a);
