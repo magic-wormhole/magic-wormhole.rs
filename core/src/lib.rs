@@ -15,6 +15,7 @@ mod nameplate;
 mod order;
 mod receive;
 mod rendezvous;
+mod server_messages;
 mod send;
 mod terminator;
 mod wordlist;
