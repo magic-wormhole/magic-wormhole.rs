@@ -11,9 +11,10 @@ struct Nameplate {
 #[serde(tag="type")]
 pub enum Message {
     Bind { appid: String, side: String },
-    List,
+    Welcome { }, // TODO: welcome: Value
+    List { },
     Nameplates { nameplates: Vec<Nameplate> },
-    Allocate,
+    Allocate { },
     Allocated { nameplate: String },
     Claim { nameplate: String },
     Claimed { mailbox: String },
@@ -23,8 +24,8 @@ pub enum Message {
     Add { phase: String, body: String },
     Message { side: String, phase: String, body: String, id: String },
     Close { mailbox: String, mood: String },
-    Closed,
-    Ack,
+    Closed { },
+    Ack { },
     Ping { ping: u32 },
     Pong { pong: u32 },
     //Error { error: String, orig: Message },
@@ -36,8 +37,8 @@ pub enum Message {
 pub fn bind(appid: &str, side: &str) -> Message {
     Message::Bind{ appid: appid.to_string(), side: side.to_string() }
 }
-pub fn list() -> Message { Message::List }
-pub fn allocate() -> Message { Message::Allocate }
+pub fn list() -> Message { Message::List { } }
+pub fn allocate() -> Message { Message::Allocate { } }
 pub fn claim(nameplate: &str) -> Message {
     Message::Claim { nameplate: nameplate.to_string() }
 }
@@ -48,7 +49,8 @@ pub fn open(mailbox: &str) -> Message {
     Message::Open { mailbox: mailbox.to_string() }
 }
 
-pub fn add(phase: &str, body: &str) -> Message { // TODO: Vec<u8>
+pub fn add(phase: &str, body: &str) -> Message {
+    // TODO: make this take Vec<u8>, do the hex-encoding internally
     Message::Add { phase: phase.to_string(), body: body.to_string() }
 }
 
@@ -142,6 +144,26 @@ mod test {
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn test_welcome() {
+        let s = r#"{"type": "welcome", "welcome": {"motd": "hi"}, "server_tx": 1234.56}"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Welcome { } => (),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_ack() {
+        let s = r#"{"type": "ack", "id": null, "server_tx": 1234.56}"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Ack { } => (),
+            _ => panic!(),
+        }
     }
 
 
