@@ -5,4 +5,4 @@ authors = ["Brian Warner <warner@lothar.com>"]
 
 [dev-dependencies]
 ws = "0.7"
-
+url = "1.7"
