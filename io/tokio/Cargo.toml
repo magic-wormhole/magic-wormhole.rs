@@ -1,0 +1,11 @@
+[package]
+name = "magic-wormhole-io-tokio"
+version = "0.0.1"
+authors = ["Brian Warner <warner@lothar.com>"]
+
+[dependencies]
+websocket = "0.20"
+spake2 = "0.0.4"
+futures = "0.1"
+tokio-core = "0.1"
+
