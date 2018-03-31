@@ -51,16 +51,16 @@ impl Rendezvous {
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
         //let wsh = WSHandle{};
-        match self.state {
+        let newstate = match self.state {
             State::Idle => {
                 let open = Action::WebSocketOpen(self.wsh,
                                                  self.relay_url.to_lowercase());
                 //"url".to_string());
                 actions.push_back(open);
-                newstate = State::Connecting;
+                State::Connecting
             },
             _ => panic!("bad transition from {:?}", self),
-        }
+        };
         self.state = newstate;
     }
 
@@ -68,14 +68,13 @@ impl Rendezvous {
                            actions: &mut VecDeque<Action>,
                            handle: WSHandle) -> () {
         // TODO: assert handle == self.handle
-        let newstate: State;
-        match self.state {
+        let newstate = match self.state {
             State::Connecting => {
                 // TODO: send BIND
-                newstate = State::Connected;
+                State::Connected
             },
             _ => panic!("bad transition from {:?}", self),
-        }
+        };
         self.state = newstate;
     }
 
@@ -83,21 +82,20 @@ impl Rendezvous {
                            actions: &mut VecDeque<Action>,
                            handle: WSHandle) -> () {
         // TODO: assert handle == self.handle
-        let newstate: State;
-        match self.state {
+        let newstate = match self.state {
             State::Connecting | State::Connected => {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 // I.. don't know how to copy a String
                 let wait = Action::StartTimer(new_handle, self.retry_timer);
                 actions.push_back(wait);
-                newstate = State::Waiting;
+                State::Waiting
             },
             State::Disconnecting => {
-                newstate = State::Stopped;
+                State::Stopped
             },
             _ => panic!("bad transition from {:?}", self),
-        }
+        };
         self.state = newstate;
     }
 
@@ -105,43 +103,41 @@ impl Rendezvous {
                          actions: &mut VecDeque<Action>,
                          handle: TimerHandle) -> () {
         // TODO: assert handle == self.handle
-        let newstate: State;
-        match self.state {
+        let newstate = match self.state {
             State::Waiting => {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
                 let open = Action::WebSocketOpen(new_handle,
                                                  self.relay_url.to_lowercase());
                 actions.push_back(open);
-                newstate = State::Connecting;
+                State::Connecting
             },
             _ => panic!("bad transition from {:?}", self),
-        }
+        };
         self.state = newstate;
     }
 
     pub fn stop(&mut self,
                 actions: &mut VecDeque<Action>) -> () {
-        let newstate: State;
-        match self.state {
+        let newstate = match self.state {
             State::Idle | State::Stopped => {
-                newstate = State::Stopped;
+                State::Stopped
             },
             State::Connecting | State::Connected => {
                 let close = Action::WebSocketClose(self.wsh);
                 actions.push_back(close);
-                newstate = State::Disconnecting;
+                State::Disconnecting
             },
             State::Waiting => {
                 let cancel = Action::CancelTimer(self.reconnect_timer.unwrap());
                 actions.push_back(cancel);
-                newstate = State::Stopped;
+                State::Stopped
             },
             State::Disconnecting => {
-                newstate = State::Disconnecting;
+                State::Disconnecting
             },
             _ => panic!("bad transition from {:?}", self),
-        }
+        };
         self.state = newstate;
     }
 
