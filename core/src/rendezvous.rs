@@ -10,7 +10,7 @@
 use std::collections::VecDeque;
 use serde_json;
 use super::traits::{TimerHandle, WSHandle, Action};
-use server_messages::{bind};
+use server_messages::{bind, Message, deserialize};
 
 #[derive(Debug)]
 enum State {
@@ -71,20 +71,26 @@ impl Rendezvous {
     }
 
     pub fn connection_made(&mut self,
-                           actions: &mut VecDeque<Action>,
+                           mut actions: &mut VecDeque<Action>,
                            _handle: WSHandle) -> () {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
                 let b = bind(&self.appid, &self.side);
-                let m = serde_json::to_string(&b).unwrap();
-                let bind = Action::WebSocketSendMessage(self.wsh, m);
-                actions.push_back(bind);
+                self.send(b, &mut actions);
                 State::Connected
             },
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+    }
+
+    pub fn message_received(&mut self,
+                            mut actions: &mut VecDeque<Action>,
+                            _handle: WSHandle,
+                            message: &str) -> () {
+        let m = deserialize(&message);
+        println!("msg is {:?}", m);
     }
 
     pub fn connection_lost(&mut self,
@@ -149,6 +155,15 @@ impl Rendezvous {
         self.state = newstate;
     }
 
+    pub fn send(&mut self, m: Message,
+                actions: &mut VecDeque<Action>) -> () {
+        // TODO: add 'id' (a random string, used to correlate 'ack' responses
+        // for timing-graph instrumentation)
+        let s = Action::WebSocketSendMessage(self.wsh,
+                                             serde_json::to_string(&m).unwrap(),
+                                             );
+        actions.push_back(s);
+    }
 }
 
 

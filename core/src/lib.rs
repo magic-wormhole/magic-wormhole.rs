@@ -62,7 +62,9 @@ impl traits::Core for WormholeCore {
     fn websocket_connection_made(&mut self, handle: WSHandle) -> () {
         self.rendezvous.connection_made(&mut self.actions, handle);
     }
-    fn websocket_message_received(&mut self, _handle: WSHandle, _message: &str) -> () {
+    fn websocket_message_received(&mut self, handle: WSHandle,
+                                  message: &str) -> () {
+        self.rendezvous.message_received(&mut self.actions, handle, message);
     }
     fn websocket_connection_lost(&mut self, handle: WSHandle) -> () {
         self.rendezvous.connection_lost(&mut self.actions, handle);
