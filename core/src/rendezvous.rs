@@ -71,11 +71,12 @@ impl Rendezvous {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
-                let mut m = String::new();
-                m.push_str(r#"{"type": "bind", "appid": ""#);
-                m.push_str(&self.appid);
-                m.push_str(r#"", "side": "side1"}"#);
-                let bind = Action::WebSocketSendMessage(self.wsh, m);
+                let bind = json!({"type": "bind",
+                                  "appid": &self.appid,
+                                  "side": "side1",
+                                  });
+                let bind = Action::WebSocketSendMessage(self.wsh,
+                                                        bind.to_string());
                 actions.push_back(bind);
                 State::Connected
             },
@@ -156,6 +157,8 @@ mod test {
     use super::super::traits::Action::{WebSocketOpen, StartTimer,
                                        WebSocketSendMessage};
     use super::super::traits::{WSHandle, TimerHandle};
+    use serde_json;
+    use serde_json::Value;
 
     #[test]
     fn create() {
@@ -180,7 +183,10 @@ mod test {
         match actions.pop_front() {
             Some(WebSocketSendMessage(handle, m)) => {
                 //assert_eq!(handle, wsh);
-                assert_eq!(m, r#"{"type": "bind", "appid": "appid", "side": "side1"}"#);
+                let b: Value = serde_json::from_str(&m).unwrap();
+                assert_eq!(b["type"], "bind");
+                assert_eq!(b["appid"], "appid");
+                assert_eq!(b["side"], "side1");
             },
             _ => panic!(),
         }

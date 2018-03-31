@@ -1,3 +1,9 @@
+extern crate serde;
+#[macro_use]
+extern crate serde_json;
+#[macro_use]
+extern crate serde_derive;
+
 mod traits;
 mod allocator;
 mod boss;
@@ -71,6 +77,8 @@ mod test {
     use super::traits::Action::{WebSocketOpen, StartTimer,
                                 WebSocketSendMessage};
     use super::traits::{WSHandle, TimerHandle};
+    use serde_json;
+    use serde_json::Value;
 
     #[test]
     fn create() {
@@ -91,7 +99,8 @@ mod test {
         match w.get_action() {
             Some(WebSocketSendMessage(handle, m)) => {
                 //assert_eq!(handle, wsh);
-                assert_eq!(m, r#"{"type": "bind", "appid": "appid", "side": "side1"}"#);
+                let b: Value = serde_json::from_str(&m).unwrap();
+                assert_eq!(b["type"], "bind");
             },
             _ => panic!(),
         }

@@ -3,6 +3,11 @@ name = "magic-wormhole-core"
 version = "0.0.1"
 authors = ["Brian Warner <warner@lothar.com>"]
 
+[dependencies]
+serde = "1.0"
+serde_json = "1.0"
+serde_derive = "1.0"
+
 [dev-dependencies]
 ws = "0.7"
 url = "1.7"
