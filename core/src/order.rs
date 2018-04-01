@@ -1,1 +1,3 @@
-
+pub enum OrderEvent {
+    GotMessage,
+}

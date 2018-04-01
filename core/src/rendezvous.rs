@@ -12,6 +12,18 @@ use serde_json;
 use super::traits::{Action, TimerHandle, WSHandle};
 use server_messages::{bind, deserialize, Message};
 
+pub enum RendezvousEvent {
+    Start,
+    TxOpen,
+    TxAdd,
+    TxClose,
+    Stop,
+    TxClaim,
+    TxRelease,
+    TxAllocate,
+    TxList,
+}
+
 #[derive(Debug)]
 enum State {
     Idle,
@@ -52,100 +64,130 @@ pub fn create(appid: &str, relay_url: &str, side: &str, retry_timer: f32) -> Ren
 }
 
 impl Rendezvous {
-    pub fn start(&mut self, actions: &mut VecDeque<Action>) -> () {
+    pub fn process_io_event(&mut self, event: IOEvent) -> Vec<ProcessResultEvent> {
+        match event {
+            WebSocketConnectionMade(wsh) => self.connection_made(wsh),
+            WebSocketMessageReceived(wsh, message) => self.message_received(wsh, message),
+            WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
+            TimerExpired(th) => self.timer_expired(th),
+        }
+    }
+
+    pub fn execute(&mut self, event: MachineEvent) -> Vec<ProcessResultEvent> {
+        match event {
+            Start => self.start(),
+            TxOpen => vec![],
+            TxAdd => vec![],
+            TxClose => vec![],
+            Stop => self.stop(),
+            TxClaim => vec![],
+            TxRelease => vec![],
+            TxAllocate => vec![],
+            TxList => vec![],
+        }
+    }
+
+    fn start(&mut self) -> Vec<ProcessResultEvent> {
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
         //let wsh = WSHandle{};
+        let results;
         let newstate = match self.state {
             State::Idle => {
-                let open = Action::WebSocketOpen(self.wsh, self.relay_url.to_lowercase());
+                results = vec![
+                    IOAction::WebSocketOpen(self.wsh, self.relay_url.to_lowercase()),
+                ];
                 //"url".to_string());
-                actions.push_back(open);
                 State::Connecting
             }
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn connection_made(&mut self, mut actions: &mut VecDeque<Action>, _handle: WSHandle) -> () {
+    fn connection_made(&mut self, _handle: WSHandle) -> () {
+        let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
                 let b = bind(&self.appid, &self.side);
-                self.send(b, &mut actions);
+                results.extend(self.send(b));
                 State::Connected
             }
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn message_received(
-        &mut self,
-        _actions: &mut VecDeque<Action>,
-        _handle: WSHandle,
-        message: &str,
-    ) -> () {
+    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Vec<ProcessResultEvent> {
         let m = deserialize(&message);
         println!("msg is {:?}", m);
+        vec![]
     }
 
-    pub fn connection_lost(&mut self, actions: &mut VecDeque<Action>, _handle: WSHandle) -> () {
+    fn connection_lost(&mut self, _handle: WSHandle) -> Vec<ProcessResultEvent> {
+        let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting | State::Connected => {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 // I.. don't know how to copy a String
-                let wait = Action::StartTimer(new_handle, self.retry_timer);
-                actions.push_back(wait);
+                let wait = IOAction::StartTimer(new_handle, self.retry_timer);
+                results.push(wait);
                 State::Waiting
             }
             State::Disconnecting => State::Stopped,
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn timer_expired(&mut self, actions: &mut VecDeque<Action>, _handle: TimerHandle) -> () {
+    fn timer_expired(&mut self, _handle: TimerHandle) -> Vec<ProcessResultEvent> {
+        let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Waiting => {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
-                let open = Action::WebSocketOpen(new_handle, self.relay_url.to_lowercase());
-                actions.push_back(open);
+                let open = IOAction::WebSocketOpen(new_handle, self.relay_url.to_lowercase());
+                results.push(open);
                 State::Connecting
             }
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn stop(&mut self, actions: &mut VecDeque<Action>) -> () {
+    fn stop(&mut self) -> Vec<ProcessResultEvent> {
+        let mut results = Vec::new();
         let newstate = match self.state {
             State::Idle | State::Stopped => State::Stopped,
             State::Connecting | State::Connected => {
                 let close = Action::WebSocketClose(self.wsh);
-                actions.push_back(close);
+                results.push(close);
                 State::Disconnecting
             }
             State::Waiting => {
                 let cancel = Action::CancelTimer(self.reconnect_timer.unwrap());
-                actions.push_back(cancel);
+                results.push(cancel);
                 State::Stopped
             }
             State::Disconnecting => State::Disconnecting,
         };
         self.state = newstate;
+        results
     }
 
-    pub fn send(&mut self, m: Message, actions: &mut VecDeque<Action>) -> () {
+    fn send(&mut self, m: Message) -> Vec<ProcessResultEvent> {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
         let s = Action::WebSocketSendMessage(self.wsh, serde_json::to_string(&m).unwrap());
-        actions.push_back(s);
+        vec![s]
     }
 }
 
