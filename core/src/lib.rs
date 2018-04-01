@@ -4,6 +4,7 @@ extern crate serde_derive;
 extern crate serde_json;
 
 mod traits;
+mod events;
 mod allocator;
 mod boss;
 mod code;
@@ -23,54 +24,91 @@ mod wordlist;
 use std::collections::VecDeque;
 //use self::traits::{Action, WSHandle, TimerHandle};
 pub use self::traits::*;
+use self::events::Event;
 
 pub struct WormholeCore {
     rendezvous: rendezvous::Rendezvous,
-    actions: VecDeque<Action>,
 }
 
 pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
-    let action_queue = VecDeque::new();
     let side = "side1"; // TODO: generate randomly
 
     let mut wc = WormholeCore {
         rendezvous: rendezvous::create(appid, relay_url, side, 5.0),
-        actions: action_queue,
     };
-    wc.rendezvous.start(&mut wc.actions);
     wc
 }
 
 impl traits::Core for WormholeCore {
-    fn allocate_code(&mut self) -> () {}
-    fn set_code(&mut self, _code: &str) -> () {}
+    fn start(&mut self) -> Vec<Action> {
+        // TODO: Boss::Start
+        self.execute(vec![RendezvousEvent::Start])
+    }
+
+    fn execute(&mut self, event: InboundEvent) -> Vec<Action> {
+        let action_queue: Vec<Action> = Vec::new(); // returned
+        let event_queue: VecDeque<ProcessEvent> = VecDeque::new();
+        event_queue.push_back(event); // TODO: might need to map
+        while let Some(e) = event_queue.pop_front() {
+            let new_actions: Vec<ProcessResultEvent> = match event {
+                API(e) => self.process_api_event(e),
+                IO(e) => self.process_io_event(e),
+                Machine(e) => self.process_machine_event(e),
+            };
+            for new_action in new_action {
+                match new_action {
+                    API(e) => action_queue.push(API(e)),
+                    IO(e) => action_queue.push(IO(e)),
+                    Machine(e) => event_queue.push_back(Machine(e)),
+                }
+            }
+        }
+        action_queue
+    }
+
     fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
         Vec::new()
     }
-    fn close(&mut self) -> () {
-        self.rendezvous.stop(&mut self.actions);
-        // eventually signals GotClosed
+}
+
+impl WormholeCore {
+    fn process_api_event(&mut self, event: APIEvent) -> Vec<ProcessResultEvent> {
+        match event {
+            AllocateCode => vec![],
+            SetCode(code) => vec![],
+            Close => self.rendezvous.stop(), // eventually signals GotClosed
+            Send => vec![],
+        }
     }
 
-    fn get_action(&mut self) -> Option<Action> {
-        self.actions.pop_front()
+    fn process_io_event(&mut self, event: IOEvent) -> Vec<ProcessResultEvent> {
+        match event {
+            // TODO: dispatch to whatever is waiting for this particular
+            // timer. Maybep TimerHandle should be an enum of different
+            // sub-machines.
+            TimerExpired
+            | WebSocketConnectionMade
+            | WebSocketMessageReceived
+            | WebSocketConnectionLost => self.rendezvous.process_io_event(event),
+        }
     }
 
-    fn timer_expired(&mut self, handle: TimerHandle) -> () {
-        // TODO: dispatch to whatever is waiting for this particular timer.
-        // Maybe TimerHandle should be an enum of different sub-machines.
-        self.rendezvous.timer_expired(&mut self.actions, handle);
-    }
-
-    fn websocket_connection_made(&mut self, handle: WSHandle) -> () {
-        self.rendezvous.connection_made(&mut self.actions, handle);
-    }
-    fn websocket_message_received(&mut self, handle: WSHandle, message: &str) -> () {
-        self.rendezvous
-            .message_received(&mut self.actions, handle, message);
-    }
-    fn websocket_connection_lost(&mut self, handle: WSHandle) -> () {
-        self.rendezvous.connection_lost(&mut self.actions, handle);
+    fn process_machine_event(&mut self, event: MachineEvent) -> Vec<ProcessResultEvent> {
+        match event {
+            Allocator(e) => self.allocator.execute(e),
+            Boss(e) => self.boss.execute(e),
+            Code(e) => self.code.execute(e),
+            Input(e) => self.input.execute(e),
+            Key(e) => self.key.execute(e),
+            Lister(e) => self.lister.execute(e),
+            Mailbox(e) => self.mailbox.execute(e),
+            Nameplate(e) => self.nameplate.execute(e),
+            Order(e) => self.order.execute(e),
+            Receive(e) => self.receive.execute(e),
+            Rendezvous(e) => self.rendezvous.execute(e),
+            Send(e) => self.send.execute(e),
+            Terminator(e) => self.terminator.execute(e),
+        }
     }
 }
 
