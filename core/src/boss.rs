@@ -15,8 +15,7 @@ use api::APIEvent;
 use events::{BossResult, MachineEvent};
 use rendezvous::RendezvousEvent; // TODO: only import what we use e.g. Stop
 
-pub struct Boss {
-}
+pub struct Boss {}
 
 impl Boss {
     pub fn new() -> Boss {
@@ -26,7 +25,9 @@ impl Boss {
         match event {
             APIEvent::AllocateCode => vec![],
             APIEvent::SetCode(_code) => vec![],
-            APIEvent::Close => vec![BossResult::Machine(MachineEvent::Rendezvous(RendezvousEvent::Stop))], // eventually signals GotClosed
+            APIEvent::Close => vec![
+                BossResult::Machine(MachineEvent::Rendezvous(RendezvousEvent::Stop)),
+            ], // eventually signals GotClosed
             APIEvent::Send => vec![],
         }
     }
@@ -48,6 +49,11 @@ mod test {
     fn process_api() {
         let mut b = Boss::new();
         let actions = b.process_api_event(APIEvent::Close);
-        assert_eq!(actions, vec![BossResult::Machine(MachineEvent::Rendezvous(RendezvousEvent::Stop))]);
+        assert_eq!(
+            actions,
+            vec![
+                BossResult::Machine(MachineEvent::Rendezvous(RendezvousEvent::Stop)),
+            ]
+        );
     }
 }

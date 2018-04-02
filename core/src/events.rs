@@ -31,29 +31,32 @@ pub enum MachineEvent {
     //Terminator(TerminatorEvent),
 }
 
-pub enum InboundEvent { // from IO glue layer
-    IO(IOEvent),
-    API(APIEvent),
-}
-
-pub enum Action { // to IO glue later
-    // outbound
-    IO(IOAction),
-    API(APIAction),
-}
-
 pub enum ProcessEvent {
     API(APIEvent),
     IO(IOEvent),
     Machine(MachineEvent),
 }
 
+/*
 impl From<InboundEvent> for ProcessEvent {
     fn from(r: InboundEvent) -> Self {
         match r {
             InboundEvent::API(a) => ProcessEvent::API(a),
             InboundEvent::IO(a) => ProcessEvent::IO(a),
         }
+    }
+}
+*/
+
+impl From<APIEvent> for ProcessEvent {
+    fn from(r: APIEvent) -> Self {
+        ProcessEvent::API(r)
+    }
+}
+
+impl From<IOEvent> for ProcessEvent {
+    fn from(r: IOEvent) -> Self {
+        ProcessEvent::IO(r)
     }
 }
 
@@ -63,15 +66,17 @@ impl From<RendezvousEvent> for ProcessEvent {
     }
 }
 
-
-pub enum Result { // superset for WormholeCore::execute internals
+#[derive(Debug, PartialEq)]
+pub enum Result {
+    // superset for WormholeCore::execute internals
     API(APIAction),
     IO(IOAction),
     Machine(MachineEvent),
 }
 
 #[derive(Debug, PartialEq)]
-pub enum BossResult { // only Boss is allowed to emit APIActions
+pub enum BossResult {
+    // only Boss is allowed to emit APIActions
     API(APIAction),
     Machine(MachineEvent),
 }
@@ -85,7 +90,9 @@ impl From<BossResult> for Result {
     }
 }
 
-pub enum RendezvousResult { // only Rendezvous is allowed to emit IOAction
+#[derive(Debug, PartialEq)]
+pub enum RendezvousResult {
+    // only Rendezvous is allowed to emit IOAction
     IO(IOAction),
     Machine(MachineEvent),
 }
