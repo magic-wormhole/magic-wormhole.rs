@@ -7,12 +7,25 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use std::collections::VecDeque;
 use serde_json;
-use super::traits::{Action, TimerHandle, WSHandle};
+use api::{IOAction, IOEvent, TimerHandle, WSHandle};
+use events::RendezvousResult;
 use server_messages::{bind, deserialize, Message};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+pub enum RendezvousEvent {
+    Start,
+    TxOpen,
+    TxAdd,
+    TxClose,
+    Stop,
+    TxClaim,
+    TxRelease,
+    TxAllocate,
+    TxList,
+}
+
+#[derive(Debug, PartialEq)]
 enum State {
     Idle,
     Connecting,
@@ -34,6 +47,7 @@ pub struct Rendezvous {
     reconnect_timer: Option<TimerHandle>,
 }
 
+// TODO: move this to Rendezvous::new()
 pub fn create(appid: &str, relay_url: &str, side: &str, retry_timer: f32) -> Rendezvous {
     // we use a handle here just in case we need to open multiple connections
     // in the future. For now we ignore it, but the IO layer is supposed to
@@ -52,120 +66,199 @@ pub fn create(appid: &str, relay_url: &str, side: &str, retry_timer: f32) -> Ren
 }
 
 impl Rendezvous {
-    pub fn start(&mut self, actions: &mut VecDeque<Action>) -> () {
+    pub fn process_io_event(&mut self, event: IOEvent) -> Vec<RendezvousResult> {
+        match event {
+            IOEvent::WebSocketConnectionMade(wsh) => self.connection_made(wsh),
+            IOEvent::WebSocketMessageReceived(wsh, message) => self.message_received(wsh, &message),
+            IOEvent::WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
+            IOEvent::TimerExpired(th) => self.timer_expired(th),
+        }
+    }
+
+    pub fn execute(&mut self, event: RendezvousEvent) -> Vec<RendezvousResult> {
+        match event {
+            RendezvousEvent::Start => self.start(),
+            RendezvousEvent::TxOpen => vec![],
+            RendezvousEvent::TxAdd => vec![],
+            RendezvousEvent::TxClose => vec![],
+            RendezvousEvent::Stop => self.stop(),
+            RendezvousEvent::TxClaim => vec![],
+            RendezvousEvent::TxRelease => vec![],
+            RendezvousEvent::TxAllocate => vec![],
+            RendezvousEvent::TxList => vec![],
+        }
+    }
+
+    fn start(&mut self) -> Vec<RendezvousResult> {
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
         //let wsh = WSHandle{};
+        let results;
         let newstate = match self.state {
             State::Idle => {
-                let open = Action::WebSocketOpen(self.wsh, self.relay_url.to_lowercase());
+                results = vec![
+                    RendezvousResult::IO(IOAction::WebSocketOpen(
+                        self.wsh,
+                        self.relay_url.to_lowercase(),
+                    )),
+                ];
                 //"url".to_string());
-                actions.push_back(open);
                 State::Connecting
             }
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn connection_made(&mut self, mut actions: &mut VecDeque<Action>, _handle: WSHandle) -> () {
+    fn connection_made(&mut self, _handle: WSHandle) -> Vec<RendezvousResult> {
+        let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
                 let b = bind(&self.appid, &self.side);
-                self.send(b, &mut actions);
+                results.extend(self.send(b));
                 State::Connected
             }
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn message_received(
-        &mut self,
-        _actions: &mut VecDeque<Action>,
-        _handle: WSHandle,
-        message: &str,
-    ) -> () {
+    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Vec<RendezvousResult> {
         let m = deserialize(&message);
         println!("msg is {:?}", m);
+        vec![]
     }
 
-    pub fn connection_lost(&mut self, actions: &mut VecDeque<Action>, _handle: WSHandle) -> () {
+    fn connection_lost(&mut self, _handle: WSHandle) -> Vec<RendezvousResult> {
+        let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting | State::Connected => {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 // I.. don't know how to copy a String
-                let wait = Action::StartTimer(new_handle, self.retry_timer);
-                actions.push_back(wait);
+                let wait = IOAction::StartTimer(new_handle, self.retry_timer);
+                results.push(RendezvousResult::IO(wait));
                 State::Waiting
             }
             State::Disconnecting => State::Stopped,
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn timer_expired(&mut self, actions: &mut VecDeque<Action>, _handle: TimerHandle) -> () {
+    fn timer_expired(&mut self, _handle: TimerHandle) -> Vec<RendezvousResult> {
+        let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Waiting => {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
-                let open = Action::WebSocketOpen(new_handle, self.relay_url.to_lowercase());
-                actions.push_back(open);
+                let open = IOAction::WebSocketOpen(new_handle, self.relay_url.to_lowercase());
+                results.push(RendezvousResult::IO(open));
                 State::Connecting
             }
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
+        results
     }
 
-    pub fn stop(&mut self, actions: &mut VecDeque<Action>) -> () {
+    fn stop(&mut self) -> Vec<RendezvousResult> {
+        let mut results = Vec::new();
         let newstate = match self.state {
             State::Idle | State::Stopped => State::Stopped,
             State::Connecting | State::Connected => {
-                let close = Action::WebSocketClose(self.wsh);
-                actions.push_back(close);
+                let close = IOAction::WebSocketClose(self.wsh);
+                results.push(RendezvousResult::IO(close));
                 State::Disconnecting
             }
             State::Waiting => {
-                let cancel = Action::CancelTimer(self.reconnect_timer.unwrap());
-                actions.push_back(cancel);
+                let cancel = IOAction::CancelTimer(self.reconnect_timer.unwrap());
+                results.push(RendezvousResult::IO(cancel));
                 State::Stopped
             }
             State::Disconnecting => State::Disconnecting,
         };
         self.state = newstate;
+        results
     }
 
-    pub fn send(&mut self, m: Message, actions: &mut VecDeque<Action>) -> () {
+    fn send(&mut self, m: Message) -> Vec<RendezvousResult> {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
-        let s = Action::WebSocketSendMessage(self.wsh, serde_json::to_string(&m).unwrap());
-        actions.push_back(s);
+        let s = IOAction::WebSocketSendMessage(self.wsh, serde_json::to_string(&m).unwrap());
+        vec![RendezvousResult::IO(s)]
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::VecDeque;
     use server_messages::{deserialize, Message};
-    use super::super::traits::Action;
-    use super::super::traits::Action::{StartTimer, WebSocketOpen, WebSocketSendMessage};
-    use super::super::traits::{TimerHandle, WSHandle};
+    use api::{TimerHandle, WSHandle};
+    use api::{IOAction, IOEvent};
+    use events::RendezvousResult;
 
     #[test]
     fn create() {
-        let mut actions: VecDeque<Action> = VecDeque::new();
         let mut r = super::create("appid", "url", "side1", 5.0);
 
-        let mut wsh: WSHandle;
+        let wsh: WSHandle;
         let th: TimerHandle;
 
-        r.start(&mut actions);
+        let mut actions = r.start();
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        // TODO: I want to:
+        // * assert that actions[0] is a
+        //   RendezvousResult::IO(IOAction::WebSocketOpen())
+        // * extract that WebSocketOpen, call it "o"
+        // * stash o.0 in "wsh" for later comparisons
+        // * assert that o.1 is "url"
+
+        let io = match e {
+            RendezvousResult::IO(io) => io,
+            _ => panic!(),
+        };
+        match io {
+            IOAction::WebSocketOpen(wsh0, url0) => {
+                wsh = wsh0;
+                assert_eq!(url0, "url");
+            }
+            _ => panic!(),
+        }
+
+        // now we tell it we're connected
+        actions = r.process_io_event(IOEvent::WebSocketConnectionMade(wsh));
+        // it should send a BIND
+        // TODO: then it should notify another machine
+
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        let io = match e {
+            RendezvousResult::IO(io) => io,
+            _ => panic!(),
+        };
+        match io {
+            IOAction::WebSocketSendMessage(wsh0, m) => {
+                assert_eq!(wsh0, wsh);
+                if let Message::Bind { appid, side } = deserialize(&m) {
+                    assert_eq!(appid, "appid");
+                    assert_eq!(side, "side1");
+                } else {
+                    panic!();
+                }
+            }
+            _ => panic!(),
+        }
+
+        /*
+        //assert_eq!(actions, vec![RendezvousResult::IO(IOAction::WebSocketOpen(wsh, "url".to_string()))]);
+        assert_eq!(actions, vec![IOAction::WebSocketOpen(wsh
 
         match actions.pop_front() {
             Some(WebSocketOpen(handle, url)) => {
@@ -220,5 +313,6 @@ mod test {
         };
 
         r.stop(&mut actions);
+        */
     }
 }
