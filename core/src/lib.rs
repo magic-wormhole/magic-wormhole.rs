@@ -29,6 +29,7 @@ pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle, WSHan
 pub struct WormholeCore {
     boss: boss::Boss,
     rendezvous: rendezvous::Rendezvous,
+    nameplate: nameplate::Nameplate,
 }
 
 pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
@@ -36,6 +37,7 @@ pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
     WormholeCore {
         boss: boss::Boss::new(),
         rendezvous: rendezvous::create(appid, relay_url, side, 5.0),
+        nameplate: nameplate::new(),
     }
 }
 
@@ -127,7 +129,7 @@ impl WormholeCore {
             //Key(e) => self.key.execute(e),
             //Lister(e) => self.lister.execute(e),
             //Mailbox(e) => self.mailbox.execute(e),
-            //Nameplate(e) => self.nameplate.execute(e),
+            MachineEvent::Nameplate(e) => self.nameplate.execute(e),
             //Order(e) => self.order.execute(e),
             //Receive(e) => self.receive.execute(e),
             MachineEvent::Rendezvous(e) => self.rendezvous

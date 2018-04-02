@@ -7,7 +7,7 @@ use api::{APIAction, APIEvent, IOAction, IOEvent};
 //use key::KeyEvent;
 //use lister::ListerEvent;
 //use mailbox::MailboxEvent;
-//use nameplate::NameplateEvent;
+use nameplate::NameplateEvent;
 //use order::OrderEvent;
 //use receive::ReceiveEvent;
 use rendezvous::RendezvousEvent;
@@ -23,7 +23,7 @@ pub enum MachineEvent {
     //Key(KeyEvent),
     //Lister(ListerEvent),
     //Mailbox(MailboxEvent),
-    //Nameplate(NameplateEvent),
+    Nameplate(NameplateEvent),
     //Order(OrderEvent),
     //Receive(ReceiveEvent),
     Rendezvous(RendezvousEvent),
