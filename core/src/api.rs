@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 
 pub enum APIEvent { // from application to IO glue to WormholeCore
     AllocateCode,
@@ -6,13 +7,13 @@ pub enum APIEvent { // from application to IO glue to WormholeCore
     Send,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Result {
     Happy,
     Error,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum APIAction { // from WormholeCore out through IO glue to application
     GotWelcome(HashMap<String, String>), // actually anything JSON-able: Value
     GotCode(String),                     // must be easy to canonically encode into UTF-8 bytes
