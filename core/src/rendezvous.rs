@@ -7,11 +7,12 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use std::collections::VecDeque;
 use serde_json;
-use super::traits::{Action, TimerHandle, WSHandle};
+use api::{TimerHandle, WSHandle, IOAction, IOEvent};
+use events::RendezvousResult;
 use server_messages::{bind, deserialize, Message};
 
+#[derive(Debug, PartialEq)]
 pub enum RendezvousEvent {
     Start,
     TxOpen,
@@ -24,7 +25,7 @@ pub enum RendezvousEvent {
     TxList,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum State {
     Idle,
     Connecting,
@@ -46,6 +47,7 @@ pub struct Rendezvous {
     reconnect_timer: Option<TimerHandle>,
 }
 
+// TODO: move this to Rendezvous::new()
 pub fn create(appid: &str, relay_url: &str, side: &str, retry_timer: f32) -> Rendezvous {
     // we use a handle here just in case we need to open multiple connections
     // in the future. For now we ignore it, but the IO layer is supposed to
@@ -64,30 +66,30 @@ pub fn create(appid: &str, relay_url: &str, side: &str, retry_timer: f32) -> Ren
 }
 
 impl Rendezvous {
-    pub fn process_io_event(&mut self, event: IOEvent) -> Vec<ProcessResultEvent> {
+    pub fn process_io_event(&mut self, event: IOEvent) -> Vec<RendezvousResult> {
         match event {
-            WebSocketConnectionMade(wsh) => self.connection_made(wsh),
-            WebSocketMessageReceived(wsh, message) => self.message_received(wsh, message),
-            WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
-            TimerExpired(th) => self.timer_expired(th),
+            IOEvent::WebSocketConnectionMade(wsh) => self.connection_made(wsh),
+            IOEvent::WebSocketMessageReceived(wsh, message) => self.message_received(wsh, &message),
+            IOEvent::WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
+            IOEvent::TimerExpired(th) => self.timer_expired(th),
         }
     }
 
-    pub fn execute(&mut self, event: MachineEvent) -> Vec<ProcessResultEvent> {
+    pub fn execute(&mut self, event: RendezvousEvent) -> Vec<RendezvousResult> {
         match event {
-            Start => self.start(),
-            TxOpen => vec![],
-            TxAdd => vec![],
-            TxClose => vec![],
-            Stop => self.stop(),
-            TxClaim => vec![],
-            TxRelease => vec![],
-            TxAllocate => vec![],
-            TxList => vec![],
+            RendezvousEvent::Start => self.start(),
+            RendezvousEvent::TxOpen => vec![],
+            RendezvousEvent::TxAdd => vec![],
+            RendezvousEvent::TxClose => vec![],
+            RendezvousEvent::Stop => self.stop(),
+            RendezvousEvent::TxClaim => vec![],
+            RendezvousEvent::TxRelease => vec![],
+            RendezvousEvent::TxAllocate => vec![],
+            RendezvousEvent::TxList => vec![],
         }
     }
 
-    fn start(&mut self) -> Vec<ProcessResultEvent> {
+    fn start(&mut self) -> Vec<RendezvousResult> {
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
         //let wsh = WSHandle{};
@@ -95,7 +97,7 @@ impl Rendezvous {
         let newstate = match self.state {
             State::Idle => {
                 results = vec![
-                    IOAction::WebSocketOpen(self.wsh, self.relay_url.to_lowercase()),
+                    RendezvousResult::IO(IOAction::WebSocketOpen(self.wsh, self.relay_url.to_lowercase())),
                 ];
                 //"url".to_string());
                 State::Connecting
@@ -106,7 +108,7 @@ impl Rendezvous {
         results
     }
 
-    fn connection_made(&mut self, _handle: WSHandle) -> () {
+    fn connection_made(&mut self, _handle: WSHandle) -> Vec<RendezvousResult> {
         let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
@@ -121,13 +123,13 @@ impl Rendezvous {
         results
     }
 
-    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Vec<ProcessResultEvent> {
+    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Vec<RendezvousResult> {
         let m = deserialize(&message);
         println!("msg is {:?}", m);
         vec![]
     }
 
-    fn connection_lost(&mut self, _handle: WSHandle) -> Vec<ProcessResultEvent> {
+    fn connection_lost(&mut self, _handle: WSHandle) -> Vec<RendezvousResult> {
         let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
@@ -136,7 +138,7 @@ impl Rendezvous {
                 self.reconnect_timer = Some(new_handle);
                 // I.. don't know how to copy a String
                 let wait = IOAction::StartTimer(new_handle, self.retry_timer);
-                results.push(wait);
+                results.push(RendezvousResult::IO(wait));
                 State::Waiting
             }
             State::Disconnecting => State::Stopped,
@@ -146,7 +148,7 @@ impl Rendezvous {
         results
     }
 
-    fn timer_expired(&mut self, _handle: TimerHandle) -> Vec<ProcessResultEvent> {
+    fn timer_expired(&mut self, _handle: TimerHandle) -> Vec<RendezvousResult> {
         let mut results = Vec::new();
         // TODO: assert handle == self.handle
         let newstate = match self.state {
@@ -154,7 +156,7 @@ impl Rendezvous {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
                 let open = IOAction::WebSocketOpen(new_handle, self.relay_url.to_lowercase());
-                results.push(open);
+                results.push(RendezvousResult::IO(open));
                 State::Connecting
             }
             _ => panic!("bad transition from {:?}", self),
@@ -163,18 +165,18 @@ impl Rendezvous {
         results
     }
 
-    fn stop(&mut self) -> Vec<ProcessResultEvent> {
+    fn stop(&mut self) -> Vec<RendezvousResult> {
         let mut results = Vec::new();
         let newstate = match self.state {
             State::Idle | State::Stopped => State::Stopped,
             State::Connecting | State::Connected => {
-                let close = Action::WebSocketClose(self.wsh);
-                results.push(close);
+                let close = IOAction::WebSocketClose(self.wsh);
+                results.push(RendezvousResult::IO(close));
                 State::Disconnecting
             }
             State::Waiting => {
-                let cancel = Action::CancelTimer(self.reconnect_timer.unwrap());
-                results.push(cancel);
+                let cancel = IOAction::CancelTimer(self.reconnect_timer.unwrap());
+                results.push(RendezvousResult::IO(cancel));
                 State::Stopped
             }
             State::Disconnecting => State::Disconnecting,
@@ -183,14 +185,15 @@ impl Rendezvous {
         results
     }
 
-    fn send(&mut self, m: Message) -> Vec<ProcessResultEvent> {
+    fn send(&mut self, m: Message) -> Vec<RendezvousResult> {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
-        let s = Action::WebSocketSendMessage(self.wsh, serde_json::to_string(&m).unwrap());
-        vec![s]
+        let s = IOAction::WebSocketSendMessage(self.wsh, serde_json::to_string(&m).unwrap());
+        vec![RendezvousResult::IO(s)]
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use std::collections::VecDeque;
@@ -264,3 +267,4 @@ mod test {
         r.stop(&mut actions);
     }
 }
+*/

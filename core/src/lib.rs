@@ -4,6 +4,7 @@ extern crate serde_derive;
 extern crate serde_json;
 
 mod traits;
+mod api;
 mod events;
 mod allocator;
 mod boss;
@@ -22,96 +23,123 @@ mod terminator;
 mod wordlist;
 
 use std::collections::VecDeque;
-//use self::traits::{Action, WSHandle, TimerHandle};
-pub use self::traits::*;
-use self::events::Event;
+use events::{InboundEvent, ProcessEvent, Result, Action, MachineEvent};
+use rendezvous::RendezvousEvent;
+//use api::{WSHandle, TimerHandle, APIEvent};
+pub use traits::*;
 
 pub struct WormholeCore {
+    boss: boss::Boss,
     rendezvous: rendezvous::Rendezvous,
 }
 
 pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
     let side = "side1"; // TODO: generate randomly
-
-    let mut wc = WormholeCore {
+    WormholeCore {
+        boss: boss::Boss::new(),
         rendezvous: rendezvous::create(appid, relay_url, side, 5.0),
-    };
-    wc
+    }
 }
 
 impl traits::Core for WormholeCore {
     fn start(&mut self) -> Vec<Action> {
-        // TODO: Boss::Start
-        self.execute(vec![RendezvousEvent::Start])
+        // TODO: replace with Boss::Start, which will start rendezvous
+        self._execute(ProcessEvent::from(RendezvousEvent::Start))
     }
 
     fn execute(&mut self, event: InboundEvent) -> Vec<Action> {
-        let action_queue: Vec<Action> = Vec::new(); // returned
-        let event_queue: VecDeque<ProcessEvent> = VecDeque::new();
-        event_queue.push_back(event); // TODO: might need to map
-        while let Some(e) = event_queue.pop_front() {
-            let new_actions: Vec<ProcessResultEvent> = match event {
-                API(e) => self.process_api_event(e),
-                IO(e) => self.process_io_event(e),
-                Machine(e) => self.process_machine_event(e),
+        self._execute(ProcessEvent::from(event))
+    }
+
+    fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
+        // TODO: only valid after GotVerifiedKey, but should return
+        // synchronously. Maybe the Core should expose the conversion
+        // function (which requires the key as input) and let the IO glue
+        // layer decide how to manage the synchronization?
+        Vec::new()
+    }
+}
+
+// I don't know how to write this
+/*fn to_results<Vec<T>>(from: Vec<T>) -> Vec<Result> {
+    from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
+}*/
+
+impl WormholeCore {
+    fn _execute(&mut self, event: ProcessEvent) -> Vec<Action> {
+        let mut action_queue: Vec<Action> = Vec::new(); // returned
+        let mut event_queue: VecDeque<ProcessEvent> = VecDeque::new();
+        event_queue.push_back(ProcessEvent::from(event));
+        while let Some(event) = event_queue.pop_front() {
+            // TODO: factor out some of this common stuff. Each of our child
+            // functions returns a Vec of types that can be turned into a
+            // Result, but I can't find a way to take advantage of that. The
+            // arms of the match must have equivalent types, and the closest
+            // I can get is to have them all return Iterators (since we don't
+            // really need a collection; we're only passing it to "for"
+            // below), but I don't know how to explain what type of iterator
+            // I want, and between Result::from() and collect() there's too
+            // much flexibility for type inferencing to get it right.
+            let results: Vec<Result> = match event {
+                // customers speak only to the Boss
+                ProcessEvent::API(e) => {
+                    let x = self.boss.process_api_event(e);
+                    x.into_iter().map(|r| Result::from(r)).collect()
+                }
+                // Rendezvous is currently the only machine that does IO. If
+                // this changes (e.g. something else in the protocol wants to
+                // use a timer), we'll need a registration table, and this
+                // will need to dispatch according to the handle
+                ProcessEvent::IO(e) => {
+                    let x = self.rendezvous.process_io_event(e);
+                    x.into_iter().map(|r| Result::from(r)).collect()
+                }
+                // All other machines consume and emit only MachineEvents
+                ProcessEvent::Machine(e) => self.process_machine_event(e)
             };
-            for new_action in new_action {
-                match new_action {
-                    API(e) => action_queue.push(API(e)),
-                    IO(e) => action_queue.push(IO(e)),
-                    Machine(e) => event_queue.push_back(Machine(e)),
+            for r in results {
+                match r {
+                    Result::API(e) => action_queue.push(Action::API(e)),
+                    Result::IO(e) => action_queue.push(Action::IO(e)),
+                    Result::Machine(e) => {
+                        event_queue.push_back(ProcessEvent::Machine(e))
+                    }
                 }
             }
         }
         action_queue
     }
 
-    fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
-        Vec::new()
-    }
-}
+    fn process_machine_event(&mut self, event: MachineEvent) -> Vec<Result> {
+        // Most machines have only the .execute() method, which only accepts
+        // a MachineEvent. The Boss can accept APIEvents through
+        // .process_api_event(), and Rendezvous can accept IOEvents through
+        // .process_io_events.
 
-impl WormholeCore {
-    fn process_api_event(&mut self, event: APIEvent) -> Vec<ProcessResultEvent> {
-        match event {
-            AllocateCode => vec![],
-            SetCode(code) => vec![],
-            Close => self.rendezvous.stop(), // eventually signals GotClosed
-            Send => vec![],
-        }
-    }
+        // For most machines, .execute() returns a vector of MachineEvents.
+        // Boss emits a Vec<BossResult> (which includes APIActions), and
+        // Rendezvous emits Vec<RendezvousResult> (which includes IOAction).
+        // All three must be merged into the Vec<Result> that we return.
 
-    fn process_io_event(&mut self, event: IOEvent) -> Vec<ProcessResultEvent> {
         match event {
-            // TODO: dispatch to whatever is waiting for this particular
-            // timer. Maybep TimerHandle should be an enum of different
-            // sub-machines.
-            TimerExpired
-            | WebSocketConnectionMade
-            | WebSocketMessageReceived
-            | WebSocketConnectionLost => self.rendezvous.process_io_event(event),
-        }
-    }
-
-    fn process_machine_event(&mut self, event: MachineEvent) -> Vec<ProcessResultEvent> {
-        match event {
-            Allocator(e) => self.allocator.execute(e),
-            Boss(e) => self.boss.execute(e),
-            Code(e) => self.code.execute(e),
-            Input(e) => self.input.execute(e),
-            Key(e) => self.key.execute(e),
-            Lister(e) => self.lister.execute(e),
-            Mailbox(e) => self.mailbox.execute(e),
-            Nameplate(e) => self.nameplate.execute(e),
-            Order(e) => self.order.execute(e),
-            Receive(e) => self.receive.execute(e),
-            Rendezvous(e) => self.rendezvous.execute(e),
-            Send(e) => self.send.execute(e),
-            Terminator(e) => self.terminator.execute(e),
+            //Allocator(e) => self.allocator.execute(e),
+            //Boss(e) => self.boss.execute(e),
+            //Code(e) => self.code.execute(e),
+            //Input(e) => self.input.execute(e),
+            //Key(e) => self.key.execute(e),
+            //Lister(e) => self.lister.execute(e),
+            //Mailbox(e) => self.mailbox.execute(e),
+            //Nameplate(e) => self.nameplate.execute(e),
+            //Order(e) => self.order.execute(e),
+            //Receive(e) => self.receive.execute(e),
+            MachineEvent::Rendezvous(e) => self.rendezvous.execute(e).into_iter().map(|r| Result::from(r)).collect(),
+            //Send(e) => self.send.execute(e),
+            //Terminator(e) => self.terminator.execute(e),
         }
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use super::create_core;
@@ -176,3 +204,7 @@ mod test {
         };
     }
 }
+*/
+
+// TODO: is there a generic way (e.g. impl From) to convert a Vec<A> into
+// Vec<B> when we've got an A->B convertor?
