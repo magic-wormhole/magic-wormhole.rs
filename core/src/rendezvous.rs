@@ -9,7 +9,11 @@
 
 use serde_json;
 use api::{IOAction, IOEvent, TimerHandle, WSHandle};
-use events::RendezvousResult;
+use events::{RendezvousResult, MachineEvent};
+use nameplate::NameplateEvent;
+use allocator::AllocatorEvent;
+use lister::ListerEvent;
+use mailbox::MailboxEvent;
 use server_messages::{bind, deserialize, Message};
 
 #[derive(Debug, PartialEq)]
@@ -116,8 +120,14 @@ impl Rendezvous {
         // TODO: assert handle == self.handle
         let newstate = match self.state {
             State::Connecting => {
+                // TODO: maybe emit RendezvousEvent::TxBind instead?
                 let b = bind(&self.appid, &self.side);
                 results.extend(self.send(b));
+                // TODO: does the order of the matter? if so, oh boy.
+                results.push(RendezvousResult::Machine(MachineEvent::Nameplate(NameplateEvent::Connected)));
+                //results.push(RendezvousResult::Machine(AllocatorEvent::Connected));
+                //results.push(RendezvousResult::Machine(ListerEvent::Connected));
+                //results.push(RendezvousResult::Machine(MailboxEvent::Connected));
                 State::Connected
             }
             _ => panic!("bad transition from {:?}", self),
@@ -201,7 +211,8 @@ mod test {
     use server_messages::{deserialize, Message};
     use api::{TimerHandle, WSHandle};
     use api::{IOAction, IOEvent};
-    use events::RendezvousResult;
+    use events::{RendezvousResult, MachineEvent};
+    use nameplate::NameplateEvent;
 
     #[test]
     fn create() {
@@ -235,10 +246,11 @@ mod test {
         // now we tell it we're connected
         actions = r.process_io_event(IOEvent::WebSocketConnectionMade(wsh));
         // it should send a BIND
-        // TODO: then it should notify another machine
+        // then it should notify several other machines
 
-        assert_eq!(actions.len(), 1);
-        let e = actions.pop().unwrap();
+        assert_eq!(actions.len(), 2);
+        let e = actions.remove(0);
+        println!("e is {:?}", e);
         let io = match e {
             RendezvousResult::IO(io) => io,
             _ => panic!(),
@@ -252,6 +264,18 @@ mod test {
                 } else {
                     panic!();
                 }
+            }
+            _ => panic!(),
+        }
+
+        let e = actions.remove(0);
+        let m = match e {
+            RendezvousResult::Machine(MachineEvent::Nameplate(m)) => m,
+            _ => panic!(),
+        };
+        match m {
+            NameplateEvent::Connected => {
+                // yay
             }
             _ => panic!(),
         }
