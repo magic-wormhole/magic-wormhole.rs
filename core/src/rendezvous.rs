@@ -8,7 +8,7 @@
 // more code and more states here
 
 use serde_json;
-use api::{TimerHandle, WSHandle, IOAction, IOEvent};
+use api::{IOAction, IOEvent, TimerHandle, WSHandle};
 use events::RendezvousResult;
 use server_messages::{bind, deserialize, Message};
 
@@ -97,7 +97,10 @@ impl Rendezvous {
         let newstate = match self.state {
             State::Idle => {
                 results = vec![
-                    RendezvousResult::IO(IOAction::WebSocketOpen(self.wsh, self.relay_url.to_lowercase())),
+                    RendezvousResult::IO(IOAction::WebSocketOpen(
+                        self.wsh,
+                        self.relay_url.to_lowercase(),
+                    )),
                 ];
                 //"url".to_string());
                 State::Connecting
@@ -193,24 +196,69 @@ impl Rendezvous {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
-    use std::collections::VecDeque;
     use server_messages::{deserialize, Message};
-    use super::super::traits::Action;
-    use super::super::traits::Action::{StartTimer, WebSocketOpen, WebSocketSendMessage};
-    use super::super::traits::{TimerHandle, WSHandle};
+    use api::{TimerHandle, WSHandle};
+    use api::{IOAction, IOEvent};
+    use events::RendezvousResult;
 
     #[test]
     fn create() {
-        let mut actions: VecDeque<Action> = VecDeque::new();
         let mut r = super::create("appid", "url", "side1", 5.0);
 
-        let mut wsh: WSHandle;
+        let wsh: WSHandle;
         let th: TimerHandle;
 
-        r.start(&mut actions);
+        let mut actions = r.start();
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        // TODO: I want to:
+        // * assert that actions[0] is a
+        //   RendezvousResult::IO(IOAction::WebSocketOpen())
+        // * extract that WebSocketOpen, call it "o"
+        // * stash o.0 in "wsh" for later comparisons
+        // * assert that o.1 is "url"
+
+        let io = match e {
+            RendezvousResult::IO(io) => io,
+            _ => panic!(),
+        };
+        match io {
+            IOAction::WebSocketOpen(wsh0, url0) => {
+                wsh = wsh0;
+                assert_eq!(url0, "url");
+            }
+            _ => panic!(),
+        }
+
+        // now we tell it we're connected
+        actions = r.process_io_event(IOEvent::WebSocketConnectionMade(wsh));
+        // it should send a BIND
+        // TODO: then it should notify another machine
+
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        let io = match e {
+            RendezvousResult::IO(io) => io,
+            _ => panic!(),
+        };
+        match io {
+            IOAction::WebSocketSendMessage(wsh0, m) => {
+                assert_eq!(wsh0, wsh);
+                if let Message::Bind { appid, side } = deserialize(&m) {
+                    assert_eq!(appid, "appid");
+                    assert_eq!(side, "side1");
+                } else {
+                    panic!();
+                }
+            }
+            _ => panic!(),
+        }
+
+        /*
+        //assert_eq!(actions, vec![RendezvousResult::IO(IOAction::WebSocketOpen(wsh, "url".to_string()))]);
+        assert_eq!(actions, vec![IOAction::WebSocketOpen(wsh
 
         match actions.pop_front() {
             Some(WebSocketOpen(handle, url)) => {
@@ -265,6 +313,6 @@ mod test {
         };
 
         r.stop(&mut actions);
+        */
     }
 }
-*/
