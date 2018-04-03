@@ -6,6 +6,11 @@ pub struct Nameplate {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct WelcomeMsg {
+    motd: String
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum Message {
@@ -13,7 +18,10 @@ pub enum Message {
         appid: String,
         side: String,
     },
-    Welcome {}, // TODO: welcome: Value
+    Welcome {
+        server_tx: f64,
+        welcome:WelcomeMsg,
+    },
     List {},
     Nameplates {
         nameplates: Vec<Nameplate>,
@@ -110,6 +118,13 @@ pub fn ping(ping: u32) -> Message {
     Message::Ping { ping: ping }
 }
 
+pub fn welcome(motd: &str, timestamp: f64) -> Message {
+    Message::Welcome {
+        welcome: WelcomeMsg { motd: motd.to_string() },
+        server_tx: timestamp
+    }
+}
+
 // Server sends: welcome, nameplates, allocated, claimed, released, message,
 // closed, ack, pong, error
 
@@ -195,12 +210,10 @@ mod test {
 
     #[test]
     fn test_welcome() {
-        let s = r#"{"type": "welcome", "welcome": {"motd": "hi"}, "server_tx": 1234.56}"#;
-        let m = deserialize(&s);
-        match m {
-            Message::Welcome {} => (),
-            _ => panic!(),
-        }
+        let m1 = welcome("hi", 1234.56);
+        let s = serde_json::to_string(&m1).unwrap();
+        let m2 = deserialize(&s);
+        assert_eq!(m1, m2);
     }
 
     #[test]
