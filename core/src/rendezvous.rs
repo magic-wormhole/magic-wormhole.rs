@@ -43,30 +43,29 @@ pub struct Rendezvous {
     reconnect_timer: Option<TimerHandle>,
 }
 
-// TODO: move this to Rendezvous::new()
-pub fn create(
-    appid: &str,
-    relay_url: &str,
-    side: &str,
-    retry_timer: f32,
-) -> Rendezvous {
-    // we use a handle here just in case we need to open multiple connections
-    // in the future. For now we ignore it, but the IO layer is supposed to
-    // pass this back in websocket_* messages
-    let wsh = WSHandle::new(1);
-    Rendezvous {
-        appid: appid.to_string(),
-        relay_url: relay_url.to_string(),
-        side: side.to_string(),
-        retry_timer: retry_timer,
-        state: State::Idle,
-        connected_at_least_once: false,
-        wsh: wsh,
-        reconnect_timer: None,
-    }
-}
-
 impl Rendezvous {
+    pub fn new(
+        appid: &str,
+        relay_url: &str,
+        side: &str,
+        retry_timer: f32,
+    ) -> Rendezvous {
+        // we use a handle here just in case we need to open multiple
+        // connections in the future. For now we ignore it, but the IO layer
+        // is supposed to pass this back in websocket_* messages
+        let wsh = WSHandle::new(1);
+        Rendezvous {
+            appid: appid.to_string(),
+            relay_url: relay_url.to_string(),
+            side: side.to_string(),
+            retry_timer: retry_timer,
+            state: State::Idle,
+            connected_at_least_once: false,
+            wsh: wsh,
+            reconnect_timer: None,
+        }
+    }
+
     pub fn process(&mut self, e: Event) -> Vec<Event> {
         match e {
             RC_Start => self.start(),
@@ -215,7 +214,7 @@ mod test {
 
     #[test]
     fn create() {
-        let mut r = super::create("appid", "url", "side1", 5.0);
+        let mut r = super::Rendezvous::new("appid", "url", "side1", 5.0);
 
         let wsh: WSHandle;
         let th: TimerHandle;

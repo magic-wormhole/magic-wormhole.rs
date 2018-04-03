@@ -1,13 +1,13 @@
 use events::Event;
-use events::Event::{L_Connected, L_Lost, L_RxNameplates, L_Refresh};
+use events::Event::{L_Connected, L_Lost, L_Refresh, L_RxNameplates};
 
 pub struct Lister {}
 
-pub fn new() -> Lister {
-    Lister {}
-}
-
 impl Lister {
+    pub fn new() -> Lister {
+        Lister {}
+    }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             L_Connected => vec![],

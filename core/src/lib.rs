@@ -28,17 +28,37 @@ pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle,
 use events::Event::RC_Start;
 
 pub struct WormholeCore {
+    allocator: allocator::Allocator,
     boss: boss::Boss,
-    rendezvous: rendezvous::Rendezvous,
+    code: code::Code,
+    input: input::Input,
+    key: key::Key,
+    lister: lister::Lister,
+    mailbox: mailbox::Mailbox,
     nameplate: nameplate::Nameplate,
+    order: order::Order,
+    receive: receive::Receive,
+    rendezvous: rendezvous::Rendezvous,
+    send: send::Send,
+    terminator: terminator::Terminator,
 }
 
 pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
     let side = "side1"; // TODO: generate randomly
     WormholeCore {
+        allocator: allocator::Allocator::new(),
         boss: boss::Boss::new(),
-        rendezvous: rendezvous::create(appid, relay_url, side, 5.0),
-        nameplate: nameplate::new(),
+        code: code::Code::new(),
+        input: input::Input::new(),
+        key: key::Key::new(),
+        lister: lister::Lister::new(),
+        mailbox: mailbox::Mailbox::new(),
+        nameplate: nameplate::Nameplate::new(),
+        order: order::Order::new(),
+        receive: receive::Receive::new(),
+        rendezvous: rendezvous::Rendezvous::new(appid, relay_url, side, 5.0),
+        send: send::Send::new(),
+        terminator: terminator::Terminator::new(),
     }
 }
 

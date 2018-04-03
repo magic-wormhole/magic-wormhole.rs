@@ -1,13 +1,13 @@
 use events::Event;
-use events::Event::{K_GotPake, K_GotMessage};
+use events::Event::{K_GotMessage, K_GotPake};
 
 pub struct Key {}
 
-pub fn new() -> Key {
-    Key {}
-}
-
 impl Key {
+    pub fn new() -> Key {
+        Key {}
+    }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             K_GotPake => vec![],
@@ -16,4 +16,3 @@ impl Key {
         }
     }
 }
-

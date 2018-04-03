@@ -4,11 +4,11 @@ use events::Event::{N_Connected, N_Lost, N_NameplateDone, N_Release,
 
 pub struct Nameplate {}
 
-pub fn new() -> Nameplate {
-    Nameplate {}
-}
-
 impl Nameplate {
+    pub fn new() -> Nameplate {
+        Nameplate {}
+    }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             N_NameplateDone => vec![],
