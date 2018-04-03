@@ -1,8 +1,8 @@
 extern crate magic_wormhole_core;
 extern crate url;
 extern crate ws;
-use magic_wormhole_core::{create_core, APIAction, APIEvent, Action, IOAction,
-                          IOEvent, TimerHandle, WSHandle, WormholeCore};
+use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
+                          TimerHandle, WSHandle, WormholeCore};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
@@ -28,7 +28,7 @@ fn main() {
     // make a single connection. Eventually, it will manage reconnects too,
     // and we must be prepared to make multiple connections when it asks.
 
-    let mut wc = create_core(APPID, MAILBOX_SERVER);
+    let mut wc = WormholeCore::new(APPID, MAILBOX_SERVER);
     let wsh;
     let ws_url;
     let mut actions = wc.start();

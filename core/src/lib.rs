@@ -43,31 +43,36 @@ pub struct WormholeCore {
     terminator: terminator::Terminator,
 }
 
-pub fn create_core(appid: &str, relay_url: &str) -> WormholeCore {
-    let side = "side1"; // TODO: generate randomly
-    WormholeCore {
-        allocator: allocator::Allocator::new(),
-        boss: boss::Boss::new(),
-        code: code::Code::new(),
-        input: input::Input::new(),
-        key: key::Key::new(),
-        lister: lister::Lister::new(),
-        mailbox: mailbox::Mailbox::new(),
-        nameplate: nameplate::Nameplate::new(),
-        order: order::Order::new(),
-        receive: receive::Receive::new(),
-        rendezvous: rendezvous::Rendezvous::new(appid, relay_url, side, 5.0),
-        send: send::Send::new(),
-        terminator: terminator::Terminator::new(),
-    }
-}
-
 // I don't know how to write this
 /*fn to_results<Vec<T>>(from: Vec<T>) -> Vec<Result> {
     from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
 }*/
 
 impl WormholeCore {
+    pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
+        let side = "side1"; // TODO: generate randomly
+        WormholeCore {
+            allocator: allocator::Allocator::new(),
+            boss: boss::Boss::new(),
+            code: code::Code::new(),
+            input: input::Input::new(),
+            key: key::Key::new(),
+            lister: lister::Lister::new(),
+            mailbox: mailbox::Mailbox::new(),
+            nameplate: nameplate::Nameplate::new(),
+            order: order::Order::new(),
+            receive: receive::Receive::new(),
+            rendezvous: rendezvous::Rendezvous::new(
+                appid,
+                relay_url,
+                side,
+                5.0,
+            ),
+            send: send::Send::new(),
+            terminator: terminator::Terminator::new(),
+        }
+    }
+
     pub fn start(&mut self) -> Vec<Action> {
         // TODO: replace with Boss::Start, which will start rendezvous
         self.execute(RC_Start)
