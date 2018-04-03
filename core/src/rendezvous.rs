@@ -208,7 +208,10 @@ impl Rendezvous {
 mod test {
     use server_messages::{deserialize, Message};
     use api::{TimerHandle, WSHandle};
-    use events::Event::IO_WebSocketOpen;
+    use events::Event::{IO_TimerExpired, IO_WebSocketConnectionLost,
+                        IO_WebSocketConnectionMade, RC_Stop};
+    use events::Event::{IO_StartTimer, IO_WebSocketClose, IO_WebSocketOpen,
+                        IO_WebSocketSendMessage, N_Connected};
 
     #[test]
     fn create() {
@@ -235,22 +238,16 @@ mod test {
             _ => panic!(),
         }
 
-        /*
-
         // now we tell it we're connected
-        actions = r.process_io_event(IOEvent::WebSocketConnectionMade(wsh));
+        actions = r.process(IO_WebSocketConnectionMade(wsh));
         // it should send a BIND
         // then it should notify several other machines
 
         assert_eq!(actions.len(), 2);
         let e = actions.remove(0);
         println!("e is {:?}", e);
-        let io = match e {
-            RendezvousResult::IO(io) => io,
-            _ => panic!(),
-        };
-        match io {
-            IOAction::WebSocketSendMessage(wsh0, m) => {
+        match e {
+            IO_WebSocketSendMessage(wsh0, m) => {
                 assert_eq!(wsh0, wsh);
                 if let Message::Bind { appid, side } = deserialize(&m) {
                     assert_eq!(appid, "appid");
@@ -263,73 +260,50 @@ mod test {
         }
 
         let e = actions.remove(0);
-        let m = match e {
-            RendezvousResult::Machine(MachineEvent::Nameplate(m)) => m,
-            _ => panic!(),
-        };
-        match m {
-            NameplateEvent::Connected => {
+        match e {
+            N_Connected => {
                 // yay
             }
             _ => panic!(),
         }
 
-        //assert_eq!(actions, vec![RendezvousResult::IO(IOAction::WebSocketOpen(wsh, "url".to_string()))]);
-        assert_eq!(actions, vec![IOAction::WebSocketOpen(wsh
-
-        match actions.pop_front() {
-            Some(WebSocketOpen(handle, url)) => {
-                assert_eq!(url, "url");
-                wsh = handle;
-            }
-            _ => panic!(),
-        }
-        if let Some(_) = actions.pop_front() {
-            panic!()
-        };
-
-        r.connection_made(&mut actions, wsh);
-        match actions.pop_front() {
-            Some(WebSocketSendMessage(_handle, m)) => {
-                //assert_eq!(handle, wsh);
-                if let Message::Bind { appid, side } = deserialize(&m) {
-                    assert_eq!(appid, "appid");
-                    assert_eq!(side, "side1");
-                } else {
-                    panic!();
-                }
-            }
-            _ => panic!(),
-        }
-        if let Some(_) = actions.pop_front() {
-            panic!()
-        };
-
-        r.connection_lost(&mut actions, wsh);
-        match actions.pop_front() {
-            Some(StartTimer(handle, duration)) => {
+        actions = r.process(IO_WebSocketConnectionLost(wsh));
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        match e {
+            IO_StartTimer(handle, duration) => {
                 assert_eq!(duration, 5.0);
                 th = handle;
             }
             _ => panic!(),
         }
-        if let Some(_) = actions.pop_front() {
-            panic!()
-        };
 
-        r.timer_expired(&mut actions, th);
-        match actions.pop_front() {
-            Some(WebSocketOpen(handle, url)) => {
-                assert_eq!(url, "url");
-                wsh = handle;
+        actions = r.process(IO_TimerExpired(th));
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        let wsh2;
+        match e {
+            IO_WebSocketOpen(wsh0, url0) => {
+                // TODO: should be a different handle, once implemented
+                wsh2 = wsh0;
+                assert_eq!(url0, "url");
             }
             _ => panic!(),
         }
-        if let Some(_) = actions.pop_front() {
-            panic!()
-        };
 
-        r.stop(&mut actions);
-        */
+        actions = r.process(RC_Stop);
+        // we were Connecting, so we should see a close and then wait for
+        // disconnect
+        assert_eq!(actions.len(), 1);
+        let e = actions.pop().unwrap();
+        match e {
+            IO_WebSocketClose(_wsh0) => {
+                //assert_eq!(wsh0, wsh2);
+            }
+            _ => panic!(),
+        }
+
+        actions = r.process(IO_WebSocketConnectionLost(wsh2));
+        assert_eq!(actions.len(), 0);
     }
 }
