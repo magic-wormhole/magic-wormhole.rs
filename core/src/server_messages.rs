@@ -7,7 +7,7 @@ pub struct Nameplate {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct WelcomeMsg {
-    motd: String
+    motd: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -20,7 +20,7 @@ pub enum Message {
     },
     Welcome {
         server_tx: f64,
-        welcome:WelcomeMsg,
+        welcome: WelcomeMsg,
     },
     List {},
     Nameplates {
@@ -120,8 +120,10 @@ pub fn ping(ping: u32) -> Message {
 
 pub fn welcome(motd: &str, timestamp: f64) -> Message {
     Message::Welcome {
-        welcome: WelcomeMsg { motd: motd.to_string() },
-        server_tx: timestamp
+        welcome: WelcomeMsg {
+            motd: motd.to_string(),
+        },
+        server_tx: timestamp,
     }
 }
 
