@@ -67,6 +67,9 @@ pub enum Event {
     B_GotVerifier,
     B_GotMessage,
     // C is for Code
+    C_AllocateCode,
+    C_InputCode,
+    C_SetCode,
     C_Allocated,
     C_GotNameplate,
     C_FinishedInput,
@@ -160,7 +163,8 @@ pub fn machine_for_event(e: &Event) -> Machine {
         | &B_GotKey | &B_Scared | &B_Happy | &B_GotVerifier | &B_GotMessage => {
             Boss
         }
-        &C_Allocated | &C_GotNameplate | &C_FinishedInput => Code,
+        &C_AllocateCode | &C_InputCode | &C_SetCode | &C_Allocated
+        | &C_GotNameplate | &C_FinishedInput => Code,
         &I_Start | &I_GotNameplates | &I_GotWordlist => Input,
         &K_GotPake | &K_GotMessage => Key,
         &L_Connected | &L_Lost | &L_RxNameplates | &L_Refresh => Lister,
