@@ -1,19 +1,10 @@
-pub enum BossEvent {
-    RxWelcome,
-    RxError,
-    Error,
-    Closed,
-    GotCode,
-    GotKey,
-    Scared,
-    Happy,
-    GotVerifier,
-    GotMessage,
-}
-
-use api::APIEvent;
-use events::{BossResult, MachineEvent};
-use rendezvous::RendezvousEvent; // TODO: only import what we use e.g. Stop
+use events::Event;
+// we process these
+use events::Event::{B_Closed, B_Error, B_GotCode, B_GotKey, B_GotMessage,
+                    B_GotVerifier, B_Happy, B_RxError, B_RxWelcome, B_Scared};
+use events::Event::{API_AllocateCode, API_Close, API_Send, API_SetCode};
+// we emit these
+use events::Event::RC_Stop;
 
 pub struct Boss {}
 
@@ -21,25 +12,25 @@ impl Boss {
     pub fn new() -> Boss {
         Boss {}
     }
-    pub fn process_api_event(&mut self, event: APIEvent) -> Vec<BossResult> {
+    pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
-            APIEvent::AllocateCode => vec![],
-            APIEvent::SetCode(_code) => vec![],
-            APIEvent::Close => vec![
-                BossResult::Machine(MachineEvent::Rendezvous(RendezvousEvent::Stop)),
-            ], // eventually signals GotClosed
-            APIEvent::Send => vec![],
+            API_AllocateCode => vec![],
+            API_SetCode(_code) => vec![],
+            API_Close => vec![RC_Stop], // eventually signals GotClosed
+            API_Send => vec![],
+            B_Closed | B_Error | B_GotCode | B_GotKey | B_GotMessage
+            | B_GotVerifier | B_Happy | B_RxError | B_RxWelcome | B_Scared => {
+                vec![]
+            }
+            _ => panic!(),
         }
-    }
-
-    pub fn execute(&mut self, _event: MachineEvent) -> Vec<BossResult> {
-        vec![]
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use events::Event::API_Close;
 
     #[test]
     fn create() {
@@ -48,12 +39,7 @@ mod test {
 
     fn process_api() {
         let mut b = Boss::new();
-        let actions = b.process_api_event(APIEvent::Close);
-        assert_eq!(
-            actions,
-            vec![
-                BossResult::Machine(MachineEvent::Rendezvous(RendezvousEvent::Stop)),
-            ]
-        );
+        let actions = b.process(API_Close);
+        assert_eq!(actions, vec![RC_Stop]);
     }
 }
