@@ -1,13 +1,14 @@
 use events::Event;
-use events::Event::{M_Connected, M_Lost,    M_RxMessage,    M_RxClosed,    M_Close,    M_GotMailbox,    M_GotMessage,    M_AddMessage};
+use events::Event::{M_AddMessage, M_Close, M_Connected, M_GotMailbox,
+                    M_GotMessage, M_Lost, M_RxClosed, M_RxMessage};
 
 pub struct Mailbox {}
 
-pub fn new() -> Mailbox {
-    Mailbox {}
-}
-
 impl Mailbox {
+    pub fn new() -> Mailbox {
+        Mailbox {}
+    }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             M_Connected => vec![],

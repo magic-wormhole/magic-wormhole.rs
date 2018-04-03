@@ -12,6 +12,7 @@ impl Boss {
     pub fn new() -> Boss {
         Boss {}
     }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             API_AllocateCode => vec![],

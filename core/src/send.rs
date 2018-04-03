@@ -1,13 +1,13 @@
 use events::Event;
-use events::Event::{S_Send, S_GotVerifiedKey};
+use events::Event::{S_GotVerifiedKey, S_Send};
 
 pub struct Send {}
 
-pub fn new() -> Send {
-    Send {}
-}
-
 impl Send {
+    pub fn new() -> Send {
+        Send {}
+    }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             S_Send => vec![],
