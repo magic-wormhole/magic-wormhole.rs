@@ -1,5 +1,6 @@
 use events::Event;
 use events::Event::{A_Connected, A_Lost, A_RxAllocated};
+
 pub struct Allocator {}
 
 pub fn new() -> Allocator {
