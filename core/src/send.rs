@@ -10,7 +10,7 @@ impl Send {
 
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
-            S_Send => vec![],
+            S_Send(plaintext) => vec![],
             S_GotVerifiedKey => vec![],
             _ => panic!(),
         }

@@ -30,7 +30,7 @@ pub enum Event {
     API_AllocateCode,
     API_SetCode(String),
     API_Close,
-    API_Send,
+    API_Send(Vec<u8>),
     // API Actions (results sent back to the application)
     API_GotWelcome(HashMap<String, String>), // anything JSON-able: Value?
     API_GotCode(String), // must be easy to canonically encode into UTF-8 bytes
@@ -60,16 +60,16 @@ pub enum Event {
     B_RxError,
     B_Error,
     B_Closed,
-    B_GotCode,
-    B_GotKey,
+    B_GotCode(String),
+    B_GotKey(Vec<u8>), // TODO: fixed length?
     B_Scared,
     B_Happy,
-    B_GotVerifier,
-    B_GotMessage,
+    B_GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
+    B_GotMessage(String, String, Vec<u8>),
     // C is for Code
     C_AllocateCode,
     C_InputCode,
-    C_SetCode,
+    C_SetCode(String),
     C_Allocated,
     C_GotNameplate,
     C_FinishedInput,
@@ -118,10 +118,10 @@ pub enum Event {
     RC_TxAllocate,
     RC_TxList,
     // S is for Send
-    S_Send,
+    S_Send(Vec<u8>),
     S_GotVerifiedKey,
     // T is for Terminator
-    T_Close,
+    T_Close(Mood),
     T_MailboxDone,
     T_NameplateDone,
     T_Stopped,
@@ -139,7 +139,7 @@ pub fn machine_for_event(e: &Event) -> Machine {
     use self::Event::*;
     use self::Machine::*;
     match e {
-        &API_AllocateCode | &API_SetCode(_) | &API_Close | &API_Send => {
+        &API_AllocateCode | &API_SetCode(_) | &API_Close | &API_Send(_) => {
             API_Action
         }
         &API_GotWelcome(_)
@@ -159,11 +159,17 @@ pub fn machine_for_event(e: &Event) -> Machine {
         | &IO_WebSocketMessageReceived(_, _)
         | &IO_WebSocketConnectionLost(_) => Rendezvous, // IO currently goes RC
         &A_Connected | &A_Lost | &A_RxAllocated => Allocator,
-        &B_RxWelcome | &B_RxError | &B_Error | &B_Closed | &B_GotCode
-        | &B_GotKey | &B_Scared | &B_Happy | &B_GotVerifier | &B_GotMessage => {
-            Boss
-        }
-        &C_AllocateCode | &C_InputCode | &C_SetCode | &C_Allocated
+        &B_RxWelcome
+        | &B_RxError
+        | &B_Error
+        | &B_Closed
+        | &B_GotCode(_)
+        | &B_GotKey(_)
+        | &B_Scared
+        | &B_Happy
+        | &B_GotVerifier(_)
+        | &B_GotMessage(_, _, _) => Boss,
+        &C_AllocateCode | &C_InputCode | &C_SetCode(_) | &C_Allocated
         | &C_GotNameplate | &C_FinishedInput => Code,
         &I_Start | &I_GotNameplates | &I_GotWordlist => Input,
         &K_GotPake | &K_GotMessage => Key,
@@ -178,8 +184,10 @@ pub fn machine_for_event(e: &Event) -> Machine {
         | &RC_TxClaim | &RC_TxRelease | &RC_TxAllocate | &RC_TxList => {
             Rendezvous
         }
-        &S_Send | &S_GotVerifiedKey => Send,
-        &T_Close | &T_MailboxDone | &T_NameplateDone | &T_Stopped => Terminator,
+        &S_Send(_) | &S_GotVerifiedKey => Send,
+        &T_Close(_) | &T_MailboxDone | &T_NameplateDone | &T_Stopped => {
+            Terminator
+        }
     }
 }
 
@@ -191,7 +199,7 @@ impl From<APIEvent> for Event {
             AllocateCode => API_AllocateCode,
             SetCode(code) => API_SetCode(code),
             Close => API_Close,
-            Send => API_Send,
+            Send(plaintext) => API_Send(plaintext),
         }
     }
 }

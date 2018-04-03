@@ -5,12 +5,13 @@ pub enum APIEvent {
     AllocateCode,
     SetCode(String),
     Close,
-    Send,
+    Send(Vec<u8>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Mood {
     Happy,
+    Lonely,
     Error,
 }
 
