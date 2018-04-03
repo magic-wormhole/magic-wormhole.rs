@@ -9,7 +9,7 @@ pub enum APIEvent {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Result {
+pub enum Mood {
     Happy,
     Error,
 }
@@ -18,12 +18,12 @@ pub enum Result {
 pub enum APIAction {
     // from WormholeCore out through IO glue to application
     GotWelcome(HashMap<String, String>), // actually anything JSON-able: Value
-    GotCode(String),                     // must be easy to canonically encode into UTF-8 bytes
+    GotCode(String), // must be easy to canonically encode into UTF-8 bytes
     GotUnverifiedKey(Vec<u8>),
     GotVerifier(Vec<u8>),
     GotVersions(HashMap<String, String>), // actually anything JSON-able
     GotMessage(Vec<u8>),
-    GotClosed(Result),
+    GotClosed(Mood),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -75,7 +75,7 @@ pub enum IOAction {
 
 #[derive(Debug, PartialEq)]
 pub enum Action {
-    // to IO glue later
+    // to IO glue layer
     // outbound
     IO(IOAction),
     API(APIAction),
