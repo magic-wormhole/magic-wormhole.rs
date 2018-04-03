@@ -10,7 +10,7 @@ impl Terminator {
 
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
-            T_Close => vec![],
+            T_Close(_mood) => vec![],
             T_MailboxDone => vec![],
             T_NameplateDone => vec![],
             T_Stopped => vec![],
