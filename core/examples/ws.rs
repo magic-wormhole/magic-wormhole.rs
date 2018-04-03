@@ -1,8 +1,8 @@
 extern crate magic_wormhole_core;
 extern crate url;
 extern crate ws;
-use magic_wormhole_core::{create_core, APIAction, APIEvent, Action, IOAction, IOEvent,
-                          TimerHandle, WSHandle, WormholeCore};
+use magic_wormhole_core::{create_core, APIAction, APIEvent, Action, IOAction,
+                          IOEvent, TimerHandle, WSHandle, WormholeCore};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
@@ -32,7 +32,9 @@ fn main() {
     let wsh;
     let ws_url;
     let mut actions = wc.start();
-    if let Action::IO(IOAction::WebSocketOpen(handle, url)) = actions.pop().unwrap() {
+    if let Action::IO(IOAction::WebSocketOpen(handle, url)) =
+        actions.pop().unwrap()
+    {
         wsh = handle;
         ws_url = Url::parse(&url).unwrap();
     } else {
