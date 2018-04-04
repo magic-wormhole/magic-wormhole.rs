@@ -1,5 +1,7 @@
 use serde_json;
 
+use serde::{self, Deserialize, Serializer, Deserializer};
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
     id: String,
@@ -8,6 +10,14 @@ pub struct Nameplate {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct WelcomeMsg {
     motd: String,
+}
+
+// convert an optional field (which may result in deserialization error)
+// into an Option::None.
+pub fn invalid_option<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+    where D: Deserializer<'de>, Option<T>: Deserialize<'de>
+{
+    Option::<T>::deserialize(de).or_else(|_| Ok(None))
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -19,8 +29,10 @@ pub enum Message {
         side: String,
     },
     Welcome {
-        server_tx: f64,
-        welcome: WelcomeMsg,
+        #[serde(default)]
+        server_tx: Option<f64>,
+        #[serde(deserialize_with = "invalid_option")]
+        welcome: Option<WelcomeMsg>,
     },
     List {},
     Nameplates {
@@ -120,10 +132,10 @@ pub fn ping(ping: u32) -> Message {
 
 pub fn welcome(motd: &str, timestamp: f64) -> Message {
     Message::Welcome {
-        welcome: WelcomeMsg {
+        welcome: Some(WelcomeMsg {
             motd: motd.to_string(),
-        },
-        server_tx: timestamp,
+        }),
+        server_tx: Some(timestamp),
     }
 }
 
@@ -211,11 +223,82 @@ mod test {
     }
 
     #[test]
-    fn test_welcome() {
+    fn test_welcome1() {
         let m1 = welcome("hi", 1234.56);
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn test_welcome2() {
+        let m1 = welcome("", 1234.56);
+        let s = serde_json::to_string(&m1).unwrap();
+        let m2 = deserialize(&s);
+        assert_eq!(m1, m2);
+    }
+
+    #[test]
+    fn test_welcome3() {
+        let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Welcome { welcome: msg, server_tx: ts } => {
+                match msg {
+                    None => (),
+                    _ => panic!()
+                }
+                assert_eq!(ts, Some(1234.56));
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn test_welcome4() {
+        let s = r#"{"type": "welcome", "welcome": {} }"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Welcome { welcome: msg, server_tx: ts } => {
+                match msg {
+                    None => (),
+                    _ => panic!()
+                }
+                match ts {
+                    None => (),
+                    _ => panic!()
+                }
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn test_welcome5() {
+        let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Welcome { welcome: msg, server_tx: ts } => {
+                match msg {
+                    Some(wmsg) => {
+                        match wmsg {
+                            WelcomeMsg { motd: msg_of_day } => {
+                                assert_eq!(msg_of_day, "hello world".to_string());
+                            },
+                            _ => panic!()
+                        }
+                    },
+                    _ => panic!()
+                }
+                match ts {
+                    Some(t) => {
+                        assert_eq!(t, 1234.56);
+                    },
+                    _ => panic!()
+                }
+            },
+            _ => panic!()
+        }
     }
 
     #[test]
