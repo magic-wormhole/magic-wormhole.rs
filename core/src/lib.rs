@@ -2,6 +2,8 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+#[macro_use]
+mod events;
 
 mod api;
 mod events;
@@ -96,7 +98,7 @@ impl WormholeCore {
 
     fn execute(&mut self, event: Event) -> Vec<Action> {
         let mut action_queue: Vec<Action> = Vec::new(); // returned
-        let mut event_queue: VecDeque<Event> = VecDeque::new();
+        let mut event_queue: Events::new();
         event_queue.push_back(event);
 
         while let Some(e) = event_queue.pop_front() {
