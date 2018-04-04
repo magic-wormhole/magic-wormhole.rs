@@ -20,7 +20,7 @@ pub enum Message {
     },
     Welcome {
         server_tx: f64,
-        welcome: WelcomeMsg,
+        welcome: Option<WelcomeMsg>,
     },
     List {},
     Nameplates {
@@ -120,9 +120,9 @@ pub fn ping(ping: u32) -> Message {
 
 pub fn welcome(motd: &str, timestamp: f64) -> Message {
     Message::Welcome {
-        welcome: WelcomeMsg {
+        welcome: Some(WelcomeMsg {
             motd: motd.to_string(),
-        },
+        }),
         server_tx: timestamp,
     }
 }
