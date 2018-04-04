@@ -29,7 +29,8 @@ pub enum Message {
         side: String,
     },
     Welcome {
-        server_tx: f64,
+        #[serde(default)]
+        server_tx: Option<f64>,
         #[serde(deserialize_with = "invalid_option")]
         welcome: Option<WelcomeMsg>,
     },
@@ -134,7 +135,7 @@ pub fn welcome(motd: &str, timestamp: f64) -> Message {
         welcome: Some(WelcomeMsg {
             motd: motd.to_string(),
         }),
-        server_tx: timestamp,
+        server_tx: Some(timestamp),
     }
 }
 
@@ -241,14 +242,60 @@ mod test {
     fn test_welcome3() {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
         let m = deserialize(&s);
-        println!("{:?}", m);
         match m {
             Message::Welcome { welcome: msg, server_tx: ts } => {
                 match msg {
                     None => (),
                     _ => panic!()
                 }
-                assert_eq!(ts, 1234.56);
+                assert_eq!(ts, Some(1234.56));
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn test_welcome4() {
+        let s = r#"{"type": "welcome", "welcome": {} }"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Welcome { welcome: msg, server_tx: ts } => {
+                match msg {
+                    None => (),
+                    _ => panic!()
+                }
+                match ts {
+                    None => (),
+                    _ => panic!()
+                }
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn test_welcome5() {
+        let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Welcome { welcome: msg, server_tx: ts } => {
+                match msg {
+                    Some(wmsg) => {
+                        match wmsg {
+                            WelcomeMsg { motd: msg_of_day } => {
+                                assert_eq!(msg_of_day, "hello world".to_string());
+                            },
+                            _ => panic!()
+                        }
+                    },
+                    _ => panic!()
+                }
+                match ts {
+                    Some(t) => {
+                        assert_eq!(t, 1234.56);
+                    },
+                    _ => panic!()
+                }
             },
             _ => panic!()
         }
