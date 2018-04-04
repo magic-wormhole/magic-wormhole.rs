@@ -1,5 +1,9 @@
-use events::Event;
-use events::Event::{A_Connected, A_Lost, A_RxAllocated};
+use events::Events;
+enum AllocatorEvent {
+    Connected,
+    Lost,
+    RxAllocated,
+}
 
 pub struct Allocator {}
 
@@ -8,12 +12,11 @@ impl Allocator {
         Allocator {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: AllocatorEvent) -> Events {
         match event {
-            A_Connected => vec![],
-            A_Lost => vec![],
-            A_RxAllocated => vec![],
-            _ => panic!(),
+            Connected => events![],
+            Lost => events![],
+            RxAllocated => events![],
         }
     }
 }

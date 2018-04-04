@@ -4,28 +4,166 @@ use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 
 #[derive(Debug, PartialEq)]
 pub enum Machine {
-    API_Action,
-    IO_Action,
-    Allocator,
-    Boss,
-    Code,
-    Input,
-    Key,
-    Lister,
-    Mailbox,
-    Nameplate,
-    Order,
-    Receive,
-    Rendezvous,
-    Send,
-    Terminator,
 }
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 
+use allocator::AllocatorEvent;
+use boss::BossEvent;
+use code::CodeEvent;
+use input::InputEvent;
+use key::KeyEvent;
+use lister::ListerEvent;
+use mailbox::MailboxEvent;
+use nameplate::NamplateEvent;
+use order::OrderEvent;
+use receive::ReceiveEvent;
+use rendezvous::RendezvousEvent;
+use send::SendEvent;
+use terminator::TerminatorEvent;
+
 #[derive(Debug, PartialEq)]
 pub enum Event {
+    API(APIAction),
+    IO(IOAction),
+    Allocator(AllocatorEvent),
+    Boss(BossEvent),
+    Code(CodeEvent),
+    Input(InputEvent),
+    Key(KeyEvent),
+    Lister(ListerEvent),
+    Mailbox(MailboxEvent),
+    Nameplate(NamplateEvent),
+    Order(OrderEvent),
+    Receive(ReceiveEvent),
+    Rendezvous(RendezvousEvent),
+    Send(SendEvent),
+    Terminator(TerminatorEvent),
+}
+
+impl From<API_Action> for Event {
+    fn from(r: API_Action) -> Self {
+        Event::API(r)
+    }
+}
+
+impl From<IO_Action> for Event {
+    fn from(r: IO_Action) -> Self {
+        Event::IO(r)
+    }
+}
+
+impl From<AllocatorEvent> for Event {
+    fn from(r: AllocatorEvent) -> Self {
+        Event::Allocator(r)
+    }
+}
+
+impl From<BossEvent> for Event {
+    fn from(r: BossEvent) -> Self {
+        Event::Boss(r)
+    }
+}
+
+impl From<CodeEvent> for Event {
+    fn from(r: CodeEvent) -> Self {
+        Event::Code(r)
+    }
+}
+
+impl From<InputEvent> for Event {
+    fn from(r: InputEvent) -> Self {
+        Event::Input(r)
+    }
+}
+
+impl From<KeyEvent> for Event {
+    fn from(r: KeyEvent) -> Self {
+        Event::Key(r)
+    }
+}
+
+impl From<ListerEvent> for Event {
+    fn from(r: ListerEvent) -> Self {
+        Event::Lister(r)
+    }
+}
+
+impl From<MailboxEvent> for Event {
+    fn from(r: MailboxEvent) -> Self {
+        Event::Mailbox(r)
+    }
+}
+
+impl From<NameplateEvent> for Event {
+    fn from(r: NameplateEvent) -> Self {
+        Event::Nameplate(r)
+    }
+}
+
+impl From<OrderEvent> for Event {
+    fn from(r: OrderEvent) -> Self {
+        Event::Order(r)
+    }
+}
+
+impl From<ReceiveEvent> for Event {
+    fn from(r: ReceiveEvent) -> Self {
+        Event::Receive(r)
+    }
+}
+
+impl From<RendezvousEvent> for Event {
+    fn from(r: RendezvousEvent) -> Self {
+        Event::Rendezvous(r)
+    }
+}
+
+impl From<SendEvent> for Event {
+    fn from(r: SendEvent) -> Self {
+        Event::Send(r)
+    }
+}
+
+impl From<TerminatorEvent> for Event {
+    fn from(r: TerminatorEvent) -> Self {
+        Event::Terminator(r)
+    }
+}
+
+
+#[derive(Debug)]
+pub struct Events {
+    pub events: Vec<MachineEvent>,
+}
+impl Events {
+    fn new() -> Events {
+        Events { events: vec![] }
+    }
+}
+
+impl Events {
+    //fn add<T>(&mut self, item: T) where T: Into<MachineEvent> {
+    fn push<T>(&mut self, item: T) where MachineEvent: std::convert::From<T> {
+        self.events.push(Event::from(item));
+    }
+    // TODO: iter
+}
+
+macro_rules! myvec {
+    ( $( $x:expr ),* ) => {
+        {
+            let mut temp_vec = Events::new();
+            $(
+                temp_vec.push($x);
+            )*
+            temp_vec
+        }
+    };
+}
+
+enum OFF {
     // API events (instructions from the application)
     API_AllocateCode,
     API_SetCode(String),
