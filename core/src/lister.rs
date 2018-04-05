@@ -1,5 +1,7 @@
-use events::Event;
-use events::Event::{L_Connected, L_Lost, L_Refresh, L_RxNameplates};
+use events::Events;
+// we process these
+use events::ListerEvent;
+// we emit these
 
 pub struct Lister {}
 
@@ -8,13 +10,13 @@ impl Lister {
         Lister {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: ListerEvent) -> Events {
+        use events::ListerEvent::*;
         match event {
-            L_Connected => vec![],
-            L_Lost => vec![],
-            L_RxNameplates => vec![],
-            L_Refresh => vec![],
-            _ => panic!(),
+            Connected => events![],
+            Lost => events![],
+            RxNameplates => events![],
+            Refresh => events![],
         }
     }
 }

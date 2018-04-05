@@ -95,9 +95,12 @@ pub enum ReceiveEvent {
     GotKey,
 }
 
+use server_messages::Message;
+
 #[derive(Debug, PartialEq)]
 pub enum RendezvousEvent {
     Start,
+    TxBind(Message),
     TxOpen,
     TxAdd,
     TxClose,
@@ -254,6 +257,8 @@ impl Events {
 }
 
 // macro to build a whole Events vector, instead of adding them one at a time
+// TODO: tolerate events![first,] (trailing comma breaks it)
+// TODO: tolerate events![] (causes warning)
 macro_rules! events {
     ( $( $x:expr ),* ) => {
         {

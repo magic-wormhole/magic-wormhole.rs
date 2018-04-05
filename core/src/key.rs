@@ -1,5 +1,7 @@
-use events::Event;
-use events::Event::{K_GotMessage, K_GotPake};
+use events::Events;
+// we process these
+use events::KeyEvent;
+// we emit these
 
 pub struct Key {}
 
@@ -8,11 +10,11 @@ impl Key {
         Key {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: KeyEvent) -> Events {
+        use events::KeyEvent::*;
         match event {
-            K_GotPake => vec![],
-            K_GotMessage => vec![],
-            _ => panic!(),
+            GotPake => events![],
+            GotMessage => events![],
         }
     }
 }

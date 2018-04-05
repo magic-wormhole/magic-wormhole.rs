@@ -6,41 +6,41 @@ extern crate serde_json;
 mod events;
 
 mod api;
-//mod allocator;
+mod allocator;
 mod boss;
-//mod code;
-//mod input;
-//mod key;
-//mod lister;
-//mod mailbox;
-//mod nameplate;
-//mod order;
-//mod receive;
-//mod rendezvous;
+mod code;
+mod input;
+mod key;
+mod lister;
+mod mailbox;
+mod nameplate;
+mod order;
+mod receive;
+mod rendezvous;
 mod server_messages;
-//mod send;
-//mod terminator;
-//mod wordlist;
+mod send;
+mod terminator;
+mod wordlist;
 
 use std::collections::VecDeque;
-use events::{Event, Events, RendezvousEvent};
+use events::{Event, Events};
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle,
               WSHandle};
 
 pub struct WormholeCore {
-    //allocator: allocator::Allocator,
+    allocator: allocator::Allocator,
     boss: boss::Boss,
-    //code: code::Code,
-    //input: input::Input,
-    //key: key::Key,
-    //lister: lister::Lister,
-    //mailbox: mailbox::Mailbox,
-    //nameplate: nameplate::Nameplate,
-    //order: order::Order,
-    //receive: receive::Receive,
-    //rendezvous: rendezvous::Rendezvous,
-    //send: send::Send,
-    //terminator: terminator::Terminator,
+    code: code::Code,
+    input: input::Input,
+    key: key::Key,
+    lister: lister::Lister,
+    mailbox: mailbox::Mailbox,
+    nameplate: nameplate::Nameplate,
+    order: order::Order,
+    receive: receive::Receive,
+    rendezvous: rendezvous::Rendezvous,
+    send: send::Send,
+    terminator: terminator::Terminator,
 }
 
 // I don't know how to write this
@@ -52,31 +52,30 @@ impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
         let side = "side1"; // TODO: generate randomly
         WormholeCore {
-            //allocator: allocator::Allocator::new(),
+            allocator: allocator::Allocator::new(),
             boss: boss::Boss::new(),
-            //code: code::Code::new(),
-            //input: input::Input::new(),
-            //key: key::Key::new(),
-            //lister: lister::Lister::new(),
-            //mailbox: mailbox::Mailbox::new(),
-            //nameplate: nameplate::Nameplate::new(),
-            //order: order::Order::new(),
-            //receive: receive::Receive::new(),
-            /*rendezvous: rendezvous::Rendezvous::new(
+            code: code::Code::new(),
+            input: input::Input::new(),
+            key: key::Key::new(),
+            lister: lister::Lister::new(),
+            mailbox: mailbox::Mailbox::new(),
+            nameplate: nameplate::Nameplate::new(),
+            order: order::Order::new(),
+            receive: receive::Receive::new(),
+            rendezvous: rendezvous::Rendezvous::new(
                 appid,
                 relay_url,
                 side,
                 5.0,
-            ),*/
-            //send: send::Send::new(),
-            //terminator: terminator::Terminator::new(),
+            ),
+            send: send::Send::new(),
+            terminator: terminator::Terminator::new(),
         }
     }
 
     pub fn start(&mut self) -> Vec<Action> {
         // TODO: replace with Boss::Start, which will start rendezvous
-        //self.execute(RC_Start)
-        self._execute(events![])
+        self._execute(events![events::RendezvousEvent::Start])
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
@@ -85,8 +84,8 @@ impl WormholeCore {
     }
 
     pub fn do_io(&mut self, event: IOEvent) -> Vec<Action> {
-        //let events = self.rendezvous.process_io(event);
-        self._execute(events![])
+        let events = self.rendezvous.process_io(event);
+        self._execute(events)
     }
 
     pub fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
@@ -114,23 +113,24 @@ impl WormholeCore {
                     action_queue.push(Action::IO(a));
                     events![]
                 }
-                //Allocator => self.allocator.process(e),
+                Allocator(e) => self.allocator.process(e),
                 Boss(e) => self.boss.process(e),
-                //Code => self.code.process(e),
-                //Input => self.input.process(e),
-                //Key => self.key.process(e),
-                //Lister => self.lister.process(e),
-                //Mailbox => self.mailbox.process(e),
-                //Nameplate => self.nameplate.process(e),
-                //Order => self.order.process(e),
-                //Receive => self.receive.process(e),
-                //Rendezvous(e) => self.rendezvous.process(e),
-                //Send => self.send.process(e),
-                //Terminator => self.terminator.process(e),
+                Code(e) => self.code.process(e),
+                Input(e) => self.input.process(e),
+                Key(e) => self.key.process(e),
+                Lister(e) => self.lister.process(e),
+                Mailbox(e) => self.mailbox.process(e),
+                Nameplate(e) => self.nameplate.process(e),
+                Order(e) => self.order.process(e),
+                Receive(e) => self.receive.process(e),
+                Rendezvous(e) => self.rendezvous.process(e),
+                Send(e) => self.send.process(e),
+                Terminator(e) => self.terminator.process(e),
                 _ => panic!(),
             };
 
             for a in actions.events { // TODO use iter
+                // TODO: insert in front of queue: depth-first processing
                 event_queue.push_back(a);
             }
         }
