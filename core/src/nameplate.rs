@@ -66,11 +66,54 @@ impl Nameplate {
         actions
     }
 
+    fn handle_connection(&mut self) -> Vec<Event> {
+        let actions;
+        let newstate = match self.state {
+            State::S0A => {
+                actions = vec![];
+                State::S0B
+            },
+            _ => panic!() // TODO: handle S1A, S2A etc
+        };
+        self.state = newstate;
+        actions
+    }
+
+    fn handle_lost(&mut self) -> Vec<Event> {
+        let actions;
+        let newstate = match self.state {
+            State::S0B => {
+                actions = vec![];
+                State::S0A
+            },
+            State::S2B => {
+                actions = vec![];
+                State::S2A
+            },
+            State::S3B => {
+                actions = vec![];
+                State::S3A
+            },
+            State::S4B => {
+                actions = vec![];
+                State::S4A
+            },
+            State::S5B => {
+                actions = vec![];
+                State::S5A
+            },
+            _ => panic!() // got the Lost message while at an unexpected state
+        };
+
+        self.state = newstate;
+        actions
+    }
+    
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             N_NameplateDone => vec![],
-            N_Connected => vec![],
-            N_Lost => vec![],
+            N_Connected => self.handle_connection(),
+            N_Lost => self.handle_lost(),
             N_RxClaimed => vec![],
             N_RxReleased => vec![],
             N_SetNameplate(nameplate) => self.set_nameplate(nameplate),
@@ -82,13 +125,20 @@ impl Nameplate {
 
 #[cfg(test)]
 mod test {
-    use events::Event::{N_SetNameplate};
+    use events::Event::{N_SetNameplate, N_Connected};
 
     #[test]
     fn create() {
         let mut n = super::Nameplate::new();
 
-        let mut actions = n.process(N_SetNameplate("42".to_string()));
+        // we are at S0A at init time. Now, we get N_Connected.
+        // We enter S0B state and do not generate any events.
+        let mut actions = n.process(N_Connected);
         assert_eq!(actions.len(), 0);
+
+        // we are in State S0B, we get SetNameplate
+        // we should set the nameplate and generate RC_TxClaim
+        let mut actions = n.process(N_SetNameplate("42".to_string()));
+        assert_eq!(actions.len(), 1);
     }
 }
