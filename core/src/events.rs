@@ -100,7 +100,7 @@ pub enum Event {
     N_Lost,
     N_RxClaimed,
     N_RxReleased,
-    N_SetNameplate,
+    N_SetNameplate(String),
     N_Release,
     // O is for Order
     O_GotMessage,
@@ -177,7 +177,7 @@ pub fn machine_for_event(e: &Event) -> Machine {
         &M_Connected | &M_Lost | &M_RxMessage | &M_RxClosed | &M_Close
         | &M_GotMailbox | &M_GotMessage | &M_AddMessage => Mailbox,
         &N_NameplateDone | &N_Connected | &N_Lost | &N_RxClaimed
-        | &N_RxReleased | &N_SetNameplate | &N_Release => Nameplate,
+        | &N_RxReleased | &N_SetNameplate(_) | &N_Release => Nameplate,
         &O_GotMessage => Order,
         &R_GotCode | &R_GotKey => Receive,
         &RC_Start | &RC_TxOpen | &RC_TxAdd | &RC_TxClose | &RC_Stop
