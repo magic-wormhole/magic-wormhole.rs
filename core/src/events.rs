@@ -125,7 +125,6 @@ pub enum TerminatorEvent {
     Stopped,
 }
 
-
 #[derive(Debug, PartialEq)]
 pub enum Event {
     API(APIAction),
@@ -250,7 +249,10 @@ impl Events {
         Events { events: vec![] }
     }
     //fn add<T>(&mut self, item: T) where T: Into<Event> {
-    pub fn push<T>(&mut self, item: T) where Event: From<T> {
+    pub fn push<T>(&mut self, item: T)
+    where
+        Event: From<T>,
+    {
         self.events.push(Event::from(item));
     }
     // TODO: iter

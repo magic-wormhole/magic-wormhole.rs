@@ -6,11 +6,10 @@ use api::APIEvent;
 // we emit these
 use api::APIAction;
 use events::CodeEvent::{AllocateCode as C_AllocateCode,
-                        SetCode as C_SetCode,
-                        InputCode as C_InputCode};
-use events::RendezvousEvent::{Stop as RC_Stop};
-use events::SendEvent::{Send as S_Send};
-use events::TerminatorEvent::{Close as T_Close};
+                        InputCode as C_InputCode, SetCode as C_SetCode};
+use events::RendezvousEvent::Stop as RC_Stop;
+use events::SendEvent::Send as S_Send;
+use events::TerminatorEvent::Close as T_Close;
 
 #[derive(Debug, PartialEq)]
 enum State {
