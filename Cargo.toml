@@ -4,3 +4,6 @@ members = [
 #        "io/tokio",
         "cli",
 ]
+
+[badges]
+travis-ci = { repository = "warner/magic-wormhole.rs" }
