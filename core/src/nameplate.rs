@@ -1,7 +1,7 @@
 use events::Event;
 use events::Event::{N_Connected, N_Lost, N_NameplateDone, N_Release,
                     N_RxClaimed, N_RxReleased, N_SetNameplate};
-use events::Event::{RC_TxClaim};
+use events::Event::{RC_TxClaim, RC_TxRelease};
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -73,6 +73,32 @@ impl Nameplate {
                 actions = vec![];
                 State::S0B
             },
+            State::S1A => {
+                actions = vec![
+                    RC_TxClaim
+                ];
+                State::S2B
+            },
+            State::S2A => {
+                actions = vec![
+                    RC_TxClaim
+                ];
+                State::S2B
+            },
+            State::S3A => {
+                actions = vec![];
+                State::S3B
+            },
+            State::S4A => {
+                actions = vec![
+                    RC_TxRelease
+                ];
+                State::S4B
+            },
+            State::S5A => {
+                actions = vec![];
+                State::S5B
+            },
             _ => panic!() // TODO: handle S1A, S2A etc
         };
         self.state = newstate;
@@ -125,7 +151,7 @@ impl Nameplate {
 
 #[cfg(test)]
 mod test {
-    use events::Event::{N_SetNameplate, N_Connected};
+    use events::Event::{N_SetNameplate, N_Connected, N_Lost};
 
     #[test]
     fn create() {
@@ -136,8 +162,16 @@ mod test {
         let mut actions = n.process(N_Connected);
         assert_eq!(actions.len(), 0);
 
+        // if we get the Lost event, we go back to S0A
+        let mut actions = n.process(N_Lost);
+        assert_eq!(actions.len(), 0);
+
+        // now we get N_Connected again.
+        let mut actions = n.process(N_Connected);
+        assert_eq!(actions.len(), 0);
+
         // we are in State S0B, we get SetNameplate
-        // we should set the nameplate and generate RC_TxClaim
+        // we should set the nameplate and generate RC_TxClaim (and go to S2B)
         let mut actions = n.process(N_SetNameplate("42".to_string()));
         assert_eq!(actions.len(), 1);
     }
