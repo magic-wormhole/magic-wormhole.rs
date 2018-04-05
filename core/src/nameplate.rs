@@ -2,6 +2,8 @@ use events::Event;
 use events::Event::{N_Connected, N_Lost, N_NameplateDone, N_Release,
                     N_RxClaimed, N_RxReleased, N_SetNameplate};
 use events::Event::{RC_TxClaim, RC_TxRelease};
+use events::Event::{T_Close, T_NameplateDone};
+use api::{Mood};
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -134,7 +136,70 @@ impl Nameplate {
         self.state = newstate;
         actions
     }
-    
+
+    fn handle_close(&mut self) -> Vec<Event> {
+        let actions;
+        let newstate = match self.state {
+            State::S0A => {
+                actions = vec![
+                    T_NameplateDone
+                ];
+                State::S5A
+            },
+            State::S0B => {
+                actions = vec![
+                    T_NameplateDone
+                ];
+                State::S5A
+            },
+            State::S1A => {
+                actions = vec![
+                    T_NameplateDone
+                ];
+                State::S5A
+            },
+            State::S2A => {
+                actions = vec![];
+                State::S4A
+            },
+            State::S2B => {
+                actions = vec![
+                    RC_TxRelease
+                ];
+                State::S4B
+            },
+            State::S3A => {
+                actions = vec![];
+                State::S4A
+            },
+            State::S3B => {
+                actions = vec![
+                    RC_TxRelease
+                ];
+                State::S4B
+            },
+            State::S4A => {
+                actions = vec![];
+                // no change in state
+                State::S4A
+            },
+            State::S4B => {
+                actions = vec![];
+                // no change in state
+                State::S4B
+            },
+            State::S5  => {
+                actions = vec![];
+                // no change in state
+                State::S5
+            },
+            _ => panic!()
+        };
+
+        self.state = newstate;
+        actions
+    }
+
     pub fn process(&mut self, event: Event) -> Vec<Event> {
         match event {
             N_NameplateDone => vec![],
@@ -144,6 +209,7 @@ impl Nameplate {
             N_RxReleased => vec![],
             N_SetNameplate(nameplate) => self.set_nameplate(nameplate),
             N_Release => vec![],
+            T_Close(mood) => self.handle_close(),
             _ => panic!(),
         }
     }
