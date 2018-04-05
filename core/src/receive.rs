@@ -1,5 +1,7 @@
-use events::Event;
-use events::Event::{R_GotCode, R_GotKey};
+use events::Events;
+// we process these
+use events::ReceiveEvent;
+// we emit these
 
 pub struct Receive {}
 
@@ -8,11 +10,11 @@ impl Receive {
         Receive {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: ReceiveEvent) -> Events {
+        use events::ReceiveEvent::*;
         match event {
-            R_GotCode => vec![],
-            R_GotKey => vec![],
-            _ => panic!(),
+            GotCode => events![],
+            GotKey => events![],
         }
     }
 }

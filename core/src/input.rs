@@ -1,5 +1,7 @@
-use events::Event;
-use events::Event::{I_GotNameplates, I_GotWordlist, I_Start};
+use events::Events;
+// we process these
+use events::InputEvent;
+// we emit these
 
 pub struct Input {}
 
@@ -8,12 +10,12 @@ impl Input {
         Input {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: InputEvent) -> Events {
+        use events::InputEvent::*;
         match event {
-            I_Start => vec![],
-            I_GotNameplates => vec![],
-            I_GotWordlist => vec![],
-            _ => panic!(),
+            Start => events![],
+            GotNameplates => events![],
+            GotWordlist => events![],
         }
     }
 }

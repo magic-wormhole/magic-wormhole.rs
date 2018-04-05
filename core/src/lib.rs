@@ -2,9 +2,10 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+#[macro_use]
+mod events;
 
 mod api;
-mod events;
 mod allocator;
 mod boss;
 mod code;
@@ -22,10 +23,9 @@ mod terminator;
 mod wordlist;
 
 use std::collections::VecDeque;
-use events::{machine_for_event, Event};
+use events::{Event, Events};
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle,
               WSHandle};
-use events::Event::RC_Start;
 
 pub struct WormholeCore {
     allocator: allocator::Allocator,
@@ -75,15 +75,17 @@ impl WormholeCore {
 
     pub fn start(&mut self) -> Vec<Action> {
         // TODO: replace with Boss::Start, which will start rendezvous
-        self.execute(RC_Start)
+        self._execute(events![events::RendezvousEvent::Start])
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
-        self.execute(Event::from(event))
+        let events = self.boss.process_api(event);
+        self._execute(events)
     }
 
     pub fn do_io(&mut self, event: IOEvent) -> Vec<Action> {
-        self.execute(Event::from(event))
+        let events = self.rendezvous.process_io(event);
+        self._execute(events)
     }
 
     pub fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
@@ -94,40 +96,42 @@ impl WormholeCore {
         Vec::new()
     }
 
-    fn execute(&mut self, event: Event) -> Vec<Action> {
+    fn _execute(&mut self, events: Events) -> Vec<Action> {
         let mut action_queue: Vec<Action> = Vec::new(); // returned
         let mut event_queue: VecDeque<Event> = VecDeque::new();
-        event_queue.push_back(event);
+
+        event_queue.append(&mut VecDeque::from(events.events));
 
         while let Some(e) = event_queue.pop_front() {
-            let machine = machine_for_event(&e);
-            use events::Machine::*;
-            let actions: Vec<Event> = match machine {
-                API_Action => {
-                    action_queue.push(Action::API(APIAction::from(e)));
-                    vec![]
+            use events::Event::*; // machine names
+            let actions: Events = match e {
+                API(a) => {
+                    action_queue.push(Action::API(a));
+                    events![]
                 }
-                IO_Action => {
-                    action_queue.push(Action::IO(IOAction::from(e)));
-                    vec![]
+                IO(a) => {
+                    action_queue.push(Action::IO(a));
+                    events![]
                 }
-                //Allocator => self.allocator.process(e),
-                //Boss => self.boss.process(e),
-                //Code => self.code.process(e),
-                //Input => self.input.process(e),
-                //Key => self.key.process(e),
-                //Lister => self.lister.process(e),
-                //Mailbox => self.mailbox.process(e),
-                Nameplate => self.nameplate.process(e),
-                //Order => self.order.process(e),
-                //Receive => self.receive.process(e),
-                Rendezvous => self.rendezvous.process(e),
-                //Send => self.send.process(e),
-                //Terminator => self.terminator.process(e),
+                Allocator(e) => self.allocator.process(e),
+                Boss(e) => self.boss.process(e),
+                Code(e) => self.code.process(e),
+                Input(e) => self.input.process(e),
+                Key(e) => self.key.process(e),
+                Lister(e) => self.lister.process(e),
+                Mailbox(e) => self.mailbox.process(e),
+                Nameplate(e) => self.nameplate.process(e),
+                Order(e) => self.order.process(e),
+                Receive(e) => self.receive.process(e),
+                Rendezvous(e) => self.rendezvous.process(e),
+                Send(e) => self.send.process(e),
+                Terminator(e) => self.terminator.process(e),
                 _ => panic!(),
             };
 
-            for a in actions {
+            for a in actions.events {
+                // TODO use iter
+                // TODO: insert in front of queue: depth-first processing
                 event_queue.push_back(a);
             }
         }

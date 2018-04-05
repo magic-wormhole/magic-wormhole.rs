@@ -1,14 +1,15 @@
-use events::Event;
+use events::{Event, Events};
 use api::Mood;
 // we process these
-use events::Event::{API_GotClosed, API_GotCode, API_GotMessage,
-                    API_GotUnverifiedKey, API_GotVerifier, B_Closed, B_Error,
-                    B_GotCode, B_GotKey, B_GotMessage, B_GotVerifier, B_Happy,
-                    B_RxError, B_RxWelcome, B_Scared};
-use events::Event::{API_AllocateCode, API_Close, API_Send, API_SetCode,
-                    C_AllocateCode, C_InputCode, C_SetCode, S_Send};
+use events::BossEvent;
+use api::APIEvent;
 // we emit these
-use events::Event::{RC_Stop, T_Close};
+use api::APIAction;
+use events::CodeEvent::{AllocateCode as C_AllocateCode,
+                        InputCode as C_InputCode, SetCode as C_SetCode};
+use events::RendezvousEvent::Stop as RC_Stop;
+use events::SendEvent::Send as S_Send;
+use events::TerminatorEvent::Close as T_Close;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -33,74 +34,80 @@ impl Boss {
         }
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process_api(&mut self, event: APIEvent) -> Events {
+        use api::APIEvent::*;
         match event {
-            API_AllocateCode => self.allocate_code(), // TODO: len, wordlist
-            API_InputCode => self.input_code(),       // TODO: return Helper
-            API_SetCode(code) => self.set_code(&code),
-            B_GotCode(code) => self.got_code(&code),
-            B_GotKey(key) => vec![API_GotUnverifiedKey(key)],
-            B_Happy => self.happy(),
-            B_GotVerifier(verifier) => vec![API_GotVerifier(verifier)],
-            B_GotMessage(side, phase, plaintext) => {
-                self.got_message(&side, &phase, plaintext)
-            }
-            API_Send(plaintext) => self.send(plaintext),
-            API_Close => vec![RC_Stop], // eventually signals GotClosed
-            B_Closed => self.closed(),
-            B_Error | B_RxError | B_RxWelcome | B_Scared => vec![],
-            _ => panic!(),
+            AllocateCode => self.allocate_code(), // TODO: len, wordlist
+            InputCode => self.input_code(),       // TODO: return Helper
+            SetCode(code) => self.set_code(&code),
+            Close => events![RC_Stop], // eventually signals GotClosed
+            Send(plaintext) => self.send(plaintext),
         }
     }
 
-    fn allocate_code(&mut self) -> Vec<Event> {
+    pub fn process(&mut self, event: BossEvent) -> Events {
+        use events::BossEvent::*;
+        match event {
+            GotCode(code) => self.got_code(&code),
+            GotKey(key) => events![APIAction::GotUnverifiedKey(key)],
+            Happy => self.happy(),
+            GotVerifier(verifier) => events![APIAction::GotVerifier(verifier)],
+            GotMessage(side, phase, plaintext) => {
+                self.got_message(&side, &phase, plaintext)
+            }
+            Closed => self.closed(),
+            Error | RxError | RxWelcome | Scared => events![],
+        }
+    }
+
+    fn allocate_code(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => (vec![C_AllocateCode], Coding),
+            Empty => (events![C_AllocateCode], Coding),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
         actions
     }
 
-    fn set_code(&mut self, code: &str) -> Vec<Event> {
+    fn set_code(&mut self, code: &str) -> Events {
         // TODO: validate code, maybe signal KeyFormatError
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => (vec![C_SetCode(code.to_string())], Lonely),
+            Empty => (events![C_SetCode(code.to_string())], Lonely),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
         actions
     }
 
-    fn input_code(&mut self) -> Vec<Event> {
+    fn input_code(&mut self) -> Events {
         // TODO: validate code, maybe signal KeyFormatError
         // TODO: return Helper somehow
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => (vec![C_InputCode], Coding),
+            Empty => (events![C_InputCode], Coding),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
         actions
     }
 
-    fn got_code(&mut self, code: &str) -> Vec<Event> {
+    fn got_code(&mut self, code: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Coding => (vec![API_GotCode(code.to_string())], Lonely),
+            Coding => (events![APIAction::GotCode(code.to_string())], Lonely),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
         actions
     }
 
-    fn happy(&mut self) -> Vec<Event> {
+    fn happy(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Lonely => (vec![], Happy),
-            Closing => (vec![], Closing),
+            Lonely => (events![], Happy),
+            Closing => (events![], Closing),
             _ => panic!(),
         };
         self.state = newstate;
@@ -112,25 +119,25 @@ impl Boss {
         side: &str,
         phase: &str,
         plaintext: Vec<u8>,
-    ) -> Vec<Event> {
+    ) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Closing => (vec![], Closing),
-            Closed => (vec![], Closed),
+            Closing => (events![], Closing),
+            Closed => (events![], Closed),
             // TODO: find a way to combine these
-            Empty => (vec![], Empty),
-            Coding => (vec![], Coding),
-            Lonely => (vec![], Lonely),
+            Empty => (events![], Empty),
+            Coding => (events![], Coding),
+            Lonely => (events![], Lonely),
             Happy => {
                 if phase == "version" {
                     // TODO deliver the "app_versions" key to API
-                    (vec![], Happy)
+                    (events![], Happy)
                 } else if phase == "\\d+" {
                     // TODO: match on regexp
-                    (vec![API_GotMessage(plaintext)], Happy)
+                    (events![APIAction::GotMessage(plaintext)], Happy)
                 } else {
                     // TODO: log and ignore, for future expansion
-                    (vec![], Happy)
+                    (events![], Happy)
                 }
             }
         };
@@ -138,51 +145,51 @@ impl Boss {
         actions
     }
 
-    fn send(&mut self, plaintext: Vec<u8>) -> Vec<Event> {
+    fn send(&mut self, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Closing => (vec![], Closing),
-            Closed => (vec![], Closed),
+            Closing => (events![], Closing),
+            Closed => (events![], Closed),
             // TODO: find a way to combine these
-            Empty => (vec![S_Send(plaintext)], Empty),
-            Coding => (vec![S_Send(plaintext)], Coding),
-            Lonely => (vec![S_Send(plaintext)], Lonely),
-            Happy => (vec![S_Send(plaintext)], Happy),
+            Empty => (events![S_Send(plaintext)], Empty),
+            Coding => (events![S_Send(plaintext)], Coding),
+            Lonely => (events![S_Send(plaintext)], Lonely),
+            Happy => (events![S_Send(plaintext)], Happy),
         };
         self.state = newstate;
         actions
     }
 
-    fn close(&mut self) -> Vec<Event> {
+    fn close(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Empty => {
                 self.mood = Mood::Lonely;
-                (vec![T_Close(Mood::Lonely)], Closing)
+                (events![T_Close(Mood::Lonely)], Closing)
             }
             Coding => {
                 self.mood = Mood::Lonely;
-                (vec![T_Close(Mood::Lonely)], Closing)
+                (events![T_Close(Mood::Lonely)], Closing)
             }
             Lonely => {
                 self.mood = Mood::Lonely;
-                (vec![T_Close(Mood::Lonely)], Closing)
+                (events![T_Close(Mood::Lonely)], Closing)
             }
             Happy => {
                 self.mood = Mood::Happy;
-                (vec![T_Close(Mood::Happy)], Closing)
+                (events![T_Close(Mood::Happy)], Closing)
             }
-            Closing => (vec![], Closing),
-            Closed => (vec![], Closed),
+            Closing => (events![], Closing),
+            Closed => (events![], Closed),
         };
         self.state = newstate;
         actions
     }
 
-    fn closed(&mut self) -> Vec<Event> {
+    fn closed(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Closing => (vec![API_GotClosed(self.mood)], Closing),
+            Closing => (events![APIAction::GotClosed(self.mood)], Closing),
             _ => panic!(),
         };
         self.state = newstate;
@@ -193,7 +200,8 @@ impl Boss {
 #[cfg(test)]
 mod test {
     use super::*;
-    use events::Event::API_Close;
+    use api::APIEvent;
+    use events::RendezvousEvent;
 
     #[test]
     fn create() {
@@ -202,7 +210,7 @@ mod test {
 
     fn process_api() {
         let mut b = Boss::new();
-        let actions = b.process(API_Close);
-        assert_eq!(actions, vec![RC_Stop]);
+        let actions = b.process_api(APIEvent::Close);
+        assert_eq!(actions, events![RendezvousEvent::Stop]);
     }
 }

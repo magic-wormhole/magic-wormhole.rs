@@ -1,5 +1,8 @@
-use events::Event;
-use events::Event::{C_Allocated, C_FinishedInput, C_GotNameplate};
+use events::Events;
+// we process these
+use events::CodeEvent;
+// we emit these
+
 pub struct Code {}
 
 impl Code {
@@ -7,12 +10,15 @@ impl Code {
         Code {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: CodeEvent) -> Events {
+        use events::CodeEvent::*;
         match event {
-            C_Allocated => vec![],
-            C_GotNameplate => vec![],
-            C_FinishedInput => vec![],
-            _ => panic!(),
+            AllocateCode => events![],
+            InputCode => events![],
+            SetCode(code) => events![],
+            Allocated => events![],
+            GotNameplate => events![],
+            FinishedInput => events![],
         }
     }
 }
