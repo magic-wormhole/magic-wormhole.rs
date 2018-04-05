@@ -6,43 +6,41 @@ extern crate serde_json;
 mod events;
 
 mod api;
-mod events;
-mod allocator;
+//mod allocator;
 mod boss;
-mod code;
-mod input;
-mod key;
-mod lister;
-mod mailbox;
-mod nameplate;
-mod order;
-mod receive;
-mod rendezvous;
+//mod code;
+//mod input;
+//mod key;
+//mod lister;
+//mod mailbox;
+//mod nameplate;
+//mod order;
+//mod receive;
+//mod rendezvous;
 mod server_messages;
-mod send;
-mod terminator;
-mod wordlist;
+//mod send;
+//mod terminator;
+//mod wordlist;
 
 use std::collections::VecDeque;
-use events::{machine_for_event, Event};
+use events::{Event, Events, RendezvousEvent};
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle,
               WSHandle};
-use events::Event::RC_Start;
 
 pub struct WormholeCore {
-    allocator: allocator::Allocator,
+    //allocator: allocator::Allocator,
     boss: boss::Boss,
-    code: code::Code,
-    input: input::Input,
-    key: key::Key,
-    lister: lister::Lister,
-    mailbox: mailbox::Mailbox,
-    nameplate: nameplate::Nameplate,
-    order: order::Order,
-    receive: receive::Receive,
-    rendezvous: rendezvous::Rendezvous,
-    send: send::Send,
-    terminator: terminator::Terminator,
+    //code: code::Code,
+    //input: input::Input,
+    //key: key::Key,
+    //lister: lister::Lister,
+    //mailbox: mailbox::Mailbox,
+    //nameplate: nameplate::Nameplate,
+    //order: order::Order,
+    //receive: receive::Receive,
+    //rendezvous: rendezvous::Rendezvous,
+    //send: send::Send,
+    //terminator: terminator::Terminator,
 }
 
 // I don't know how to write this
@@ -54,38 +52,41 @@ impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
         let side = "side1"; // TODO: generate randomly
         WormholeCore {
-            allocator: allocator::Allocator::new(),
+            //allocator: allocator::Allocator::new(),
             boss: boss::Boss::new(),
-            code: code::Code::new(),
-            input: input::Input::new(),
-            key: key::Key::new(),
-            lister: lister::Lister::new(),
-            mailbox: mailbox::Mailbox::new(),
-            nameplate: nameplate::Nameplate::new(),
-            order: order::Order::new(),
-            receive: receive::Receive::new(),
-            rendezvous: rendezvous::Rendezvous::new(
+            //code: code::Code::new(),
+            //input: input::Input::new(),
+            //key: key::Key::new(),
+            //lister: lister::Lister::new(),
+            //mailbox: mailbox::Mailbox::new(),
+            //nameplate: nameplate::Nameplate::new(),
+            //order: order::Order::new(),
+            //receive: receive::Receive::new(),
+            /*rendezvous: rendezvous::Rendezvous::new(
                 appid,
                 relay_url,
                 side,
                 5.0,
-            ),
-            send: send::Send::new(),
-            terminator: terminator::Terminator::new(),
+            ),*/
+            //send: send::Send::new(),
+            //terminator: terminator::Terminator::new(),
         }
     }
 
     pub fn start(&mut self) -> Vec<Action> {
         // TODO: replace with Boss::Start, which will start rendezvous
-        self.execute(RC_Start)
+        //self.execute(RC_Start)
+        self._execute(events![])
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
-        self.execute(Event::from(event))
+        let events = self.boss.process_api(event);
+        self._execute(events)
     }
 
     pub fn do_io(&mut self, event: IOEvent) -> Vec<Action> {
-        self.execute(Event::from(event))
+        //let events = self.rendezvous.process_io(event);
+        self._execute(events![])
     }
 
     pub fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
@@ -96,40 +97,40 @@ impl WormholeCore {
         Vec::new()
     }
 
-    fn execute(&mut self, event: Event) -> Vec<Action> {
+    fn _execute(&mut self, events: Events) -> Vec<Action> {
         let mut action_queue: Vec<Action> = Vec::new(); // returned
-        let mut event_queue: Events::new();
-        event_queue.push_back(event);
+        let mut event_queue: VecDeque<Event> = VecDeque::new();
+
+        event_queue.append(&mut VecDeque::from(events.events));
 
         while let Some(e) = event_queue.pop_front() {
-            let machine = machine_for_event(&e);
-            use events::Machine::*;
-            let actions: Vec<Event> = match machine {
-                API_Action => {
-                    action_queue.push(Action::API(APIAction::from(e)));
-                    vec![]
+            use events::Event::*; // machine names
+            let actions: Events = match e {
+                API(a) => {
+                    action_queue.push(Action::API(a));
+                    events![]
                 }
-                IO_Action => {
-                    action_queue.push(Action::IO(IOAction::from(e)));
-                    vec![]
+                IO(a) => {
+                    action_queue.push(Action::IO(a));
+                    events![]
                 }
                 //Allocator => self.allocator.process(e),
-                //Boss => self.boss.process(e),
+                Boss(e) => self.boss.process(e),
                 //Code => self.code.process(e),
                 //Input => self.input.process(e),
                 //Key => self.key.process(e),
                 //Lister => self.lister.process(e),
                 //Mailbox => self.mailbox.process(e),
-                Nameplate => self.nameplate.process(e),
+                //Nameplate => self.nameplate.process(e),
                 //Order => self.order.process(e),
                 //Receive => self.receive.process(e),
-                Rendezvous => self.rendezvous.process(e),
+                //Rendezvous(e) => self.rendezvous.process(e),
                 //Send => self.send.process(e),
                 //Terminator => self.terminator.process(e),
                 _ => panic!(),
             };
 
-            for a in actions {
+            for a in actions.events { // TODO use iter
                 event_queue.push_back(a);
             }
         }
