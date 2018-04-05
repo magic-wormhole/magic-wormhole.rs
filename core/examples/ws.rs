@@ -1,6 +1,8 @@
 extern crate magic_wormhole_core;
 extern crate url;
 extern crate ws;
+#[macro_use]
+extern crate serde_json;
 use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
                           TimerHandle, WSHandle, WormholeCore};
 use std::cell::RefCell;
@@ -72,6 +74,13 @@ impl ws::Handler for MyHandler {
         println!("on_open");
         let mut wc = self.wcr.borrow_mut();
         let actions = wc.do_io(IOEvent::WebSocketConnectionMade(self.wsh));
+        process_actions(&self.out, actions);
+        // TODO: this should go just after .start()
+        let actions = wc.do_api(APIEvent::SetCode("4-purple-sausages".to_string()));
+        process_actions(&self.out, actions);
+        let offer = json!({"offer": {"message": "hello from rust"}});
+        // then expect {"answer": {"message_ack": "ok"}}
+        let actions = wc.do_api(APIEvent::Send(offer.to_string().into_bytes()));
         process_actions(&self.out, actions);
         Ok(())
     }
