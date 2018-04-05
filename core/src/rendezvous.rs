@@ -9,17 +9,15 @@
 
 use serde_json;
 use api::{TimerHandle, WSHandle};
-use events::Event;
-// we handle these
-use events::Event::{RC_Start, RC_Stop, RC_TxAdd, RC_TxAllocate, RC_TxClaim,
-                    RC_TxClose, RC_TxList, RC_TxOpen, RC_TxRelease};
-use events::Event::{IO_TimerExpired, IO_WebSocketConnectionLost,
-                    IO_WebSocketConnectionMade, IO_WebSocketMessageReceived};
-// we emit these
-use events::Event::N_Connected;
-use events::Event::{IO_CancelTimer, IO_StartTimer, IO_WebSocketClose,
-                    IO_WebSocketOpen, IO_WebSocketSendMessage};
+use events::Events;
 use server_messages::{bind, deserialize, Message};
+// we process these
+use events::RendezvousEvent;
+use api::IOEvent;
+// we emit these
+use api::IOAction;
+use events::NameplateEvent::Connected as N_Connected;
+use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -66,36 +64,46 @@ impl Rendezvous {
         }
     }
 
-    pub fn process(&mut self, e: Event) -> Vec<Event> {
-        match e {
-            RC_Start => self.start(),
-            RC_TxOpen => vec![],
-            RC_TxAdd => vec![],
-            RC_TxClose => vec![],
-            RC_Stop => self.stop(),
-            RC_TxClaim => vec![],
-            RC_TxRelease => vec![],
-            RC_TxAllocate => vec![],
-            RC_TxList => vec![],
-            IO_WebSocketConnectionMade(wsh) => self.connection_made(wsh),
-            IO_WebSocketMessageReceived(wsh, message) => {
+    pub fn process_io(&mut self, event: IOEvent) -> Events {
+        use api::IOEvent::*;
+        match event {
+            WebSocketConnectionMade(wsh) => self.connection_made(wsh),
+            WebSocketMessageReceived(wsh, message) => {
                 self.message_received(wsh, &message)
             }
-            IO_WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
-            IO_TimerExpired(th) => self.timer_expired(th),
-            _ => panic!(),
+            WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
+            TimerExpired(th) => self.timer_expired(th),
         }
     }
 
-    fn start(&mut self) -> Vec<Event> {
+    pub fn process(&mut self, e: RendezvousEvent) -> Events {
+        use events::RendezvousEvent::*;
+        match e {
+            Start => self.start(),
+            TxBind(m) => self.send(m),
+            TxOpen => events![],
+            TxAdd => events![],
+            TxClose => events![],
+            Stop => self.stop(),
+            TxClaim => events![],
+            TxRelease => events![],
+            TxAllocate => events![],
+            TxList => events![],
+        }
+    }
+
+    fn start(&mut self) -> Events {
         // I want this to be stable, but that makes the lifetime weird
         //let wsh = self.wsh;
         //let wsh = WSHandle{};
         let actions;
         let newstate = match self.state {
             State::Idle => {
-                actions = vec![
-                    IO_WebSocketOpen(self.wsh, self.relay_url.to_lowercase()),
+                actions = events![
+                    IOAction::WebSocketOpen(
+                        self.wsh,
+                        self.relay_url.to_lowercase()
+                    )
                 ];
                 //"url".to_string());
                 State::Connecting
@@ -106,20 +114,17 @@ impl Rendezvous {
         actions
     }
 
-    fn connection_made(&mut self, _handle: WSHandle) -> Vec<Event> {
-        let mut actions = Vec::new();
+    fn connection_made(&mut self, _handle: WSHandle) -> Events {
         // TODO: assert handle == self.handle
-        let newstate = match self.state {
+        let (actions, newstate) = match self.state {
             State::Connecting => {
-                // TODO: maybe emit TxBind instead, let it loop around?
+                // TODO: does the order of this matter? if so, oh boy.
                 let b = bind(&self.appid, &self.side);
-                actions.extend(self.send(b));
-                // TODO: does the order of the matter? if so, oh boy.
-                actions.push(N_Connected);
+                let a = events![RC_TxBind(b), N_Connected];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
                 //actions.push(M_Connected);
-                State::Connected
+                (a, State::Connected)
             }
             _ => panic!("bad transition from {:?}", self),
         };
@@ -127,44 +132,41 @@ impl Rendezvous {
         actions
     }
 
-    fn message_received(
-        &mut self,
-        _handle: WSHandle,
-        message: &str,
-    ) -> Vec<Event> {
+    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
         let m = deserialize(&message);
         println!("msg is {:?}", m);
-        vec![]
+        events![]
     }
 
-    fn connection_lost(&mut self, _handle: WSHandle) -> Vec<Event> {
-        let mut actions = Vec::new();
+    fn connection_lost(&mut self, _handle: WSHandle) -> Events {
         // TODO: assert handle == self.handle
-        let newstate = match self.state {
+        let (actions, newstate) = match self.state {
             State::Connecting | State::Connected => {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
-                actions.push(IO_StartTimer(new_handle, self.retry_timer));
-                State::Waiting
+                (
+                    events![IOAction::StartTimer(new_handle, self.retry_timer)],
+                    State::Waiting,
+                )
             }
-            State::Disconnecting => State::Stopped,
+            State::Disconnecting => (events![], State::Stopped),
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
         actions
     }
 
-    fn timer_expired(&mut self, _handle: TimerHandle) -> Vec<Event> {
-        let mut actions = Vec::new();
+    fn timer_expired(&mut self, _handle: TimerHandle) -> Events {
         // TODO: assert handle == self.handle
-        let newstate = match self.state {
+        let (actions, newstate) = match self.state {
             State::Waiting => {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
-                let open =
-                    IO_WebSocketOpen(new_handle, self.relay_url.to_lowercase());
-                actions.push(open);
-                State::Connecting
+                let open = IOAction::WebSocketOpen(
+                    new_handle,
+                    self.relay_url.to_lowercase(),
+                );
+                (events![open], State::Connecting)
             }
             _ => panic!("bad transition from {:?}", self),
         };
@@ -172,34 +174,32 @@ impl Rendezvous {
         actions
     }
 
-    fn stop(&mut self) -> Vec<Event> {
-        let mut actions = Vec::new();
-        let newstate = match self.state {
-            State::Idle | State::Stopped => State::Stopped,
+    fn stop(&mut self) -> Events {
+        let (actions, newstate) = match self.state {
+            State::Idle | State::Stopped => (events![], State::Stopped),
             State::Connecting | State::Connected => {
-                let close = IO_WebSocketClose(self.wsh);
-                actions.push(close);
-                State::Disconnecting
+                let close = IOAction::WebSocketClose(self.wsh);
+                (events![close], State::Disconnecting)
             }
             State::Waiting => {
-                let cancel = IO_CancelTimer(self.reconnect_timer.unwrap());
-                actions.push(cancel);
-                State::Stopped
+                let cancel =
+                    IOAction::CancelTimer(self.reconnect_timer.unwrap());
+                (events![cancel], State::Stopped)
             }
-            State::Disconnecting => State::Disconnecting,
+            State::Disconnecting => (events![], State::Disconnecting),
         };
         self.state = newstate;
         actions
     }
 
-    fn send(&mut self, m: Message) -> Vec<Event> {
+    fn send(&mut self, m: Message) -> Events {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
-        let s = IO_WebSocketSendMessage(
+        let s = IOAction::WebSocketSendMessage(
             self.wsh,
             serde_json::to_string(&m).unwrap(),
         );
-        vec![s]
+        events![s]
     }
 }
 
@@ -207,10 +207,11 @@ impl Rendezvous {
 mod test {
     use server_messages::{deserialize, Message};
     use api::{TimerHandle, WSHandle};
-    use events::Event::{IO_TimerExpired, IO_WebSocketConnectionLost,
-                        IO_WebSocketConnectionMade, RC_Stop};
-    use events::Event::{IO_StartTimer, IO_WebSocketClose, IO_WebSocketOpen,
-                        IO_WebSocketSendMessage, N_Connected};
+    use events::Event::{Nameplate, Rendezvous, API, IO};
+    use api::IOAction;
+    use api::IOEvent;
+    use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
+    use events::NameplateEvent::Connected as N_Connected;
 
     #[test]
     fn create() {
@@ -219,7 +220,7 @@ mod test {
         let wsh: WSHandle;
         let th: TimerHandle;
 
-        let mut actions = r.start();
+        let mut actions = r.start().events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         // TODO: I want to:
@@ -230,7 +231,7 @@ mod test {
         // * assert that o.1 is "url"
 
         match e {
-            IO_WebSocketOpen(wsh0, url0) => {
+            IO(IOAction::WebSocketOpen(wsh0, url0)) => {
                 wsh = wsh0;
                 assert_eq!(url0, "url");
             }
@@ -238,15 +239,47 @@ mod test {
         }
 
         // now we tell it we're connected
-        actions = r.process(IO_WebSocketConnectionMade(wsh));
-        // it should send a BIND
+        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
+        // it should tell itself to send a BIND
         // then it should notify several other machines
 
         assert_eq!(actions.len(), 2);
         let e = actions.remove(0);
         println!("e is {:?}", e);
+        let b;
         match e {
-            IO_WebSocketSendMessage(wsh0, m) => {
+            Rendezvous(b0) => {
+                b = b0;
+                match &b {
+                    &RC_TxBind(Message::Bind {
+                        appid: ref appid0,
+                        side: ref side0,
+                    }) => {
+                        assert_eq!(appid0, "appid");
+                        assert_eq!(side0, "side1");
+                    }
+                    _ => panic!(),
+                }
+            }
+            _ => panic!(),
+        }
+
+        let e = actions.remove(0);
+
+        match e {
+            Nameplate(N_Connected) => {
+                // yay
+            }
+            _ => panic!(),
+        }
+
+        // we let the TxBind loop around
+        actions = r.process(b).events;
+        assert_eq!(actions.len(), 1);
+        let e = actions.remove(0);
+        println!("e is {:?}", e);
+        match e {
+            IO(IOAction::WebSocketSendMessage(wsh0, m)) => {
                 assert_eq!(wsh0, wsh);
                 if let Message::Bind { appid, side } = deserialize(&m) {
                     assert_eq!(appid, "appid");
@@ -258,31 +291,23 @@ mod test {
             _ => panic!(),
         }
 
-        let e = actions.remove(0);
-        match e {
-            N_Connected => {
-                // yay
-            }
-            _ => panic!(),
-        }
-
-        actions = r.process(IO_WebSocketConnectionLost(wsh));
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         match e {
-            IO_StartTimer(handle, duration) => {
+            IO(IOAction::StartTimer(handle, duration)) => {
                 assert_eq!(duration, 5.0);
                 th = handle;
             }
             _ => panic!(),
         }
 
-        actions = r.process(IO_TimerExpired(th));
+        actions = r.process_io(IOEvent::TimerExpired(th)).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         let wsh2;
         match e {
-            IO_WebSocketOpen(wsh0, url0) => {
+            IO(IOAction::WebSocketOpen(wsh0, url0)) => {
                 // TODO: should be a different handle, once implemented
                 wsh2 = wsh0;
                 assert_eq!(url0, "url");
@@ -290,19 +315,19 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process(RC_Stop);
+        actions = r.process(RC_Stop).events;
         // we were Connecting, so we should see a close and then wait for
         // disconnect
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         match e {
-            IO_WebSocketClose(_wsh0) => {
+            IO(IOAction::WebSocketClose(_wsh0)) => {
                 //assert_eq!(wsh0, wsh2);
             }
             _ => panic!(),
         }
 
-        actions = r.process(IO_WebSocketConnectionLost(wsh2));
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2)).events;
         assert_eq!(actions.len(), 0);
     }
 }

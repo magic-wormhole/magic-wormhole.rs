@@ -3,6 +3,7 @@ use std::collections::HashMap;
 pub enum APIEvent {
     // from application to IO glue to WormholeCore
     AllocateCode,
+    InputCode,
     SetCode(String),
     Close,
     Send(Vec<u8>),

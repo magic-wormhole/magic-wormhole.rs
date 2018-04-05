@@ -1,5 +1,7 @@
-use events::Event;
-use events::Event::{S_GotVerifiedKey, S_Send};
+use events::Events;
+// we process these
+use events::SendEvent;
+// we emit these
 
 pub struct Send {}
 
@@ -8,11 +10,11 @@ impl Send {
         Send {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: SendEvent) -> Events {
+        use events::SendEvent::*;
         match event {
-            S_Send(plaintext) => vec![],
-            S_GotVerifiedKey => vec![],
-            _ => panic!(),
+            Send(plaintext) => events![],
+            GotVerifiedKey => events![],
         }
     }
 }
