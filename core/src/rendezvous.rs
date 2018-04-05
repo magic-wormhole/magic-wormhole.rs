@@ -16,8 +16,8 @@ use events::RendezvousEvent;
 use api::IOEvent;
 // we emit these
 use api::IOAction;
-use events::NameplateEvent::{Connected as N_Connected};
-use events::RendezvousEvent::{TxBind as RC_TxBind}; // loops around
+use events::NameplateEvent::Connected as N_Connected;
+use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -100,7 +100,11 @@ impl Rendezvous {
         let newstate = match self.state {
             State::Idle => {
                 actions = events![
-                    IOAction::WebSocketOpen(self.wsh, self.relay_url.to_lowercase())];
+                    IOAction::WebSocketOpen(
+                        self.wsh,
+                        self.relay_url.to_lowercase()
+                    )
+                ];
                 //"url".to_string());
                 State::Connecting
             }
@@ -128,11 +132,7 @@ impl Rendezvous {
         actions
     }
 
-    fn message_received(
-        &mut self,
-        _handle: WSHandle,
-        message: &str,
-    ) -> Events {
+    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
         let m = deserialize(&message);
         println!("msg is {:?}", m);
         events![]
@@ -144,8 +144,10 @@ impl Rendezvous {
             State::Connecting | State::Connected => {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
-                (events![IOAction::StartTimer(new_handle, self.retry_timer)],
-                 State::Waiting)
+                (
+                    events![IOAction::StartTimer(new_handle, self.retry_timer)],
+                    State::Waiting,
+                )
             }
             State::Disconnecting => (events![], State::Stopped),
             _ => panic!("bad transition from {:?}", self),
@@ -160,8 +162,10 @@ impl Rendezvous {
             State::Waiting => {
                 let new_handle = WSHandle::new(2);
                 // I.. don't know how to copy a String
-                let open =
-                    IOAction::WebSocketOpen(new_handle, self.relay_url.to_lowercase());
+                let open = IOAction::WebSocketOpen(
+                    new_handle,
+                    self.relay_url.to_lowercase(),
+                );
                 (events![open], State::Connecting)
             }
             _ => panic!("bad transition from {:?}", self),
@@ -178,7 +182,8 @@ impl Rendezvous {
                 (events![close], State::Disconnecting)
             }
             State::Waiting => {
-                let cancel = IOAction::CancelTimer(self.reconnect_timer.unwrap());
+                let cancel =
+                    IOAction::CancelTimer(self.reconnect_timer.unwrap());
                 (events![cancel], State::Stopped)
             }
             State::Disconnecting => (events![], State::Disconnecting),
@@ -202,12 +207,11 @@ impl Rendezvous {
 mod test {
     use server_messages::{deserialize, Message};
     use api::{TimerHandle, WSHandle};
-    use events::Event::{API, IO, Rendezvous, Nameplate};
+    use events::Event::{Nameplate, Rendezvous, API, IO};
     use api::IOAction;
     use api::IOEvent;
-    use events::RendezvousEvent::{TxBind as RC_TxBind,
-                                  Stop as RC_Stop};
-    use events::NameplateEvent::{Connected as N_Connected};
+    use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
+    use events::NameplateEvent::Connected as N_Connected;
 
     #[test]
     fn create() {
@@ -247,7 +251,10 @@ mod test {
             Rendezvous(b0) => {
                 b = b0;
                 match &b {
-                    &RC_TxBind(Message::Bind{appid: ref appid0, side: ref side0}) => {
+                    &RC_TxBind(Message::Bind {
+                        appid: ref appid0,
+                        side: ref side0,
+                    }) => {
                         assert_eq!(appid0, "appid");
                         assert_eq!(side0, "side1");
                     }
@@ -294,7 +301,6 @@ mod test {
             }
             _ => panic!(),
         }
-
 
         actions = r.process_io(IOEvent::TimerExpired(th)).events;
         assert_eq!(actions.len(), 1);

@@ -129,7 +129,8 @@ impl WormholeCore {
                 _ => panic!(),
             };
 
-            for a in actions.events { // TODO use iter
+            for a in actions.events {
+                // TODO use iter
                 // TODO: insert in front of queue: depth-first processing
                 event_queue.push_back(a);
             }
