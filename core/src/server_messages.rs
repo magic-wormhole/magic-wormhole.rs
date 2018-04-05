@@ -1,6 +1,6 @@
 use serde_json;
 
-use serde::{self, Deserialize, Serializer, Deserializer};
+use serde::{self, Deserialize, Deserializer, Serializer};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
@@ -15,7 +15,9 @@ pub struct WelcomeMsg {
 // convert an optional field (which may result in deserialization error)
 // into an Option::None.
 pub fn invalid_option<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
-    where D: Deserializer<'de>, Option<T>: Deserialize<'de>
+where
+    D: Deserializer<'de>,
+    Option<T>: Deserialize<'de>,
 {
     Option::<T>::deserialize(de).or_else(|_| Ok(None))
 }
@@ -243,14 +245,17 @@ mod test {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
         let m = deserialize(&s);
         match m {
-            Message::Welcome { welcome: msg, server_tx: ts } => {
+            Message::Welcome {
+                welcome: msg,
+                server_tx: ts,
+            } => {
                 match msg {
                     None => (),
-                    _ => panic!()
+                    _ => panic!(),
                 }
                 assert_eq!(ts, Some(1234.56));
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
@@ -259,45 +264,52 @@ mod test {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
         let m = deserialize(&s);
         match m {
-            Message::Welcome { welcome: msg, server_tx: ts } => {
+            Message::Welcome {
+                welcome: msg,
+                server_tx: ts,
+            } => {
                 match msg {
                     None => (),
-                    _ => panic!()
+                    _ => panic!(),
                 }
                 match ts {
                     None => (),
-                    _ => panic!()
+                    _ => panic!(),
                 }
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
+    // TODO: when "error_on_line_overflow=false" lands on rustfmt(stable),
+    // let's replace this cfg_attr with a change to our .rustfmt.toml
     #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
         let m = deserialize(&s);
         match m {
-            Message::Welcome { welcome: msg, server_tx: ts } => {
+            Message::Welcome {
+                welcome: msg,
+                server_tx: ts,
+            } => {
                 match msg {
-                    Some(wmsg) => {
-                        match wmsg {
-                            WelcomeMsg { motd: msg_of_day } => {
-                                assert_eq!(msg_of_day, "hello world".to_string());
-                            },
-                            _ => panic!()
+                    Some(wmsg) => match wmsg {
+                        WelcomeMsg { motd: msg_of_day } => {
+                            assert_eq!(msg_of_day, "hello world".to_string());
                         }
+                        _ => panic!(),
                     },
-                    _ => panic!()
+                    _ => panic!(),
                 }
                 match ts {
                     Some(t) => {
                         assert_eq!(t, 1234.56);
-                    },
-                    _ => panic!()
+                    }
+                    _ => panic!(),
                 }
-            },
-            _ => panic!()
+            }
+            _ => panic!(),
         }
     }
 
