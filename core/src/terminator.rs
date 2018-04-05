@@ -1,5 +1,7 @@
-use events::Event;
-use events::Event::{T_Close, T_MailboxDone, T_NameplateDone, T_Stopped};
+use events::Events;
+// we process these
+use events::TerminatorEvent;
+// we emit these
 
 pub struct Terminator {}
 
@@ -8,13 +10,13 @@ impl Terminator {
         Terminator {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: TerminatorEvent) -> Events {
+        use events::TerminatorEvent::*;
         match event {
-            T_Close(_mood) => vec![],
-            T_MailboxDone => vec![],
-            T_NameplateDone => vec![],
-            T_Stopped => vec![],
-            _ => panic!(),
+            Close(_mood) => events![],
+            MailboxDone => events![],
+            NameplateDone => events![],
+            Stopped => events![],
         }
     }
 }

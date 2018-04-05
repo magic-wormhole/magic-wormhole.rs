@@ -1,6 +1,7 @@
-use events::Event;
-use events::Event::{N_Connected, N_Lost, N_NameplateDone, N_Release,
-                    N_RxClaimed, N_RxReleased, N_SetNameplate};
+use events::Events;
+// we process these
+use events::NameplateEvent;
+// we emit these
 
 pub struct Nameplate {}
 
@@ -9,16 +10,16 @@ impl Nameplate {
         Nameplate {}
     }
 
-    pub fn process(&mut self, event: Event) -> Vec<Event> {
+    pub fn process(&mut self, event: NameplateEvent) -> Events {
+        use events::NameplateEvent::*;
         match event {
-            N_NameplateDone => vec![],
-            N_Connected => vec![],
-            N_Lost => vec![],
-            N_RxClaimed => vec![],
-            N_RxReleased => vec![],
-            N_SetNameplate => vec![],
-            N_Release => vec![],
-            _ => panic!(),
+            NameplateDone => events![],
+            Connected => events![],
+            Lost => events![],
+            RxClaimed => events![],
+            RxReleased => events![],
+            SetNameplate => events![],
+            Release => events![],
         }
     }
 }
