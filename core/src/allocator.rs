@@ -1,9 +1,4 @@
 use events::Events;
-enum AllocatorEvent {
-    Connected,
-    Lost,
-    RxAllocated,
-}
 
 pub struct Allocator {}
 
