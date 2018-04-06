@@ -71,7 +71,7 @@ pub enum MailboxEvent {
     RxMessage,
     RxClosed,
     Close,
-    GotMailbox,
+    GotMailbox(String),
     GotMessage,
     AddMessage, // PAKE+VERSION from Key, PHASE from Send
 }
@@ -81,7 +81,7 @@ pub enum NameplateEvent {
     NameplateDone,
     Connected,
     Lost,
-    RxClaimed,
+    RxClaimed(String),
     RxReleased,
     SetNameplate(String),
     Release,
@@ -109,8 +109,8 @@ pub enum RendezvousEvent {
     TxAdd,
     TxClose,
     Stop,
-    TxClaim,
-    TxRelease,
+    TxClaim(String),
+    TxRelease(String),
     TxAllocate,
     TxList,
 }
