@@ -127,10 +127,10 @@ impl fmt::Debug for SendEvent {
                 let p = String::from_utf8(s.to_vec());
                 match p {
                     Ok(p1) => write!(f, "Send({})", p1),
-                    Err(_) => write!(f, "Send(non-UTF8)")
+                    Err(_) => write!(f, "Send(non-UTF8)"),
                 }
             }
-            &SendEvent::GotVerifiedKey => write!(f, "Send(GotVerifiedKey)")
+            &SendEvent::GotVerifiedKey => write!(f, "Send(GotVerifiedKey)"),
         }
     }
 }

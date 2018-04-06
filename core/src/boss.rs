@@ -65,7 +65,7 @@ impl Boss {
         let (actions, newstate) = match self.state {
             Empty => {
                 let length = 2; // TODO: configurable by AllocateCode
-                let wordlist = Wordlist{}; // TODO: populate words
+                let wordlist = Wordlist {}; // TODO: populate words
                 (events![C_AllocateCode(length, wordlist)], Coding)
             }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
