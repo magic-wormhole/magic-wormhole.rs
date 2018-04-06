@@ -10,13 +10,14 @@
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
-use server_messages::{bind, deserialize, Message};
+use server_messages::{bind, claim, deserialize, Message};
 // we process these
 use events::RendezvousEvent;
 use api::IOEvent;
 // we emit these
 use api::IOAction;
-use events::NameplateEvent::Connected as N_Connected;
+use events::NameplateEvent::{Connected as N_Connected,
+                             RxClaimed as N_RxClaimed};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -85,7 +86,7 @@ impl Rendezvous {
             TxAdd => events![],
             TxClose => events![],
             Stop => self.stop(),
-            TxClaim(_nameplate) => events![], // TODO
+            TxClaim(nameplate) => self.send(claim(&nameplate)),
             TxRelease(_nameplate) => events![],
             TxAllocate => events![],
             TxList => events![],
@@ -137,7 +138,12 @@ impl Rendezvous {
     fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
         let m = deserialize(&message);
         println!("msg is {:?}", m);
-        events![]
+        match m {
+            Message::Claimed { mailbox } => {
+                events![N_RxClaimed(mailbox.to_string())]
+            }
+            _ => events![], // TODO
+        }
     }
 
     fn connection_lost(&mut self, _handle: WSHandle) -> Events {
