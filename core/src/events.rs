@@ -85,6 +85,7 @@ pub enum NameplateEvent {
     RxReleased,
     SetNameplate(String),
     Release,
+    Close,
 }
 
 #[derive(Debug, PartialEq)]
