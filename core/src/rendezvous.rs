@@ -85,8 +85,8 @@ impl Rendezvous {
             TxAdd => events![],
             TxClose => events![],
             Stop => self.stop(),
-            TxClaim => events![],
-            TxRelease => events![],
+            TxClaim(_nameplate) => events![], // TODO
+            TxRelease(_nameplate) => events![],
             TxAllocate => events![],
             TxList => events![],
         }
