@@ -18,7 +18,7 @@ impl Mailbox {
             RxMessage => events![],
             RxClosed => events![],
             Close => events![],
-            GotMailbox => events![],
+            GotMailbox(_mailbox_) => events![],
             GotMessage => events![],
             AddMessage => events![],
         }
