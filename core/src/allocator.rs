@@ -15,6 +15,7 @@ impl Allocator {
         match event {
             Connected => events![],
             Lost => events![],
+            Allocate(length, wordlist) => events![],
             RxAllocated => events![],
         }
     }
