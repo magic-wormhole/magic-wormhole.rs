@@ -104,7 +104,7 @@ use server_messages::Message;
 #[derive(Debug, PartialEq)]
 pub enum RendezvousEvent {
     Start,
-    TxBind(Message),
+    TxBind(String, String), // appid, side
     TxOpen,
     TxAdd,
     TxClose,
