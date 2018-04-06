@@ -119,8 +119,10 @@ impl Rendezvous {
         let (actions, newstate) = match self.state {
             State::Connecting => {
                 // TODO: does the order of this matter? if so, oh boy.
-                let a = events![RC_TxBind(self.appid.to_string(),
-                                          self.side.to_string()), N_Connected];
+                let a = events![
+                    RC_TxBind(self.appid.to_string(), self.side.to_string()),
+                    N_Connected
+                ];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
                 //actions.push(M_Connected);
