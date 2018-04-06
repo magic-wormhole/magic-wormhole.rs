@@ -1,4 +1,4 @@
-use events::{Event, Events};
+use events::{Event, Events, Wordlist};
 use api::Mood;
 // we process these
 use events::BossEvent;
@@ -63,7 +63,11 @@ impl Boss {
     fn allocate_code(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => (events![C_AllocateCode], Coding),
+            Empty => {
+                let length = 2; // TODO: configurable by AllocateCode
+                let wordlist = Wordlist{}; // TODO: populate words
+                (events![C_AllocateCode(length, wordlist)], Coding)
+            }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -74,7 +78,11 @@ impl Boss {
         // TODO: validate code, maybe signal KeyFormatError
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => (events![C_SetCode(code.to_string())], Lonely),
+            // we move to Coding instead of directly to Lonely because
+            // Code::SetCode will signal us with Boss:GotCode in just a
+            // moment, and by not special-casing set_code we get to use the
+            // same flow for allocate_code and input_code
+            Empty => (events![C_SetCode(code.to_string())], Coding),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;

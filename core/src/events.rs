@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 
 #[derive(Debug, PartialEq)]
-pub enum Machine {
+pub struct Wordlist {
+    // TODO lists(Vec<Vec<String>>),
 }
 
 // machines (or IO, or the API) emit these events, and each is routed to a
@@ -11,6 +12,7 @@ pub enum Machine {
 
 #[derive(Debug, PartialEq)]
 pub enum AllocatorEvent {
+    Allocate(u8, Wordlist),
     Connected,
     Lost,
     RxAllocated,
@@ -32,12 +34,12 @@ pub enum BossEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum CodeEvent {
-    AllocateCode,
+    AllocateCode(u8, Wordlist), // length, wordlist
     InputCode,
     SetCode(String),
-    Allocated,
-    GotNameplate,
-    FinishedInput,
+    Allocated(String, String),
+    GotNameplate(String),
+    FinishedInput(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,6 +51,7 @@ pub enum InputEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum KeyEvent {
+    GotCode(String),
     GotPake,
     GotMessage,
 }
@@ -80,7 +83,7 @@ pub enum NameplateEvent {
     Lost,
     RxClaimed,
     RxReleased,
-    SetNameplate,
+    SetNameplate(String),
     Release,
 }
 

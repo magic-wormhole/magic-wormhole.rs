@@ -18,7 +18,7 @@ impl Nameplate {
             Lost => events![],
             RxClaimed => events![],
             RxReleased => events![],
-            SetNameplate => events![],
+            SetNameplate(nameplate) => events![],
             Release => events![],
         }
     }

@@ -13,6 +13,7 @@ impl Key {
     pub fn process(&mut self, event: KeyEvent) -> Events {
         use events::KeyEvent::*;
         match event {
+            GotCode(code) => events![],
             GotPake => events![],
             GotMessage => events![],
         }
