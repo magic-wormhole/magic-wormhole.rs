@@ -103,6 +103,7 @@ impl WormholeCore {
         event_queue.append(&mut VecDeque::from(events.events));
 
         while let Some(e) = event_queue.pop_front() {
+            println!("event: {:?}", e);
             use events::Event::*; // machine names
             let actions: Events = match e {
                 API(a) => {
@@ -132,6 +133,7 @@ impl WormholeCore {
             for a in actions.events {
                 // TODO use iter
                 // TODO: insert in front of queue: depth-first processing
+                println!("  out: {:?}", a);
                 event_queue.push_back(a);
             }
         }
