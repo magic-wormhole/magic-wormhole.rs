@@ -80,7 +80,7 @@ impl Rendezvous {
         use events::RendezvousEvent::*;
         match e {
             Start => self.start(),
-            TxBind(m) => self.send(m),
+            TxBind(appid, side) => self.send(bind(&appid, &side)),
             TxOpen => events![],
             TxAdd => events![],
             TxClose => events![],
@@ -119,8 +119,8 @@ impl Rendezvous {
         let (actions, newstate) = match self.state {
             State::Connecting => {
                 // TODO: does the order of this matter? if so, oh boy.
-                let b = bind(&self.appid, &self.side);
-                let a = events![RC_TxBind(b), N_Connected];
+                let a = events![RC_TxBind(self.appid.to_string(),
+                                          self.side.to_string()), N_Connected];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
                 //actions.push(M_Connected);
@@ -251,10 +251,7 @@ mod test {
             Rendezvous(b0) => {
                 b = b0;
                 match &b {
-                    &RC_TxBind(Message::Bind {
-                        appid: ref appid0,
-                        side: ref side0,
-                    }) => {
+                    &RC_TxBind(ref appid0, ref side0) => {
                         assert_eq!(appid0, "appid");
                         assert_eq!(side0, "side1");
                     }
