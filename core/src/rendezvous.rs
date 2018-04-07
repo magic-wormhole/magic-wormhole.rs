@@ -101,10 +101,7 @@ impl Rendezvous {
         let newstate = match self.state {
             State::Idle => {
                 actions = events![
-                    IOAction::WebSocketOpen(
-                        self.wsh,
-                        self.relay_url.to_lowercase()
-                    )
+                    IOAction::WebSocketOpen(self.wsh, self.relay_url.clone())
                 ];
                 //"url".to_string());
                 State::Connecting
@@ -169,11 +166,8 @@ impl Rendezvous {
         let (actions, newstate) = match self.state {
             State::Waiting => {
                 let new_handle = WSHandle::new(2);
-                // I.. don't know how to copy a String
-                let open = IOAction::WebSocketOpen(
-                    new_handle,
-                    self.relay_url.to_lowercase(),
-                );
+                let open =
+                    IOAction::WebSocketOpen(new_handle, self.relay_url.clone());
                 (events![open], State::Connecting)
             }
             _ => panic!("bad transition from {:?}", self),
