@@ -8,3 +8,14 @@ pub fn bytes_to_hexstr(b: &[u8]) -> String {
 
     hexstr.join("")
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bytes_to_hexstr() {
+        let s1 = b"I am a String";
+        assert_eq!(bytes_to_hexstr(b"I am a String"), "4920616d206120537472696e67");
+    }
+}
