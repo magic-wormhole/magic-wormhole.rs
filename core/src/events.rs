@@ -106,8 +106,8 @@ use server_messages::Message;
 pub enum RendezvousEvent {
     Start,
     TxBind(String, String), // appid, side
-    TxOpen(String), // mailbox
-    TxAdd(String, String), // phase, body
+    TxOpen(String),         // mailbox
+    TxAdd(String, String),  // phase, body
     TxClose,
     Stop,
     TxClaim(String),
@@ -291,7 +291,7 @@ impl IntoIterator for Events {
 }
 
 impl FromIterator<Event> for Events {
-    fn from_iter<I: IntoIterator<Item=Event>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = Event>>(iter: I) -> Self {
         let mut c = Events::new();
 
         for i in iter {
