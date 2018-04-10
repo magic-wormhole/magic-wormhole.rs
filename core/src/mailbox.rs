@@ -28,23 +28,26 @@ enum State {
 
 pub struct Mailbox {
     state: State,
-    pending_outbound: Vec<(String, String)> // vector of pairs (phase, body)
+    pending_outbound: Vec<(String, String)>, // vector of pairs (phase, body)
 }
 
 enum QueueCtrl {
     Enqueue(Vec<(String, String)>), // append
-    Drain,               // replace with an empty vec
-    NoAction             // TODO: find a better name for the field
+    Drain,                          // replace with an empty vec
+    NoAction,                       // TODO: find a better name for the field
 }
 
 impl Mailbox {
     pub fn new() -> Mailbox {
-        Mailbox { state: State::S0A, pending_outbound: vec![] }
+        Mailbox {
+            state: State::S0A,
+            pending_outbound: vec![],
+        }
     }
 
     pub fn process(&mut self, event: MailboxEvent) -> Events {
         use self::State::*;
-        
+
         let (newstate, actions, queue) = match self.state {
             S0A => self.do_S0A(event),
             S0B => self.do_S0B(event),
@@ -55,7 +58,7 @@ impl Mailbox {
             S3B(ref mailbox, ref mood) => self.do_S3B(&mailbox, &mood, event),
             S4A => self.do_S4A(event),
             S4B => self.do_S4B(event),
-            _ => panic!()
+            _ => panic!(),
         };
         match newstate {
             Some(s) => {
@@ -67,7 +70,7 @@ impl Mailbox {
             QueueCtrl::Enqueue(mut v) => {
                 // append pending_outbound with v
                 self.pending_outbound.append(&mut v)
-            },
+            }
             QueueCtrl::Drain => self.pending_outbound = vec![],
             QueueCtrl::NoAction => (),
         }
@@ -75,7 +78,10 @@ impl Mailbox {
         actions
     }
 
-    fn do_S0A(&mut self, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S0A(
+        &mut self,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
@@ -83,18 +89,27 @@ impl Mailbox {
             Lost => panic!(),
             RxMessage => panic!(),
             RxClosed => panic!(),
-            Close(_) => (Some(State::S4A), events![T_MailboxDone], QueueCtrl::NoAction),
-            GotMailbox(mailbox) => (Some(State::S1A(mailbox)), events![], QueueCtrl::NoAction),
+            Close(_) => (
+                Some(State::S4A),
+                events![T_MailboxDone],
+                QueueCtrl::NoAction,
+            ),
+            GotMailbox(mailbox) => {
+                (Some(State::S1A(mailbox)), events![], QueueCtrl::NoAction)
+            }
             GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
                 (Some(State::S0A), events![], QueueCtrl::Enqueue(v))
-            },
+            }
         }
     }
 
-    fn do_S0B(&mut self, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S0B(
+        &mut self,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
@@ -102,24 +117,36 @@ impl Mailbox {
             Lost => (Some(State::S0A), events![], QueueCtrl::NoAction),
             RxMessage => panic!(),
             RxClosed => panic!(),
-            Close(_) => (Some(State::S4B), events![T_MailboxDone], QueueCtrl::NoAction),
+            Close(_) => (
+                Some(State::S4B),
+                events![T_MailboxDone],
+                QueueCtrl::NoAction,
+            ),
             GotMailbox(mailbox) => {
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
                 for &(ref ph, ref body) in &self.pending_outbound {
                     rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
                 }
-                (Some(State::S2B(mailbox.clone())), rc_events, QueueCtrl::Drain)
-            },
-            GotMessage =>  panic!(),
+                (
+                    Some(State::S2B(mailbox.clone())),
+                    rc_events,
+                    QueueCtrl::Drain,
+                )
+            }
+            GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
                 (Some(State::S0B), events![], QueueCtrl::Enqueue(v))
-            },
+            }
         }
     }
 
-    fn do_S1A(&self, mailbox: &str, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S1A(
+        &self,
+        mailbox: &str,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
@@ -128,23 +155,39 @@ impl Mailbox {
                 for &(ref ph, ref body) in &self.pending_outbound {
                     rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
                 }
-                (Some(State::S2B(mailbox.to_string())), rc_events, QueueCtrl::Drain)
-            },
+                (
+                    Some(State::S2B(mailbox.to_string())),
+                    rc_events,
+                    QueueCtrl::Drain,
+                )
+            }
             Lost => panic!(),
             RxMessage => panic!(),
             RxClosed => panic!(),
-            Close(_) => (Some(State::S4A), events![T_MailboxDone], QueueCtrl::NoAction),
+            Close(_) => (
+                Some(State::S4A),
+                events![T_MailboxDone],
+                QueueCtrl::NoAction,
+            ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
-                (Some(State::S1A(mailbox.to_string())), events![], QueueCtrl::Enqueue(v))
-            },
+                (
+                    Some(State::S1A(mailbox.to_string())),
+                    events![],
+                    QueueCtrl::Enqueue(v),
+                )
+            }
         }
     }
 
-    fn do_S2A(&self, mailbox: &str, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S2A(
+        &self,
+        mailbox: &str,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
@@ -153,34 +196,55 @@ impl Mailbox {
                 for &(ref ph, ref body) in &self.pending_outbound {
                     events.push(RC_TxAdd(ph.to_string(), body.to_string()));
                 }
-                (Some(State::S2B(mailbox.to_string())), events, QueueCtrl::Drain)
-            },
+                (
+                    Some(State::S2B(mailbox.to_string())),
+                    events,
+                    QueueCtrl::Drain,
+                )
+            }
             Lost => panic!(),
             RxMessage => panic!(),
             RxClosed => panic!(),
-            Close(mood) => (Some(State::S3A(mailbox.to_string(), mood)), events![], QueueCtrl::NoAction),
+            Close(mood) => (
+                Some(State::S3A(mailbox.to_string(), mood)),
+                events![],
+                QueueCtrl::NoAction,
+            ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
-                (Some(State::S2A(mailbox.to_string())), events![], QueueCtrl::Enqueue(v))
-            },
+                (
+                    Some(State::S2A(mailbox.to_string())),
+                    events![],
+                    QueueCtrl::Enqueue(v),
+                )
+            }
         }
     }
 
-    fn do_S2B(&self, mailbox: &str, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S2B(
+        &self,
+        mailbox: &str,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
             Connected => panic!(),
-            Lost => (Some(State::S2A(mailbox.to_string())), events![], QueueCtrl::NoAction),
+            Lost => (
+                Some(State::S2A(mailbox.to_string())),
+                events![],
+                QueueCtrl::NoAction,
+            ),
             RxMessage => panic!(), // TODO, handle theirs vs ours
             RxClosed => panic!(),
-            Close(mood) => (Some(State::S3B(mailbox.to_string(),
-                                            mood.to_string())),
-                            events![RC_TxClose],
-                            QueueCtrl::NoAction),
+            Close(mood) => (
+                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                events![RC_TxClose],
+                QueueCtrl::NoAction,
+            ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
             AddMessage(phase, body) => {
@@ -188,20 +252,29 @@ impl Mailbox {
                 let mut v = vec![];
                 v.push((phase.clone(), body.clone()));
                 // rc_tx_add
-                (Some(State::S2B(mailbox.to_string())), events![RC_TxAdd(phase, body)], QueueCtrl::Enqueue(v))
+                (
+                    Some(State::S2B(mailbox.to_string())),
+                    events![RC_TxAdd(phase, body)],
+                    QueueCtrl::Enqueue(v),
+                )
             }
         }
     }
-    
-    fn do_S3A(&self, mailbox: &str, mood: &str,
-              event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+
+    fn do_S3A(
+        &self,
+        mailbox: &str,
+        mood: &str,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
-        
+
         match event {
-            Connected => (Some(State::S3B(mailbox.to_string(),
-                                          mood.to_string())),
-                          events![RC_TxClose],
-                          QueueCtrl::NoAction),
+            Connected => (
+                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                events![RC_TxClose],
+                QueueCtrl::NoAction,
+            ),
             Lost => panic!(),
             RxMessage => panic!(),
             RxClosed => panic!(),
@@ -212,32 +285,46 @@ impl Mailbox {
         }
     }
 
-    fn do_S3B(&self, mailbox: &str, mood: &str,
-              event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S3B(
+        &self,
+        mailbox: &str,
+        mood: &str,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
             Connected => panic!(),
-            Lost => (Some(State::S3A(mailbox.to_string(),
-                                     mood.to_string())),
-                     events![],
-                     QueueCtrl::NoAction),
+            Lost => (
+                Some(State::S3A(mailbox.to_string(), mood.to_string())),
+                events![],
+                QueueCtrl::NoAction,
+            ),
             RxMessage => panic!(), // TODO
-            RxClosed => (Some(State::S4B), events![T_MailboxDone], QueueCtrl::NoAction),
-            Close(mood) => (Some(State::S3B(mailbox.to_string(),
-                                            mood.to_string())),
-                            events![],
-                            QueueCtrl::NoAction),
+            RxClosed => (
+                Some(State::S4B),
+                events![T_MailboxDone],
+                QueueCtrl::NoAction,
+            ),
+            Close(mood) => (
+                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                events![],
+                QueueCtrl::NoAction,
+            ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
-            AddMessage(_, _) => (Some(State::S3B(mailbox.to_string(),
-                                                 mood.to_string())),
-                                 events![],
-                                 QueueCtrl::NoAction)
+            AddMessage(_, _) => (
+                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                events![],
+                QueueCtrl::NoAction,
+            ),
         }
     }
 
-    fn do_S4A(&self, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S4A(
+        &self,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
@@ -252,7 +339,10 @@ impl Mailbox {
         }
     }
 
-    fn do_S4B(&self, event: MailboxEvent) -> (Option<State>, Events, QueueCtrl) {
+    fn do_S4B(
+        &self,
+        event: MailboxEvent,
+    ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
@@ -263,7 +353,9 @@ impl Mailbox {
             Close(_) => (Some(State::S4B), events![], QueueCtrl::NoAction),
             GotMailbox(String) => panic!(),
             GotMessage => panic!(),
-            AddMessage(_, _) => (Some(State::S4B), events![], QueueCtrl::NoAction)
+            AddMessage(_, _) => {
+                (Some(State::S4B), events![], QueueCtrl::NoAction)
+            }
         }
     }
 }
