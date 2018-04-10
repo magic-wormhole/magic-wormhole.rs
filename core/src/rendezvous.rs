@@ -10,7 +10,7 @@
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
-use server_messages::{bind, claim, deserialize, Message};
+use server_messages::{bind, claim, deserialize, open, Message};
 // we process these
 use events::RendezvousEvent;
 use api::IOEvent;
@@ -82,7 +82,7 @@ impl Rendezvous {
         match e {
             Start => self.start(),
             TxBind(appid, side) => self.send(bind(&appid, &side)),
-            TxOpen(_) => events![],
+            TxOpen(mailbox) => self.send(open(&mailbox)),
             TxAdd(_, _) => events![],
             TxClose => events![],
             Stop => self.stop(),
