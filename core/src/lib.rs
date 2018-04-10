@@ -21,6 +21,7 @@ mod server_messages;
 mod send;
 mod terminator;
 mod wordlist;
+mod util;
 
 use std::collections::VecDeque;
 use events::{Event, Events};
