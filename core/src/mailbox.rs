@@ -87,7 +87,7 @@ impl Mailbox {
         match event {
             Connected => (Some(State::S0B), events![], QueueCtrl::NoAction),
             Lost => panic!(),
-            RxMessage => panic!(),
+            RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(_) => (
                 Some(State::S4A),
@@ -115,7 +115,7 @@ impl Mailbox {
         match event {
             Connected => panic!(),
             Lost => (Some(State::S0A), events![], QueueCtrl::NoAction),
-            RxMessage => panic!(),
+            RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(_) => (
                 Some(State::S4B),
@@ -162,7 +162,7 @@ impl Mailbox {
                 )
             }
             Lost => panic!(),
-            RxMessage => panic!(),
+            RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(_) => (
                 Some(State::S4A),
@@ -203,7 +203,7 @@ impl Mailbox {
                 )
             }
             Lost => panic!(),
-            RxMessage => panic!(),
+            RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(mood) => (
                 Some(State::S3A(mailbox.to_string(), mood)),
@@ -238,7 +238,7 @@ impl Mailbox {
                 events![],
                 QueueCtrl::NoAction,
             ),
-            RxMessage => panic!(), // TODO, handle theirs vs ours
+            RxMessage(_, _, _) => panic!(), // TODO, handle theirs vs ours
             RxClosed => panic!(),
             Close(mood) => (
                 Some(State::S3B(mailbox.to_string(), mood.to_string())),
@@ -276,7 +276,7 @@ impl Mailbox {
                 QueueCtrl::NoAction,
             ),
             Lost => panic!(),
-            RxMessage => panic!(),
+            RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(_) => panic!(),
             GotMailbox(_) => panic!(),
@@ -300,7 +300,7 @@ impl Mailbox {
                 events![],
                 QueueCtrl::NoAction,
             ),
-            RxMessage => panic!(), // TODO
+            RxMessage(_, _, _) => panic!(), // TODO
             RxClosed => (
                 Some(State::S4B),
                 events![T_MailboxDone],
@@ -330,7 +330,7 @@ impl Mailbox {
         match event {
             Connected => (Some(State::S4B), events![], QueueCtrl::NoAction),
             Lost => panic!(),
-            RxMessage => panic!(),
+            RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(String) => panic!(),
             GotMailbox(String) => panic!(),
@@ -348,7 +348,7 @@ impl Mailbox {
         match event {
             Connected => panic!(),
             Lost => (Some(State::S4B), events![], QueueCtrl::NoAction),
-            RxMessage => panic!(), // TODO
+            RxMessage(_, _, _) => panic!(), // TODO
             RxClosed => panic!(),
             Close(_) => (Some(State::S4B), events![], QueueCtrl::NoAction),
             GotMailbox(String) => panic!(),

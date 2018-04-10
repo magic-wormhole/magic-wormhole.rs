@@ -69,7 +69,7 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage,
+    RxMessage(String, String, String),
     RxClosed,
     Close(String),
     GotMailbox(String),
