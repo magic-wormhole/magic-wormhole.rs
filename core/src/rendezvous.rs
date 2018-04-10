@@ -82,8 +82,8 @@ impl Rendezvous {
         match e {
             Start => self.start(),
             TxBind(appid, side) => self.send(bind(&appid, &side)),
-            TxOpen => events![],
-            TxAdd => events![],
+            TxOpen(_) => events![],
+            TxAdd(_, _) => events![],
             TxClose => events![],
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
