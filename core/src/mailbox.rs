@@ -43,7 +43,7 @@ enum QueueCtrl {
     Drain,                          // replace with an empty vec
     NoAction,                       // TODO: find a better name for the field
     AddToProcessed(String),         // add to the list of processed "phase"
-    Dequeue(String),                // remove an element from the Map given the key
+    Dequeue(String), // remove an element from the Map given the key
 }
 
 impl Mailbox {
@@ -78,16 +78,15 @@ impl Mailbox {
             None => {}
         }
         match queue {
-            QueueCtrl::Enqueue(mut v) => {
-                for &(ref phase, ref body) in &v {
-                    self.pending_outbound.insert(phase.to_string(), body.to_string());
-                }
+            QueueCtrl::Enqueue(mut v) => for &(ref phase, ref body) in &v {
+                self.pending_outbound
+                    .insert(phase.to_string(), body.to_string());
             },
             QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
             QueueCtrl::AddToProcessed(phase) => {
                 self.processed.insert(phase);
-            },
+            }
             QueueCtrl::Dequeue(key) => {
                 self.pending_outbound.remove(&key);
             }
@@ -263,21 +262,30 @@ impl Mailbox {
                     // N_release_and_accept
                     let is_phase_in_processed = self.processed.contains(&phase);
                     if is_phase_in_processed {
-                        (Some(State::S2B(mailbox.to_string())),
-                         events![N_Release],
-                         QueueCtrl::NoAction)
+                        (
+                            Some(State::S2B(mailbox.to_string())),
+                            events![N_Release],
+                            QueueCtrl::NoAction,
+                        )
                     } else {
-                        (Some(State::S2B(mailbox.to_string())),
-                         events![N_Release, O_GotMessage(side, phase.clone(), body)],
-                         QueueCtrl::AddToProcessed(phase))
+                        (
+                            Some(State::S2B(mailbox.to_string())),
+                            events![
+                                N_Release,
+                                O_GotMessage(side, phase.clone(), body)
+                            ],
+                            QueueCtrl::AddToProcessed(phase),
+                        )
                     }
                 } else {
                     // ours
-                    (Some(State::S2B(mailbox.to_string())),
-                     events![],
-                     QueueCtrl::Dequeue(phase))
+                    (
+                        Some(State::S2B(mailbox.to_string())),
+                        events![],
+                        QueueCtrl::Dequeue(phase),
+                    )
                 }
-            },
+            }
             RxClosed => panic!(),
             Close(mood) => (
                 Some(State::S3B(mailbox.to_string(), mood.to_string())),
@@ -341,10 +349,12 @@ impl Mailbox {
             ),
             RxMessage(side, phase, body) => {
                 // irrespective of the side, enter into S3B, do nothing, generate no events
-                (Some(State::S3B(mailbox.to_string(), mood.to_string())),
-                 events![],
-                 QueueCtrl::NoAction)
-            },
+                (
+                    Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                    events![],
+                    QueueCtrl::NoAction,
+                )
+            }
             RxClosed => (
                 Some(State::S4B),
                 events![T_MailboxDone],
@@ -394,7 +404,7 @@ impl Mailbox {
             Lost => (Some(State::S4B), events![], QueueCtrl::NoAction),
             RxMessage(side, phase, body) => {
                 (Some(State::S4B), events![], QueueCtrl::NoAction)
-            },
+            }
             RxClosed => panic!(),
             Close(_) => (Some(State::S4B), events![], QueueCtrl::NoAction),
             GotMailbox(String) => panic!(),
