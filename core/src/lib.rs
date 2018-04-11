@@ -21,6 +21,7 @@ mod server_messages;
 mod send;
 mod terminator;
 mod wordlist;
+mod util;
 
 use std::collections::VecDeque;
 use events::{Event, Events};
@@ -58,7 +59,7 @@ impl WormholeCore {
             input: input::Input::new(),
             key: key::Key::new(),
             lister: lister::Lister::new(),
-            mailbox: mailbox::Mailbox::new(),
+            mailbox: mailbox::Mailbox::new(&side),
             nameplate: nameplate::Nameplate::new(),
             order: order::Order::new(),
             receive: receive::Receive::new(),
