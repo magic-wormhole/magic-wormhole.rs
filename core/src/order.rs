@@ -13,7 +13,7 @@ impl Order {
     pub fn process(&mut self, event: OrderEvent) -> Events {
         use events::OrderEvent::*;
         match event {
-            GotMessage => events![],
+            GotMessage(_, _, _) => events![],
         }
     }
 }

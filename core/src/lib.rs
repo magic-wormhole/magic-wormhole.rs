@@ -59,7 +59,7 @@ impl WormholeCore {
             input: input::Input::new(),
             key: key::Key::new(),
             lister: lister::Lister::new(),
-            mailbox: mailbox::Mailbox::new(),
+            mailbox: mailbox::Mailbox::new(&side),
             nameplate: nameplate::Nameplate::new(),
             order: order::Order::new(),
             receive: receive::Receive::new(),

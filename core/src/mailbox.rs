@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::collections::HashMap;
+
 use events::Events;
 use events::Event;
 // we process these
@@ -6,6 +9,8 @@ use events::TerminatorEvent::MailboxDone as T_MailboxDone;
 use events::RendezvousEvent::TxOpen as RC_TxOpen;
 use events::RendezvousEvent::TxAdd as RC_TxAdd;
 use events::RendezvousEvent::TxClose as RC_TxClose;
+use events::NameplateEvent::Release as N_Release;
+use events::OrderEvent::GotMessage as O_GotMessage;
 // we emit these
 
 #[derive(Debug, PartialEq)]
@@ -28,20 +33,26 @@ enum State {
 
 pub struct Mailbox {
     state: State,
-    pending_outbound: Vec<(String, String)>, // vector of pairs (phase, body)
+    side: String,
+    pending_outbound: HashMap<String, String>, // HashMap<phase, body>
+    processed: HashSet<String>,
 }
 
 enum QueueCtrl {
     Enqueue(Vec<(String, String)>), // append
     Drain,                          // replace with an empty vec
     NoAction,                       // TODO: find a better name for the field
+    AddToProcessed(String),         // add to the list of processed "phase"
+    Dequeue(String),                // remove an element from the Map given the key
 }
 
 impl Mailbox {
-    pub fn new() -> Mailbox {
+    pub fn new(_side: &str) -> Mailbox {
         Mailbox {
             state: State::S0A,
-            pending_outbound: vec![],
+            side: _side.to_string(),
+            pending_outbound: HashMap::new(),
+            processed: HashSet::new(),
         }
     }
 
@@ -68,11 +79,18 @@ impl Mailbox {
         }
         match queue {
             QueueCtrl::Enqueue(mut v) => {
-                // append pending_outbound with v
-                self.pending_outbound.append(&mut v)
-            }
-            QueueCtrl::Drain => self.pending_outbound = vec![],
+                for &(ref phase, ref body) in &v {
+                    self.pending_outbound.insert(phase.to_string(), body.to_string());
+                }
+            },
+            QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
+            QueueCtrl::AddToProcessed(phase) => {
+                self.processed.insert(phase);
+            },
+            QueueCtrl::Dequeue(key) => {
+                self.pending_outbound.remove(&key);
+            }
         }
 
         actions
@@ -123,8 +141,9 @@ impl Mailbox {
                 QueueCtrl::NoAction,
             ),
             GotMailbox(mailbox) => {
+                // TODO: move this abstraction into a function
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
-                for &(ref ph, ref body) in &self.pending_outbound {
+                for (ph, body) in self.pending_outbound.iter() {
                     rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
                 }
                 (
@@ -152,7 +171,7 @@ impl Mailbox {
         match event {
             Connected => {
                 let mut rc_events = events![RC_TxOpen(mailbox.to_string())];
-                for &(ref ph, ref body) in &self.pending_outbound {
+                for (ph, body) in self.pending_outbound.iter() {
                     rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
                 }
                 (
@@ -193,7 +212,7 @@ impl Mailbox {
         match event {
             Connected => {
                 let mut events = events![RC_TxOpen(mailbox.to_string())];
-                for &(ref ph, ref body) in &self.pending_outbound {
+                for (ph, body) in self.pending_outbound.iter() {
                     events.push(RC_TxAdd(ph.to_string(), body.to_string()));
                 }
                 (
@@ -238,7 +257,27 @@ impl Mailbox {
                 events![],
                 QueueCtrl::NoAction,
             ),
-            RxMessage(_, _, _) => panic!(), // TODO, handle theirs vs ours
+            RxMessage(side, phase, body) => {
+                if side != self.side {
+                    // theirs
+                    // N_release_and_accept
+                    let is_phase_in_processed = self.processed.contains(&phase);
+                    if is_phase_in_processed {
+                        (Some(State::S2B(mailbox.to_string())),
+                         events![N_Release],
+                         QueueCtrl::NoAction)
+                    } else {
+                        (Some(State::S2B(mailbox.to_string())),
+                         events![N_Release, O_GotMessage(side, phase.clone(), body)],
+                         QueueCtrl::AddToProcessed(phase))
+                    }
+                } else {
+                    // ours
+                    (Some(State::S2B(mailbox.to_string())),
+                     events![],
+                     QueueCtrl::Dequeue(phase))
+                }
+            },
             RxClosed => panic!(),
             Close(mood) => (
                 Some(State::S3B(mailbox.to_string(), mood.to_string())),
@@ -300,7 +339,12 @@ impl Mailbox {
                 events![],
                 QueueCtrl::NoAction,
             ),
-            RxMessage(_, _, _) => panic!(), // TODO
+            RxMessage(side, phase, body) => {
+                // irrespective of the side, enter into S3B, do nothing, generate no events
+                (Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                 events![],
+                 QueueCtrl::NoAction)
+            },
             RxClosed => (
                 Some(State::S4B),
                 events![T_MailboxDone],
@@ -348,7 +392,9 @@ impl Mailbox {
         match event {
             Connected => panic!(),
             Lost => (Some(State::S4B), events![], QueueCtrl::NoAction),
-            RxMessage(_, _, _) => panic!(), // TODO
+            RxMessage(side, phase, body) => {
+                (Some(State::S4B), events![], QueueCtrl::NoAction)
+            },
             RxClosed => panic!(),
             Close(_) => (Some(State::S4B), events![], QueueCtrl::NoAction),
             GotMailbox(String) => panic!(),
