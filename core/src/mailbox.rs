@@ -47,10 +47,10 @@ enum QueueCtrl {
 }
 
 impl Mailbox {
-    pub fn new(_side: &str) -> Mailbox {
+    pub fn new(side: &str) -> Mailbox {
         Mailbox {
             state: State::S0A,
-            side: _side.to_string(),
+            side: side.to_string(),
             pending_outbound: HashMap::new(),
             processed: HashSet::new(),
         }
