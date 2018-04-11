@@ -18,7 +18,8 @@ use api::IOEvent;
 use api::IOAction;
 use events::NameplateEvent::{Connected as N_Connected,
                              RxClaimed as N_RxClaimed};
-use events::MailboxEvent::{RxMessage as M_RxMessage};
+use events::MailboxEvent::{RxMessage as M_RxMessage,
+                           Connected as M_Connected};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -80,6 +81,7 @@ impl Rendezvous {
 
     pub fn process(&mut self, e: RendezvousEvent) -> Events {
         use events::RendezvousEvent::*;
+        println!("rendezvous: {:?}", e);
         match e {
             Start => self.start(),
             TxBind(appid, side) => self.send(bind(&appid, &side)),
@@ -120,11 +122,11 @@ impl Rendezvous {
                 // TODO: does the order of this matter? if so, oh boy.
                 let a = events![
                     RC_TxBind(self.appid.to_string(), self.side.to_string()),
-                    N_Connected
+                    N_Connected,
+                    M_Connected
                 ];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
-                //actions.push(M_Connected);
                 (a, State::Connected)
             }
             _ => panic!("bad transition from {:?}", self),
