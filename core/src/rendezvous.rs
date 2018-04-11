@@ -250,8 +250,8 @@ mod test {
         actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
         // it should tell itself to send a BIND
         // then it should notify several other machines
-
-        assert_eq!(actions.len(), 2);
+        // at this point, we have BIND, N_Connected, M_Connected
+        assert_eq!(actions.len(), 3);
         let e = actions.remove(0);
         println!("e is {:?}", e);
         let b;
