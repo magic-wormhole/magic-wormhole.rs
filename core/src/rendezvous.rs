@@ -10,7 +10,7 @@
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
-use server_messages::{bind, claim, deserialize, Message};
+use server_messages::{add, bind, claim, deserialize, open, Message};
 // we process these
 use events::RendezvousEvent;
 use api::IOEvent;
@@ -18,6 +18,7 @@ use api::IOEvent;
 use api::IOAction;
 use events::NameplateEvent::{Connected as N_Connected,
                              RxClaimed as N_RxClaimed};
+use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -79,11 +80,12 @@ impl Rendezvous {
 
     pub fn process(&mut self, e: RendezvousEvent) -> Events {
         use events::RendezvousEvent::*;
+        println!("rendezvous: {:?}", e);
         match e {
             Start => self.start(),
             TxBind(appid, side) => self.send(bind(&appid, &side)),
-            TxOpen => events![],
-            TxAdd => events![],
+            TxOpen(mailbox) => self.send(open(&mailbox)),
+            TxAdd(phase, body) => self.send(add(&phase, body.as_bytes())),
             TxClose => events![],
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
@@ -119,11 +121,11 @@ impl Rendezvous {
                 // TODO: does the order of this matter? if so, oh boy.
                 let a = events![
                     RC_TxBind(self.appid.to_string(), self.side.to_string()),
-                    N_Connected
+                    N_Connected,
+                    M_Connected
                 ];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
-                //actions.push(M_Connected);
                 (a, State::Connected)
             }
             _ => panic!("bad transition from {:?}", self),
@@ -139,6 +141,12 @@ impl Rendezvous {
             Message::Claimed { mailbox } => {
                 events![N_RxClaimed(mailbox.to_string())]
             }
+            Message::Message {
+                side,
+                phase,
+                body,
+                id,
+            } => events![M_RxMessage(side, phase, body)],
             _ => events![], // TODO
         }
     }
@@ -244,8 +252,8 @@ mod test {
         actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
         // it should tell itself to send a BIND
         // then it should notify several other machines
-
-        assert_eq!(actions.len(), 2);
+        // at this point, we have BIND, N_Connected, M_Connected
+        assert_eq!(actions.len(), 3);
         let e = actions.remove(0);
         println!("e is {:?}", e);
         let b;

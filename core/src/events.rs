@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::iter::FromIterator;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 
@@ -68,12 +69,12 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage,
+    RxMessage(String, String, String),
     RxClosed,
-    Close,
+    Close(String),
     GotMailbox(String),
     GotMessage,
-    AddMessage, // PAKE+VERSION from Key, PHASE from Send
+    AddMessage(String, String), // PAKE+VERSION from Key, PHASE from Send
 }
 
 #[derive(Debug, PartialEq)]
@@ -90,7 +91,7 @@ pub enum NameplateEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum OrderEvent {
-    GotMessage,
+    GotMessage(String, String, String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -105,8 +106,8 @@ use server_messages::Message;
 pub enum RendezvousEvent {
     Start,
     TxBind(String, String), // appid, side
-    TxOpen,
-    TxAdd,
+    TxOpen(String),         // mailbox
+    TxAdd(String, String),  // phase, body
     TxClose,
     Stop,
     TxClaim(String),
@@ -274,7 +275,31 @@ impl Events {
     {
         self.events.push(Event::from(item));
     }
-    // TODO: iter
+
+    // pub fn append(&mut self, other: &mut Vec<Event>) {
+    //     self.events.append(&mut other.events);
+    // }
+}
+
+impl IntoIterator for Events {
+    type Item = Event;
+    type IntoIter = ::std::vec::IntoIter<Event>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.events.into_iter()
+    }
+}
+
+impl FromIterator<Event> for Events {
+    fn from_iter<I: IntoIterator<Item = Event>>(iter: I) -> Self {
+        let mut c = Events::new();
+
+        for i in iter {
+            c.events.push(i);
+        }
+
+        c
+    }
 }
 
 // macro to build a whole Events vector, instead of adding them one at a time

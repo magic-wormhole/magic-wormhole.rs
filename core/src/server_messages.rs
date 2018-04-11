@@ -1,6 +1,7 @@
 use serde_json;
 
 use serde::{self, Deserialize, Deserializer, Serializer};
+use util;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
@@ -113,11 +114,13 @@ pub fn open(mailbox: &str) -> Message {
     }
 }
 
-pub fn add(phase: &str, body: &str) -> Message {
+pub fn add(phase: &str, body: &[u8]) -> Message {
     // TODO: make this take Vec<u8>, do the hex-encoding internally
+    let hexstr = util::bytes_to_hexstr(body);
+
     Message::Add {
         phase: phase.to_string(),
-        body: body.to_string(),
+        body: hexstr,
     }
 }
 
@@ -202,7 +205,7 @@ mod test {
 
     #[test]
     fn test_add() {
-        let m1 = add("phase1", "body");
+        let m1 = add("phase1", b"body");
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);
