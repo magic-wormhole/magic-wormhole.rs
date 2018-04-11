@@ -10,7 +10,7 @@
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
-use server_messages::{bind, claim, deserialize, open, add, Message};
+use server_messages::{add, bind, claim, deserialize, open, Message};
 // we process these
 use events::RendezvousEvent;
 use api::IOEvent;
@@ -18,8 +18,7 @@ use api::IOEvent;
 use api::IOAction;
 use events::NameplateEvent::{Connected as N_Connected,
                              RxClaimed as N_RxClaimed};
-use events::MailboxEvent::{RxMessage as M_RxMessage,
-                           Connected as M_Connected};
+use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -142,9 +141,12 @@ impl Rendezvous {
             Message::Claimed { mailbox } => {
                 events![N_RxClaimed(mailbox.to_string())]
             }
-            Message::Message { side, phase, body, id } => {
-                events![M_RxMessage(side, phase, body)]
-            }
+            Message::Message {
+                side,
+                phase,
+                body,
+                id,
+            } => events![M_RxMessage(side, phase, body)],
             _ => events![], // TODO
         }
     }
