@@ -29,7 +29,7 @@ enum State {
     S5,
 }
 
-pub struct Nameplate {
+pub(crate) struct Nameplate {
     state: State,
 }
 
