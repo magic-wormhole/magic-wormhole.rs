@@ -91,7 +91,7 @@ pub enum NameplateEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum OrderEvent {
-    GotMessage,
+    GotMessage(String, String, String),
 }
 
 #[derive(Debug, PartialEq)]
