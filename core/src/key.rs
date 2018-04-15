@@ -1,21 +1,206 @@
+extern crate serde_json;
+
+use sodiumoxide::crypto::secretbox;
+use sha2::{Sha256, Digest};
+use spake2;
+use spake2::{Ed25519Group, SPAKE2};
+use hkdf;
+use hkdf::Hkdf;
+
+use util;
 use events::Events;
 // we process these
 use events::KeyEvent;
 // we emit these
+use events::MailboxEvent::{AddMessage as M_AddMessage};
+use events::BossEvent::{GotKey as B_GotKey};
+use events::ReceiveEvent::{GotKey as R_GotKey};
 
-pub struct Key {}
+#[derive(Debug, PartialEq)]
+enum State {
+    S00,
+    S10(String), // code
+    S01(String), // pake
+    S11(String, String), // code, pake
+}
+
+enum SKState {
+    S0_Know_Nothing,
+    S1_Know_Code,
+    S2_Know_Code,
+    S3_Scared
+}
+
+pub struct Key {
+    appid: String,
+    state: State,
+    side: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct PhaseMessage {
+    pake_v1: String
+}
 
 impl Key {
-    pub fn new() -> Key {
-        Key {}
+    pub fn new(appid: &str, side: &str) -> Key {
+        Key {
+            appid: appid.to_string(),
+            state: State::S00,
+            side: side.to_string(),
+        }
     }
 
     pub fn process(&mut self, event: KeyEvent) -> Events {
-        use events::KeyEvent::*;
-        match event {
-            GotCode(code) => events![],
-            GotPake => events![],
-            GotMessage => events![],
+        use self::State::*;
+
+        let (newstate, actions) = match self.state {
+            S00 => self.do_S00(event),
+            S01(ref code) => { self.do_S01(&code, event) },
+            S10(ref body) => self.do_S10(&body, event),
+            S11(ref code, ref body) => self.do_S11(&code, &body, event),
+        };
+
+        match newstate {
+            Some(s) => {
+                self.state = s;
+            }
+            None => {}
         }
+        actions
+    }
+
+    fn extract_pake_msg(&self, body: &str) -> Option<String> {
+        let body_str = util::hexstr_to_string(body);
+        println!("{:?}", body_str);
+        let pake_msg = serde_json::from_str(&body_str)
+            .and_then(|res: PhaseMessage| {Ok(res.pake_v1)}).ok();
+
+        pake_msg
+    }
+
+    fn build_pake(&self, code: &str) -> (Events, SPAKE2<Ed25519Group>) {
+        let (s1, msg1) = spake2::SPAKE2::<Ed25519Group>::start_symmetric(code.as_bytes(), self.appid.as_bytes());
+        let payload = util::bytes_to_hexstr(&msg1);
+        let pake_msg = PhaseMessage { pake_v1: payload };
+        let pake_msg_ser = serde_json::to_string(&pake_msg).unwrap();
+
+        (events![M_AddMessage("pake".to_string(), pake_msg_ser)], s1)
+    }
+
+    fn compute_key(&self, key: &[u8]) -> Events {
+        let phase = "version";
+        let data_key = self.derive_phase_key(&key, phase.to_string());
+        let versions = r#"{"app_versions": {}}"#;
+        let plaintext = serde_json::from_str(versions).unwrap(); // serialize versions
+        let encrypted = self.encrypt_data(data_key, plaintext);
+        events![B_GotKey(key.to_vec()), M_AddMessage(phase.to_string(), encrypted), R_GotKey(key.to_vec())]
+    }
+
+    fn encrypt_data(&self, key: Vec<u8>, plaintext: String) -> String {
+        "hello".to_string()
+    }
+
+    fn sha256_digest(&self, input: &[u8]) -> Vec<u8> {
+        let mut hasher = Sha256::default();
+        hasher.input(input);
+        hasher.result().to_vec()
+    }
+
+    fn derive_phase_key(&self, key: &[u8], phase: String) -> Vec<u8> {
+        let side_bytes = self.side.as_bytes();
+        let phase_bytes = phase.as_bytes();
+        let side_digest: Vec<u8> = self.sha256_digest(side_bytes).iter().cloned().collect();
+        let phase_digest: Vec<u8> = self.sha256_digest(phase_bytes).iter().cloned().collect();
+        let mut purpose_vec: Vec<u8> = "wormhole:phase".as_bytes().iter().cloned().collect();
+        purpose_vec.extend(side_digest);
+        purpose_vec.extend(phase_digest);
+        let length = secretbox::KEYBYTES;
+        let hk = Hkdf::<Sha256>::extract(&[], key); // empty salt
+
+        hk.expand(&purpose_vec, length)
+    }
+
+    fn do_S00(&self, event: KeyEvent) -> (Option<State>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(code) => {
+                // let (e, sp) = self.build_pake(&code);
+                // defer building and sending pake.
+                (Some(State::S10(code.clone())), events![])
+            },
+            GotPake(body) => {
+                // early, we haven't got the code yet.
+                (Some(State::S01(body)), events![])
+            },
+            GotMessage => panic!(),
+        }
+    }
+
+    fn send_pake_compute_key(&self, code: &str, body: &str) -> Events {
+        let (mut buildpake_events, sp) = self.build_pake(&code);
+        let msg2 = self.extract_pake_msg(&body).unwrap();
+        let key = sp.finish(msg2.as_bytes()).unwrap();
+        let mut key_events = self.compute_key(&key);
+
+        let mut es = buildpake_events;
+        let mut pake_events = events![M_AddMessage("pake".to_string(), body.to_string())];
+        es.append(&mut pake_events);
+        es.append(&mut key_events);
+        es
+    }
+
+    fn do_S01(&self, body: &str, event: KeyEvent) -> (Option<State>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(code) => {
+                let es = self.send_pake_compute_key(&code, &body);
+                (Some(State::S11(code, body.to_string())), es)
+            },
+            GotPake(_) => panic!(),
+            GotMessage => panic!(),
+        }
+    }
+
+    fn do_S10(&self, code: &str, event: KeyEvent) -> (Option<State>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(_) => panic!(), // we already have the code
+            GotPake(body) => {
+                let es = self.send_pake_compute_key(&code, &body);
+                (Some(State::S11(code.to_string(), body)), es)
+            }
+            GotMessage => panic!(),
+        }
+    }
+
+    // no state transitions while in S11, we already have got code and pake
+    fn do_S11(&self, code: &str, body: &str, event: KeyEvent) -> (Option<State>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(_) => panic!(),
+            GotPake(_) => panic!(),
+            GotMessage => panic!(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_extract_pake_msg() {
+        use super::*;
+
+        let key = super::Key::new("appid", "side1");
+        
+        let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
+        let pake_msg = key.extract_pake_msg(s1);
+        assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
     }
 }
