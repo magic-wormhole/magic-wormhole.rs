@@ -53,7 +53,7 @@ pub enum InputEvent {
 #[derive(Debug, PartialEq)]
 pub enum KeyEvent {
     GotCode(String),
-    GotPake,
+    GotPake(String),
     GotMessage,
 }
 
@@ -97,7 +97,7 @@ pub enum OrderEvent {
 #[derive(Debug, PartialEq)]
 pub enum ReceiveEvent {
     GotCode,
-    GotKey,
+    GotKey(Vec<u8>),
 }
 
 use server_messages::Message;
@@ -276,9 +276,9 @@ impl Events {
         self.events.push(Event::from(item));
     }
 
-    // pub fn append(&mut self, other: &mut Vec<Event>) {
-    //     self.events.append(&mut other.events);
-    // }
+    pub fn append(&mut self, other: &mut Events) {
+        self.events.append(&mut other.events);
+    }
 }
 
 impl IntoIterator for Events {

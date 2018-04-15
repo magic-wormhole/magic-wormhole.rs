@@ -6,9 +6,9 @@ use events::Event;
 // we process these
 use events::MailboxEvent;
 use events::TerminatorEvent::MailboxDone as T_MailboxDone;
-use events::RendezvousEvent::TxOpen as RC_TxOpen;
-use events::RendezvousEvent::TxAdd as RC_TxAdd;
-use events::RendezvousEvent::TxClose as RC_TxClose;
+use events::RendezvousEvent::{TxOpen as RC_TxOpen,
+                              TxAdd as RC_TxAdd,
+                              TxClose as RC_TxClose};
 use events::NameplateEvent::Release as N_Release;
 use events::OrderEvent::GotMessage as O_GotMessage;
 // we emit these
@@ -58,6 +58,8 @@ impl Mailbox {
 
     pub fn process(&mut self, event: MailboxEvent) -> Events {
         use self::State::*;
+
+        println!("mailbox: current state = {:?}, got event = {:?}", self.state, event);
 
         let (newstate, actions, queue) = match self.state {
             S0A => self.do_S0A(event),

@@ -135,8 +135,8 @@ impl Rendezvous {
     }
 
     fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
+        println!("msg is {:?}", message);
         let m = deserialize(&message);
-        println!("msg is {:?}", m);
         match m {
             Message::Claimed { mailbox } => {
                 events![N_RxClaimed(mailbox.to_string())]
@@ -145,7 +145,7 @@ impl Rendezvous {
                 side,
                 phase,
                 body,
-                id,
+                //id,
             } => events![M_RxMessage(side, phase, body)],
             _ => events![], // TODO
         }

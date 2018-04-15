@@ -4,6 +4,10 @@ extern crate serde_derive;
 extern crate serde_json;
 #[macro_use]
 mod events;
+extern crate spake2;
+extern crate sodiumoxide;
+extern crate sha2;
+extern crate hkdf;
 
 mod api;
 mod allocator;
@@ -57,7 +61,7 @@ impl WormholeCore {
             boss: boss::Boss::new(),
             code: code::Code::new(),
             input: input::Input::new(),
-            key: key::Key::new(),
+            key: key::Key::new(appid, side),
             lister: lister::Lister::new(),
             mailbox: mailbox::Mailbox::new(&side),
             nameplate: nameplate::Nameplate::new(),

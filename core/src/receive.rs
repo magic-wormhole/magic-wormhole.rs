@@ -14,7 +14,7 @@ impl Receive {
         use events::ReceiveEvent::*;
         match event {
             GotCode => events![],
-            GotKey => events![],
+            GotKey(_) => events![],
         }
     }
 }
