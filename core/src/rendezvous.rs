@@ -85,7 +85,7 @@ impl Rendezvous {
             Start => self.start(),
             TxBind(appid, side) => self.send(bind(&appid, &side)),
             TxOpen(mailbox) => self.send(open(&mailbox)),
-            TxAdd(phase, body) => self.send(add(&phase, body.as_bytes())),
+            TxAdd(phase, body) => self.send(add(&phase, &body)),
             TxClose => events![],
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
