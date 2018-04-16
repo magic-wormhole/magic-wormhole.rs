@@ -14,7 +14,8 @@ fn hex_to_char(s: &str) -> Result<char, std::num::ParseIntError> {
 }
 
 pub fn hexstr_to_string(hexstr: &str) -> String {
-    let chars: Vec<&str> = hexstr.as_bytes()
+    let chars: Vec<&str> = hexstr
+        .as_bytes()
         .chunks(2)
         .map(|ch| str::from_utf8(ch).unwrap())
         .collect();
