@@ -85,7 +85,7 @@ impl Key {
         let (s1, msg1) = spake2::SPAKE2::<Ed25519Group>::start_symmetric(code.as_bytes(), self.appid.as_bytes());
         let payload = util::bytes_to_hexstr(&msg1);
         let pake_msg = PhaseMessage { pake_v1: payload };
-        let pake_msg_ser = serde_json::to_string(&pake_msg).unwrap();
+        let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
 
         (events![M_AddMessage("pake".to_string(), pake_msg_ser)], s1)
     }
@@ -96,7 +96,7 @@ impl Key {
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
         let encrypted = self.encrypt_data(data_key, plaintext);
-        events![B_GotKey(key.to_vec()), M_AddMessage(phase.to_string(), util::bytes_to_hexstr(&encrypted)), R_GotKey(key.to_vec())]
+        events![B_GotKey(key.to_vec()), M_AddMessage(phase.to_string(), encrypted), R_GotKey(key.to_vec())]
     }
 
     fn encrypt_data(&self, key: Vec<u8>, plaintext: String) -> Vec<u8> {

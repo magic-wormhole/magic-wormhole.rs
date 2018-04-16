@@ -34,12 +34,12 @@ enum State {
 pub struct Mailbox {
     state: State,
     side: String,
-    pending_outbound: HashMap<String, String>, // HashMap<phase, body>
+    pending_outbound: HashMap<String, Vec<u8>>, // HashMap<phase, body>
     processed: HashSet<String>,
 }
 
 enum QueueCtrl {
-    Enqueue(Vec<(String, String)>), // append
+    Enqueue(Vec<(String, Vec<u8>)>), // append
     Drain,                          // replace with an empty vec
     NoAction,                       // TODO: find a better name for the field
     AddToProcessed(String),         // add to the list of processed "phase"
@@ -82,7 +82,7 @@ impl Mailbox {
         match queue {
             QueueCtrl::Enqueue(mut v) => for &(ref phase, ref body) in &v {
                 self.pending_outbound
-                    .insert(phase.to_string(), body.to_string());
+                    .insert(phase.to_string(), body.to_vec());
             },
             QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
@@ -145,7 +145,7 @@ impl Mailbox {
                 // TODO: move this abstraction into a function
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
+                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.clone())),
@@ -173,7 +173,7 @@ impl Mailbox {
             Connected => {
                 let mut rc_events = events![RC_TxOpen(mailbox.to_string())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
+                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.to_string())),
@@ -214,7 +214,7 @@ impl Mailbox {
             Connected => {
                 let mut events = events![RC_TxOpen(mailbox.to_string())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    events.push(RC_TxAdd(ph.to_string(), body.to_string()));
+                    events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.to_string())),

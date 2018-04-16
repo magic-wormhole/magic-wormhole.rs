@@ -74,7 +74,7 @@ pub enum MailboxEvent {
     Close(String),
     GotMailbox(String),
     GotMessage,
-    AddMessage(String, String), // PAKE+VERSION from Key, PHASE from Send
+    AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
 }
 
 #[derive(Debug, PartialEq)]
@@ -107,7 +107,7 @@ pub enum RendezvousEvent {
     Start,
     TxBind(String, String), // appid, side
     TxOpen(String),         // mailbox
-    TxAdd(String, String),  // phase, body
+    TxAdd(String, Vec<u8>), // phase, body
     TxClose,
     Stop,
     TxClaim(String),
