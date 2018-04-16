@@ -14,7 +14,9 @@ impl Receive {
     pub fn process(&mut self, event: ReceiveEvent) -> Events {
         use events::ReceiveEvent::*;
         match event {
-            GotMessage(side, phase, body) => events![B_GotMessage(side, phase, body)],
+            GotMessage(side, phase, body) => {
+                events![B_GotMessage(side, phase, body)]
+            }
             GotKey(_) => events![],
         }
     }

@@ -13,13 +13,13 @@ enum State {
 
 pub struct Order {
     state: State,
-    queue: Vec<(String, String, String)>
+    queue: Vec<(String, String, String)>,
 }
 
 enum QueueStatus {
     Enqueue((String, String, String)),
     Drain,
-    NoAction
+    NoAction,
 }
 
 impl Order {
@@ -33,8 +33,11 @@ impl Order {
     pub fn process(&mut self, event: OrderEvent) -> Events {
         use self::State::*;
 
-        println!("order: current state = {:?}, got event = {:?}", self.state, event);
-        
+        println!(
+            "order: current state = {:?}, got event = {:?}",
+            self.state, event
+        );
+
         let (newstate, actions, queue_status) = match self.state {
             S0 => self.do_S0(event),
             S1 => self.do_S1(event),
@@ -47,9 +50,9 @@ impl Order {
             QueueStatus::Drain => {
                 self.queue = Vec::new();
             }
-            QueueStatus::NoAction => ()
+            QueueStatus::NoAction => (),
         };
-        
+
         actions
     }
 
@@ -57,7 +60,11 @@ impl Order {
         let mut es = Events::new();
 
         for &(ref side, ref phase, ref body) in &self.queue {
-          es.push(R_GotMessage(side.to_string(), phase.to_string(), body.as_bytes().to_vec()));
+            es.push(R_GotMessage(
+                side.to_string(),
+                phase.to_string(),
+                body.as_bytes().to_vec(),
+            ));
         }
 
         es
@@ -77,9 +84,13 @@ impl Order {
                 } else {
                     // not a  pake message, queue it.
                     println!("key: not a pake message. Queue it (S0)");
-                    (State::S0, events![], QueueStatus::Enqueue((side, phase, body)))
+                    (
+                        State::S0,
+                        events![],
+                        QueueStatus::Enqueue((side, phase, body)),
+                    )
                 }
-            },
+            }
             _ => panic!(),
         }
     }
@@ -87,9 +98,11 @@ impl Order {
     fn do_S1(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
         use events::OrderEvent::*;
         match event {
-            GotMessage(side, phase, body) => {
-                (State::S1, events![R_GotMessage(side, phase, body.as_bytes().to_vec())], QueueStatus::NoAction)
-            }
+            GotMessage(side, phase, body) => (
+                State::S1,
+                events![R_GotMessage(side, phase, body.as_bytes().to_vec())],
+                QueueStatus::NoAction,
+            ),
         }
     }
 }

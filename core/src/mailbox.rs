@@ -6,9 +6,8 @@ use events::Event;
 // we process these
 use events::MailboxEvent;
 use events::TerminatorEvent::MailboxDone as T_MailboxDone;
-use events::RendezvousEvent::{TxOpen as RC_TxOpen,
-                              TxAdd as RC_TxAdd,
-                              TxClose as RC_TxClose};
+use events::RendezvousEvent::{TxAdd as RC_TxAdd, TxClose as RC_TxClose,
+                              TxOpen as RC_TxOpen};
 use events::NameplateEvent::Release as N_Release;
 use events::OrderEvent::GotMessage as O_GotMessage;
 // we emit these
@@ -40,9 +39,9 @@ pub struct Mailbox {
 
 enum QueueCtrl {
     Enqueue(Vec<(String, Vec<u8>)>), // append
-    Drain,                          // replace with an empty vec
-    NoAction,                       // TODO: find a better name for the field
-    AddToProcessed(String),         // add to the list of processed "phase"
+    Drain,                           // replace with an empty vec
+    NoAction,                        // TODO: find a better name for the field
+    AddToProcessed(String),          // add to the list of processed "phase"
     Dequeue(String), // remove an element from the Map given the key
 }
 
@@ -59,7 +58,10 @@ impl Mailbox {
     pub fn process(&mut self, event: MailboxEvent) -> Events {
         use self::State::*;
 
-        println!("mailbox: current state = {:?}, got event = {:?}", self.state, event);
+        println!(
+            "mailbox: current state = {:?}, got event = {:?}",
+            self.state, event
+        );
 
         let (newstate, actions, queue) = match self.state {
             S0A => self.do_S0A(event),

@@ -4,10 +4,10 @@ extern crate serde_derive;
 extern crate serde_json;
 #[macro_use]
 mod events;
-extern crate spake2;
-extern crate sodiumoxide;
-extern crate sha2;
 extern crate hkdf;
+extern crate sha2;
+extern crate sodiumoxide;
+extern crate spake2;
 
 mod api;
 mod allocator;
