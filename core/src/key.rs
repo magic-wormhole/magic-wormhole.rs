@@ -21,8 +21,8 @@ use events::ReceiveEvent::GotKey as R_GotKey;
 enum State {
     S00,
     S10(String),         // code
-    S01(String),         // pake
-    S11(String, String), // code, pake
+    S01(Vec<u8>),         // pake
+    S11(String, Vec<u8>), // code, pake
 }
 
 enum SKState {
@@ -61,9 +61,9 @@ impl Key {
         );
         let (newstate, actions) = match self.state {
             S00 => self.do_S00(event),
-            S01(ref body) => self.do_S01(body, event),
+            S01(ref body) => self.do_S01(body.to_vec(), event),
             S10(ref code) => self.do_S10(&code, event),
-            S11(ref code, ref body) => self.do_S11(&code, body, event),
+            S11(ref code, ref body) => self.do_S11(&code, body.to_vec(), event),
         };
 
         match newstate {
@@ -75,7 +75,7 @@ impl Key {
         actions
     }
 
-    fn extract_pake_msg(&self, body: &str) -> Option<String> {
+    fn extract_pake_msg(&self, body: Vec<u8>) -> Option<String> {
         let body_str = hex::decode(body).unwrap();
         println!("extract_pake_message body: {:?}", body_str);
         let pake_msg = serde_json::from_slice(&body_str)
@@ -157,7 +157,7 @@ impl Key {
         }
     }
 
-    fn send_pake_compute_key(&self, code: &str, body: &str) -> Events {
+    fn send_pake_compute_key(&self, code: &str, body: Vec<u8>) -> Events {
         let (mut buildpake_events, sp) = self.build_pake(&code);
         let msg2 = self.extract_pake_msg(body).unwrap();
         let key = sp.finish(&hex::decode(msg2).unwrap()).unwrap();
@@ -170,13 +170,13 @@ impl Key {
         es
     }
 
-    fn do_S01(&self, body: &str, event: KeyEvent) -> (Option<State>, Events) {
+    fn do_S01(&self, body: Vec<u8>, event: KeyEvent) -> (Option<State>, Events) {
         use events::KeyEvent::*;
 
         match event {
             GotCode(code) => {
-                let es = self.send_pake_compute_key(&code, &body);
-                (Some(State::S11(code, body.to_string())), es)
+                let es = self.send_pake_compute_key(&code, body.clone());
+                (Some(State::S11(code, body)), es)
             }
             GotPake(_) => panic!(),
             GotMessage => panic!(),
@@ -189,7 +189,7 @@ impl Key {
         match event {
             GotCode(_) => panic!(), // we already have the code
             GotPake(body) => {
-                let es = self.send_pake_compute_key(&code, &body);
+                let es = self.send_pake_compute_key(&code, body.clone());
                 (Some(State::S11(code.to_string(), body)), es)
             }
             GotMessage => panic!(),
@@ -200,7 +200,7 @@ impl Key {
     fn do_S11(
         &self,
         code: &str,
-        body: &str,
+        body: Vec<u8>,
         event: KeyEvent,
     ) -> (Option<State>, Events) {
         use events::KeyEvent::*;
@@ -224,7 +224,7 @@ mod test {
         let key = super::Key::new("appid", "side1");
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
-        let pake_msg = key.extract_pake_msg(s1);
+        let pake_msg = key.extract_pake_msg(s1.as_bytes().to_vec());
         assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
     }
 }

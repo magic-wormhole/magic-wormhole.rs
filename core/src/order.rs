@@ -13,11 +13,11 @@ enum State {
 
 pub struct Order {
     state: State,
-    queue: Vec<(String, String, String)>,
+    queue: Vec<(String, String, Vec<u8>)>,
 }
 
 enum QueueStatus {
-    Enqueue((String, String, String)),
+    Enqueue((String, String, Vec<u8>)),
     Drain,
     NoAction,
 }
@@ -63,7 +63,7 @@ impl Order {
             es.push(R_GotMessage(
                 side.to_string(),
                 phase.to_string(),
-                body.as_bytes().to_vec(),
+                body.to_vec(),
             ));
         }
 
@@ -100,7 +100,7 @@ impl Order {
         match event {
             GotMessage(side, phase, body) => (
                 State::S1,
-                events![R_GotMessage(side, phase, body.as_bytes().to_vec())],
+                events![R_GotMessage(side, phase, body)],
                 QueueStatus::NoAction,
             ),
         }

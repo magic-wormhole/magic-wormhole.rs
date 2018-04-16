@@ -53,7 +53,7 @@ pub enum InputEvent {
 #[derive(Debug, PartialEq)]
 pub enum KeyEvent {
     GotCode(String),
-    GotPake(String),
+    GotPake(Vec<u8>),
     GotMessage,
 }
 
@@ -69,7 +69,7 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage(String, String, String),
+    RxMessage(String, String, Vec<u8>),
     RxClosed,
     Close(String),
     GotMailbox(String),
@@ -91,7 +91,7 @@ pub enum NameplateEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum OrderEvent {
-    GotMessage(String, String, String),
+    GotMessage(String, String, Vec<u8>),
 }
 
 #[derive(Debug, PartialEq)]
