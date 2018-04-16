@@ -96,7 +96,7 @@ pub enum OrderEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum ReceiveEvent {
-    GotCode,
+    GotMessage(String, String, Vec<u8>),
     GotKey(Vec<u8>),
 }
 

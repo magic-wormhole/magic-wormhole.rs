@@ -89,8 +89,8 @@ impl Mailbox {
             QueueCtrl::AddToProcessed(phase) => {
                 self.processed.insert(phase);
             }
-            QueueCtrl::Dequeue(key) => {
-                self.pending_outbound.remove(&key);
+            QueueCtrl::Dequeue(phase) => {
+                self.pending_outbound.remove(&phase);
             }
         }
 
@@ -260,6 +260,7 @@ impl Mailbox {
             ),
             RxMessage(side, phase, body) => {
                 if side != self.side {
+                    println!("side does not match! Theirs");
                     // theirs
                     // N_release_and_accept
                     let is_phase_in_processed = self.processed.contains(&phase);
@@ -281,6 +282,7 @@ impl Mailbox {
                     }
                 } else {
                     // ours
+                    println!("side does match! Ours");
                     (
                         Some(State::S2B(mailbox.to_string())),
                         events![],

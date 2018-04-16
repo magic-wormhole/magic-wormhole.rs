@@ -1,4 +1,5 @@
 extern crate serde_json;
+extern crate hex;
 
 use sodiumoxide::crypto::secretbox;
 use sha2::{Sha256, Digest};
@@ -54,11 +55,12 @@ impl Key {
     pub fn process(&mut self, event: KeyEvent) -> Events {
         use self::State::*;
 
+        println!("key: current state = {:?}, got event = {:?}", self.state, event);
         let (newstate, actions) = match self.state {
             S00 => self.do_S00(event),
-            S01(ref code) => { self.do_S01(&code, event) },
-            S10(ref body) => self.do_S10(&body, event),
-            S11(ref code, ref body) => self.do_S11(&code, &body, event),
+            S01(ref body) => { self.do_S01(body, event) },
+            S10(ref code) => self.do_S10(&code, event),
+            S11(ref code, ref body) => self.do_S11(&code, body, event),
         };
 
         match newstate {
@@ -71,9 +73,9 @@ impl Key {
     }
 
     fn extract_pake_msg(&self, body: &str) -> Option<String> {
-        let body_str = util::hexstr_to_string(body);
-        println!("{:?}", body_str);
-        let pake_msg = serde_json::from_str(&body_str)
+        let body_str = hex::decode(body).unwrap();
+        println!("extract_pake_message body: {:?}", body_str);
+        let pake_msg = serde_json::from_slice(&body_str)
             .and_then(|res: PhaseMessage| {Ok(res.pake_v1)}).ok();
 
         pake_msg
@@ -92,13 +94,16 @@ impl Key {
         let phase = "version";
         let data_key = self.derive_phase_key(&key, phase.to_string());
         let versions = r#"{"app_versions": {}}"#;
-        let plaintext = serde_json::from_str(versions).unwrap(); // serialize versions
+        let plaintext = versions.to_string();
         let encrypted = self.encrypt_data(data_key, plaintext);
-        events![B_GotKey(key.to_vec()), M_AddMessage(phase.to_string(), encrypted), R_GotKey(key.to_vec())]
+        events![B_GotKey(key.to_vec()), M_AddMessage(phase.to_string(), util::bytes_to_hexstr(&encrypted)), R_GotKey(key.to_vec())]
     }
 
-    fn encrypt_data(&self, key: Vec<u8>, plaintext: String) -> String {
-        "hello".to_string()
+    fn encrypt_data(&self, key: Vec<u8>, plaintext: String) -> Vec<u8> {
+        let nonce = secretbox::gen_nonce();
+        let sodium_key = secretbox::Key::from_slice(&key).unwrap();
+        let ciphertext = secretbox::seal(plaintext.as_bytes(), &nonce, &sodium_key);
+        ciphertext
     }
 
     fn sha256_digest(&self, input: &[u8]) -> Vec<u8> {
@@ -112,12 +117,12 @@ impl Key {
         let phase_bytes = phase.as_bytes();
         let side_digest: Vec<u8> = self.sha256_digest(side_bytes).iter().cloned().collect();
         let phase_digest: Vec<u8> = self.sha256_digest(phase_bytes).iter().cloned().collect();
-        let mut purpose_vec: Vec<u8> = "wormhole:phase".as_bytes().iter().cloned().collect();
+        let mut purpose_vec: Vec<u8> = "wormhole:phase:".as_bytes().iter().cloned().collect();
         purpose_vec.extend(side_digest);
         purpose_vec.extend(phase_digest);
-        let length = secretbox::KEYBYTES;
-        let hk = Hkdf::<Sha256>::extract(&[], key); // empty salt
 
+        let length = 32;
+        let hk = Hkdf::<Sha256>::extract(&[], key); // empty salt
         hk.expand(&purpose_vec, length)
     }
 
@@ -126,7 +131,6 @@ impl Key {
 
         match event {
             GotCode(code) => {
-                // let (e, sp) = self.build_pake(&code);
                 // defer building and sending pake.
                 (Some(State::S10(code.clone())), events![])
             },
@@ -140,13 +144,13 @@ impl Key {
 
     fn send_pake_compute_key(&self, code: &str, body: &str) -> Events {
         let (mut buildpake_events, sp) = self.build_pake(&code);
-        let msg2 = self.extract_pake_msg(&body).unwrap();
-        let key = sp.finish(msg2.as_bytes()).unwrap();
+        let msg2 = self.extract_pake_msg(body).unwrap();
+        let key = sp.finish(&hex::decode(msg2).unwrap()).unwrap();
         let mut key_events = self.compute_key(&key);
 
         let mut es = buildpake_events;
-        let mut pake_events = events![M_AddMessage("pake".to_string(), body.to_string())];
-        es.append(&mut pake_events);
+        //let mut pake_events = events![M_AddMessage("pake".to_string(), body.to_string())];
+        //es.append(&mut pake_events);
         es.append(&mut key_events);
         es
     }
