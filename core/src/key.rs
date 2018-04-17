@@ -102,7 +102,8 @@ impl Key {
         let data_key = self.derive_phase_key(&key, phase.to_string());
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
-        let (nonce, encrypted) = self.encrypt_data(data_key, plaintext.as_bytes().to_vec());
+        let (nonce, encrypted) =
+            self.encrypt_data(data_key, plaintext.as_bytes().to_vec());
         events![
             B_GotKey(key.to_vec()),
             M_AddMessage(phase.to_string(), encrypted),
@@ -110,11 +111,14 @@ impl Key {
         ]
     }
 
-    fn encrypt_data(&self, key: Vec<u8>, plaintext: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+    fn encrypt_data(
+        &self,
+        key: Vec<u8>,
+        plaintext: Vec<u8>,
+    ) -> (Vec<u8>, Vec<u8>) {
         let nonce = secretbox::gen_nonce();
         let sodium_key = secretbox::Key::from_slice(&key).unwrap();
-        let ciphertext =
-            secretbox::seal(&plaintext, &nonce, &sodium_key);
+        let ciphertext = secretbox::seal(&plaintext, &nonce, &sodium_key);
         let mut nonce_and_ciphertext = Vec::new();
         nonce_and_ciphertext.extend(nonce.as_ref().to_vec());
         nonce_and_ciphertext.extend(ciphertext);
