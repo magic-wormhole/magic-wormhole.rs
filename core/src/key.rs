@@ -232,4 +232,25 @@ mod test {
         let pake_msg = key.extract_pake_msg(s1.as_bytes().to_vec());
         assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
     }
+
+    #[test]
+    fn test_derive_phase_key() {
+        use super::*;
+
+        // feed python's derive_phase_key with these inputs:
+        // key = b"key"
+        // side = u"side"
+        // phase = u"phase1"
+        // output of derive_phase_key is:
+        // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
+        // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
+        let k = Key::new("appid1", "side");
+
+        let key = "key".as_bytes();
+        let side = "side";
+        let phase = "phase1";
+        let phase1_key = k.derive_phase_key(key, phase.to_string());
+
+        assert_eq!(hex::encode(phase1_key), "fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96");
+    }
 }
