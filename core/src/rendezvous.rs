@@ -85,7 +85,7 @@ impl Rendezvous {
             Start => self.start(),
             TxBind(appid, side) => self.send(bind(&appid, &side)),
             TxOpen(mailbox) => self.send(open(&mailbox)),
-            TxAdd(phase, body) => self.send(add(&phase, body.as_bytes())),
+            TxAdd(phase, body) => self.send(add(&phase, &body)),
             TxClose => events![],
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
@@ -135,8 +135,8 @@ impl Rendezvous {
     }
 
     fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
-        let m = deserialize(&message);
-        println!("msg is {:?}", m);
+        println!("msg is {:?}", message);
+        let m = deserialize(message);
         match m {
             Message::Claimed { mailbox } => {
                 events![N_RxClaimed(mailbox.to_string())]
@@ -145,8 +145,8 @@ impl Rendezvous {
                 side,
                 phase,
                 body,
-                id,
-            } => events![M_RxMessage(side, phase, body)],
+                //id,
+            } => events![M_RxMessage(side, phase, body.as_bytes().to_vec())],
             _ => events![], // TODO
         }
     }
