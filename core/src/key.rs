@@ -251,6 +251,9 @@ mod test {
         let phase = "phase1";
         let phase1_key = k.derive_phase_key(key, phase.to_string());
 
-        assert_eq!(hex::encode(phase1_key), "fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96");
+        assert_eq!(
+            hex::encode(phase1_key),
+            "fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96"
+        );
     }
 }
