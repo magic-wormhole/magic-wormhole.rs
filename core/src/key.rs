@@ -137,7 +137,8 @@ impl Key {
         purpose_vec.extend(phase_digest);
 
         let length = 32;
-        let hk = Hkdf::<Sha256>::extract(&[], key); // empty salt
+        let salt: [u8; 32] = [0; 32];
+        let hk = Hkdf::<Sha256>::extract(&salt, key);
         hk.expand(&purpose_vec, length)
     }
 
