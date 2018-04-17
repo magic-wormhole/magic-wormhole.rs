@@ -56,7 +56,6 @@ impl Code {
                 // TODO: try!(validate_code(code))
                 let nc: Vec<&str> = code.splitn(2, "-").collect();
                 let nameplate = nc[0];
-                let code = nc[1];
                 (
                     Some(State::Known),
                     events![
