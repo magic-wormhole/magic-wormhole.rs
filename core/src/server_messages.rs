@@ -66,7 +66,7 @@ pub enum Message {
         side: String,
         phase: String,
         body: String,
-        id: String,
+        //id: String,
     },
     Close {
         mailbox: String,
@@ -326,4 +326,18 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_message() {
+        let s = r#"{"body": "7b2270616b655f7631223a22353361346566366234363434303364376534633439343832663964373236646538396462366631336632613832313537613335646562393562366237633536353533227d", "server_rx": 1523468188.293486, "id": null, "phase": "pake", "server_tx": 1523498654.753594, "type": "message", "side": "side1"}"#;
+        let m = deserialize(&s);
+        match m {
+            Message::Message {
+                side: s,
+                phase: p,
+                body: b,
+                //id: i
+            } => (),
+            _ => panic!(),
+        }
+    }
 }

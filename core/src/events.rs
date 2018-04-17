@@ -53,7 +53,7 @@ pub enum InputEvent {
 #[derive(Debug, PartialEq)]
 pub enum KeyEvent {
     GotCode(String),
-    GotPake,
+    GotPake(Vec<u8>),
     GotMessage,
 }
 
@@ -69,12 +69,12 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage(String, String, String),
+    RxMessage(String, String, Vec<u8>),
     RxClosed,
     Close(String),
     GotMailbox(String),
     GotMessage,
-    AddMessage(String, String), // PAKE+VERSION from Key, PHASE from Send
+    AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
 }
 
 #[derive(Debug, PartialEq)]
@@ -91,13 +91,13 @@ pub enum NameplateEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum OrderEvent {
-    GotMessage(String, String, String),
+    GotMessage(String, String, Vec<u8>),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum ReceiveEvent {
-    GotCode,
-    GotKey,
+    GotMessage(String, String, Vec<u8>),
+    GotKey(Vec<u8>),
 }
 
 use server_messages::Message;
@@ -107,7 +107,7 @@ pub enum RendezvousEvent {
     Start,
     TxBind(String, String), // appid, side
     TxOpen(String),         // mailbox
-    TxAdd(String, String),  // phase, body
+    TxAdd(String, Vec<u8>), // phase, body
     TxClose,
     Stop,
     TxClaim(String),
@@ -276,9 +276,9 @@ impl Events {
         self.events.push(Event::from(item));
     }
 
-    // pub fn append(&mut self, other: &mut Vec<Event>) {
-    //     self.events.append(&mut other.events);
-    // }
+    pub fn append(&mut self, other: &mut Events) {
+        self.events.append(&mut other.events);
+    }
 }
 
 impl IntoIterator for Events {

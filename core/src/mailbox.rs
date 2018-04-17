@@ -6,9 +6,8 @@ use events::Event;
 // we process these
 use events::MailboxEvent;
 use events::TerminatorEvent::MailboxDone as T_MailboxDone;
-use events::RendezvousEvent::TxOpen as RC_TxOpen;
-use events::RendezvousEvent::TxAdd as RC_TxAdd;
-use events::RendezvousEvent::TxClose as RC_TxClose;
+use events::RendezvousEvent::{TxAdd as RC_TxAdd, TxClose as RC_TxClose,
+                              TxOpen as RC_TxOpen};
 use events::NameplateEvent::Release as N_Release;
 use events::OrderEvent::GotMessage as O_GotMessage;
 // we emit these
@@ -34,15 +33,15 @@ enum State {
 pub struct Mailbox {
     state: State,
     side: String,
-    pending_outbound: HashMap<String, String>, // HashMap<phase, body>
+    pending_outbound: HashMap<String, Vec<u8>>, // HashMap<phase, body>
     processed: HashSet<String>,
 }
 
 enum QueueCtrl {
-    Enqueue(Vec<(String, String)>), // append
-    Drain,                          // replace with an empty vec
-    NoAction,                       // TODO: find a better name for the field
-    AddToProcessed(String),         // add to the list of processed "phase"
+    Enqueue(Vec<(String, Vec<u8>)>), // append
+    Drain,                           // replace with an empty vec
+    NoAction,                        // TODO: find a better name for the field
+    AddToProcessed(String),          // add to the list of processed "phase"
     Dequeue(String), // remove an element from the Map given the key
 }
 
@@ -58,6 +57,11 @@ impl Mailbox {
 
     pub fn process(&mut self, event: MailboxEvent) -> Events {
         use self::State::*;
+
+        println!(
+            "mailbox: current state = {:?}, got event = {:?}",
+            self.state, event
+        );
 
         let (newstate, actions, queue) = match self.state {
             S0A => self.do_S0A(event),
@@ -80,15 +84,15 @@ impl Mailbox {
         match queue {
             QueueCtrl::Enqueue(mut v) => for &(ref phase, ref body) in &v {
                 self.pending_outbound
-                    .insert(phase.to_string(), body.to_string());
+                    .insert(phase.to_string(), body.to_vec());
             },
             QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
             QueueCtrl::AddToProcessed(phase) => {
                 self.processed.insert(phase);
             }
-            QueueCtrl::Dequeue(key) => {
-                self.pending_outbound.remove(&key);
+            QueueCtrl::Dequeue(phase) => {
+                self.pending_outbound.remove(&phase);
             }
         }
 
@@ -143,7 +147,7 @@ impl Mailbox {
                 // TODO: move this abstraction into a function
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
+                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.clone())),
@@ -171,7 +175,7 @@ impl Mailbox {
             Connected => {
                 let mut rc_events = events![RC_TxOpen(mailbox.to_string())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_string()));
+                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.to_string())),
@@ -212,7 +216,7 @@ impl Mailbox {
             Connected => {
                 let mut events = events![RC_TxOpen(mailbox.to_string())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    events.push(RC_TxAdd(ph.to_string(), body.to_string()));
+                    events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.to_string())),
@@ -258,6 +262,7 @@ impl Mailbox {
             ),
             RxMessage(side, phase, body) => {
                 if side != self.side {
+                    println!("side does not match! Theirs");
                     // theirs
                     // N_release_and_accept
                     let is_phase_in_processed = self.processed.contains(&phase);
@@ -279,6 +284,7 @@ impl Mailbox {
                     }
                 } else {
                     // ours
+                    println!("side does match! Ours");
                     (
                         Some(State::S2B(mailbox.to_string())),
                         events![],
