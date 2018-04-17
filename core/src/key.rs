@@ -20,7 +20,7 @@ use events::ReceiveEvent::GotKey as R_GotKey;
 #[derive(Debug, PartialEq)]
 enum State {
     S00,
-    S10(String),         // code
+    S10(String),          // code
     S01(Vec<u8>),         // pake
     S11(String, Vec<u8>), // code, pake
 }
@@ -170,7 +170,11 @@ impl Key {
         es
     }
 
-    fn do_S01(&self, body: Vec<u8>, event: KeyEvent) -> (Option<State>, Events) {
+    fn do_S01(
+        &self,
+        body: Vec<u8>,
+        event: KeyEvent,
+    ) -> (Option<State>, Events) {
         use events::KeyEvent::*;
 
         match event {
