@@ -13,10 +13,10 @@ use events::TerminatorEvent::Close as T_Close;
 
 #[derive(Debug, PartialEq)]
 enum State {
-    Empty,
-    Coding,
-    Lonely,
-    Happy,
+    Empty(u32),
+    Coding(u32),
+    Lonely(u32),
+    Happy(u32),
     Closing,
     Closed,
 }
@@ -29,7 +29,7 @@ pub struct Boss {
 impl Boss {
     pub fn new() -> Boss {
         Boss {
-            state: State::Empty,
+            state: State::Empty(0),
             mood: Mood::Lonely,
         }
     }
@@ -63,10 +63,10 @@ impl Boss {
     fn allocate_code(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => {
+            Empty(i) => {
                 let length = 2; // TODO: configurable by AllocateCode
                 let wordlist = Wordlist {}; // TODO: populate words
-                (events![C_AllocateCode(length, wordlist)], Coding)
+                (events![C_AllocateCode(length, wordlist)], Coding(i))
             }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
@@ -82,7 +82,7 @@ impl Boss {
             // Code::SetCode will signal us with Boss:GotCode in just a
             // moment, and by not special-casing set_code we get to use the
             // same flow for allocate_code and input_code
-            Empty => (events![C_SetCode(code.to_string())], Coding),
+            Empty(i) => (events![C_SetCode(code.to_string())], Coding(i)),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -94,7 +94,7 @@ impl Boss {
         // TODO: return Helper somehow
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => (events![C_InputCode], Coding),
+            Empty(i) => (events![C_InputCode], Coding(i)),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -104,7 +104,9 @@ impl Boss {
     fn got_code(&mut self, code: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Coding => (events![APIAction::GotCode(code.to_string())], Lonely),
+            Coding(i) => {
+                (events![APIAction::GotCode(code.to_string())], Lonely(i))
+            }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -114,7 +116,7 @@ impl Boss {
     fn happy(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Lonely => (events![], Happy),
+            Lonely(i) => (events![], Happy(i)),
             Closing => (events![], Closing),
             _ => panic!(),
         };
@@ -133,19 +135,19 @@ impl Boss {
             Closing => (events![], Closing),
             Closed => (events![], Closed),
             // TODO: find a way to combine these
-            Empty => (events![], Empty),
-            Coding => (events![], Coding),
-            Lonely => (events![], Lonely),
-            Happy => {
+            Empty(i) => (events![], Empty(i)),
+            Coding(i) => (events![], Coding(i)),
+            Lonely(i) => (events![], Lonely(i)),
+            Happy(i) => {
                 if phase == "version" {
                     // TODO deliver the "app_versions" key to API
-                    (events![], Happy)
+                    (events![], Happy(i))
                 } else if phase == "\\d+" {
                     // TODO: match on regexp
-                    (events![APIAction::GotMessage(plaintext)], Happy)
+                    (events![APIAction::GotMessage(plaintext)], Happy(i))
                 } else {
                     // TODO: log and ignore, for future expansion
-                    (events![], Happy)
+                    (events![], Happy(i))
                 }
             }
         };
@@ -159,10 +161,18 @@ impl Boss {
             Closing => (events![], Closing),
             Closed => (events![], Closed),
             // TODO: find a way to combine these
-            Empty => (events![S_Send(plaintext)], Empty),
-            Coding => (events![S_Send(plaintext)], Coding),
-            Lonely => (events![S_Send(plaintext)], Lonely),
-            Happy => (events![S_Send(plaintext)], Happy),
+            Empty(i) => {
+                (events![S_Send(format!("{}", i), plaintext)], Empty(i + 1))
+            }
+            Coding(i) => {
+                (events![S_Send(format!("{}", i), plaintext)], Coding(i + 1))
+            }
+            Lonely(i) => {
+                (events![S_Send(format!("{}", i), plaintext)], Lonely(i + 1))
+            }
+            Happy(i) => {
+                (events![S_Send(format!("{}", i), plaintext)], Happy(i + 1))
+            }
         };
         self.state = newstate;
         actions
@@ -171,19 +181,19 @@ impl Boss {
     fn close(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty => {
+            Empty(i) => {
                 self.mood = Mood::Lonely;
                 (events![T_Close(Mood::Lonely)], Closing)
             }
-            Coding => {
+            Coding(i) => {
                 self.mood = Mood::Lonely;
                 (events![T_Close(Mood::Lonely)], Closing)
             }
-            Lonely => {
+            Lonely(i) => {
                 self.mood = Mood::Lonely;
                 (events![T_Close(Mood::Lonely)], Closing)
             }
-            Happy => {
+            Happy(i) => {
                 self.mood = Mood::Happy;
                 (events![T_Close(Mood::Happy)], Closing)
             }

@@ -118,21 +118,21 @@ pub enum RendezvousEvent {
 
 #[derive(PartialEq)]
 pub enum SendEvent {
-    Send(Vec<u8>),
-    GotVerifiedKey,
+    Send(String, Vec<u8>), // phase, plaintext
+    GotVerifiedKey(Vec<u8>),
 }
 use std::fmt;
 impl fmt::Debug for SendEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &SendEvent::Send(ref s) => {
-                let p = String::from_utf8(s.to_vec());
+            &SendEvent::Send(ref phase, ref plaintext) => {
+                let p = String::from_utf8(phase.as_bytes().to_vec());
                 match p {
                     Ok(p1) => write!(f, "Send({})", p1),
                     Err(_) => write!(f, "Send(non-UTF8)"),
                 }
             }
-            &SendEvent::GotVerifiedKey => write!(f, "Send(GotVerifiedKey)"),
+            &SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
         }
     }
 }
