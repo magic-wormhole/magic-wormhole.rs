@@ -102,7 +102,8 @@ impl Key {
         let data_key = self.derive_phase_key(&key, phase.to_string());
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
-        let encrypted = self.encrypt_data(data_key, plaintext);
+        let (nonce, encrypted) =
+            self.encrypt_data(data_key, &plaintext.as_bytes());
         events![
             B_GotKey(key.to_vec()),
             M_AddMessage(phase.to_string(), encrypted),
@@ -110,12 +111,18 @@ impl Key {
         ]
     }
 
-    fn encrypt_data(&self, key: Vec<u8>, plaintext: String) -> Vec<u8> {
+    fn encrypt_data(
+        &self,
+        key: Vec<u8>,
+        plaintext: &[u8],
+    ) -> (Vec<u8>, Vec<u8>) {
         let nonce = secretbox::gen_nonce();
         let sodium_key = secretbox::Key::from_slice(&key).unwrap();
-        let ciphertext =
-            secretbox::seal(plaintext.as_bytes(), &nonce, &sodium_key);
-        ciphertext
+        let ciphertext = secretbox::seal(&plaintext, &nonce, &sodium_key);
+        let mut nonce_and_ciphertext = Vec::new();
+        nonce_and_ciphertext.extend(nonce.as_ref().to_vec());
+        nonce_and_ciphertext.extend(ciphertext);
+        (nonce.as_ref().to_vec(), nonce_and_ciphertext)
     }
 
     fn sha256_digest(&self, input: &[u8]) -> Vec<u8> {
@@ -137,7 +144,8 @@ impl Key {
         purpose_vec.extend(phase_digest);
 
         let length = 32;
-        let hk = Hkdf::<Sha256>::extract(&[], key); // empty salt
+        let salt: [u8; 32] = [0; 32];
+        let hk = Hkdf::<Sha256>::extract(&salt, key);
         hk.expand(&purpose_vec, length)
     }
 
@@ -230,5 +238,29 @@ mod test {
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = key.extract_pake_msg(s1.as_bytes().to_vec());
         assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
+    }
+
+    #[test]
+    fn test_derive_phase_key() {
+        use super::*;
+
+        // feed python's derive_phase_key with these inputs:
+        // key = b"key"
+        // side = u"side"
+        // phase = u"phase1"
+        // output of derive_phase_key is:
+        // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
+        // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
+        let k = Key::new("appid1", "side");
+
+        let key = "key".as_bytes();
+        let side = "side";
+        let phase = "phase1";
+        let phase1_key = k.derive_phase_key(key, phase.to_string());
+
+        assert_eq!(
+            hex::encode(phase1_key),
+            "fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96"
+        );
     }
 }
