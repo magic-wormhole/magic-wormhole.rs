@@ -120,6 +120,12 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
             },
             Action::API(api) => match api {
                 // TODO: deliver API events to app
+                APIAction::GotMessage(msg) => {
+                    println!(
+                        "API got message: {}",
+                        String::from_utf8(msg).unwrap()
+                    );
+                }
                 _ => println!("action {:?}", api),
             },
         }
