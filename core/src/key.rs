@@ -103,7 +103,7 @@ impl Key {
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
         let (nonce, encrypted) =
-            self.encrypt_data(data_key, plaintext.as_bytes().to_vec());
+            self.encrypt_data(data_key, &plaintext.as_bytes());
         events![
             B_GotKey(key.to_vec()),
             M_AddMessage(phase.to_string(), encrypted),
@@ -114,7 +114,7 @@ impl Key {
     fn encrypt_data(
         &self,
         key: Vec<u8>,
-        plaintext: Vec<u8>,
+        plaintext: &[u8],
     ) -> (Vec<u8>, Vec<u8>) {
         let nonce = secretbox::gen_nonce();
         let sodium_key = secretbox::Key::from_slice(&key).unwrap();
