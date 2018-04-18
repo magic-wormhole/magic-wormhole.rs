@@ -99,11 +99,12 @@ impl Key {
 
     fn compute_key(&self, key: &[u8]) -> Events {
         let phase = "version";
-        let data_key = self.derive_phase_key(&key, phase.to_string());
+        let data_key =
+            Self::derive_phase_key(&self.side, &key, phase.to_string());
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
         let (nonce, encrypted) =
-            self.encrypt_data(data_key, &plaintext.as_bytes());
+            Self::encrypt_data(data_key, &plaintext.as_bytes());
         events![
             B_GotKey(key.to_vec()),
             M_AddMessage(phase.to_string(), encrypted),
@@ -111,11 +112,7 @@ impl Key {
         ]
     }
 
-    fn encrypt_data(
-        &self,
-        key: Vec<u8>,
-        plaintext: &[u8],
-    ) -> (Vec<u8>, Vec<u8>) {
+    pub fn encrypt_data(key: Vec<u8>, plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
         let nonce = secretbox::gen_nonce();
         let sodium_key = secretbox::Key::from_slice(&key).unwrap();
         let ciphertext = secretbox::seal(&plaintext, &nonce, &sodium_key);
@@ -125,19 +122,19 @@ impl Key {
         (nonce.as_ref().to_vec(), nonce_and_ciphertext)
     }
 
-    fn sha256_digest(&self, input: &[u8]) -> Vec<u8> {
+    fn sha256_digest(input: &[u8]) -> Vec<u8> {
         let mut hasher = Sha256::default();
         hasher.input(input);
         hasher.result().to_vec()
     }
 
-    fn derive_phase_key(&self, key: &[u8], phase: String) -> Vec<u8> {
-        let side_bytes = self.side.as_bytes();
+    pub fn derive_phase_key(side: &str, key: &[u8], phase: String) -> Vec<u8> {
+        let side_bytes = side.as_bytes();
         let phase_bytes = phase.as_bytes();
         let side_digest: Vec<u8> =
-            self.sha256_digest(side_bytes).iter().cloned().collect();
+            Self::sha256_digest(side_bytes).iter().cloned().collect();
         let phase_digest: Vec<u8> =
-            self.sha256_digest(phase_bytes).iter().cloned().collect();
+            Self::sha256_digest(phase_bytes).iter().cloned().collect();
         let mut purpose_vec: Vec<u8> =
             "wormhole:phase:".as_bytes().iter().cloned().collect();
         purpose_vec.extend(side_digest);
@@ -172,8 +169,6 @@ impl Key {
         let mut key_events = self.compute_key(&key);
 
         let mut es = buildpake_events;
-        //let mut pake_events = events![M_AddMessage("pake".to_string(), body.to_string())];
-        //es.append(&mut pake_events);
         es.append(&mut key_events);
         es
     }
@@ -256,7 +251,7 @@ mod test {
         let key = "key".as_bytes();
         let side = "side";
         let phase = "phase1";
-        let phase1_key = k.derive_phase_key(key, phase.to_string());
+        let phase1_key = Key::derive_phase_key(side, key, phase.to_string());
 
         assert_eq!(
             hex::encode(phase1_key),
