@@ -251,7 +251,7 @@ mod test {
         let key = "key".as_bytes();
         let side = "side";
         let phase = "phase1";
-        let phase1_key = Key::derive_phase_key(side, key, phase.to_string());
+        let phase1_key = Key::derive_phase_key(side, key, phase);
 
         assert_eq!(
             hex::encode(phase1_key),
