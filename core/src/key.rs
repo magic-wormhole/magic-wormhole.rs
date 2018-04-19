@@ -99,8 +99,7 @@ impl Key {
 
     fn compute_key(&self, key: &[u8]) -> Events {
         let phase = "version";
-        let data_key =
-            Self::derive_phase_key(&self.side, &key, phase);
+        let data_key = Self::derive_phase_key(&self.side, &key, phase);
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
         let (nonce, encrypted) =
