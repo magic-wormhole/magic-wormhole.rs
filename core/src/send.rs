@@ -64,7 +64,7 @@ impl Send {
 
         for &(ref phase, ref plaintext) in &self.queue {
             let data_key =
-                Key::derive_phase_key(&self.side, &key, phase.to_string());
+                Key::derive_phase_key(&self.side, &key, phase);
             let (nonce, encrypted) = Key::encrypt_data(data_key, plaintext);
             es.push(M_AddMessage(phase.to_string(), encrypted));
         }
@@ -78,7 +78,7 @@ impl Send {
         phase: String,
         plaintext: Vec<u8>,
     ) -> Events {
-        let data_key = Key::derive_phase_key(&self.side, &key, phase.clone());
+        let data_key = Key::derive_phase_key(&self.side, &key, &phase);
         let (nonce, encrypted) = Key::encrypt_data(data_key, &plaintext);
 
         events![M_AddMessage(phase, encrypted)]
