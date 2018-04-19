@@ -100,7 +100,7 @@ impl Key {
     fn compute_key(&self, key: &[u8]) -> Events {
         let phase = "version";
         let data_key =
-            Self::derive_phase_key(&self.side, &key, phase.to_string());
+            Self::derive_phase_key(&self.side, &key, phase);
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
         let (nonce, encrypted) =
@@ -128,7 +128,7 @@ impl Key {
         hasher.result().to_vec()
     }
 
-    pub fn derive_phase_key(side: &str, key: &[u8], phase: String) -> Vec<u8> {
+    pub fn derive_phase_key(side: &str, key: &[u8], phase: &str) -> Vec<u8> {
         let side_bytes = side.as_bytes();
         let phase_bytes = phase.as_bytes();
         let side_digest: Vec<u8> =
