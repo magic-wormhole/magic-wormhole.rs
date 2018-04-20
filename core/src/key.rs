@@ -123,8 +123,9 @@ impl Key {
     // TODO: return an Result with a proper error type
     // secretbox::open() returns Result<Vec<u8>, ()> which is not helpful.
     pub fn decrypt_data(key: Vec<u8>, encrypted: &[u8]) -> Option<Vec<u8>> {
-        let (nonce, ciphertext) = encrypted.split_at(24); // TODO: retrieve the nonce length from secretbox
-        assert_eq!(nonce.len(), 24); // TODO: find the right constant from sodiumoxide
+        let (nonce, ciphertext) =
+            encrypted.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
+        assert_eq!(nonce.len(), sodiumoxide::crypto::secretbox::NONCEBYTES);
         secretbox::open(
             &ciphertext,
             &secretbox::Nonce::from_slice(nonce).unwrap(),
@@ -139,7 +140,7 @@ impl Key {
     }
 
     pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
-        let salt: [u8; 32] = [0; 32];
+        let salt = vec![0; length];
         let hk = Hkdf::<Sha256>::extract(&salt, key);
         hk.expand(purpose, length)
     }
@@ -156,7 +157,7 @@ impl Key {
         purpose_vec.extend(side_digest);
         purpose_vec.extend(phase_digest);
 
-        let length = 32;
+        let length = sodiumoxide::crypto::secretbox::KEYBYTES;
         Self::derive_key(key, &purpose_vec, length)
     }
 
