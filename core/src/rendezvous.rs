@@ -7,6 +7,8 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
+extern crate hex;
+
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
@@ -146,7 +148,7 @@ impl Rendezvous {
                 phase,
                 body,
                 //id,
-            } => events![M_RxMessage(side, phase, body.as_bytes().to_vec())],
+            } => events![M_RxMessage(side, phase, hex::decode(body).unwrap())],
             _ => events![], // TODO
         }
     }

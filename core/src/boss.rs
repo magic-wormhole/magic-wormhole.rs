@@ -52,9 +52,7 @@ impl Boss {
             GotKey(key) => events![APIAction::GotUnverifiedKey(key)],
             Happy => self.happy(),
             GotVerifier(verifier) => events![APIAction::GotVerifier(verifier)],
-            GotMessage(side, phase, plaintext) => {
-                self.got_message(&side, &phase, plaintext)
-            }
+            GotMessage(phase, plaintext) => self.got_message(&phase, plaintext),
             Closed => self.closed(),
             Error | RxError | RxWelcome | Scared => events![],
         }
@@ -124,12 +122,7 @@ impl Boss {
         actions
     }
 
-    fn got_message(
-        &mut self,
-        side: &str,
-        phase: &str,
-        plaintext: Vec<u8>,
-    ) -> Events {
+    fn got_message(&mut self, phase: &str, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Closing => (events![], Closing),

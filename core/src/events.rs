@@ -31,7 +31,7 @@ pub enum BossEvent {
     Scared,
     Happy,
     GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
-    GotMessage(String, String, Vec<u8>),
+    GotMessage(String, Vec<u8>),
 }
 
 #[derive(Debug, PartialEq)]

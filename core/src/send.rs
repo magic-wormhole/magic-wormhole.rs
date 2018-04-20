@@ -79,7 +79,6 @@ impl Send {
     ) -> Events {
         let data_key = Key::derive_phase_key(&self.side, &key, &phase);
         let (nonce, encrypted) = Key::encrypt_data(data_key, &plaintext);
-
         events![M_AddMessage(phase, encrypted)]
     }
 
