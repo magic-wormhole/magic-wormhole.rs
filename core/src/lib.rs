@@ -73,7 +73,7 @@ impl WormholeCore {
                 side,
                 5.0,
             ),
-            send: send::Send::new(),
+            send: send::Send::new(side),
             terminator: terminator::Terminator::new(),
         }
     }
