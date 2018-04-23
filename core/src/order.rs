@@ -76,14 +76,12 @@ impl Order {
             GotMessage(side, phase, body) => {
                 if phase == "pake" {
                     // got a pake message
-                    println!("key: got pake message at S0");
                     let mut es = self.drain();
                     let mut key_events = events![K_GotPake(body)];
                     key_events.append(&mut es);
-                    (State::S1, key_events, QueueStatus::Drain) // TODO: instead of None, return a queue status
+                    (State::S1, key_events, QueueStatus::Drain)
                 } else {
                     // not a  pake message, queue it.
-                    println!("key: not a pake message. Queue it (S0)");
                     (
                         State::S0,
                         events![],
