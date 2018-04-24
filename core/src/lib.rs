@@ -8,6 +8,8 @@ extern crate hkdf;
 extern crate sha2;
 extern crate sodiumoxide;
 extern crate spake2;
+extern crate rustc_serialize;
+extern crate rand;
 
 mod api;
 mod allocator;
@@ -28,7 +30,12 @@ mod wordlist;
 mod util;
 
 use std::collections::VecDeque;
+use std::iter::FromIterator;
+use rustc_serialize::hex::ToHex;
+use rand::{Rng, thread_rng};
+
 use events::{Event, Events};
+
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle,
               WSHandle};
 
@@ -53,15 +60,26 @@ pub struct WormholeCore {
     from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
 }*/
 
+pub fn random_bytes(bytes: &mut [u8]) {
+    let mut rng = thread_rng();
+    rng.fill_bytes(bytes);
+}
+
+fn generate_side() -> String {
+    let mut bytes: [u8;5] = [0;5];
+    random_bytes(&mut bytes);
+    bytes.to_hex()
+}
+
 impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
-        let side = "side1"; // TODO: generate randomly
+        let side = generate_side();
         WormholeCore {
             allocator: allocator::Allocator::new(),
             boss: boss::Boss::new(),
             code: code::Code::new(),
             input: input::Input::new(),
-            key: key::Key::new(appid, side),
+            key: key::Key::new(appid, side.as_str()),
             lister: lister::Lister::new(),
             mailbox: mailbox::Mailbox::new(&side),
             nameplate: nameplate::Nameplate::new(),
@@ -70,10 +88,10 @@ impl WormholeCore {
             rendezvous: rendezvous::Rendezvous::new(
                 appid,
                 relay_url,
-                side,
+                side.as_str(),
                 5.0,
             ),
-            send: send::Send::new(side),
+            send: send::Send::new(side.as_str()),
             terminator: terminator::Terminator::new(),
         }
     }
