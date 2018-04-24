@@ -5,11 +5,11 @@ extern crate serde_json;
 #[macro_use]
 mod events;
 extern crate hkdf;
+extern crate rand;
+extern crate rustc_serialize;
 extern crate sha2;
 extern crate sodiumoxide;
 extern crate spake2;
-extern crate rustc_serialize;
-extern crate rand;
 
 mod api;
 mod allocator;
@@ -32,7 +32,7 @@ mod util;
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use rustc_serialize::hex::ToHex;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 
 use events::{Event, Events};
 
@@ -66,7 +66,7 @@ pub fn random_bytes(bytes: &mut [u8]) {
 }
 
 fn generate_side() -> String {
-    let mut bytes: [u8;5] = [0;5];
+    let mut bytes: [u8; 5] = [0; 5];
     random_bytes(&mut bytes);
     bytes.to_hex()
 }
