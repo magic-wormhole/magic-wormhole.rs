@@ -11,7 +11,7 @@ use events::RendezvousEvent::Stop as RC_Stop;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
     Empty(u32),
     Coding(u32),
@@ -26,6 +26,19 @@ pub struct Boss {
     mood: Mood,
 }
 
+impl State {
+    pub fn increment_phase(&self) -> Self {
+        use self::State::*;
+        match *self {
+            Empty(i) => Empty(i + 1),
+            Coding(i) => Coding(i + 1),
+            Lonely(i) => Lonely(i + 1),
+            Happy(i) => Happy(i + 1),
+            Closing => Closing,
+            Closed => Closed,
+        }
+    }
+}
 impl Boss {
     pub fn new() -> Boss {
         Boss {
@@ -125,12 +138,9 @@ impl Boss {
     fn got_message(&mut self, phase: &str, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Closing => (events![], Closing),
-            Closed => (events![], Closed),
-            // TODO: find a way to combine these
-            Empty(i) => (events![], Empty(i)),
-            Coding(i) => (events![], Coding(i)),
-            Lonely(i) => (events![], Lonely(i)),
+            Closing | Closed | Empty(..) | Coding(..) | Lonely(..) => {
+                (events![], self.state)
+            }
             Happy(i) => {
                 if phase == "version" {
                     // TODO deliver the "app_versions" key to API
@@ -151,21 +161,11 @@ impl Boss {
     fn send(&mut self, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Closing => (events![], Closing),
-            Closed => (events![], Closed),
-            // TODO: find a way to combine these
-            Empty(i) => {
-                (events![S_Send(format!("{}", i), plaintext)], Empty(i + 1))
-            }
-            Coding(i) => {
-                (events![S_Send(format!("{}", i), plaintext)], Coding(i + 1))
-            }
-            Lonely(i) => {
-                (events![S_Send(format!("{}", i), plaintext)], Lonely(i + 1))
-            }
-            Happy(i) => {
-                (events![S_Send(format!("{}", i), plaintext)], Happy(i + 1))
-            }
+            Closing | Closed => (events![], self.state),
+            Empty(i) | Coding(i) | Lonely(i) | Happy(i) => (
+                events![S_Send(format!("{}", i), plaintext)],
+                self.state.increment_phase(),
+            ),
         };
         self.state = newstate;
         actions
