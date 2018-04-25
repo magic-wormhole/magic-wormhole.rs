@@ -78,3 +78,33 @@ impl Lister {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use events::{Events, RendezvousEvent::TxList, InputEvent::GotNameplates, ListerEvent::*};
+    use super::{State, Lister};
+
+    #[test]
+    fn test_lister() {
+        let mut lister = Lister::new();
+
+        assert_eq!(lister.state, State::S0A);
+
+        assert_eq!(lister.process(Connected), events![]);
+        assert_eq!(lister.state, State::S0B);
+
+        assert_eq!(lister.process(Lost), events![]);
+        assert_eq!(lister.state, State::S0A);
+
+        lister.state = State::S0B;
+        assert_eq!(lister.process(RxNameplates), events![GotNameplates]);
+        assert_eq!(lister.state, State::S0B);
+
+        assert_eq!(lister.process(Refresh), events![TxList]);
+        assert_eq!(lister.state, State::S1B);
+
+        assert_eq!(lister.process(Refresh), events![TxList]);
+        assert_eq!(lister.state, State::S1B);
+
+    }
+}
