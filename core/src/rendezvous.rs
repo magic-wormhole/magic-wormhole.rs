@@ -12,7 +12,7 @@ extern crate hex;
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
-use server_messages::{add, bind, claim, deserialize, open, Message};
+use server_messages::{add, bind, claim, deserialize, list, open, Message};
 // we process these
 use events::RendezvousEvent;
 use api::IOEvent;
@@ -93,7 +93,7 @@ impl Rendezvous {
             TxClaim(nameplate) => self.send(claim(&nameplate)),
             TxRelease(_nameplate) => events![],
             TxAllocate => events![],
-            TxList => events![],
+            TxList => self.send(list()),
         }
     }
 
