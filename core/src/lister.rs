@@ -32,6 +32,7 @@ impl Lister {
     }
 
     pub fn process(&mut self, event: ListerEvent) -> Events {
+        use self::State::*;
         let (newstate, actions) = match self.state {
             S0A => self.do_s0a(event),
             S0B => self.do_s0b(event),
