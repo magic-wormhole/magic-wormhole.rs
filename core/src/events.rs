@@ -4,7 +4,7 @@ use std::str;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Wordlist {
     // TODO lists(Vec<Vec<String>>),
 }
