@@ -17,7 +17,7 @@ pub enum AllocatorEvent {
     Allocate(u8, Wordlist),
     Connected,
     Lost,
-    RxAllocated,
+    RxAllocated(String),
 }
 
 #[derive(Debug, PartialEq)]
