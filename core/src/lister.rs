@@ -81,8 +81,9 @@ impl Lister {
 
 #[cfg(test)]
 mod test {
-    use events::{Events, RendezvousEvent::TxList, InputEvent::GotNameplates, ListerEvent::*};
-    use super::{State, Lister};
+    use events::{Events, InputEvent::GotNameplates, ListerEvent::*,
+                 RendezvousEvent::TxList};
+    use super::{Lister, State};
 
     #[test]
     fn test_lister() {
@@ -105,6 +106,5 @@ mod test {
 
         assert_eq!(lister.process(Refresh), events![TxList]);
         assert_eq!(lister.state, State::S1B);
-
     }
 }
