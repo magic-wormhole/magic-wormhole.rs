@@ -20,6 +20,7 @@ use api::IOEvent;
 use api::IOAction;
 use events::NameplateEvent::{Connected as N_Connected,
                              RxClaimed as N_RxClaimed};
+use events::AllocatorEvent::RxAllocated as A_RxAllocated;
 use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
@@ -92,7 +93,7 @@ impl Rendezvous {
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
             TxRelease(_nameplate) => events![],
-            TxAllocate => events![],
+            TxAllocate => self.send(allocate()),
             TxList => self.send(list()),
         }
     }
