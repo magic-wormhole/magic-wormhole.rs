@@ -1,5 +1,11 @@
 use std;
 use std::str;
+use rand::{thread_rng, Rng};
+
+pub fn random_bytes(bytes: &mut [u8]) {
+    let mut rng = thread_rng();
+    rng.fill_bytes(bytes);
+}
 
 // bytestring to hex representation of each byte as two characters.
 // so the resulting string's size is 2x the size of the input bytestring
