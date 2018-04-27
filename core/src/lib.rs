@@ -1,6 +1,7 @@
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
 extern crate serde_json;
 #[macro_use]
 mod events;
@@ -32,9 +33,9 @@ mod util;
 use std::collections::VecDeque;
 use std::iter::FromIterator;
 use rustc_serialize::hex::ToHex;
-use rand::{thread_rng, Rng};
 
 use events::{Event, Events};
+use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent, TimerHandle,
               WSHandle};
@@ -59,11 +60,6 @@ pub struct WormholeCore {
 /*fn to_results<Vec<T>>(from: Vec<T>) -> Vec<Result> {
     from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
 }*/
-
-pub fn random_bytes(bytes: &mut [u8]) {
-    let mut rng = thread_rng();
-    rng.fill_bytes(bytes);
-}
 
 fn generate_side() -> String {
     let mut bytes: [u8; 5] = [0; 5];
