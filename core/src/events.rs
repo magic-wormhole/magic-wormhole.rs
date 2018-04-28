@@ -10,8 +10,7 @@ use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 // can't be copied and hence can't be used in pattern matching in state machine
 // logic.
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub struct Wordlist {
-}
+pub struct Wordlist {}
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
