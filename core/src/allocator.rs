@@ -1,4 +1,6 @@
 use events::{Events, Wordlist};
+use wordlist::PGPWordlist;
+
 // we process these
 use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
 // we emit these
@@ -105,8 +107,16 @@ impl Allocator {
                 }
             }
             RxAllocated(nameplate) => {
-                let code = "purple-sausages".to_string(); // TODO: implement choose_words function
-                (State::S2_done, events![C_Allocated(nameplate, code)])
+                let _wordlist = PGPWordlist::new();
+                if let State::S1B_allocating_connected(_length, _) = self.state
+                {
+                    let word = _wordlist.choose_words(_length);
+                    let code = nameplate.clone() + &word;
+                    (State::S2_done, events![C_Allocated(nameplate, code)])
+                } else {
+                    // TODO: This should not happen but if happens we need proper error.
+                    panic!()
+                }
             }
             _ => (self.state, events![]),
         }
