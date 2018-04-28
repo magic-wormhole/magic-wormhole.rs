@@ -1,9 +1,9 @@
 use std;
 use std::str;
-use rand::{thread_rng, Rng};
+use rand::{OsRng, Rng};
 
 pub fn random_bytes(bytes: &mut [u8]) {
-    let mut rng = thread_rng();
+    let mut rng = OsRng::new().unwrap();
     rng.fill_bytes(bytes);
 }
 
