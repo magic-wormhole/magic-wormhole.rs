@@ -21,8 +21,10 @@ use api::IOEvent;
 use api::IOAction;
 use events::NameplateEvent::{Connected as N_Connected,
                              RxClaimed as N_RxClaimed};
-use events::AllocatorEvent::RxAllocated as A_RxAllocated;
+use events::AllocatorEvent::{Connected as A_Connected,
+                             RxAllocated as A_RxAllocated};
 use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
+use events::ListerEvent::Connected as L_Connected;
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -126,7 +128,9 @@ impl Rendezvous {
                 let a = events![
                     RC_TxBind(self.appid.to_string(), self.side.to_string()),
                     N_Connected,
-                    M_Connected
+                    M_Connected,
+                    L_Connected,
+                    A_Connected
                 ];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
