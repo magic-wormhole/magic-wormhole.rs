@@ -77,7 +77,7 @@ impl ws::Handler for MyHandler {
         process_actions(&self.out, actions);
         // TODO: this should go just after .start()
         let actions =
-            wc.do_api(APIEvent::SetCode("4-purple-sausages".to_string()));
+            wc.do_api(APIEvent::AllocateCode);
         process_actions(&self.out, actions);
         let offer = json!({"offer": {"message": "hello from rust"}});
         // then expect {"answer": {"message_ack": "ok"}}
