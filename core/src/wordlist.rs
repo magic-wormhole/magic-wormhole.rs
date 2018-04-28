@@ -80,7 +80,8 @@ impl PGPWordlist {
                     suffix.push_str(&word);
                 } else {
                     let p = prefix.len() - lp;
-                    suffix.insert_str(p as usize, &word);
+                    suffix.split_off(p as usize);
+                    suffix.push_str(&word);
                 }
 
                 if count_dashes + 1 < num_words {
