@@ -111,7 +111,7 @@ impl Allocator {
                 if let State::S1B_allocating_connected(_length, _) = self.state
                 {
                     let word = _wordlist.choose_words(_length);
-                    let code = nameplate.clone() + &word;
+                    let code = nameplate.clone() + "-" + &word;
                     (State::S2_done, events![C_Allocated(nameplate, code)])
                 } else {
                     // TODO: This should not happen but if happens we need proper error.
