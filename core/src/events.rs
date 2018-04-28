@@ -4,9 +4,13 @@ use std::str;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 
+// A unit structure only used for state machine purpose. Actual wordlist is
+// implemented by wordlist::PGPWordList.
+// They are implemented differently, as when we add HashMap to structure it
+// can't be copied and hence can't be used in pattern matching in state machine
+// logic.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Wordlist {
-    // TODO lists(Vec<Vec<String>>),
 }
 
 // machines (or IO, or the API) emit these events, and each is routed to a
