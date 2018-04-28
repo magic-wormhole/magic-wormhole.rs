@@ -76,8 +76,7 @@ impl ws::Handler for MyHandler {
         let actions = wc.do_io(IOEvent::WebSocketConnectionMade(self.wsh));
         process_actions(&self.out, actions);
         // TODO: this should go just after .start()
-        let actions =
-            wc.do_api(APIEvent::AllocateCode);
+        let actions = wc.do_api(APIEvent::AllocateCode);
         process_actions(&self.out, actions);
         let offer = json!({"offer": {"message": "hello from rust"}});
         // then expect {"answer": {"message_ack": "ok"}}
