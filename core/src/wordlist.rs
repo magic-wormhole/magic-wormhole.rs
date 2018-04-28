@@ -124,11 +124,41 @@ mod test {
         let w = PGPWordlist::new();
         let c = w.get_completions("ar", 2);
         assert_eq!(c.len(), 2);
-        assert_eq!(
-            c,
-            vec!["article-".to_string(), "armistice-".to_string()]
-                .iter()
-                .collect::<HashSet<_>>()
-        );
+        assert!(c.contains(&String::from("article-")));
+        assert!(c.contains(&String::from("armistice-")));
+
+        let c = w.get_completions("armis", 2);
+        assert_eq!(c.len(), 1);
+        assert!(c.contains(&String::from("armistice-")));
+
+        let c = w.get_completions("armistice-", 2);
+        assert_eq!(c.len(), 256);
+
+        let c = w.get_completions("armistice-ba", 2);
+
+        assert_eq!(c.len(), 4);
+        assert!(c.contains("armistice-baboon"));
+        assert!(c.contains("armistice-backfield"));
+        assert!(c.contains("armistice-backward"));
+        assert!(c.contains("armistice-banjo"));
+
+        let c = w.get_completions("armistice-ba", 3);
+        assert_eq!(c.len(), 4);
+        assert!(c.contains("armistice-baboon-"));
+        assert!(c.contains("armistice-backfield-"));
+        assert!(c.contains("armistice-backward-"));
+        assert!(c.contains("armistice-banjo-"));
+
+        let c = w.get_completions("armistice-baboon", 4);
+        assert_eq!(c.len(), 1);
+        assert!(c.contains("armistice-baboon-"));
+    }
+
+    #[test]
+    fn test_choose_words() {
+        let w = PGPWordlist::new();
+        let words = w.choose_words(2);
+        assert!(words.contains('-'));
+        assert_eq!(words.matches('-').count(), 1);
     }
 }
