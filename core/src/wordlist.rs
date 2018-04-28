@@ -23,7 +23,7 @@ impl PGPWordlist {
                     .iter()
                     .map(|v| v.as_str().unwrap().to_string())
                     .collect();
-                (k.to_string(), both_words[1].as_str().to_string())
+                (k.to_string(), both_words[0].as_str().to_string())
             })
             .collect::<HashMap<String, String>>();
         let odd_words = map_obj
@@ -35,7 +35,7 @@ impl PGPWordlist {
                     .iter()
                     .map(|v| v.as_str().unwrap().to_string())
                     .collect();
-                (k.to_string(), both_words[0].as_str().to_string())
+                (k.to_string(), both_words[1].as_str().to_string())
             })
             .collect::<HashMap<String, String>>();
 
