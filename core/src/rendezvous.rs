@@ -12,7 +12,8 @@ extern crate hex;
 use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
-use server_messages::{add, bind, claim, deserialize, open, Message};
+use server_messages::{add, allocate, bind, claim, deserialize, list, open,
+                      Message};
 // we process these
 use events::RendezvousEvent;
 use api::IOEvent;
@@ -20,7 +21,10 @@ use api::IOEvent;
 use api::IOAction;
 use events::NameplateEvent::{Connected as N_Connected,
                              RxClaimed as N_RxClaimed};
+use events::AllocatorEvent::{Connected as A_Connected,
+                             RxAllocated as A_RxAllocated};
 use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
+use events::ListerEvent::Connected as L_Connected;
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -92,8 +96,8 @@ impl Rendezvous {
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
             TxRelease(_nameplate) => events![],
-            TxAllocate => events![],
-            TxList => events![],
+            TxAllocate => self.send(allocate()),
+            TxList => self.send(list()),
         }
     }
 
@@ -124,7 +128,9 @@ impl Rendezvous {
                 let a = events![
                     RC_TxBind(self.appid.to_string(), self.side.to_string()),
                     N_Connected,
-                    M_Connected
+                    M_Connected,
+                    L_Connected,
+                    A_Connected
                 ];
                 //actions.push(A_Connected);
                 //actions.push(L_Connected);
@@ -149,6 +155,9 @@ impl Rendezvous {
                 body,
                 //id,
             } => events![M_RxMessage(side, phase, hex::decode(body).unwrap())],
+            Message::Allocated { nameplate } => {
+                events![A_RxAllocated(nameplate)]
+            }
             _ => events![], // TODO
         }
     }
@@ -252,10 +261,10 @@ mod test {
 
         // now we tell it we're connected
         actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
-        // it should tell itself to send a BIND
-        // then it should notify several other machines
-        // at this point, we have BIND, N_Connected, M_Connected
-        assert_eq!(actions.len(), 3);
+        // it should tell itself to send a BIND then it should notify several
+        // other machines at this point, we have BIND, N_Connected, M_Connected
+        // L_Connected and A_Connected
+        assert_eq!(actions.len(), 5);
         let e = actions.remove(0);
         println!("e is {:?}", e);
         let b;
