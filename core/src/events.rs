@@ -4,10 +4,13 @@ use std::str;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
 
-#[derive(Debug, PartialEq)]
-pub struct Wordlist {
-    // TODO lists(Vec<Vec<String>>),
-}
+// A unit structure only used for state machine purpose. Actual wordlist is
+// implemented by wordlist::PGPWordList.
+// They are implemented differently, as when we add HashMap to structure it
+// can't be copied and hence can't be used in pattern matching in state machine
+// logic.
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub struct Wordlist {}
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
@@ -17,7 +20,7 @@ pub enum AllocatorEvent {
     Allocate(u8, Wordlist),
     Connected,
     Lost,
-    RxAllocated,
+    RxAllocated(String),
 }
 
 #[derive(Debug, PartialEq)]
