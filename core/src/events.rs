@@ -50,8 +50,11 @@ pub enum CodeEvent {
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Start,
-    GotNameplates,
-    GotWordlist,
+    GotNameplates(Vec<String>),
+    GotWordlist(Wordlist),
+    ChooseNameplate(String),
+    ChooseWords(String),
+    RefreshNameplates,
 }
 
 #[derive(Debug, PartialEq)]
