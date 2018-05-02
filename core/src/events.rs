@@ -65,7 +65,7 @@ pub enum KeyEvent {
 pub enum ListerEvent {
     Connected,
     Lost,
-    RxNameplates,
+    RxNameplates(Vec<String>),
     Refresh,
 }
 
