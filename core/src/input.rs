@@ -1,7 +1,8 @@
 use events::Events;
 // we process these
-use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
-                         GotWordlist, RefreshNameplates, Start};
+use events::InputEvent::{self, ChooseNameplate, ChooseWords,
+                         GetNameplateCompletions, GetWordCompletions,
+                         GotNameplates, GotWordlist, RefreshNameplates, Start};
 // we emit these
 use events::ListerEvent::Refresh as L_Refresh;
 use events::CodeEvent::{FinishedInput as C_FinishedInput,
@@ -67,6 +68,11 @@ impl Input {
                 )
             }
             RefreshNameplates => (self.state, events![L_Refresh]),
+            GetNameplateCompletions(prefix) => {
+                // TODO: How do we send back set of possible nameplates back to
+                // caller? and do we need to generate any events?
+                (self.state, events![])
+            }
             _ => (self.state, events![]),
         }
     }
@@ -87,6 +93,11 @@ impl Input {
                 let code = format!("{}-{}", self._nameplate, words);
                 (State::S4_done, events![C_FinishedInput(code)])
             }
+            GetWordCompletions(prefix) => {
+                // TODO: We can't do any word completions here we should raise
+                // error as this should not happen.
+                (self.state, events![])
+            }
             _ => (self.state, events![]),
         }
     }
@@ -97,6 +108,11 @@ impl Input {
             ChooseWords(words) => {
                 let code = format!{"{}-{}", self._nameplate, words};
                 (State::S4_done, events![C_FinishedInput(code)])
+            }
+            GetWordCompletions(prefix) => {
+                // TODO: Here we need to use wordlist to create possible set of
+                // completions based on user input but how do we pass it to user?
+                (self.state, events![])
             }
             _ => (self.state, events![]),
         }

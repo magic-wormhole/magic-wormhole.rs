@@ -55,6 +55,11 @@ pub enum InputEvent {
     ChooseNameplate(String),
     ChooseWords(String),
     RefreshNameplates,
+
+    // These 2 are specifically for the input helper for generating during tab
+    // completions
+    GetNameplateCompletions(String),
+    GetWordCompletions(String),
 }
 
 #[derive(Debug, PartialEq)]
