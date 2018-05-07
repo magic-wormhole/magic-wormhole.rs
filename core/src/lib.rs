@@ -118,6 +118,18 @@ impl WormholeCore {
         Vec::new()
     }
 
+    pub fn get_completions(&mut self, prefix: &str) -> Vec<String> {
+        // We call inputhelper for name plate completions and then execute the
+        // event it returned to us. Thus we try to link inputhelper with input
+        // machine.
+        let (events, completions) = self.inputhelper.get_completions(prefix);
+
+        // TODO: This should return empty queue if not we are doing something
+        // wrong here
+        assert_eq!(self._execute(events).len(), 0);
+        completions
+    }
+
     fn _execute(&mut self, events: Events) -> Vec<Action> {
         let mut action_queue: Vec<Action> = Vec::new(); // returned
         let mut event_queue: VecDeque<Event> = VecDeque::new();

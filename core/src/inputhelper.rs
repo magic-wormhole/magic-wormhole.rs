@@ -1,5 +1,6 @@
 use events::{Events, Wordlist};
 use wordlist::PGPWordlist;
+use std::collections::HashSet;
 // We process these events
 use events::InputHelperEvent::{self, ChooseNameplate, ChooseWords,
                                GotNameplates, GotWordlist, RefreshNameplates};
@@ -53,19 +54,27 @@ impl InputHelper {
 
             // We have already the nameplate hence we need to emit event telling
             // input machine about nameplate
-            let completions: Vec<String> =
-                self.get_word_completions(words).iter().collect();
+            // let completions: Vec<_> =
+            //     self.get_word_completions(&words).iter().collect();
             (
                 events![I_ChooseNameplate(nameplate.to_string())],
-                completions.iter().map(|w| nameplate + "-" + w).collect(),
+                self.get_word_completions(&words)
+                    .iter()
+                    .map(|w| nameplate.to_string() + "-" + w)
+                    .collect(),
             )
         } else {
-            let completions: Vec<String> = self._all_nameplates
-                .iter()
-                .filter(|n| n.starts_with(prefix))
-                .map(|n| n + "-")
-                .collect();
-            (events![], completions)
+            if let Some(ref _all_nameplates) = self._all_nameplates {
+                let completions: Vec<String> = _all_nameplates
+                    .iter()
+                    .filter(|n| n.starts_with(prefix))
+                    .map(|n| n.to_string() + "-")
+                    .collect();
+                (events![], completions)
+            } else {
+                // TODO: might not be correct needs fixing.
+                (events![I_RefreshNameplates], Vec::new())
+            }
         }
     }
 }
