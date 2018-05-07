@@ -1,16 +1,16 @@
 use events::Events;
 // we process these
-use events::InputEvent::{self, ChooseNameplate, ChooseWords,
-                         GetNameplateCompletions, GetWordCompletions,
-                         GotNameplates, GotWordlist, RefreshNameplates, Start};
+use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
+                         GotWordlist, RefreshNameplates, Start};
 // we emit these
 use events::ListerEvent::Refresh as L_Refresh;
 use events::CodeEvent::{FinishedInput as C_FinishedInput,
                         GotNameplate as C_GotNameplate};
+use events::InputHelperEvent::{GotNameplates as IH_GotNameplates,
+                               GotWordlist as IH_GotWordlist};
 
 pub struct Input {
     state: State,
-    _all_nameplates: Vec<String>,
     _nameplate: String,
 }
 
@@ -27,7 +27,6 @@ impl Input {
     pub fn new() -> Input {
         Input {
             state: State::S0_Idle,
-            _all_nameplates: Vec::new(),
             _nameplate: String::new(),
         }
     }
@@ -56,10 +55,10 @@ impl Input {
 
     fn in_typing_nameplate(&mut self, event: InputEvent) -> (State, Events) {
         match event {
-            GotNameplates(nameplates) => {
-                self._all_nameplates = nameplates;
-                (State::S1_typing_nameplate, events![])
-            }
+            GotNameplates(nameplates) => (
+                State::S1_typing_nameplate,
+                events![IH_GotNameplates(nameplates)],
+            ),
             ChooseNameplate(nameplate) => {
                 self._nameplate = nameplate.to_owned();
                 (
@@ -68,11 +67,6 @@ impl Input {
                 )
             }
             RefreshNameplates => (self.state, events![L_Refresh]),
-            GetNameplateCompletions(prefix) => {
-                // TODO: How do we send back set of possible nameplates back to
-                // caller? and do we need to generate any events?
-                (self.state, events![])
-            }
             _ => (self.state, events![]),
         }
     }
@@ -82,21 +76,17 @@ impl Input {
         event: InputEvent,
     ) -> (State, Events) {
         match event {
-            GotNameplates(nameplates) => {
-                self._all_nameplates = nameplates;
-                (State::S2_typing_code_without_wordlist, events![])
-            }
-            GotWordlist(wordlist) => {
-                (State::S3_typing_code_with_wordlist, events![])
-            }
+            GotNameplates(nameplates) => (
+                State::S2_typing_code_without_wordlist,
+                events![IH_GotNameplates(nameplates)],
+            ),
+            GotWordlist(wordlist) => (
+                State::S3_typing_code_with_wordlist,
+                events![IH_GotWordlist(wordlist)],
+            ),
             ChooseWords(words) => {
                 let code = format!("{}-{}", self._nameplate, words);
                 (State::S4_done, events![C_FinishedInput(code)])
-            }
-            GetWordCompletions(prefix) => {
-                // TODO: We can't do any word completions here we should raise
-                // error as this should not happen.
-                (self.state, events![])
             }
             _ => (self.state, events![]),
         }
@@ -108,11 +98,6 @@ impl Input {
             ChooseWords(words) => {
                 let code = format!{"{}-{}", self._nameplate, words};
                 (State::S4_done, events![C_FinishedInput(code)])
-            }
-            GetWordCompletions(prefix) => {
-                // TODO: Here we need to use wordlist to create possible set of
-                // completions based on user input but how do we pass it to user?
-                (self.state, events![])
             }
             _ => (self.state, events![]),
         }

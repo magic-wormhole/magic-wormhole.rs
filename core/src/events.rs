@@ -55,11 +55,15 @@ pub enum InputEvent {
     ChooseNameplate(String),
     ChooseWords(String),
     RefreshNameplates,
+}
 
-    // These 2 are specifically for the input helper for generating during tab
-    // completions
-    GetNameplateCompletions(String),
-    GetWordCompletions(String),
+#[derive(Debug, PartialEq)]
+pub enum InputHelperEvent {
+    RefreshNameplates,
+    GotNameplates(Vec<String>),
+    GotWordlist(Wordlist),
+    ChooseNameplate(String),
+    ChooseWords(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -165,6 +169,7 @@ pub enum Event {
     Boss(BossEvent),
     Code(CodeEvent),
     Input(InputEvent),
+    InputHelper(InputHelperEvent),
     Key(KeyEvent),
     Lister(ListerEvent),
     Mailbox(MailboxEvent),
@@ -211,6 +216,12 @@ impl From<CodeEvent> for Event {
 impl From<InputEvent> for Event {
     fn from(r: InputEvent) -> Self {
         Event::Input(r)
+    }
+}
+
+impl From<InputHelperEvent> for Event {
+    fn from(r: InputHelperEvent) -> Self {
+        Event::InputHelper(r)
     }
 }
 
