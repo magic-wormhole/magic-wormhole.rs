@@ -7,7 +7,8 @@ use events::InputHelperEvent::{self, ChooseNameplate, ChooseWords,
 // We emit the following events
 use events::InputEvent::{ChooseNameplate as I_ChooseNameplate,
                          ChooseWords as I_ChooseWords,
-                         RefreshNameplates as I_RefreshNameplates};
+                         RefreshNameplates as I_RefreshNameplates,
+                         Start as I_Start};
 
 pub struct InputHelper {
     _all_nameplates: Option<Vec<String>>,
@@ -73,7 +74,7 @@ impl InputHelper {
                 (events![], completions)
             } else {
                 // TODO: might not be correct needs fixing.
-                (events![I_RefreshNameplates], Vec::new())
+                (events![I_Start, I_RefreshNameplates], Vec::new())
             }
         }
     }
