@@ -17,6 +17,7 @@ mod allocator;
 mod boss;
 mod code;
 mod input;
+mod inputhelper;
 mod key;
 mod lister;
 mod mailbox;
@@ -45,6 +46,7 @@ pub struct WormholeCore {
     boss: boss::Boss,
     code: code::Code,
     input: input::Input,
+    inputhelper: inputhelper::InputHelper,
     key: key::Key,
     lister: lister::Lister,
     mailbox: mailbox::Mailbox,
@@ -75,6 +77,7 @@ impl WormholeCore {
             boss: boss::Boss::new(),
             code: code::Code::new(),
             input: input::Input::new(),
+            inputhelper: inputhelper::InputHelper::new(),
             key: key::Key::new(appid, side.as_str()),
             lister: lister::Lister::new(),
             mailbox: mailbox::Mailbox::new(&side),
@@ -137,6 +140,7 @@ impl WormholeCore {
                 Boss(e) => self.boss.process(e),
                 Code(e) => self.code.process(e),
                 Input(e) => self.input.process(e),
+                InputHelper(e) => self.inputhelper.process(e),
                 Key(e) => self.key.process(e),
                 Lister(e) => self.lister.process(e),
                 Mailbox(e) => self.mailbox.process(e),
