@@ -10,6 +10,7 @@ use events::CodeEvent::{AllocateCode as C_AllocateCode,
 use events::RendezvousEvent::Stop as RC_Stop;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
+use events::InputEvent::ChooseWords as I_ChooseWords;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
@@ -53,6 +54,7 @@ impl Boss {
             AllocateCode => self.allocate_code(), // TODO: len, wordlist
             InputCode => self.input_code(),       // TODO: return Helper
             SetCode(code) => self.set_code(&code),
+            HelperChoseWord(word) => self.choose_word(&word),
             Close => events![RC_Stop], // eventually signals GotClosed
             Send(plaintext) => self.send(plaintext),
         }
@@ -95,6 +97,16 @@ impl Boss {
             // same flow for allocate_code and input_code
             Empty(i) => (events![C_SetCode(code.to_string())], Coding(i)),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
+        };
+        self.state = newstate;
+        actions
+    }
+
+    fn choose_word(&mut self, word: &str) -> Events {
+        use self::State::*;
+        let (actions, newstate) = match self.state {
+            Coding(i) => (events![I_ChooseWords(word.to_string())], Coding(i)),
+            _ => panic!(),
         };
         self.state = newstate;
         actions
