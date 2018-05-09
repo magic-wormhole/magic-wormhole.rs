@@ -63,45 +63,56 @@ impl<'a> Completer for CodeCompleter<'a> {
 impl ws::Handler for WSHandler {
     fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
         println!("On_open");
-        let mut wc = self.wcr.borrow_mut();
-        let actions = wc.do_io(IOEvent::WebSocketConnectionMade(self.wsh));
-        // TODO: This is for experiment we are starting the Input machine
-        // manually
-        let actions = wc.do_api(APIEvent::InputCode);
-        process_actions(&self.out, actions);
+        {
+            let mut wc = self.wcr.borrow_mut();
+            let actions = wc.do_io(IOEvent::WebSocketConnectionMade(self.wsh));
+            process_actions(&self.out, actions);
 
-        let completer = CodeCompleter {
-            wcr: Rc::clone(&self.wcr),
-        };
+            // TODO: This is for experiment we are starting the Input machine
+            // manually
+            let actions = wc.do_api(APIEvent::InputCode);
+            process_actions(&self.out, actions);
+        }
 
-        let mut rl = rustyline::Editor::new();
-        rl.set_completer(Some(completer));
-        loop {
-            match rl.readline("Enter receive wormhole code: ") {
-                Ok(line) => {
-                    if line.trim().is_empty() {
-                        // Wait till user enter the code
+        let mut line_out = String::new();
+        {
+            let completer = CodeCompleter {
+                wcr: Rc::clone(&self.wcr),
+                out: &self.out,
+            };
+
+            let mut rl = rustyline::Editor::new();
+            rl.set_completer(Some(completer));
+            loop {
+                match rl.readline("Enter receive wormhole code: ") {
+                    Ok(line) => {
+                        if line.trim().is_empty() {
+                            // Wait till user enter the code
+                            continue;
+                        }
+
+                        // We got full code lets inform input about it.
+                        line_out = line.to_string();
+                        break;
+                    }
+                    Err(rustyline::error::ReadlineError::Interrupted) => {
+                        println!("Interrupted");
                         continue;
                     }
-
-                    // We got full code lets inform input about it.
-                    let actions = wc.do_api(APIEvent::HelperChoseWord(line));
-                    process_actions(&self.out, actions);
-                    break;
-                }
-                Err(rustyline::error::ReadlineError::Interrupted) => {
-                    println!("Interrupted");
-                    continue;
-                }
-                Err(rustyline::error::ReadlineError::Eof) => {
-                    break;
-                }
-                Err(err) => {
-                    println!("Error: {:?}", err);
-                    break;
+                    Err(rustyline::error::ReadlineError::Eof) => {
+                        break;
+                    }
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        break;
+                    }
                 }
             }
         }
+
+        let mut wc = self.wcr.borrow_mut();
+        let actions = wc.do_api(APIEvent::HelperChoseWord(line_out));
+        process_actions(&self.out, actions);
 
         Ok(())
     }
