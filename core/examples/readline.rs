@@ -38,13 +38,14 @@ impl ws::Factory for Factory {
     }
 }
 
-struct CodeCompleter {
+struct CodeCompleter<'a> {
     wcr: Rc<RefCell<WormholeCore>>,
+    out: &'a ws::Sender,
 }
 
 static BREAK_CHARS: [char; 1] = [' '];
 
-impl Completer for CodeCompleter {
+impl<'a> Completer for CodeCompleter<'a> {
     fn complete(
         &self,
         line: &str,
@@ -53,7 +54,8 @@ impl Completer for CodeCompleter {
         let (start, word) =
             extract_word(line, pos, &BREAK_CHARS.iter().cloned().collect());
         let mut wc = self.wcr.borrow_mut();
-        let completions = wc.get_completions(word);
+        let (actions, completions) = wc.get_completions(word);
+        process_actions(&self.out, actions);
         Ok((start, completions))
     }
 }
