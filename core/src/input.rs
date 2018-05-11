@@ -32,14 +32,15 @@ impl Input {
     }
 
     pub fn process(&mut self, event: InputEvent) -> Events {
+        use self::State::*;
         let (newstate, actions) = match self.state {
-            S0_idle => self.in_idle(event),
+            S0_Idle => self.in_idle(event),
             S1_typing_nameplate => self.in_typing_nameplate(event),
             S2_typing_code_without_wordlist => {
                 self.in_type_without_wordlist(event)
             }
             S3_typing_code_with_wordlist => self.in_type_with_wordlist(event),
-            S4_done => (self.state, events![]),
+            State::S4_done => (self.state, events![]),
         };
 
         self.state = newstate;
