@@ -118,7 +118,10 @@ impl WormholeCore {
         Vec::new()
     }
 
-    pub fn get_completions(&mut self, prefix: &str) -> (Vec<Action>, Vec<String>) {
+    pub fn get_completions(
+        &mut self,
+        prefix: &str,
+    ) -> (Vec<Action>, Vec<String>) {
         // We call inputhelper for name plate completions and then execute the
         // event it returned to us. Thus we try to link inputhelper with input
         // machine.
