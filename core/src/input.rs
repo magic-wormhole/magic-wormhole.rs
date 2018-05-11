@@ -95,7 +95,9 @@ impl Input {
 
     fn in_type_with_wordlist(&mut self, event: InputEvent) -> (State, Events) {
         match event {
-            GotNameplates(..) => (self.state, events![]),
+            GotNameplates(nameplates) => {
+                (self.state, events![IH_GotNameplates(nameplates)])
+            }
             ChooseWords(words) => {
                 let code = format!{"{}-{}", self._nameplate, words};
                 (State::S4_done, events![C_FinishedInput(code)])
