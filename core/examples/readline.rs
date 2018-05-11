@@ -8,8 +8,10 @@ extern crate ws;
 use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
                           TimerHandle, WSHandle, WormholeCore};
 
-use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
+use std::sync::{Arc, Mutex, mpsc::{channel, Sender}};
+use std::thread::{sleep, spawn};
+use std::time::Duration;
+
 use url::Url;
 use rustyline::completion::{extract_word, Completer};
 
@@ -18,12 +20,12 @@ const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
 
 struct Factory {
     wsh: WSHandle,
-    wcr: Rc<RefCell<WormholeCore>>,
+    wcr: Arc<Mutex<WormholeCore>>,
 }
 
 struct WSHandler {
     wsh: WSHandle,
-    wcr: Rc<RefCell<WormholeCore>>,
+    wcr: Arc<Mutex<WormholeCore>>,
     out: ws::Sender,
 }
 
@@ -32,20 +34,20 @@ impl ws::Factory for Factory {
     fn connection_made(&mut self, out: ws::Sender) -> WSHandler {
         WSHandler {
             wsh: self.wsh,
-            wcr: Rc::clone(&self.wcr),
+            wcr: Arc::clone(&self.wcr),
             out: out,
         }
     }
 }
 
-struct CodeCompleter<'a> {
-    wcr: Rc<RefCell<WormholeCore>>,
-    out: &'a ws::Sender,
+struct CodeCompleter {
+    wcr: Arc<Mutex<WormholeCore>>,
+    tx: Sender<Vec<Action>>,
 }
 
 static BREAK_CHARS: [char; 1] = [' '];
 
-impl<'a> Completer for CodeCompleter<'a> {
+impl Completer for CodeCompleter {
     fn complete(
         &self,
         line: &str,
@@ -53,18 +55,20 @@ impl<'a> Completer for CodeCompleter<'a> {
     ) -> rustyline::Result<(usize, Vec<String>)> {
         let (start, word) =
             extract_word(line, pos, &BREAK_CHARS.iter().cloned().collect());
-        let mut wc = self.wcr.borrow_mut();
+        let mwc = Arc::clone(&self.wcr);
+        let mut wc = mwc.lock().unwrap();
         let (actions, completions) = wc.get_completions(word);
-        process_actions(&self.out, actions);
+        self.tx.send(actions).unwrap();
         Ok((start, completions))
     }
 }
 
 impl ws::Handler for WSHandler {
     fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
-        println!("On_open");
+        // println!("On_open");
+        let mwc = Arc::clone(&self.wcr);
         {
-            let mut wc = self.wcr.borrow_mut();
+            let mut wc = mwc.lock().unwrap();
             let actions = wc.do_io(IOEvent::WebSocketConnectionMade(self.wsh));
             process_actions(&self.out, actions);
 
@@ -74,13 +78,14 @@ impl ws::Handler for WSHandler {
             process_actions(&self.out, actions);
         }
 
-        let mut line_out = String::new();
-        {
-            let completer = CodeCompleter {
-                wcr: Rc::clone(&self.wcr),
-                out: &self.out,
-            };
+        let (tx_action, rx_action) = channel();
+        let completer = CodeCompleter {
+            wcr: Arc::clone(&self.wcr),
+            tx: tx_action,
+        };
 
+        let (tx, rx) = channel();
+        let handle = spawn(move || {
             let mut rl = rustyline::Editor::new();
             rl.set_completer(Some(completer));
             loop {
@@ -91,37 +96,54 @@ impl ws::Handler for WSHandler {
                             continue;
                         }
 
-                        // We got full code lets inform input about it.
-                        line_out = line.to_string();
+                        tx.send(line.to_string()).unwrap();
                         break;
                     }
                     Err(rustyline::error::ReadlineError::Interrupted) => {
-                        println!("Interrupted");
+                        // println!("Interrupted");
                         continue;
                     }
                     Err(rustyline::error::ReadlineError::Eof) => {
                         break;
                     }
                     Err(err) => {
-                        println!("Error: {:?}", err);
+                        // println!("Error: {:?}", err);
                         break;
                     }
                 }
             }
-        }
+        });
 
-        let mut wc = self.wcr.borrow_mut();
-        let actions = wc.do_api(APIEvent::HelperChoseWord(line_out));
-        process_actions(&self.out, actions);
+        let out_actions = self.out.clone();
+        let amwc = Arc::clone(&self.wcr);
+
+        spawn(move || {
+            for actions in rx_action {
+                // println!("{:?}", actions);
+                let mut wc = amwc.lock().unwrap();
+                process_actions(&out_actions, actions);
+            }
+        });
+
+        let out_events = self.out.clone();
+        let emwc = Arc::clone(&self.wcr);
+        spawn(move || {
+            for received in rx {
+                let mut wc = emwc.lock().unwrap();
+                let actions = wc.do_api(APIEvent::HelperChoseWord(received));
+                process_actions(&out_events, actions);
+            }
+        });
 
         Ok(())
     }
 
     fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
-        println!("got message {}", msg);
-        let mut wc = self.wcr.borrow_mut();
+        // println!("got message {}", msg);
+        let mwc = Arc::clone(&self.wcr);
         let text = msg.as_text()?.to_string();
         let rx = IOEvent::WebSocketMessageReceived(self.wsh, text);
+        let mut wc = mwc.lock().unwrap();
         let actions = wc.do_io(rx);
         process_actions(&self.out, actions);
         Ok(())
@@ -133,14 +155,14 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
         match a {
             Action::IO(io) => match io {
                 IOAction::WebSocketSendMessage(_wsh, msg) => {
-                    println!("sending {:?}", msg);
+                    // println!("sending {:?}", msg);
                     out.send(msg).unwrap();
                 }
                 IOAction::WebSocketClose(_wsh) => {
                     out.close(ws::CloseCode::Normal).unwrap();
                 }
                 _ => {
-                    println!("action: {:?}", io);
+                    // println!("action: {:?}", io);
                 }
             },
             Action::API(api) => match api {
@@ -173,7 +195,7 @@ fn main() {
 
     let f = Factory {
         wsh: wsh,
-        wcr: Rc::new(RefCell::new(wc)),
+        wcr: Arc::new(Mutex::new(wc)),
     };
 
     let b = ws::Builder::new();
