@@ -49,7 +49,7 @@ impl InputHelper {
         let got_nameplate = prefix.find('-').is_some();
 
         if got_nameplate {
-            let ns: Vec<&str> = prefix.splitn(1, '-').collect();
+            let ns: Vec<&str> = prefix.splitn(2, '-').collect();
             let nameplate = ns[0];
             let words = ns.join("");
 
