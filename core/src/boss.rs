@@ -1,16 +1,16 @@
-use events::{Event, Events, Wordlist};
 use api::Mood;
+use events::{Event, Events, Wordlist};
 // we process these
-use events::BossEvent;
 use api::APIEvent;
+use events::BossEvent;
 // we emit these
 use api::APIAction;
 use events::CodeEvent::{AllocateCode as C_AllocateCode,
                         InputCode as C_InputCode, SetCode as C_SetCode};
+use events::InputEvent::ChooseWords as I_ChooseWords;
 use events::RendezvousEvent::Stop as RC_Stop;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
-use events::InputEvent::ChooseWords as I_ChooseWords;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
@@ -79,7 +79,10 @@ impl Boss {
             Empty(i) => {
                 let length = 2; // TODO: configurable by AllocateCode
                 let wordlist = Wordlist {}; // TODO: populate words
-                (events![C_AllocateCode(length, wordlist)], Coding(i))
+                (
+                    events![C_AllocateCode(length, wordlist)],
+                    Coding(i),
+                )
             }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
@@ -105,7 +108,10 @@ impl Boss {
     fn choose_word(&mut self, word: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Coding(i) => (events![I_ChooseWords(word.to_string())], Coding(i)),
+            Coding(i) => (
+                events![I_ChooseWords(word.to_string())],
+                Coding(i),
+            ),
             _ => panic!(),
         };
         self.state = newstate;
@@ -127,9 +133,10 @@ impl Boss {
     fn got_code(&mut self, code: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Coding(i) => {
-                (events![APIAction::GotCode(code.to_string())], Lonely(i))
-            }
+            Coding(i) => (
+                events![APIAction::GotCode(code.to_string())],
+                Lonely(i),
+            ),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -159,7 +166,10 @@ impl Boss {
                     (events![], Happy(i))
                 } else if phase == "\\d+" {
                     // TODO: match on regexp
-                    (events![APIAction::GotMessage(plaintext)], Happy(i))
+                    (
+                        events![APIAction::GotMessage(plaintext)],
+                        Happy(i),
+                    )
                 } else {
                     // TODO: log and ignore, for future expansion
                     (events![], Happy(i))
@@ -212,7 +222,10 @@ impl Boss {
     fn closed(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Closing => (events![APIAction::GotClosed(self.mood)], Closing),
+            Closing => (
+                events![APIAction::GotClosed(self.mood)],
+                Closing,
+            ),
             _ => panic!(),
         };
         self.state = newstate;

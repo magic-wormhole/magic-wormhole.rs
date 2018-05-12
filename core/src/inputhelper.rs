@@ -1,6 +1,6 @@
 use events::{Events, Wordlist};
-use wordlist::PGPWordlist;
 use std::collections::HashSet;
+use wordlist::PGPWordlist;
 // We process these events
 use events::InputHelperEvent::{self, ChooseNameplate, ChooseWords,
                                GotNameplates, GotWordlist, RefreshNameplates};
@@ -74,7 +74,10 @@ impl InputHelper {
                 (events![], completions)
             } else {
                 // TODO: might not be correct needs fixing.
-                (events![I_Start, I_RefreshNameplates], Vec::new())
+                (
+                    events![I_Start, I_RefreshNameplates],
+                    Vec::new(),
+                )
             }
         }
     }

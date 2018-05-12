@@ -110,7 +110,11 @@ impl Send {
             Send(phase, plaintext) => {
                 let deliver_events =
                     self.deliver(key.clone(), phase, plaintext);
-                (State::S1(key), deliver_events, QueueStatus::NoAction)
+                (
+                    State::S1(key),
+                    deliver_events,
+                    QueueStatus::NoAction,
+                )
             }
         }
     }

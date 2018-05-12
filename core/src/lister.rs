@@ -2,9 +2,9 @@ use events::Events;
 // we process these
 use events::ListerEvent;
 // we emit these
-use events::RendezvousEvent::TxList as RC_TxList;
 use events::InputEvent::GotNameplates as I_GotNameplates;
 use events::ListerEvent::*;
+use events::RendezvousEvent::TxList as RC_TxList;
 
 pub struct Lister {
     state: State,
@@ -28,7 +28,9 @@ enum State {
 
 impl Lister {
     pub fn new() -> Lister {
-        Lister { state: State::S0A }
+        Lister {
+            state: State::S0A,
+        }
     }
 
     pub fn process(&mut self, event: ListerEvent) -> Events {
@@ -56,9 +58,10 @@ impl Lister {
         match event {
             Refresh => (State::S1B, events![RC_TxList]),
             Lost => (State::S0A, events![]),
-            RxNameplates(nids) => {
-                (State::S0B, events![I_GotNameplates(nids.clone())])
-            }
+            RxNameplates(nids) => (
+                State::S0B,
+                events![I_GotNameplates(nids.clone())],
+            ),
             Connected => (State::S0B, events![]),
         }
     }
@@ -75,9 +78,10 @@ impl Lister {
         match event {
             Lost => (State::S1A, events![]),
             Refresh => (State::S1B, events![RC_TxList]),
-            RxNameplates(nids) => {
-                (State::S0B, events![I_GotNameplates(nids.clone())])
-            }
+            RxNameplates(nids) => (
+                State::S0B,
+                events![I_GotNameplates(nids.clone())],
+            ),
             Connected => (State::S1B, events![]),
         }
     }
@@ -85,9 +89,9 @@ impl Lister {
 
 #[cfg(test)]
 mod test {
+    use super::{Lister, State};
     use events::{Events, InputEvent::GotNameplates, ListerEvent::*,
                  RendezvousEvent::TxList};
-    use super::{Lister, State};
 
     #[test]
     fn test_lister() {
