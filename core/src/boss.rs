@@ -219,6 +219,7 @@ mod test {
         let _b = Boss::new();
     }
 
+    #[test]
     fn process_api() {
         let mut b = Boss::new();
         let actions = b.process_api(APIEvent::Close);
