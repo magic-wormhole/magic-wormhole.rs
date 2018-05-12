@@ -19,3 +19,4 @@ rustc-serialize = "0.3"
 [dev-dependencies]
 ws = "0.7"
 url = "1.7"
+rustyline = "1.0"

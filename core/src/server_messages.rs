@@ -5,12 +5,12 @@ use util;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
-    id: String,
+    pub id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct WelcomeMsg {
-    motd: String,
+    pub motd: String,
 }
 
 // convert an optional field (which may result in deserialization error)

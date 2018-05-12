@@ -50,8 +50,20 @@ pub enum CodeEvent {
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Start,
-    GotNameplates,
-    GotWordlist,
+    GotNameplates(Vec<String>),
+    GotWordlist(Wordlist),
+    ChooseNameplate(String),
+    ChooseWords(String),
+    RefreshNameplates,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum InputHelperEvent {
+    RefreshNameplates,
+    GotNameplates(Vec<String>),
+    GotWordlist(Wordlist),
+    ChooseNameplate(String),
+    ChooseWords(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -65,7 +77,7 @@ pub enum KeyEvent {
 pub enum ListerEvent {
     Connected,
     Lost,
-    RxNameplates,
+    RxNameplates(Vec<String>),
     Refresh,
 }
 
@@ -157,6 +169,7 @@ pub enum Event {
     Boss(BossEvent),
     Code(CodeEvent),
     Input(InputEvent),
+    InputHelper(InputHelperEvent),
     Key(KeyEvent),
     Lister(ListerEvent),
     Mailbox(MailboxEvent),
@@ -203,6 +216,12 @@ impl From<CodeEvent> for Event {
 impl From<InputEvent> for Event {
     fn from(r: InputEvent) -> Self {
         Event::Input(r)
+    }
+}
+
+impl From<InputHelperEvent> for Event {
+    fn from(r: InputHelperEvent) -> Self {
+        Event::InputHelper(r)
     }
 }
 

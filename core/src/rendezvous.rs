@@ -24,7 +24,8 @@ use events::NameplateEvent::{Connected as N_Connected,
 use events::AllocatorEvent::{Connected as A_Connected,
                              RxAllocated as A_RxAllocated};
 use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
-use events::ListerEvent::Connected as L_Connected;
+use events::ListerEvent::{Connected as L_Connected,
+                          RxNameplates as L_RxNamePlates};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -157,6 +158,11 @@ impl Rendezvous {
             } => events![M_RxMessage(side, phase, hex::decode(body).unwrap())],
             Message::Allocated { nameplate } => {
                 events![A_RxAllocated(nameplate)]
+            }
+            Message::Nameplates { nameplates } => {
+                let nids: Vec<String> =
+                    nameplates.iter().map(|n| n.id.to_owned()).collect();
+                events![L_RxNamePlates(nids)]
             }
             _ => events![], // TODO
         }
