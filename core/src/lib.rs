@@ -17,6 +17,7 @@ mod allocator;
 mod boss;
 mod code;
 mod input;
+mod inputhelper;
 mod key;
 mod lister;
 mod mailbox;
@@ -45,6 +46,7 @@ pub struct WormholeCore {
     boss: boss::Boss,
     code: code::Code,
     input: input::Input,
+    inputhelper: inputhelper::InputHelper,
     key: key::Key,
     lister: lister::Lister,
     mailbox: mailbox::Mailbox,
@@ -75,6 +77,7 @@ impl WormholeCore {
             boss: boss::Boss::new(),
             code: code::Code::new(),
             input: input::Input::new(),
+            inputhelper: inputhelper::InputHelper::new(),
             key: key::Key::new(appid, side.as_str()),
             lister: lister::Lister::new(),
             mailbox: mailbox::Mailbox::new(&side),
@@ -115,6 +118,20 @@ impl WormholeCore {
         Vec::new()
     }
 
+    pub fn get_completions(
+        &mut self,
+        prefix: &str,
+    ) -> (Vec<Action>, Vec<String>) {
+        // We call inputhelper for name plate completions and then execute the
+        // event it returned to us. Thus we try to link inputhelper with input
+        // machine.
+        let (events, completions) = self.inputhelper.get_completions(prefix);
+
+        // TODO: We might get some actions how do we communicate it with app?
+        let actions = self._execute(events);
+        (actions, completions)
+    }
+
     fn _execute(&mut self, events: Events) -> Vec<Action> {
         let mut action_queue: Vec<Action> = Vec::new(); // returned
         let mut event_queue: VecDeque<Event> = VecDeque::new();
@@ -137,6 +154,7 @@ impl WormholeCore {
                 Boss(e) => self.boss.process(e),
                 Code(e) => self.code.process(e),
                 Input(e) => self.input.process(e),
+                InputHelper(e) => self.inputhelper.process(e),
                 Key(e) => self.key.process(e),
                 Lister(e) => self.lister.process(e),
                 Mailbox(e) => self.mailbox.process(e),

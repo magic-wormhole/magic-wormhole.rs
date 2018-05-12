@@ -1,4 +1,4 @@
-use events::Events;
+use events::{Events, Wordlist};
 // we process these
 use events::NameplateEvent;
 // we emit these
@@ -154,7 +154,7 @@ impl Nameplate {
             RxClaimed(mailbox) => (
                 Some(State::S3B(nameplate.to_string())),
                 events![
-                    I_GotWordlist, // TODO: ->wordlist
+                    I_GotWordlist(Wordlist {}), // TODO: ->Wordlist is just placeholder should use PGPWordList instead I guess
                     M_GotMailbox(mailbox)
                 ],
             ),

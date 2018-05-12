@@ -56,7 +56,9 @@ impl Lister {
         match event {
             Refresh => (State::S1B, events![RC_TxList]),
             Lost => (State::S0A, events![]),
-            RxNameplates => (State::S0B, events![I_GotNameplates]),
+            RxNameplates(nids) => {
+                (State::S0B, events![I_GotNameplates(nids.clone())])
+            }
             Connected => (State::S0B, events![]),
         }
     }
@@ -73,7 +75,9 @@ impl Lister {
         match event {
             Lost => (State::S1A, events![]),
             Refresh => (State::S1B, events![RC_TxList]),
-            RxNameplates => (State::S0B, events![I_GotNameplates]),
+            RxNameplates(nids) => {
+                (State::S0B, events![I_GotNameplates(nids.clone())])
+            }
             Connected => (State::S1B, events![]),
         }
     }
@@ -98,7 +102,10 @@ mod test {
         assert_eq!(lister.state, State::S0A);
 
         lister.state = State::S0B;
-        assert_eq!(lister.process(RxNameplates), events![GotNameplates]);
+        assert_eq!(
+            lister.process(RxNameplates(vec!["3".to_string()])),
+            events![GotNameplates(vec!["3".to_string()])]
+        );
         assert_eq!(lister.state, State::S0B);
 
         assert_eq!(lister.process(Refresh), events![TxList]);
