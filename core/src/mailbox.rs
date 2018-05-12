@@ -1,15 +1,15 @@
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
-use events::Events;
 use events::Event;
+use events::Events;
 // we process these
 use events::MailboxEvent;
-use events::TerminatorEvent::MailboxDone as T_MailboxDone;
-use events::RendezvousEvent::{TxAdd as RC_TxAdd, TxClose as RC_TxClose,
-                              TxOpen as RC_TxOpen};
 use events::NameplateEvent::Release as N_Release;
 use events::OrderEvent::GotMessage as O_GotMessage;
+use events::RendezvousEvent::{TxAdd as RC_TxAdd, TxClose as RC_TxClose,
+                              TxOpen as RC_TxOpen};
+use events::TerminatorEvent::MailboxDone as T_MailboxDone;
 // we emit these
 
 #[derive(Debug, PartialEq)]
@@ -115,14 +115,20 @@ impl Mailbox {
                 events![T_MailboxDone],
                 QueueCtrl::NoAction,
             ),
-            GotMailbox(mailbox) => {
-                (Some(State::S1A(mailbox)), events![], QueueCtrl::NoAction)
-            }
+            GotMailbox(mailbox) => (
+                Some(State::S1A(mailbox)),
+                events![],
+                QueueCtrl::NoAction,
+            ),
             GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
-                (Some(State::S0A), events![], QueueCtrl::Enqueue(v))
+                (
+                    Some(State::S0A),
+                    events![],
+                    QueueCtrl::Enqueue(v),
+                )
             }
         }
     }
@@ -159,7 +165,11 @@ impl Mailbox {
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
-                (Some(State::S0B), events![], QueueCtrl::Enqueue(v))
+                (
+                    Some(State::S0B),
+                    events![],
+                    QueueCtrl::Enqueue(v),
+                )
             }
         }
     }
@@ -292,7 +302,10 @@ impl Mailbox {
             }
             RxClosed => panic!(),
             Close(mood) => (
-                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                Some(State::S3B(
+                    mailbox.to_string(),
+                    mood.to_string(),
+                )),
                 events![RC_TxClose],
                 QueueCtrl::NoAction,
             ),
@@ -322,7 +335,10 @@ impl Mailbox {
 
         match event {
             Connected => (
-                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                Some(State::S3B(
+                    mailbox.to_string(),
+                    mood.to_string(),
+                )),
                 events![RC_TxClose],
                 QueueCtrl::NoAction,
             ),
@@ -347,14 +363,20 @@ impl Mailbox {
         match event {
             Connected => panic!(),
             Lost => (
-                Some(State::S3A(mailbox.to_string(), mood.to_string())),
+                Some(State::S3A(
+                    mailbox.to_string(),
+                    mood.to_string(),
+                )),
                 events![],
                 QueueCtrl::NoAction,
             ),
             RxMessage(side, phase, body) => {
                 // irrespective of the side, enter into S3B, do nothing, generate no events
                 (
-                    Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                    Some(State::S3B(
+                        mailbox.to_string(),
+                        mood.to_string(),
+                    )),
                     events![],
                     QueueCtrl::NoAction,
                 )
@@ -365,14 +387,20 @@ impl Mailbox {
                 QueueCtrl::NoAction,
             ),
             Close(mood) => (
-                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                Some(State::S3B(
+                    mailbox.to_string(),
+                    mood.to_string(),
+                )),
                 events![],
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
             AddMessage(_, _) => (
-                Some(State::S3B(mailbox.to_string(), mood.to_string())),
+                Some(State::S3B(
+                    mailbox.to_string(),
+                    mood.to_string(),
+                )),
                 events![],
                 QueueCtrl::NoAction,
             ),

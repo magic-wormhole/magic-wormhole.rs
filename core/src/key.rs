@@ -1,21 +1,21 @@
 extern crate hex;
 extern crate serde_json;
 
-use sodiumoxide;
-use sodiumoxide::crypto::secretbox;
-use sha2::{Digest, Sha256};
-use spake2;
-use spake2::{Ed25519Group, SPAKE2};
 use hkdf;
 use hkdf::Hkdf;
+use sha2::{Digest, Sha256};
+use sodiumoxide;
+use sodiumoxide::crypto::secretbox;
+use spake2;
+use spake2::{Ed25519Group, SPAKE2};
 
-use util;
 use events::Events;
+use util;
 // we process these
 use events::KeyEvent;
 // we emit these
-use events::MailboxEvent::AddMessage as M_AddMessage;
 use events::BossEvent::GotKey as B_GotKey;
+use events::MailboxEvent::AddMessage as M_AddMessage;
 use events::ReceiveEvent::GotKey as R_GotKey;
 
 #[derive(Debug, PartialEq)]
@@ -90,10 +90,15 @@ impl Key {
             self.appid.as_bytes(),
         );
         let payload = util::bytes_to_hexstr(&msg1);
-        let pake_msg = PhaseMessage { pake_v1: payload };
+        let pake_msg = PhaseMessage {
+            pake_v1: payload,
+        };
         let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
 
-        (events![M_AddMessage("pake".to_string(), pake_msg_ser)], s1)
+        (
+            events![M_AddMessage("pake".to_string(), pake_msg_ser)],
+            s1,
+        )
     }
 
     fn compute_key(&self, key: &[u8]) -> Events {
@@ -125,7 +130,10 @@ impl Key {
     pub fn decrypt_data(key: Vec<u8>, encrypted: &[u8]) -> Option<Vec<u8>> {
         let (nonce, ciphertext) =
             encrypted.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
-        assert_eq!(nonce.len(), sodiumoxide::crypto::secretbox::NONCEBYTES);
+        assert_eq!(
+            nonce.len(),
+            sodiumoxide::crypto::secretbox::NONCEBYTES
+        );
         secretbox::open(
             &ciphertext,
             &secretbox::Nonce::from_slice(nonce).unwrap(),
@@ -148,12 +156,19 @@ impl Key {
     pub fn derive_phase_key(side: &str, key: &[u8], phase: &str) -> Vec<u8> {
         let side_bytes = side.as_bytes();
         let phase_bytes = phase.as_bytes();
-        let side_digest: Vec<u8> =
-            Self::sha256_digest(side_bytes).iter().cloned().collect();
-        let phase_digest: Vec<u8> =
-            Self::sha256_digest(phase_bytes).iter().cloned().collect();
-        let mut purpose_vec: Vec<u8> =
-            "wormhole:phase:".as_bytes().iter().cloned().collect();
+        let side_digest: Vec<u8> = Self::sha256_digest(side_bytes)
+            .iter()
+            .cloned()
+            .collect();
+        let phase_digest: Vec<u8> = Self::sha256_digest(phase_bytes)
+            .iter()
+            .cloned()
+            .collect();
+        let mut purpose_vec: Vec<u8> = "wormhole:phase:"
+            .as_bytes()
+            .iter()
+            .cloned()
+            .collect();
         purpose_vec.extend(side_digest);
         purpose_vec.extend(phase_digest);
 
@@ -290,7 +305,10 @@ mod test {
         let maybe_plaintext = Key::decrypt_data(data_key, &encrypted);
         match maybe_plaintext {
             Some(plaintext_decrypted) => {
-                assert_eq!(plaintext.as_bytes().to_vec(), plaintext_decrypted);
+                assert_eq!(
+                    plaintext.as_bytes().to_vec(),
+                    plaintext_decrypted
+                );
             }
             None => panic!(),
         }

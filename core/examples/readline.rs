@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex, mpsc::{channel, Sender}};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
-use url::Url;
 use rustyline::completion::{extract_word, Completer};
+use url::Url;
 
 const MAILBOX_SERVER: &'static str = "ws://localhost:4000/v1";
 const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
@@ -53,8 +53,11 @@ impl Completer for CodeCompleter {
         line: &str,
         pos: usize,
     ) -> rustyline::Result<(usize, Vec<String>)> {
-        let (start, word) =
-            extract_word(line, pos, &BREAK_CHARS.iter().cloned().collect());
+        let (start, word) = extract_word(
+            line,
+            pos,
+            &BREAK_CHARS.iter().cloned().collect(),
+        );
         let mwc = Arc::clone(&self.wcr);
         let mut wc = mwc.lock().unwrap();
         let (actions, completions) = wc.get_completions(word);

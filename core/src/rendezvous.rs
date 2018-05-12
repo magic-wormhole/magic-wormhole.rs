@@ -9,23 +9,23 @@
 
 extern crate hex;
 
-use serde_json;
 use api::{TimerHandle, WSHandle};
 use events::Events;
+use serde_json;
 use server_messages::{add, allocate, bind, claim, deserialize, list, open,
                       Message};
 // we process these
-use events::RendezvousEvent;
 use api::IOEvent;
+use events::RendezvousEvent;
 // we emit these
 use api::IOAction;
-use events::NameplateEvent::{Connected as N_Connected,
-                             RxClaimed as N_RxClaimed};
 use events::AllocatorEvent::{Connected as A_Connected,
                              RxAllocated as A_RxAllocated};
-use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
 use events::ListerEvent::{Connected as L_Connected,
                           RxNameplates as L_RxNamePlates};
+use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
+use events::NameplateEvent::{Connected as N_Connected,
+                             RxClaimed as N_RxClaimed};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
 #[derive(Debug, PartialEq)]
@@ -155,13 +155,17 @@ impl Rendezvous {
                 phase,
                 body,
                 //id,
-            } => events![M_RxMessage(side, phase, hex::decode(body).unwrap())],
+            } => events![
+                M_RxMessage(side, phase, hex::decode(body).unwrap())
+            ],
             Message::Allocated { nameplate } => {
                 events![A_RxAllocated(nameplate)]
             }
             Message::Nameplates { nameplates } => {
-                let nids: Vec<String> =
-                    nameplates.iter().map(|n| n.id.to_owned()).collect();
+                let nids: Vec<String> = nameplates
+                    .iter()
+                    .map(|n| n.id.to_owned())
+                    .collect();
                 events![L_RxNamePlates(nids)]
             }
             _ => events![], // TODO
@@ -175,7 +179,9 @@ impl Rendezvous {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 (
-                    events![IOAction::StartTimer(new_handle, self.retry_timer)],
+                    events![
+                        IOAction::StartTimer(new_handle, self.retry_timer)
+                    ],
                     State::Waiting,
                 )
             }
@@ -232,13 +238,13 @@ impl Rendezvous {
 
 #[cfg(test)]
 mod test {
-    use server_messages::{deserialize, Message};
-    use api::{TimerHandle, WSHandle};
-    use events::Event::{Nameplate, Rendezvous, API, IO};
     use api::IOAction;
     use api::IOEvent;
-    use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
+    use api::{TimerHandle, WSHandle};
+    use events::Event::{Nameplate, Rendezvous, API, IO};
     use events::NameplateEvent::Connected as N_Connected;
+    use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
+    use server_messages::{deserialize, Message};
 
     #[test]
     fn create() {
@@ -266,7 +272,8 @@ mod test {
         }
 
         // now we tell it we're connected
-        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
+        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh))
+            .events;
         // it should tell itself to send a BIND then it should notify several
         // other machines at this point, we have BIND, N_Connected, M_Connected
         // L_Connected and A_Connected
@@ -315,7 +322,8 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).events;
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh))
+            .events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         match e {
@@ -351,7 +359,8 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2)).events;
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2))
+            .events;
         assert_eq!(actions.len(), 0);
     }
 }

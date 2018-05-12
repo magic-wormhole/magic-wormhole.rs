@@ -12,8 +12,8 @@ extern crate sha2;
 extern crate sodiumoxide;
 extern crate spake2;
 
-mod api;
 mod allocator;
+mod api;
 mod boss;
 mod code;
 mod input;
@@ -25,15 +25,15 @@ mod nameplate;
 mod order;
 mod receive;
 mod rendezvous;
-mod server_messages;
 mod send;
+mod server_messages;
 mod terminator;
-mod wordlist;
 mod util;
+mod wordlist;
 
+use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 use std::iter::FromIterator;
-use rustc_serialize::hex::ToHex;
 
 use events::{Event, Events};
 use util::random_bytes;
