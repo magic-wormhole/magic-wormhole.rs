@@ -3,11 +3,11 @@ use events::Events;
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
                          GotWordlist, RefreshNameplates, Start};
 // we emit these
-use events::ListerEvent::Refresh as L_Refresh;
 use events::CodeEvent::{FinishedInput as C_FinishedInput,
                         GotNameplate as C_GotNameplate};
 use events::InputHelperEvent::{GotNameplates as IH_GotNameplates,
                                GotWordlist as IH_GotWordlist};
+use events::ListerEvent::Refresh as L_Refresh;
 
 pub struct Input {
     state: State,
@@ -95,9 +95,10 @@ impl Input {
 
     fn in_type_with_wordlist(&mut self, event: InputEvent) -> (State, Events) {
         match event {
-            GotNameplates(nameplates) => {
-                (self.state, events![IH_GotNameplates(nameplates)])
-            }
+            GotNameplates(nameplates) => (
+                self.state,
+                events![IH_GotNameplates(nameplates)],
+            ),
             ChooseWords(words) => {
                 let code = format!{"{}-{}", self._nameplate, words};
                 (State::S4_done, events![C_FinishedInput(code)])

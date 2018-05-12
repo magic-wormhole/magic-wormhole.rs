@@ -2,8 +2,8 @@ use events::Events;
 // we process these
 use events::OrderEvent;
 // we emit these
-use events::ReceiveEvent::GotMessage as R_GotMessage;
 use events::KeyEvent::GotPake as K_GotPake;
+use events::ReceiveEvent::GotMessage as R_GotMessage;
 
 #[derive(Debug, PartialEq)]
 enum State {

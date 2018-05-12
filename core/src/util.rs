@@ -1,6 +1,6 @@
+use rand::{OsRng, Rng};
 use std;
 use std::str;
-use rand::{OsRng, Rng};
 
 pub fn random_bytes(bytes: &mut [u8]) {
     let mut rng = OsRng::new().unwrap();
@@ -26,7 +26,10 @@ pub fn hexstr_to_string(hexstr: &str) -> String {
         .map(|ch| str::from_utf8(ch).unwrap())
         .collect();
 
-    let s: Vec<char> = chars.iter().map(|x| hex_to_char(x).unwrap()).collect();
+    let s: Vec<char> = chars
+        .iter()
+        .map(|x| hex_to_char(x).unwrap())
+        .collect();
 
     s.iter().collect::<String>()
 }

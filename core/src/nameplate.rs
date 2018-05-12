@@ -2,10 +2,10 @@ use events::{Events, Wordlist};
 // we process these
 use events::NameplateEvent;
 // we emit these
-use events::RendezvousEvent::{TxClaim as RC_TxClaim, TxRelease as RC_TxRelease};
-use events::TerminatorEvent::NameplateDone as T_NameplateDone;
 use events::InputEvent::GotWordlist as I_GotWordlist;
 use events::MailboxEvent::GotMailbox as M_GotMailbox;
+use events::RendezvousEvent::{TxClaim as RC_TxClaim, TxRelease as RC_TxRelease};
+use events::TerminatorEvent::NameplateDone as T_NameplateDone;
 
 // all -A states are not-connected, while -B states are yes-connected
 // B states serialize as A, so we wake up disconnected
@@ -35,7 +35,9 @@ pub(crate) struct Nameplate {
 
 impl Nameplate {
     pub fn new() -> Nameplate {
-        Nameplate { state: State::S0A }
+        Nameplate {
+            state: State::S0A,
+        }
     }
 
     pub fn process(&mut self, event: NameplateEvent) -> Events {
@@ -72,7 +74,10 @@ impl Nameplate {
             RxReleased => panic!(),
             SetNameplate(nameplate) => {
                 // TODO: validate_nameplate(nameplate)
-                (Some(State::S1A(nameplate.to_string())), events![])
+                (
+                    Some(State::S1A(nameplate.to_string())),
+                    events![],
+                )
             }
             Release => panic!(),
             Close => (Some(State::S5), events![T_NameplateDone]),
@@ -137,7 +142,10 @@ impl Nameplate {
             RxReleased => panic!(),
             SetNameplate(nameplate) => panic!(),
             Release => panic!(),
-            Close => (Some(State::S4A(nameplate.to_string())), events![]),
+            Close => (
+                Some(State::S4A(nameplate.to_string())),
+                events![],
+            ),
         }
     }
 
@@ -150,7 +158,10 @@ impl Nameplate {
         match event {
             NameplateDone => panic!(),
             Connected => panic!(),
-            Lost => (Some(State::S2A(nameplate.to_string())), events![]),
+            Lost => (
+                Some(State::S2A(nameplate.to_string())),
+                events![],
+            ),
             RxClaimed(mailbox) => (
                 Some(State::S3B(nameplate.to_string())),
                 events![
@@ -176,13 +187,19 @@ impl Nameplate {
         use events::NameplateEvent::*;
         match event {
             NameplateDone => panic!(),
-            Connected => (Some(State::S3B(nameplate.to_string())), events![]),
+            Connected => (
+                Some(State::S3B(nameplate.to_string())),
+                events![],
+            ),
             Lost => panic!(),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
             SetNameplate(nameplate) => panic!(),
             Release => panic!(),
-            Close => (Some(State::S4A(nameplate.to_string())), events![]),
+            Close => (
+                Some(State::S4A(nameplate.to_string())),
+                events![],
+            ),
         }
     }
 
@@ -195,7 +212,10 @@ impl Nameplate {
         match event {
             NameplateDone => panic!(),
             Connected => panic!(),
-            Lost => (Some(State::S3A(nameplate.to_string())), events![]),
+            Lost => (
+                Some(State::S3A(nameplate.to_string())),
+                events![],
+            ),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
             SetNameplate(nameplate) => panic!(),
@@ -243,7 +263,10 @@ impl Nameplate {
                 Some(State::S4B(nameplate.to_string())),
                 events![RC_TxRelease(nameplate.to_string())],
             ),
-            Lost => (Some(State::S4A(nameplate.to_string())), events![]),
+            Lost => (
+                Some(State::S4A(nameplate.to_string())),
+                events![],
+            ),
             RxClaimed(_mailbox) => (None, events![]),
             RxReleased => (Some(State::S5), events![T_NameplateDone]),
             SetNameplate(nameplate) => panic!(),

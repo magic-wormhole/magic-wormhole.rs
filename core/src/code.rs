@@ -2,11 +2,11 @@ use events::Events;
 // we process these
 use events::CodeEvent;
 // we emit these
-use events::NameplateEvent::SetNameplate as N_SetNameplate;
-use events::BossEvent::GotCode as B_GotCode;
-use events::KeyEvent::GotCode as K_GotCode;
 use events::AllocatorEvent::Allocate as A_Allocate;
+use events::BossEvent::GotCode as B_GotCode;
 use events::InputEvent::Start as I_Start;
+use events::KeyEvent::GotCode as K_GotCode;
+use events::NameplateEvent::SetNameplate as N_SetNameplate;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -23,7 +23,9 @@ pub struct Code {
 
 impl Code {
     pub fn new() -> Code {
-        Code { state: State::Idle }
+        Code {
+            state: State::Idle,
+        }
     }
 
     pub fn process(&mut self, event: CodeEvent) -> Events {
@@ -51,7 +53,10 @@ impl Code {
                 Some(State::Allocating),
                 events![A_Allocate(length, wordlist)],
             ),
-            InputCode => (Some(State::InputtingNameplate), events![I_Start]), // TODO: return Input object
+            InputCode => (
+                Some(State::InputtingNameplate),
+                events![I_Start],
+            ), // TODO: return Input object
             SetCode(code) => {
                 // TODO: try!(validate_code(code))
                 let nc: Vec<&str> = code.splitn(2, "-").collect();
