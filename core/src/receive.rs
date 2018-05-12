@@ -1,6 +1,6 @@
+use events::Events;
 use key::Key;
 use std::str;
-use events::Events;
 // we process these
 use events::ReceiveEvent;
 // we emit these

@@ -4,8 +4,8 @@ use wordlist::PGPWordlist;
 // we process these
 use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
 // we emit these
-use events::RendezvousEvent::TxAllocate as RC_TxAllocate;
 use events::CodeEvent::Allocated as C_Allocated;
+use events::RendezvousEvent::TxAllocate as RC_TxAllocate;
 
 pub struct Allocator {
     state: State,
@@ -112,7 +112,10 @@ impl Allocator {
                 {
                     let word = _wordlist.choose_words(_length);
                     let code = nameplate.clone() + "-" + &word;
-                    (State::S2_done, events![C_Allocated(nameplate, code)])
+                    (
+                        State::S2_done,
+                        events![C_Allocated(nameplate, code)],
+                    )
                 } else {
                     // TODO: This should not happen but if happens we need proper error.
                     panic!()
@@ -125,6 +128,6 @@ impl Allocator {
 
 #[cfg(test)]
 mod test {
-    use super::State::*;
     use super::Allocator;
+    use super::State::*;
 }
