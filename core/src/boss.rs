@@ -7,7 +7,9 @@ use events::BossEvent;
 use api::APIAction;
 use events::CodeEvent::{AllocateCode as C_AllocateCode,
                         InputCode as C_InputCode, SetCode as C_SetCode};
-use events::InputEvent::ChooseWords as I_ChooseWords;
+use events::InputEvent::{ChooseNameplate as I_ChooseNameplate,
+                         ChooseWords as I_ChooseWords,
+                         RefreshNameplates as I_RefreshNameplates};
 use events::RendezvousEvent::Stop as RC_Stop;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
@@ -54,8 +56,16 @@ impl Boss {
         match event {
             AllocateCode => self.allocate_code(), // TODO: len, wordlist
             InputCode => self.input_code(),       // TODO: return Helper
+            InputHelperRefreshNameplates => {
+                self.input_helper_refresh_nameplates()
+            }
+            InputHelperChooseNameplate(nameplate) => {
+                self.input_helper_choose_nameplate(&nameplate)
+            }
+            InputHelperChooseWords(words) => {
+                self.input_helper_choose_words(&words)
+            }
             SetCode(code) => self.set_code(&code),
-            HelperChoseWord(word) => self.choose_word(&word),
             Close => events![RC_Stop], // eventually signals GotClosed
             Send(plaintext) => self.send(plaintext),
         }
@@ -106,11 +116,33 @@ impl Boss {
         actions
     }
 
-    fn choose_word(&mut self, word: &str) -> Events {
+    fn input_code(&mut self) -> Events {
+        // TODO: validate code, maybe signal KeyFormatError
+        // TODO: return Helper somehow
+        use self::State::*;
+        let (actions, newstate) = match self.state {
+            Empty(i) => (events![C_InputCode], Coding(i)),
+            _ => panic!(), // TODO: signal AlreadyStartedCodeError
+        };
+        self.state = newstate;
+        actions
+    }
+
+    fn input_helper_refresh_nameplates(&mut self) -> Events {
+        use self::State::*;
+        let (actions, newstate) = match self.state {
+            Coding(i) => (events![I_RefreshNameplates], Coding(i)),
+            _ => panic!(),
+        };
+        self.state = newstate;
+        actions
+    }
+
+    fn input_helper_choose_nameplate(&mut self, nameplate: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Coding(i) => (
-                events![I_ChooseWords(word.to_string())],
+                events![I_ChooseNameplate(nameplate.to_string())],
                 Coding(i),
             ),
             _ => panic!(),
@@ -119,13 +151,14 @@ impl Boss {
         actions
     }
 
-    fn input_code(&mut self) -> Events {
-        // TODO: validate code, maybe signal KeyFormatError
-        // TODO: return Helper somehow
+    fn input_helper_choose_words(&mut self, word: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty(i) => (events![C_InputCode], Coding(i)),
-            _ => panic!(), // TODO: signal AlreadyStartedCodeError
+            Coding(i) => (
+                events![I_ChooseWords(word.to_string())],
+                Coding(i),
+            ),
+            _ => panic!(),
         };
         self.state = newstate;
         actions

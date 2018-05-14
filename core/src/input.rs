@@ -3,105 +3,157 @@ use events::Events;
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
                          GotWordlist, RefreshNameplates, Start};
 // we emit these
+use api::InputHelperError;
 use events::CodeEvent::{FinishedInput as C_FinishedInput,
                         GotNameplate as C_GotNameplate};
-use events::InputHelperEvent::{GotNameplates as IH_GotNameplates,
-                               GotWordlist as IH_GotWordlist};
 use events::ListerEvent::Refresh as L_Refresh;
+use events::Wordlist;
+use wordlist::PGPWordlist;
 
 pub struct Input {
     state: State,
-    _nameplate: String,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug)]
 enum State {
-    S0Idle,
-    S1TypingNameplate,
-    S2TypingCodeWithoutWordlist,
-    S3TypingCodeWithWordlist,
-    S4Done,
+    Idle,
+    WantNameplateNoNameplates,
+    WantNameplateHaveNameplates(Vec<String>), // nameplates
+    WantCodeNoWordlist(String),               // nameplate
+    WantCodeHaveWordlist(String, Box<Wordlist>), // (nameplate, wordlist)
+    Done,
 }
 
 impl Input {
     pub fn new() -> Input {
         Input {
-            state: State::S0Idle,
-            _nameplate: String::new(),
+            state: State::Idle,
         }
     }
 
     pub fn process(&mut self, event: InputEvent) -> Events {
         use self::State::*;
         let (newstate, actions) = match self.state {
-            S0Idle => self.in_idle(event),
-            S1TypingNameplate => self.in_typing_nameplate(event),
-            S2TypingCodeWithoutWordlist => self.in_type_without_wordlist(event),
-            S3TypingCodeWithWordlist => self.in_type_with_wordlist(event),
-            State::S4Done => (self.state, events![]),
+            Idle => self.idle(event),
+            WantNameplateNoNameplates => self.want_nameplate(event),
+            WantNameplateHaveNameplates(_) => self.want_nameplate(event),
+            WantCodeNoWordlist(ref nameplate) => {
+                self.want_code(event, &nameplate)
+            }
+            WantCodeHaveWordlist(ref nameplate, _) => {
+                self.want_code(event, &nameplate)
+            }
+            Done => (Some(Done), events![]),
         };
 
-        self.state = newstate;
+        if let Some(s) = newstate {
+            self.state = s;
+        }
         actions
     }
 
-    fn in_idle(&mut self, event: InputEvent) -> (State, Events) {
+    fn idle(&self, event: InputEvent) -> (Option<State>, Events) {
+        use self::State::*;
+        use events::InputEvent::*;
         match event {
-            Start => (State::S1TypingNameplate, events![L_Refresh]),
-            _ => (self.state, events![]),
-        }
-    }
-
-    fn in_typing_nameplate(&mut self, event: InputEvent) -> (State, Events) {
-        match event {
-            GotNameplates(nameplates) => (
-                State::S1TypingNameplate,
-                events![IH_GotNameplates(nameplates)],
+            Start => (
+                Some(WantNameplateNoNameplates),
+                events![L_Refresh],
             ),
-            ChooseNameplate(nameplate) => {
-                self._nameplate = nameplate.to_owned();
-                (
-                    State::S2TypingCodeWithoutWordlist,
-                    events![C_GotNameplate(nameplate)],
-                )
-            }
-            RefreshNameplates => (self.state, events![L_Refresh]),
-            _ => (self.state, events![]),
+            ChooseNameplate(_) => panic!("too soon"),
+            ChooseWords(_) => panic!("too soon"),
+            GotNameplates(_) => panic!("also too soon"),
+            GotWordlist(_) => panic!("probably too soon"),
+            RefreshNameplates => panic!("almost certainly too soon"),
         }
     }
 
-    fn in_type_without_wordlist(
-        &mut self,
+    pub fn get_nameplate_completions(
+        &self,
+        _prefix: &str,
+    ) -> Result<Vec<String>, InputHelperError> {
+        use self::State::*;
+        match self.state {
+            Idle => Err(InputHelperError::Inactive),
+            WantNameplateNoNameplates => Ok(Vec::new()),
+            WantNameplateHaveNameplates(ref _nameplates) => {
+                Ok(Vec::new()) // TODO
+            }
+            WantCodeNoWordlist(_) => {
+                Err(InputHelperError::AlreadyChoseNameplate)
+            }
+            WantCodeHaveWordlist(_, _) => {
+                Err(InputHelperError::AlreadyChoseNameplate)
+            }
+            Done => Err(InputHelperError::AlreadyChoseNameplate),
+        }
+    }
+
+    pub fn get_word_completions(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<String>, InputHelperError> {
+        let _completions: Vec<String>;
+        use self::State::*;
+        match self.state {
+            Idle => Err(InputHelperError::Inactive),
+            WantNameplateNoNameplates => {
+                Err(InputHelperError::MustChooseNameplateFirst)
+            }
+            WantNameplateHaveNameplates(_) => {
+                Err(InputHelperError::MustChooseNameplateFirst)
+            }
+            WantCodeNoWordlist(_) => Ok(Vec::new()), // no wordlist, no completions
+            WantCodeHaveWordlist(_, ref _wordlist) => {
+                let wordlist = PGPWordlist::new(); // TODO
+                let _completions = wordlist.get_completions(prefix, 2);
+                Ok(Vec::new()) // TODO
+            }
+            Done => Err(InputHelperError::AlreadyChoseWords),
+        }
+    }
+
+    // can we get the wordlist before setting the nameplate??
+    fn want_nameplate(&self, event: InputEvent) -> (Option<State>, Events) {
+        use self::State::*;
+        match event {
+            Start => panic!("already started"),
+            ChooseNameplate(nameplate) => (
+                Some(WantCodeNoWordlist(nameplate.clone())),
+                events![C_GotNameplate(nameplate.clone())],
+            ),
+            ChooseWords(_) => panic!("expecting nameplate, not words"),
+            GotNameplates(nameplates) => (
+                Some(WantNameplateHaveNameplates(nameplates)),
+                events![],
+            ),
+            GotWordlist(_) => panic!("expecting nameplate, not words"),
+            RefreshNameplates => (None, events![L_Refresh]),
+        }
+    }
+
+    fn want_code(
+        &self,
         event: InputEvent,
-    ) -> (State, Events) {
+        nameplate: &str,
+    ) -> (Option<State>, Events) {
+        use self::State::*;
         match event {
-            GotNameplates(nameplates) => (
-                State::S2TypingCodeWithoutWordlist,
-                events![IH_GotNameplates(nameplates)],
-            ),
+            Start => panic!("already started"),
+            ChooseNameplate(_) => panic!("expecting words, not nameplate"),
+            ChooseWords(words) => {
+                let code = format!("{}-{}", nameplate, words);
+                (Some(Done), events![C_FinishedInput(code)])
+            }
+            GotNameplates(_) => (None, events![]),
             GotWordlist(wordlist) => (
-                State::S3TypingCodeWithWordlist,
-                events![IH_GotWordlist(wordlist)],
+                Some(WantCodeHaveWordlist(
+                    nameplate.to_string(),
+                    Box::new(wordlist),
+                )),
+                events![],
             ),
-            ChooseWords(words) => {
-                let code = format!("{}-{}", self._nameplate, words);
-                (State::S4Done, events![C_FinishedInput(code)])
-            }
-            _ => (self.state, events![]),
-        }
-    }
-
-    fn in_type_with_wordlist(&mut self, event: InputEvent) -> (State, Events) {
-        match event {
-            GotNameplates(nameplates) => (
-                self.state,
-                events![IH_GotNameplates(nameplates)],
-            ),
-            ChooseWords(words) => {
-                let code = format!{"{}-{}", self._nameplate, words};
-                (State::S4Done, events![C_FinishedInput(code)])
-            }
-            _ => (self.state, events![]),
+            RefreshNameplates => panic!("already set nameplate"),
         }
     }
 }
