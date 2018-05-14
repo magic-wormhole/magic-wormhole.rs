@@ -13,7 +13,7 @@ pub enum APIEvent {
     Send(Vec<u8>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InputHelperError {
     Inactive,
     MustChooseNameplateFirst,

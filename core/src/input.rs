@@ -70,14 +70,21 @@ impl Input {
 
     pub fn get_nameplate_completions(
         &self,
-        _prefix: &str,
+        prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
         use self::State::*;
         match self.state {
             Idle => Err(InputHelperError::Inactive),
             WantNameplateNoNameplates => Ok(Vec::new()),
-            WantNameplateHaveNameplates(ref _nameplates) => {
-                Ok(Vec::new()) // TODO
+            WantNameplateHaveNameplates(ref nameplates) => {
+                let mut completions = Vec::<String>::new();
+                for n in nameplates {
+                    if n.starts_with(prefix) {
+                        completions.push(n.to_string()+"-");
+                    }
+                }
+                completions.sort();
+                Ok(completions)
             }
             WantCodeNoWordlist(_) => {
                 Err(InputHelperError::AlreadyChoseNameplate)
@@ -155,5 +162,134 @@ impl Input {
             ),
             RefreshNameplates => panic!("already set nameplate"),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        // in this test, we'll pretend the user charges on through before any
+        // nameplates or wordlists ever arrive
+        let mut i = Input::new();
+
+        let actions = i.process(Start);
+        assert_eq!(actions, events![L_Refresh]);
+        let actions = i.process(ChooseNameplate("4".to_string()));
+        assert_eq!(
+            actions,
+            events![C_GotNameplate("4".to_string())]
+        );
+        let actions = i.process(ChooseWords("purple-sausages".to_string()));
+        assert_eq!(
+            actions,
+            events![C_FinishedInput("4-purple-sausages".to_string())]
+        );
+    }
+
+    fn vecstrings(all: &str) -> Vec<String> {
+        all.split_whitespace()
+            .map(|s| if s == "." { "".to_string() } else { s.to_string() })
+            .collect()
+    }
+
+    #[test]
+    fn test_vecstrings() {
+        let mut expected: Vec<String>;
+        expected = vec![];
+        assert_eq!(vecstrings(""), expected);
+        expected = vec!["4".to_string(), "5".to_string()];
+        assert_eq!(vecstrings("4 5"), expected);
+        expected = vec!["4".to_string(), "".to_string()];
+        assert_eq!(vecstrings("4 ."), expected);
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn test_completions() {
+        let mut i = Input::new();
+        // you aren't allowed to call these before w.input_code()
+        assert_eq!(
+            i.get_nameplate_completions(""),
+            Err(InputHelperError::Inactive)
+        );
+        assert_eq!(
+            i.get_word_completions(""),
+            Err(InputHelperError::Inactive)
+        );
+
+        let actions = i.process(Start);
+        assert_eq!(actions, events![L_Refresh]);
+        // we haven't received any nameplates yet, so completions are empty
+        assert_eq!(
+            i.get_nameplate_completions("").unwrap(), vecstrings("")
+        );
+        // and it's too early to make word compltions
+        assert_eq!(
+            i.get_word_completions(""),
+            Err(InputHelperError::MustChooseNameplateFirst)
+        );
+
+        // now we pretend that we've received a set of active nameplates
+        let actions = i.process(GotNameplates(vecstrings("4 48 5 49")));
+        assert_eq!(actions, events![]);
+
+        // still too early to make word compltions
+        assert_eq!(
+            i.get_word_completions(""),
+            Err(InputHelperError::MustChooseNameplateFirst)
+        );
+
+        // but nameplate completions should work now
+        assert_eq!(
+            i.get_nameplate_completions("").unwrap(),
+            vecstrings("4- 48- 49- 5-")
+        );
+        assert_eq!(
+            i.get_nameplate_completions("4").unwrap(),
+            vecstrings("4- 48- 49-")
+        );
+
+        // choose the nameplate. This enables word completions, but the list
+        // will be empty until we get back the wordlist (for now this is
+        // synchronous and fixed, but in the long run this will be informed
+        // by server-side properties)
+        let actions = i.process(ChooseNameplate("4".to_string()));
+        assert_eq!(
+            actions,
+            events![C_GotNameplate("4".to_string())]
+        );
+
+        // now it's too late to complete the nameplate
+        assert_eq!(
+            i.get_nameplate_completions(""),
+            Err(InputHelperError::AlreadyChoseNameplate)
+        );
+
+        // wordlist hasn't been received yet, so completions are empty
+        assert_eq!(
+            i.get_word_completions("pur").unwrap(),
+            vecstrings("")
+        );
+
+        // receive the wordlist for this nameplate
+        let wordlist = Wordlist{};
+        let actions = i.process(GotWordlist(wordlist));
+        assert_eq!(actions, events![]);
+
+        return; // TODO: word completions aren't yet implemented
+        assert_eq!(
+            i.get_word_completions("pur").unwrap(),
+            vecstrings("purple-")
+        );
+
+        let actions = i.process(ChooseWords("purple-sausages".to_string()));
+        assert_eq!(
+            actions,
+            events![C_FinishedInput("4-purple-sausages".to_string())]
+        );
+
     }
 }
