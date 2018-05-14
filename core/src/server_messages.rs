@@ -306,7 +306,7 @@ mod test {
                         WelcomeMsg { motd: msg_of_day } => {
                             assert_eq!(msg_of_day, "hello world".to_string());
                         }
-                        _ => panic!(),
+                        //_ => panic!(),
                     },
                     _ => panic!(),
                 }
@@ -337,9 +337,9 @@ mod test {
         let m = deserialize(&s);
         match m {
             Message::Message {
-                side: s,
-                phase: p,
-                body: b,
+                side: _s,
+                phase: _p,
+                body: _b,
                 //id: i
             } => (),
             _ => panic!(),

@@ -252,12 +252,10 @@ impl Key {
 
 #[cfg(test)]
 mod test {
-    use super::*;
 
     #[test]
     fn test_extract_pake_msg() {
         extern crate hex;
-        use super::*;
 
         let key = super::Key::new("appid", "side1");
 
@@ -277,7 +275,7 @@ mod test {
         // output of derive_phase_key is:
         // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
-        let k = Key::new("appid1", "side");
+        let _k = Key::new("appid1", "side");
 
         let key = "key".as_bytes();
         let side = "side";
@@ -300,7 +298,7 @@ mod test {
         let data_key = Key::derive_phase_key(side, key, phase);
         let plaintext = "hello world";
 
-        let (nonce, encrypted) =
+        let (_nonce, encrypted) =
             Key::encrypt_data(data_key.clone(), &plaintext.as_bytes());
         let maybe_plaintext = Key::decrypt_data(data_key, &encrypted);
         match maybe_plaintext {

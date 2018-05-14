@@ -5,10 +5,20 @@ pub enum APIEvent {
     // from application to IO glue to WormholeCore
     AllocateCode,
     InputCode,
-    HelperChoseWord(String),
+    InputHelperRefreshNameplates,
+    InputHelperChooseNameplate(String),
+    InputHelperChooseWords(String),
     SetCode(String),
     Close,
     Send(Vec<u8>),
+}
+
+#[derive(Debug)]
+pub enum InputHelperError {
+    Inactive,
+    MustChooseNameplateFirst,
+    AlreadyChoseNameplate,
+    AlreadyChoseWords,
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
