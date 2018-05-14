@@ -127,6 +127,6 @@ impl Allocator {
 
 #[cfg(test)]
 mod test {
-    use super::Allocator;
-    use super::State::*;
+    //use super::Allocator;
+    //use super::State::*;
 }

@@ -241,7 +241,7 @@ mod test {
     use api::IOAction;
     use api::IOEvent;
     use api::{TimerHandle, WSHandle};
-    use events::Event::{Nameplate, Rendezvous, API, IO};
+    use events::Event::{Nameplate, Rendezvous, IO};
     use events::NameplateEvent::Connected as N_Connected;
     use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
     use server_messages::{deserialize, Message};
