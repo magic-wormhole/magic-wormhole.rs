@@ -49,21 +49,11 @@ pub enum CodeEvent {
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Start,
-    GotNameplates(Vec<String>),
-    GotWordlist(Wordlist),
     ChooseNameplate(String),
     ChooseWords(String),
-    RefreshNameplates,
-}
-
-#[allow(dead_code)] // TODO: drop dead code directive once core is complete
-#[derive(Debug, PartialEq)]
-pub enum InputHelperEvent {
-    RefreshNameplates,
     GotNameplates(Vec<String>),
     GotWordlist(Wordlist),
-    ChooseNameplate(String),
-    ChooseWords(String),
+    RefreshNameplates,
 }
 
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -172,7 +162,6 @@ pub enum Event {
     Boss(BossEvent),
     Code(CodeEvent),
     Input(InputEvent),
-    InputHelper(InputHelperEvent),
     Key(KeyEvent),
     Lister(ListerEvent),
     Mailbox(MailboxEvent),
@@ -219,12 +208,6 @@ impl From<CodeEvent> for Event {
 impl From<InputEvent> for Event {
     fn from(r: InputEvent) -> Self {
         Event::Input(r)
-    }
-}
-
-impl From<InputHelperEvent> for Event {
-    fn from(r: InputHelperEvent) -> Self {
-        Event::InputHelper(r)
     }
 }
 
