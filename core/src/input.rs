@@ -80,7 +80,7 @@ impl Input {
                 let mut completions = Vec::<String>::new();
                 for n in nameplates {
                     if n.starts_with(prefix) {
-                        completions.push(n.to_string()+"-");
+                        completions.push(n.to_string() + "-");
                     }
                 }
                 completions.sort();
@@ -191,7 +191,13 @@ mod test {
 
     fn vecstrings(all: &str) -> Vec<String> {
         all.split_whitespace()
-            .map(|s| if s == "." { "".to_string() } else { s.to_string() })
+            .map(|s| {
+                if s == "." {
+                    "".to_string()
+                } else {
+                    s.to_string()
+                }
+            })
             .collect()
     }
 
@@ -224,7 +230,8 @@ mod test {
         assert_eq!(actions, events![L_Refresh]);
         // we haven't received any nameplates yet, so completions are empty
         assert_eq!(
-            i.get_nameplate_completions("").unwrap(), vecstrings("")
+            i.get_nameplate_completions("").unwrap(),
+            vecstrings("")
         );
         // and it's too early to make word compltions
         assert_eq!(
@@ -275,7 +282,7 @@ mod test {
         );
 
         // receive the wordlist for this nameplate
-        let wordlist = Wordlist{};
+        let wordlist = Wordlist {};
         let actions = i.process(GotWordlist(wordlist));
         assert_eq!(actions, events![]);
 
@@ -290,6 +297,5 @@ mod test {
             actions,
             events![C_FinishedInput("4-purple-sausages".to_string())]
         );
-
     }
 }
