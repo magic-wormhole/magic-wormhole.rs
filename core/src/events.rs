@@ -313,11 +313,11 @@ impl FromIterator<Event> for Events {
 
 // macro to build a whole Events vector, instead of adding them one at a time
 // TODO: tolerate events![first,] (trailing comma breaks it)
-// TODO: tolerate events![] (causes warning)
 macro_rules! events {
     ( $( $x:expr ),* ) => {
         {
             use events::Events;
+            #[allow(unused_mut)] // hush warning on events![]
             let mut temp_vec = Events::new();
             $(
                 temp_vec.push($x);
