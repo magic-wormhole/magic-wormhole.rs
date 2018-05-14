@@ -16,17 +16,17 @@ pub struct Input {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
-    S0_Idle,
-    S1_typing_nameplate,
-    S2_typing_code_without_wordlist,
-    S3_typing_code_with_wordlist,
-    S4_done,
+    S0Idle,
+    S1TypingNameplate,
+    S2TypingCodeWithoutWordlist,
+    S3TypingCodeWithWordlist,
+    S4Done,
 }
 
 impl Input {
     pub fn new() -> Input {
         Input {
-            state: State::S0_Idle,
+            state: State::S0Idle,
             _nameplate: String::new(),
         }
     }
@@ -34,13 +34,11 @@ impl Input {
     pub fn process(&mut self, event: InputEvent) -> Events {
         use self::State::*;
         let (newstate, actions) = match self.state {
-            S0_Idle => self.in_idle(event),
-            S1_typing_nameplate => self.in_typing_nameplate(event),
-            S2_typing_code_without_wordlist => {
-                self.in_type_without_wordlist(event)
-            }
-            S3_typing_code_with_wordlist => self.in_type_with_wordlist(event),
-            State::S4_done => (self.state, events![]),
+            S0Idle => self.in_idle(event),
+            S1TypingNameplate => self.in_typing_nameplate(event),
+            S2TypingCodeWithoutWordlist => self.in_type_without_wordlist(event),
+            S3TypingCodeWithWordlist => self.in_type_with_wordlist(event),
+            State::S4Done => (self.state, events![]),
         };
 
         self.state = newstate;
@@ -49,7 +47,7 @@ impl Input {
 
     fn in_idle(&mut self, event: InputEvent) -> (State, Events) {
         match event {
-            Start => (State::S1_typing_nameplate, events![L_Refresh]),
+            Start => (State::S1TypingNameplate, events![L_Refresh]),
             _ => (self.state, events![]),
         }
     }
@@ -57,13 +55,13 @@ impl Input {
     fn in_typing_nameplate(&mut self, event: InputEvent) -> (State, Events) {
         match event {
             GotNameplates(nameplates) => (
-                State::S1_typing_nameplate,
+                State::S1TypingNameplate,
                 events![IH_GotNameplates(nameplates)],
             ),
             ChooseNameplate(nameplate) => {
                 self._nameplate = nameplate.to_owned();
                 (
-                    State::S2_typing_code_without_wordlist,
+                    State::S2TypingCodeWithoutWordlist,
                     events![C_GotNameplate(nameplate)],
                 )
             }
@@ -78,16 +76,16 @@ impl Input {
     ) -> (State, Events) {
         match event {
             GotNameplates(nameplates) => (
-                State::S2_typing_code_without_wordlist,
+                State::S2TypingCodeWithoutWordlist,
                 events![IH_GotNameplates(nameplates)],
             ),
             GotWordlist(wordlist) => (
-                State::S3_typing_code_with_wordlist,
+                State::S3TypingCodeWithWordlist,
                 events![IH_GotWordlist(wordlist)],
             ),
             ChooseWords(words) => {
                 let code = format!("{}-{}", self._nameplate, words);
-                (State::S4_done, events![C_FinishedInput(code)])
+                (State::S4Done, events![C_FinishedInput(code)])
             }
             _ => (self.state, events![]),
         }
@@ -101,7 +99,7 @@ impl Input {
             ),
             ChooseWords(words) => {
                 let code = format!{"{}-{}", self._nameplate, words};
-                (State::S4_done, events![C_FinishedInput(code)])
+                (State::S4Done, events![C_FinishedInput(code)])
             }
             _ => (self.state, events![]),
         }

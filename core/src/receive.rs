@@ -11,10 +11,10 @@ use events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
 
 #[derive(Debug, PartialEq)]
 enum State {
-    S0_unknown_key,
-    S1_unverified_key(Vec<u8>),
-    S2_verified_key(Vec<u8>),
-    S3_scared,
+    S0UnknownKey,
+    S1UnverifiedKey(Vec<u8>),
+    S2VerifiedKey(Vec<u8>),
+    S3Scared,
 }
 
 pub struct Receive {
@@ -24,7 +24,7 @@ pub struct Receive {
 impl Receive {
     pub fn new() -> Receive {
         Receive {
-            state: State::S0_unknown_key,
+            state: State::S0UnknownKey,
         }
     }
 
@@ -37,21 +37,21 @@ impl Receive {
         );
 
         let (newstate, actions) = match self.state {
-            S0_unknown_key => self.do_S0_unknown_key(event),
-            S1_unverified_key(ref key) => self.do_S1_unverified_key(key, event),
-            S2_verified_key(ref key) => self.do_S2_verified_key(key, event),
-            S3_scared => self.do_S3_scared(event),
+            S0UnknownKey => self.in_unknown_key(event),
+            S1UnverifiedKey(ref key) => self.in_unverified_key(key, event),
+            S2VerifiedKey(ref key) => self.in_verified_key(key, event),
+            S3Scared => self.in_scared(event),
         };
 
         self.state = newstate;
         actions
     }
 
-    fn do_S0_unknown_key(&self, event: ReceiveEvent) -> (State, Events) {
+    fn in_unknown_key(&self, event: ReceiveEvent) -> (State, Events) {
         use events::ReceiveEvent::*;
         match event {
-            GotMessage(side, phase, body) => panic!(),
-            GotKey(key) => (State::S1_unverified_key(key), events![]),
+            GotMessage(..) => panic!(),
+            GotKey(key) => (State::S1UnverifiedKey(key), events![]),
         }
     }
 
@@ -66,7 +66,7 @@ impl Receive {
         Key::decrypt_data(data_key.clone(), &body)
     }
 
-    fn do_S1_unverified_key(
+    fn in_unverified_key(
         &self,
         key: &[u8],
         event: ReceiveEvent,
@@ -81,7 +81,7 @@ impl Receive {
                         let msg =
                             Key::derive_key(&key, b"wormhole:verifier", 32); // TODO: replace 32 with KEY_SIZE const
                         (
-                            State::S2_verified_key(key.to_vec()),
+                            State::S2VerifiedKey(key.to_vec()),
                             events![
                                 S_GotVerifiedKey(key.to_vec()),
                                 B_Happy,
@@ -92,14 +92,14 @@ impl Receive {
                     }
                     None => {
                         // got_message_bad
-                        (State::S3_scared, events![B_Scared])
+                        (State::S3Scared, events![B_Scared])
                     }
                 }
             }
         }
     }
 
-    fn do_S2_verified_key(
+    fn in_verified_key(
         &self,
         key: &[u8],
         event: ReceiveEvent,
@@ -112,24 +112,24 @@ impl Receive {
                     Some(plaintext) => {
                         // got_message_good
                         (
-                            State::S2_verified_key(key.to_vec()),
+                            State::S2VerifiedKey(key.to_vec()),
                             events![B_GotMessage(phase, plaintext)],
                         )
                     }
                     None => {
                         // got_message_bad
-                        (State::S3_scared, events![B_Scared])
+                        (State::S3Scared, events![B_Scared])
                     }
                 }
             }
         }
     }
 
-    fn do_S3_scared(&self, event: ReceiveEvent) -> (State, Events) {
+    fn in_scared(&self, event: ReceiveEvent) -> (State, Events) {
         use events::ReceiveEvent::*;
         match event {
             GotKey(_) => panic!(),
-            GotMessage(_, _, _) => (State::S3_scared, events![]),
+            GotMessage(_, _, _) => (State::S3Scared, events![]),
         }
     }
 }

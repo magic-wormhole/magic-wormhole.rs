@@ -15,10 +15,12 @@ pub fn bytes_to_hexstr(b: &[u8]) -> String {
     hexstr.join("")
 }
 
-fn hex_to_char(s: &str) -> Result<char, std::num::ParseIntError> {
+#[allow(dead_code)] // TODO: Drop this once function is being used
+pub fn hex_to_char(s: &str) -> Result<char, std::num::ParseIntError> {
     u8::from_str_radix(s, 16).map(|n| n as char)
 }
 
+#[allow(dead_code)] // TODO: Drop this once function is being used
 pub fn hexstr_to_string(hexstr: &str) -> String {
     let chars: Vec<&str> = hexstr
         .as_bytes()

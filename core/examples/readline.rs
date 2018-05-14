@@ -1,16 +1,14 @@
 extern crate magic_wormhole_core;
 extern crate rustyline;
-#[macro_use]
 extern crate serde_json;
 extern crate url;
 extern crate ws;
 
 use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
-                          TimerHandle, WSHandle, WormholeCore};
+                          WSHandle, WormholeCore};
 
 use std::sync::{Arc, Mutex, mpsc::{channel, Sender}};
-use std::thread::{sleep, spawn};
-use std::time::Duration;
+use std::thread::spawn;
 
 use rustyline::completion::{extract_word, Completer};
 use url::Url;
@@ -88,7 +86,7 @@ impl ws::Handler for WSHandler {
         };
 
         let (tx, rx) = channel();
-        let handle = spawn(move || {
+        spawn(move || {
             let mut rl = rustyline::Editor::new();
             rl.set_completer(Some(completer));
             loop {
@@ -110,7 +108,7 @@ impl ws::Handler for WSHandler {
                         break;
                     }
                     Err(err) => {
-                        // println!("Error: {:?}", err);
+                        println!("Error: {:?}", err);
                         break;
                     }
                 }
@@ -118,12 +116,10 @@ impl ws::Handler for WSHandler {
         });
 
         let out_actions = self.out.clone();
-        let amwc = Arc::clone(&self.wcr);
 
         spawn(move || {
             for actions in rx_action {
                 // println!("{:?}", actions);
-                let mut wc = amwc.lock().unwrap();
                 process_actions(&out_actions, actions);
             }
         });

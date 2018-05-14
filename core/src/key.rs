@@ -1,7 +1,6 @@
 extern crate hex;
 extern crate serde_json;
 
-use hkdf;
 use hkdf::Hkdf;
 use sha2::{Digest, Sha256};
 use sodiumoxide;
@@ -26,11 +25,12 @@ enum State {
     S11(String, Vec<u8>), // code, pake
 }
 
+#[allow(dead_code)]
 enum SKState {
-    S0_Know_Nothing,
-    S1_Know_Code,
-    S2_Know_Code,
-    S3_Scared,
+    S0KnowNothing,
+    S1KnowCode,
+    S2KnowCode,
+    S3Scared,
 }
 
 pub struct Key {
@@ -61,10 +61,10 @@ impl Key {
             self.state, event
         );
         let (newstate, actions) = match self.state {
-            S00 => self.do_S00(event),
-            S01(ref body) => self.do_S01(body.to_vec(), event),
-            S10(ref code) => self.do_S10(&code, event),
-            S11(ref code, ref body) => self.do_S11(&code, body.to_vec(), event),
+            S00 => self.do_s00(event),
+            S01(ref body) => self.do_s01(body.to_vec(), event),
+            S10(ref code) => self.do_s10(&code, event),
+            S11(ref code, ref body) => self.do_s11(&code, body.to_vec(), event),
         };
 
         match newstate {
@@ -106,7 +106,7 @@ impl Key {
         let data_key = Self::derive_phase_key(&self.side, &key, phase);
         let versions = r#"{"app_versions": {}}"#;
         let plaintext = versions.to_string();
-        let (nonce, encrypted) =
+        let (_nonce, encrypted) =
             Self::encrypt_data(data_key, &plaintext.as_bytes());
         events![
             B_GotKey(key.to_vec()),
@@ -176,7 +176,7 @@ impl Key {
         Self::derive_key(key, &purpose_vec, length)
     }
 
-    fn do_S00(&self, event: KeyEvent) -> (Option<State>, Events) {
+    fn do_s00(&self, event: KeyEvent) -> (Option<State>, Events) {
         use events::KeyEvent::*;
 
         match event {
@@ -193,7 +193,7 @@ impl Key {
     }
 
     fn send_pake_compute_key(&self, code: &str, body: Vec<u8>) -> Events {
-        let (mut buildpake_events, sp) = self.build_pake(&code);
+        let (buildpake_events, sp) = self.build_pake(&code);
         let msg2 = self.extract_pake_msg(body).unwrap();
         let key = sp.finish(&hex::decode(msg2).unwrap()).unwrap();
         let mut key_events = self.compute_key(&key);
@@ -203,7 +203,7 @@ impl Key {
         es
     }
 
-    fn do_S01(
+    fn do_s01(
         &self,
         body: Vec<u8>,
         event: KeyEvent,
@@ -220,7 +220,7 @@ impl Key {
         }
     }
 
-    fn do_S10(&self, code: &str, event: KeyEvent) -> (Option<State>, Events) {
+    fn do_s10(&self, code: &str, event: KeyEvent) -> (Option<State>, Events) {
         use events::KeyEvent::*;
 
         match event {
@@ -234,10 +234,10 @@ impl Key {
     }
 
     // no state transitions while in S11, we already have got code and pake
-    fn do_S11(
+    fn do_s11(
         &self,
-        code: &str,
-        body: Vec<u8>,
+        _code: &str,
+        _body: Vec<u8>,
         event: KeyEvent,
     ) -> (Option<State>, Events) {
         use events::KeyEvent::*;

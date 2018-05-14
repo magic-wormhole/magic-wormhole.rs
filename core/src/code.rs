@@ -70,9 +70,9 @@ impl Code {
                     ],
                 )
             }
-            Allocated(nameplate, code) => panic!(),
-            GotNameplate(nameplate) => panic!(),
-            FinishedInput(_code) => panic!(),
+            Allocated(..) => panic!(),
+            GotNameplate(..) => panic!(),
+            FinishedInput(..) => panic!(),
         }
     }
 
@@ -82,15 +82,15 @@ impl Code {
     ) -> (Option<State>, Events) {
         use events::CodeEvent::*;
         match event {
-            AllocateCode(_length, _wordlist) => panic!(),
+            AllocateCode(..) => panic!(),
             InputCode => panic!(),
-            SetCode(code) => panic!(),
-            Allocated(nameplate, code) => panic!(),
+            SetCode(..) => panic!(),
+            Allocated(..) => panic!(),
             GotNameplate(nameplate) => (
                 Some(State::InputtingWords),
                 events![N_SetNameplate(nameplate)],
             ),
-            FinishedInput(_code) => panic!(),
+            FinishedInput(..) => panic!(),
         }
     }
 
@@ -100,11 +100,11 @@ impl Code {
     ) -> (Option<State>, Events) {
         use events::CodeEvent::*;
         match event {
-            AllocateCode(_length, _wordlist) => panic!(),
+            AllocateCode(..) => panic!(),
             InputCode => panic!(),
-            SetCode(code) => panic!(),
-            Allocated(nameplate, code) => panic!(),
-            GotNameplate(nameplate) => panic!(),
+            SetCode(..) => panic!(),
+            Allocated(..) => panic!(),
+            GotNameplate(..) => panic!(),
             FinishedInput(code) => (
                 Some(State::Known),
                 events![
@@ -118,9 +118,9 @@ impl Code {
     fn in_allocating(&mut self, event: CodeEvent) -> (Option<State>, Events) {
         use events::CodeEvent::*;
         match event {
-            AllocateCode(_length, _wordlist) => panic!(),
+            AllocateCode(..) => panic!(),
             InputCode => panic!(),
-            SetCode(code) => panic!(),
+            SetCode(..) => panic!(),
             Allocated(nameplate, code) => {
                 // TODO: assert code.startswith(nameplate+"-")
                 (
@@ -132,20 +132,20 @@ impl Code {
                     ],
                 )
             }
-            GotNameplate(nameplate) => panic!(),
-            FinishedInput(_code) => panic!(),
+            GotNameplate(..) => panic!(),
+            FinishedInput(..) => panic!(),
         }
     }
 
     fn in_known(&mut self, event: CodeEvent) -> (Option<State>, Events) {
         use events::CodeEvent::*;
         match event {
-            AllocateCode(_length, _wordlist) => panic!(),
+            AllocateCode(..) => panic!(),
             InputCode => panic!(),
-            SetCode(code) => panic!(),
-            Allocated(nameplate, code) => panic!(),
-            GotNameplate(nameplate) => panic!(),
-            FinishedInput(_code) => panic!(),
+            SetCode(..) => panic!(),
+            Allocated(..) => panic!(),
+            GotNameplate(..) => panic!(),
+            FinishedInput(..) => panic!(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use serde_json::{self, from_str, Value};
+use serde_json::{self, Value};
 use std::collections::{HashMap, HashSet};
 
 use util::{bytes_to_hexstr, random_bytes};

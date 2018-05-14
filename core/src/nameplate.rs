@@ -43,17 +43,16 @@ impl Nameplate {
     pub fn process(&mut self, event: NameplateEvent) -> Events {
         use self::State::*;
         let (newstate, actions) = match self.state {
-            S0A => self.do_S0A(event),
-            S0B => self.do_S0B(event),
-            S1A(ref nameplate) => self.do_S1A(&nameplate, event),
-            S2A(ref nameplate) => self.do_S2A(&nameplate, event),
-            S2B(ref nameplate) => self.do_S2B(&nameplate, event),
-            S3A(ref nameplate) => self.do_S3A(&nameplate, event),
-            S3B(ref nameplate) => self.do_S3B(&nameplate, event),
-            S4A(ref nameplate) => self.do_S4A(&nameplate, event),
-            S4B(ref nameplate) => self.do_S4B(&nameplate, event),
-            S5 => self.do_S5(event),
-            _ => panic!(),
+            S0A => self.do_s0a(event),
+            S0B => self.do_s0b(event),
+            S1A(ref nameplate) => self.do_s1a(&nameplate, event),
+            S2A(ref nameplate) => self.do_s2a(&nameplate, event),
+            S2B(ref nameplate) => self.do_s2b(&nameplate, event),
+            S3A(ref nameplate) => self.do_s3a(&nameplate, event),
+            S3B(ref nameplate) => self.do_s3b(&nameplate, event),
+            S4A(ref nameplate) => self.do_s4a(&nameplate, event),
+            S4B(ref nameplate) => self.do_s4b(&nameplate, event),
+            S5 => self.do_s5(event),
         };
         match newstate {
             Some(s) => {
@@ -64,7 +63,7 @@ impl Nameplate {
         actions
     }
 
-    fn do_S0A(&self, event: NameplateEvent) -> (Option<State>, Events) {
+    fn do_s0a(&self, event: NameplateEvent) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
             NameplateDone => panic!(),
@@ -84,7 +83,7 @@ impl Nameplate {
         }
     }
 
-    fn do_S0B(&self, event: NameplateEvent) -> (Option<State>, Events) {
+    fn do_s0b(&self, event: NameplateEvent) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
             NameplateDone => panic!(),
@@ -104,7 +103,7 @@ impl Nameplate {
         }
     }
 
-    fn do_S1A(
+    fn do_s1a(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -119,13 +118,13 @@ impl Nameplate {
             Lost => panic!(),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => panic!(),
             Close => (Some(State::S5), events![T_NameplateDone]),
         }
     }
 
-    fn do_S2A(
+    fn do_s2a(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -140,7 +139,7 @@ impl Nameplate {
             Lost => panic!(),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => panic!(),
             Close => (
                 Some(State::S4A(nameplate.to_string())),
@@ -149,7 +148,7 @@ impl Nameplate {
         }
     }
 
-    fn do_S2B(
+    fn do_s2b(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -170,7 +169,7 @@ impl Nameplate {
                 ],
             ),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => panic!(),
             Close => (
                 Some(State::S4B(nameplate.to_string())),
@@ -179,7 +178,7 @@ impl Nameplate {
         }
     }
 
-    fn do_S3A(
+    fn do_s3a(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -194,7 +193,7 @@ impl Nameplate {
             Lost => panic!(),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => panic!(),
             Close => (
                 Some(State::S4A(nameplate.to_string())),
@@ -203,7 +202,7 @@ impl Nameplate {
         }
     }
 
-    fn do_S3B(
+    fn do_s3b(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -218,7 +217,7 @@ impl Nameplate {
             ),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => (
                 Some(State::S4B(nameplate.to_string())),
                 events![RC_TxRelease(nameplate.to_string())],
@@ -230,7 +229,7 @@ impl Nameplate {
         }
     }
 
-    fn do_S4A(
+    fn do_s4a(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -245,13 +244,13 @@ impl Nameplate {
             Lost => (None, events![]),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => panic!(),
             Close => (None, events![]),
         }
     }
 
-    fn do_S4B(
+    fn do_s4b(
         &self,
         nameplate: &str,
         event: NameplateEvent,
@@ -269,13 +268,13 @@ impl Nameplate {
             ),
             RxClaimed(_mailbox) => (None, events![]),
             RxReleased => (Some(State::S5), events![T_NameplateDone]),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => (None, events![]),
             Close => (None, events![]),
         }
     }
 
-    fn do_S5(&self, event: NameplateEvent) -> (Option<State>, Events) {
+    fn do_s5(&self, event: NameplateEvent) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
             NameplateDone => panic!(),
@@ -283,7 +282,7 @@ impl Nameplate {
             Lost => (None, events![]),
             RxClaimed(_mailbox) => panic!(),
             RxReleased => panic!(),
-            SetNameplate(nameplate) => panic!(),
+            SetNameplate(_nameplate) => panic!(),
             Release => (None, events![]),
             Close => (None, events![]),
         }

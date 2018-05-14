@@ -4,7 +4,7 @@ extern crate serde_json;
 extern crate url;
 extern crate ws;
 use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
-                          TimerHandle, WSHandle, WormholeCore};
+                          WSHandle, WormholeCore};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;

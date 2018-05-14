@@ -5,6 +5,7 @@ use events::SendEvent;
 // we emit these
 use events::MailboxEvent::AddMessage as M_AddMessage;
 
+#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 pub struct Send {
     state: State,
     side: String,
@@ -35,15 +36,13 @@ impl Send {
     }
 
     pub fn process(&mut self, event: SendEvent) -> Events {
-        use events::SendEvent::*;
-
         println!(
             "send: current state = {:?}, got event = {:?}",
             self.state, event
         );
         let (newstate, actions, queue_status) = match self.state {
-            State::S0 => self.do_S0(event),
-            State::S1(ref key) => self.do_S1(key.to_vec(), event),
+            State::S0 => self.do_s0(event),
+            State::S1(ref key) => self.do_s1(key.to_vec(), event),
         };
 
         // process the queue
@@ -64,7 +63,7 @@ impl Send {
 
         for &(ref phase, ref plaintext) in &self.queue {
             let data_key = Key::derive_phase_key(&self.side, &key, phase);
-            let (nonce, encrypted) = Key::encrypt_data(data_key, plaintext);
+            let (_nonce, encrypted) = Key::encrypt_data(data_key, plaintext);
             es.push(M_AddMessage(phase.to_string(), encrypted));
         }
 
@@ -78,11 +77,11 @@ impl Send {
         plaintext: Vec<u8>,
     ) -> Events {
         let data_key = Key::derive_phase_key(&self.side, &key, &phase);
-        let (nonce, encrypted) = Key::encrypt_data(data_key, &plaintext);
+        let (_nonce, encrypted) = Key::encrypt_data(data_key, &plaintext);
         events![M_AddMessage(phase, encrypted)]
     }
 
-    fn do_S0(&self, event: SendEvent) -> (State, Events, QueueStatus) {
+    fn do_s0(&self, event: SendEvent) -> (State, Events, QueueStatus) {
         use events::SendEvent::*;
         match event {
             GotVerifiedKey(ref key) => (
@@ -99,7 +98,7 @@ impl Send {
         }
     }
 
-    fn do_S1(
+    fn do_s1(
         &self,
         key: Vec<u8>,
         event: SendEvent,
