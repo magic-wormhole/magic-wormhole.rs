@@ -123,7 +123,7 @@ impl PGPWordlist {
 #[cfg(test)]
 mod test {
     use super::PGPWordlist;
-    use std::collections::HashSet;
+    //use std::collections::HashSet;
 
     #[test]
     fn test_completions() {

@@ -49,21 +49,11 @@ pub enum CodeEvent {
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Start,
-    GotNameplates(Vec<String>),
-    GotWordlist(Wordlist),
     ChooseNameplate(String),
     ChooseWords(String),
-    RefreshNameplates,
-}
-
-#[allow(dead_code)] // TODO: drop dead code directive once core is complete
-#[derive(Debug, PartialEq)]
-pub enum InputHelperEvent {
-    RefreshNameplates,
     GotNameplates(Vec<String>),
     GotWordlist(Wordlist),
-    ChooseNameplate(String),
-    ChooseWords(String),
+    RefreshNameplates,
 }
 
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -172,7 +162,6 @@ pub enum Event {
     Boss(BossEvent),
     Code(CodeEvent),
     Input(InputEvent),
-    InputHelper(InputHelperEvent),
     Key(KeyEvent),
     Lister(ListerEvent),
     Mailbox(MailboxEvent),
@@ -219,12 +208,6 @@ impl From<CodeEvent> for Event {
 impl From<InputEvent> for Event {
     fn from(r: InputEvent) -> Self {
         Event::Input(r)
-    }
-}
-
-impl From<InputHelperEvent> for Event {
-    fn from(r: InputHelperEvent) -> Self {
-        Event::InputHelper(r)
     }
 }
 
@@ -330,11 +313,11 @@ impl FromIterator<Event> for Events {
 
 // macro to build a whole Events vector, instead of adding them one at a time
 // TODO: tolerate events![first,] (trailing comma breaks it)
-// TODO: tolerate events![] (causes warning)
 macro_rules! events {
     ( $( $x:expr ),* ) => {
         {
             use events::Events;
+            #[allow(unused_mut)] // hush warning on events![]
             let mut temp_vec = Events::new();
             $(
                 temp_vec.push($x);

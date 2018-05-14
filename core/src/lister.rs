@@ -90,7 +90,7 @@ impl Lister {
 #[cfg(test)]
 mod test {
     use super::{Lister, State};
-    use events::{Events, InputEvent::GotNameplates, ListerEvent::*,
+    use events::{InputEvent::GotNameplates, ListerEvent::*,
                  RendezvousEvent::TxList};
 
     #[test]
