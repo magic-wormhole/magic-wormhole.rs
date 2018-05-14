@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use events::Event;
 use events::Events;
 // we process these
 use events::MailboxEvent;
@@ -64,16 +63,15 @@ impl Mailbox {
         );
 
         let (newstate, actions, queue) = match self.state {
-            S0A => self.do_S0A(event),
-            S0B => self.do_S0B(event),
-            S1A(ref mailbox) => self.do_S1A(&mailbox, event),
-            S2A(ref mailbox) => self.do_S2A(&mailbox, event),
-            S2B(ref mailbox) => self.do_S2B(&mailbox, event),
-            S3A(ref mailbox, ref mood) => self.do_S3A(&mailbox, &mood, event),
-            S3B(ref mailbox, ref mood) => self.do_S3B(&mailbox, &mood, event),
-            S4A => self.do_S4A(event),
-            S4B => self.do_S4B(event),
-            _ => panic!(),
+            S0A => self.do_s0a(event),
+            S0B => self.do_s0b(event),
+            S1A(ref mailbox) => self.do_s1a(&mailbox, event),
+            S2A(ref mailbox) => self.do_s2a(&mailbox, event),
+            S2B(ref mailbox) => self.do_s2b(&mailbox, event),
+            S3A(ref mailbox, ref mood) => self.do_s3a(&mailbox, &mood, event),
+            S3B(ref mailbox, ref mood) => self.do_s3b(&mailbox, &mood, event),
+            S4A => self.do_s4a(event),
+            S4B => self.do_s4b(event),
         };
         match newstate {
             Some(s) => {
@@ -82,7 +80,7 @@ impl Mailbox {
             None => {}
         }
         match queue {
-            QueueCtrl::Enqueue(mut v) => for &(ref phase, ref body) in &v {
+            QueueCtrl::Enqueue(v) => for &(ref phase, ref body) in &v {
                 self.pending_outbound
                     .insert(phase.to_string(), body.to_vec());
             },
@@ -99,7 +97,7 @@ impl Mailbox {
         actions
     }
 
-    fn do_S0A(
+    fn do_s0a(
         &mut self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
@@ -133,7 +131,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S0B(
+    fn do_s0b(
         &mut self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
@@ -174,7 +172,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S1A(
+    fn do_s1a(
         &self,
         mailbox: &str,
         event: MailboxEvent,
@@ -215,7 +213,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S2A(
+    fn do_s2a(
         &self,
         mailbox: &str,
         event: MailboxEvent,
@@ -256,7 +254,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S2B(
+    fn do_s2b(
         &self,
         mailbox: &str,
         event: MailboxEvent,
@@ -325,7 +323,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S3A(
+    fn do_s3a(
         &self,
         mailbox: &str,
         mood: &str,
@@ -352,7 +350,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S3B(
+    fn do_s3b(
         &self,
         mailbox: &str,
         mood: &str,
@@ -370,7 +368,7 @@ impl Mailbox {
                 events![],
                 QueueCtrl::NoAction,
             ),
-            RxMessage(side, phase, body) => {
+            RxMessage(_side, _phase, _body) => {
                 // irrespective of the side, enter into S3B, do nothing, generate no events
                 (
                     Some(State::S3B(
@@ -407,7 +405,7 @@ impl Mailbox {
         }
     }
 
-    fn do_S4A(
+    fn do_s4a(
         &self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
@@ -418,14 +416,14 @@ impl Mailbox {
             Lost => panic!(),
             RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
-            Close(String) => panic!(),
-            GotMailbox(String) => panic!(),
+            Close(..) => panic!(),
+            GotMailbox(..) => panic!(),
             GotMessage => panic!(),
             AddMessage(_, _) => panic!(),
         }
     }
 
-    fn do_S4B(
+    fn do_s4b(
         &self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
@@ -434,12 +432,12 @@ impl Mailbox {
         match event {
             Connected => panic!(),
             Lost => (Some(State::S4B), events![], QueueCtrl::NoAction),
-            RxMessage(side, phase, body) => {
+            RxMessage(_side, _phase, _body) => {
                 (Some(State::S4B), events![], QueueCtrl::NoAction)
             }
             RxClosed => panic!(),
             Close(_) => (Some(State::S4B), events![], QueueCtrl::NoAction),
-            GotMailbox(String) => panic!(),
+            GotMailbox(..) => panic!(),
             GotMessage => panic!(),
             AddMessage(_, _) => {
                 (Some(State::S4B), events![], QueueCtrl::NoAction)

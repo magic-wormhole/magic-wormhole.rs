@@ -1,5 +1,5 @@
 use api::Mood;
-use events::{Event, Events, Wordlist};
+use events::{Events, Wordlist};
 // we process these
 use api::APIEvent;
 use events::BossEvent;
@@ -12,6 +12,7 @@ use events::RendezvousEvent::Stop as RC_Stop;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
     Empty(u32),
@@ -193,22 +194,15 @@ impl Boss {
         actions
     }
 
+    #[allow(dead_code)] // TODO: drop dead code directive once core is complete
     fn close(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
-            Empty(i) => {
+            Empty(..) | Coding(..) | Lonely(..) => {
                 self.mood = Mood::Lonely;
                 (events![T_Close(Mood::Lonely)], Closing)
             }
-            Coding(i) => {
-                self.mood = Mood::Lonely;
-                (events![T_Close(Mood::Lonely)], Closing)
-            }
-            Lonely(i) => {
-                self.mood = Mood::Lonely;
-                (events![T_Close(Mood::Lonely)], Closing)
-            }
-            Happy(i) => {
+            Happy(..) => {
                 self.mood = Mood::Happy;
                 (events![T_Close(Mood::Happy)], Closing)
             }

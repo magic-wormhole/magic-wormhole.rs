@@ -1,17 +1,16 @@
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
-extern crate serde_json;
-#[macro_use]
-mod events;
 extern crate hkdf;
 extern crate rand;
 extern crate rustc_serialize;
+extern crate serde_json;
 extern crate sha2;
 extern crate sodiumoxide;
 extern crate spake2;
 
+#[macro_use]
+mod events;
 mod allocator;
 mod api;
 mod boss;
@@ -33,7 +32,6 @@ mod wordlist;
 
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
-use std::iter::FromIterator;
 
 use events::{Event, Events};
 use util::random_bytes;
@@ -164,7 +162,6 @@ impl WormholeCore {
                 Rendezvous(e) => self.rendezvous.process(e),
                 Send(e) => self.send.process(e),
                 Terminator(e) => self.terminator.process(e),
-                _ => panic!(),
             };
 
             for a in actions.events {

@@ -1,6 +1,6 @@
 use serde_json;
 
-use serde::{self, Deserialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer};
 use util;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -103,6 +103,8 @@ pub fn claim(nameplate: &str) -> Message {
         nameplate: nameplate.to_string(),
     }
 }
+
+#[allow(dead_code)]
 pub fn release(nameplate: &str) -> Message {
     Message::Release {
         nameplate: nameplate.to_string(),
@@ -124,6 +126,7 @@ pub fn add(phase: &str, body: &[u8]) -> Message {
     }
 }
 
+#[allow(dead_code)]
 pub fn close(mailbox: &str, mood: &str) -> Message {
     Message::Close {
         mailbox: mailbox.to_string(),
@@ -131,10 +134,12 @@ pub fn close(mailbox: &str, mood: &str) -> Message {
     }
 }
 
+#[allow(dead_code)]
 pub fn ping(ping: u32) -> Message {
     Message::Ping { ping: ping }
 }
 
+#[allow(dead_code)]
 pub fn welcome(motd: &str, timestamp: f64) -> Message {
     Message::Welcome {
         welcome: Some(WelcomeMsg {

@@ -1,8 +1,7 @@
-use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::str;
 // Events come into the core, Actions go out of it (to the IO glue layer)
-use api::{APIAction, APIEvent, IOAction, IOEvent, Mood, TimerHandle, WSHandle};
+use api::{APIAction, IOAction, Mood};
 
 // A unit structure only used for state machine purpose. Actual wordlist is
 // implemented by wordlist::PGPWordList.
@@ -14,7 +13,7 @@ pub struct Wordlist {}
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
-
+#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum AllocatorEvent {
     Allocate(u8, Wordlist),
@@ -22,7 +21,7 @@ pub enum AllocatorEvent {
     Lost,
     RxAllocated(String),
 }
-
+#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum BossEvent {
     RxWelcome,
@@ -57,6 +56,7 @@ pub enum InputEvent {
     RefreshNameplates,
 }
 
+#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum InputHelperEvent {
     RefreshNameplates,
@@ -66,6 +66,7 @@ pub enum InputHelperEvent {
     ChooseWords(String),
 }
 
+#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum KeyEvent {
     GotCode(String),
@@ -73,6 +74,7 @@ pub enum KeyEvent {
     GotMessage,
 }
 
+#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum ListerEvent {
     Connected,
@@ -81,6 +83,7 @@ pub enum ListerEvent {
     Refresh,
 }
 
+#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum MailboxEvent {
     Connected,
@@ -93,6 +96,7 @@ pub enum MailboxEvent {
     AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
 }
 
+#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum NameplateEvent {
     NameplateDone,
@@ -115,8 +119,6 @@ pub enum ReceiveEvent {
     GotMessage(String, String, Vec<u8>),
     GotKey(Vec<u8>),
 }
-
-use server_messages::Message;
 
 #[derive(Debug, PartialEq)]
 pub enum RendezvousEvent {
@@ -141,7 +143,7 @@ use std::fmt;
 impl fmt::Debug for SendEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &SendEvent::Send(ref phase, ref plaintext) => {
+            &SendEvent::Send(ref phase, ref _plaintext) => {
                 let p = str::from_utf8(phase.as_bytes());
                 match p {
                     Ok(p1) => write!(f, "Send({})", p1),
@@ -153,6 +155,7 @@ impl fmt::Debug for SendEvent {
     }
 }
 
+#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum TerminatorEvent {
     Close(Mood),

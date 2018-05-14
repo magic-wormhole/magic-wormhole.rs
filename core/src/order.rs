@@ -39,8 +39,8 @@ impl Order {
         );
 
         let (newstate, actions, queue_status) = match self.state {
-            S0 => self.do_S0(event),
-            S1 => self.do_S1(event),
+            S0 => self.do_s0(event),
+            S1 => self.do_s1(event),
         };
 
         self.state = newstate;
@@ -70,7 +70,7 @@ impl Order {
         es
     }
 
-    fn do_S0(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
+    fn do_s0(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
         use events::OrderEvent::*;
         match event {
             GotMessage(side, phase, body) => {
@@ -89,11 +89,10 @@ impl Order {
                     )
                 }
             }
-            _ => panic!(),
         }
     }
 
-    fn do_S1(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
+    fn do_s1(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
         use events::OrderEvent::*;
         match event {
             GotMessage(side, phase, body) => (
