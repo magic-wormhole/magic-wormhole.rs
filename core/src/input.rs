@@ -1,4 +1,5 @@
 use events::Events;
+use std::rc::Rc;
 // we process these
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
                          GotWordlist, RefreshNameplates, Start};
@@ -8,7 +9,6 @@ use events::CodeEvent::{FinishedInput as C_FinishedInput,
                         GotNameplate as C_GotNameplate};
 use events::ListerEvent::Refresh as L_Refresh;
 use events::Wordlist;
-use wordlist::PGPWordlist;
 
 pub struct Input {
     state: State,
@@ -20,7 +20,7 @@ enum State {
     WantNameplateNoNameplates,
     WantNameplateHaveNameplates(Vec<String>), // nameplates
     WantCodeNoWordlist(String),               // nameplate
-    WantCodeHaveWordlist(String, Box<Wordlist>), // (nameplate, wordlist)
+    WantCodeHaveWordlist(String, Rc<Wordlist>), // (nameplate, wordlist)
     Done,
 }
 
@@ -111,10 +111,8 @@ impl Input {
                 Err(InputHelperError::MustChooseNameplateFirst)
             }
             WantCodeNoWordlist(_) => Ok(Vec::new()), // no wordlist, no completions
-            WantCodeHaveWordlist(_, ref _wordlist) => {
-                let wordlist = PGPWordlist::new(); // TODO
-                let _completions = wordlist.get_completions(prefix, 2);
-                Ok(Vec::new()) // TODO
+            WantCodeHaveWordlist(_, ref wordlist) => {
+                Ok(wordlist.get_completions(prefix, 2))
             }
             Done => Err(InputHelperError::AlreadyChoseWords),
         }
@@ -156,7 +154,7 @@ impl Input {
             GotWordlist(wordlist) => (
                 Some(WantCodeHaveWordlist(
                     nameplate.to_string(),
-                    Box::new(wordlist),
+                    wordlist,
                 )),
                 events![],
             ),
@@ -282,7 +280,11 @@ mod test {
         );
 
         // receive the wordlist for this nameplate
-        let wordlist = Wordlist {};
+        let words = vec![
+            vecstrings("purple green yellow"),
+            vecstrings("sausages seltzer snobol"),
+        ];
+        let wordlist = Rc::new(Wordlist::new(2, words));
         let actions = i.process(GotWordlist(wordlist));
         assert_eq!(actions, events![]);
 
