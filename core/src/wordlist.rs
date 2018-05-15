@@ -3,6 +3,42 @@ use std::collections::{HashMap, HashSet};
 
 use util::{bytes_to_hexstr, random_bytes};
 
+#[derive(Debug, PartialEq)]
+pub struct Wordlist {
+    length: usize,
+    words: Vec<Vec<String>>,
+}
+
+impl Wordlist {
+    pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
+        Wordlist {
+            length: num_words,
+            words: words,
+        }
+    }
+
+    pub fn get_completions(
+        &self,
+        _prefix: &str,
+        _num_words: usize,
+    ) -> Vec<String> {
+        vec![] // TODO
+    }
+    pub fn choose_words(&self, _num_words: usize) -> String {
+        "".to_string() // TODO
+    }
+}
+
+pub fn default_wordlist() -> Wordlist {
+    Wordlist {
+        length: 2, // TODO: accept and remember a length, not hardcoded
+        words: vec![
+            vec!["word1".to_string(), "word2".to_string()],
+            vec!["word3".to_string(), "word4".to_string()],
+        ],
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct PGPWordlist {
     _byte_even_words: HashMap<String, String>,
@@ -51,6 +87,7 @@ impl PGPWordlist {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_completions(
         &self,
         prefix: &str,
@@ -101,6 +138,7 @@ impl PGPWordlist {
         completions
     }
 
+    #[allow(dead_code)]
     pub fn choose_words(&self, length: u8) -> String {
         let mut rnd: [u8; 1] = [0; 1];
         let mut words: Vec<String> = Vec::new();

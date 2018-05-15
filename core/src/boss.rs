@@ -1,5 +1,8 @@
 use api::Mood;
-use events::{Events, Wordlist};
+use events::Events;
+use std::rc::Rc;
+use wordlist::default_wordlist;
+
 // we process these
 use api::APIEvent;
 use events::BossEvent;
@@ -89,7 +92,8 @@ impl Boss {
         let (actions, newstate) = match self.state {
             Empty(i) => {
                 let length = 2; // TODO: configurable by AllocateCode
-                let wordlist = Wordlist {}; // TODO: populate words
+                                // TODO: provide length + choice
+                let wordlist = Rc::new(default_wordlist());
                 (
                     events![C_AllocateCode(length, wordlist)],
                     Coding(i),

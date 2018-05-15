@@ -1,4 +1,6 @@
-use events::{Events, Wordlist};
+use events::Events;
+use std::rc::Rc;
+use wordlist::default_wordlist;
 // we process these
 use events::NameplateEvent;
 // we emit these
@@ -161,13 +163,14 @@ impl Nameplate {
                 Some(State::S2A(nameplate.to_string())),
                 events![],
             ),
-            RxClaimed(mailbox) => (
-                Some(State::S3B(nameplate.to_string())),
-                events![
-                    I_GotWordlist(Wordlist {}), // TODO: ->Wordlist is just placeholder should use PGPWordList instead I guess
-                    M_GotMailbox(mailbox)
-                ],
-            ),
+            RxClaimed(mailbox) => {
+                // TODO: use nameplate attributes to pick which wordlist we use
+                let wordlist = Rc::new(default_wordlist());
+                (
+                    Some(State::S3B(nameplate.to_string())),
+                    events![I_GotWordlist(wordlist), M_GotMailbox(mailbox)],
+                )
+            }
             RxReleased => panic!(),
             SetNameplate(_nameplate) => panic!(),
             Release => panic!(),
