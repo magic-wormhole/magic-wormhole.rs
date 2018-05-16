@@ -1,6 +1,6 @@
 use events::{Events, Wordlist};
 use std::rc::Rc;
-use wordlist::PGPWordlist;
+use wordlist::default_wordlist;
 
 // we process these
 use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
@@ -114,7 +114,7 @@ impl Allocator {
                 events![],
             ),
             RxAllocated(nameplate) => {
-                let _wordlist = PGPWordlist::new();
+                let _wordlist = default_wordlist();
                 let words = wordlist.choose_words(length);
                 let code = nameplate.clone() + "-" + &words;
                 (
