@@ -112,7 +112,7 @@ impl Input {
             }
             WantCodeNoWordlist(_) => Ok(Vec::new()), // no wordlist, no completions
             WantCodeHaveWordlist(_, ref wordlist) => {
-                Ok(wordlist.get_completions(prefix, 2))
+                Ok(wordlist.get_completions(prefix))
             }
             Done => Err(InputHelperError::AlreadyChoseWords),
         }
