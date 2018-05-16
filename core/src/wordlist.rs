@@ -3,7 +3,7 @@ use serde_json::{self, Value};
 
 #[derive(Debug, PartialEq)]
 pub struct Wordlist {
-    length: usize,
+    num_words: usize,
     words: Vec<Vec<String>>,
 }
 
@@ -11,16 +11,12 @@ impl Wordlist {
     #[cfg(test)]
     pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
         Wordlist {
-            length: num_words,
+            num_words: num_words,
             words: words,
         }
     }
 
-    pub fn get_completions(
-        &self,
-        prefix: &str,
-        num_words: usize,
-    ) -> Vec<String> {
+    pub fn get_completions(&self, prefix: &str) -> Vec<String> {
         let count_dashes = prefix.matches('-').count();
         let mut completions = Vec::new();
         let words = &self.words[count_dashes % self.words.len()];
@@ -43,7 +39,7 @@ impl Wordlist {
                     suffix.push_str(&word);
                 }
 
-                if count_dashes + 1 < num_words {
+                if count_dashes + 1 < self.num_words {
                     suffix.push_str("-");
                 }
 
@@ -54,13 +50,13 @@ impl Wordlist {
         completions
     }
 
-    pub fn choose_words(&self, num_words: usize) -> String {
+    pub fn choose_words(&self) -> String {
         let mut rng = OsRng::new().unwrap();
         let components: Vec<String>;
         components = self.words
             .iter()
             .cycle()
-            .take(num_words)
+            .take(self.num_words)
             .map(|words| rng.choose(words).unwrap().to_string())
             .collect();
         components.join("-")
@@ -96,9 +92,9 @@ fn load_pgpwords() -> Vec<Vec<String>> {
     vec![even_words, odd_words]
 }
 
-pub fn default_wordlist() -> Wordlist {
+pub fn default_wordlist(num_words: usize) -> Wordlist {
     Wordlist {
-        length: 2, // TODO: accept and remember a length, not hardcoded
+        num_words: num_words,
         words: load_pgpwords(),
     }
 }
@@ -119,7 +115,7 @@ mod test {
 
     #[test]
     fn test_default_wordlist() {
-        let d = default_wordlist();
+        let d = default_wordlist(2);
         assert_eq!(d.words.len(), 2);
         assert_eq!(d.words[0][0], "adroitness");
         assert_eq!(d.words[1][0], "aardvark");
@@ -148,16 +144,13 @@ mod test {
 
         let w = Wordlist::new(2, words);
         assert_eq!(
-            w.get_completions("", 2),
+            w.get_completions(""),
             vec!["green-", "purple-", "yellow-"]
         );
-        assert_eq!(w.get_completions("pur", 2), vec!["purple-"]);
+        assert_eq!(w.get_completions("pur"), vec!["purple-"]);
+        assert_eq!(w.get_completions("blu"), Vec::<String>::new());
         assert_eq!(
-            w.get_completions("blu", 2),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            w.get_completions("purple-sa", 2),
+            w.get_completions("purple-sa"),
             vec!["purple-sausages"]
         );
     }
@@ -167,11 +160,13 @@ mod test {
         let few_words: Vec<Vec<String>> =
             vec![vecstrings("purple"), vecstrings("sausages")];
 
-        let w = Wordlist::new(2, few_words);
-        assert_eq!(w.choose_words(2), "purple-sausages");
-        assert_eq!(w.choose_words(3), "purple-sausages-purple");
+        let w = Wordlist::new(2, few_words.clone());
+        assert_eq!(w.choose_words(), "purple-sausages");
+        let w = Wordlist::new(3, few_words.clone());
+        assert_eq!(w.choose_words(), "purple-sausages-purple");
+        let w = Wordlist::new(4, few_words.clone());
         assert_eq!(
-            w.choose_words(4),
+            w.choose_words(),
             "purple-sausages-purple-sausages"
         );
     }
@@ -195,31 +190,31 @@ mod test {
 
         let w = Wordlist::new(2, more_words.clone());
         for _ in 0..20 {
-            assert!(expected2.contains(&w.choose_words(2)));
+            assert!(expected2.contains(&w.choose_words()));
         }
 
         let w = Wordlist::new(3, more_words.clone());
         for _ in 0..20 {
-            assert!(expected3.contains(&w.choose_words(3)));
+            assert!(expected3.contains(&w.choose_words()));
         }
     }
 
     #[test]
     fn test_default_completions() {
-        let w = default_wordlist();
-        let c = w.get_completions("ar", 2);
+        let w = default_wordlist(2);
+        let c = w.get_completions("ar");
         assert_eq!(c.len(), 2);
         assert!(c.contains(&String::from("article-")));
         assert!(c.contains(&String::from("armistice-")));
 
-        let c = w.get_completions("armis", 2);
+        let c = w.get_completions("armis");
         assert_eq!(c.len(), 1);
         assert!(c.contains(&String::from("armistice-")));
 
-        let c = w.get_completions("armistice-", 2);
+        let c = w.get_completions("armistice-");
         assert_eq!(c.len(), 256);
 
-        let c = w.get_completions("armistice-ba", 2);
+        let c = w.get_completions("armistice-ba");
         assert_eq!(
             c,
             vec![
@@ -230,7 +225,8 @@ mod test {
             ]
         );
 
-        let c = w.get_completions("armistice-ba", 3);
+        let w = default_wordlist(3);
+        let c = w.get_completions("armistice-ba");
         assert_eq!(
             c,
             vec![
@@ -241,7 +237,8 @@ mod test {
             ]
         );
 
-        let c = w.get_completions("armistice-baboon", 4);
+        let w = default_wordlist(4);
+        let c = w.get_completions("armistice-baboon");
         assert_eq!(c, vec!["armistice-baboon-"]);
     }
 }

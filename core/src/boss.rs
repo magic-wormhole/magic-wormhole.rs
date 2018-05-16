@@ -93,7 +93,7 @@ impl Boss {
             Empty(i) => {
                 let length = 2; // TODO: configurable by AllocateCode
                                 // TODO: provide length + choice
-                let wordlist = Rc::new(default_wordlist());
+                let wordlist = Rc::new(default_wordlist(length));
                 (
                     events![C_AllocateCode(length, wordlist)],
                     Coding(i),

@@ -165,7 +165,7 @@ impl Nameplate {
             ),
             RxClaimed(mailbox) => {
                 // TODO: use nameplate attributes to pick which wordlist we use
-                let wordlist = Rc::new(default_wordlist());
+                let wordlist = Rc::new(default_wordlist(2)); // TODO: num_words
                 (
                     Some(State::S3B(nameplate.to_string())),
                     events![I_GotWordlist(wordlist), M_GotMailbox(mailbox)],

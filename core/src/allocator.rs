@@ -114,8 +114,8 @@ impl Allocator {
                 events![],
             ),
             RxAllocated(nameplate) => {
-                let _wordlist = default_wordlist();
-                let words = wordlist.choose_words(length);
+                let _wordlist = default_wordlist(length);
+                let words = wordlist.choose_words();
                 let code = nameplate.clone() + "-" + &words;
                 (
                     Some(State::S2Done),
