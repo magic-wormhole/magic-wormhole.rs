@@ -1,6 +1,5 @@
 use events::{Events, Wordlist};
 use std::rc::Rc;
-use wordlist::default_wordlist;
 
 // we process these
 use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
@@ -16,8 +15,8 @@ pub struct Allocator {
 enum State {
     S0AIdleDisconnected,
     S0BIdleConnected,
-    S1AAllocatingDisconnected(usize, Rc<Wordlist>),
-    S1BAllocatingConnected(usize, Rc<Wordlist>),
+    S1AAllocatingDisconnected(Rc<Wordlist>),
+    S1BAllocatingConnected(Rc<Wordlist>),
     S2Done,
 }
 
@@ -33,13 +32,11 @@ impl Allocator {
         let (newstate, actions) = match self.state {
             S0AIdleDisconnected => self.do_idle_disconnected(event),
             S0BIdleConnected => self.do_idle_connected(event),
-            S1AAllocatingDisconnected(length, ref wordlist) => {
-                let wordlist2 = wordlist.clone();
-                self.do_allocating_disconnected(event, length, wordlist2)
+            S1AAllocatingDisconnected(ref wordlist) => {
+                self.do_allocating_disconnected(event, wordlist.clone())
             }
-            S1BAllocatingConnected(length, ref wordlist) => {
-                let wordlist2 = wordlist.clone();
-                self.do_allocating_connected(event, length, wordlist2)
+            S1BAllocatingConnected(ref wordlist) => {
+                self.do_allocating_connected(event, wordlist.clone())
             }
             S2Done => (None, events![]),
         };
@@ -56,11 +53,8 @@ impl Allocator {
     ) -> (Option<State>, Events) {
         match event {
             Connected => (Some(State::S0BIdleConnected), events![]),
-            Allocate(_length, _wordlist) => (
-                Some(State::S1AAllocatingDisconnected(
-                    _length,
-                    _wordlist,
-                )),
+            Allocate(wordlist) => (
+                Some(State::S1AAllocatingDisconnected(wordlist)),
                 events![],
             ),
             _ => (None, events![]),
@@ -73,11 +67,8 @@ impl Allocator {
     ) -> (Option<State>, Events) {
         match event {
             Lost => (Some(State::S0AIdleDisconnected), events![]),
-            Allocate(_length, _wordlist) => (
-                Some(State::S1BAllocatingConnected(
-                    _length,
-                    _wordlist,
-                )),
+            Allocate(wordlist) => (
+                Some(State::S1BAllocatingConnected(wordlist)),
                 events![RC_TxAllocate],
             ),
             _ => (None, events![]),
@@ -87,12 +78,11 @@ impl Allocator {
     fn do_allocating_disconnected(
         &self,
         event: AllocatorEvent,
-        length: usize,
         wordlist: Rc<Wordlist>,
     ) -> (Option<State>, Events) {
         match event {
             Connected => (
-                Some(State::S1BAllocatingConnected(length, wordlist)),
+                Some(State::S1BAllocatingConnected(wordlist)),
                 events![RC_TxAllocate],
             ),
             _ => (None, events![]),
@@ -102,19 +92,14 @@ impl Allocator {
     fn do_allocating_connected(
         &self,
         event: AllocatorEvent,
-        length: usize,
         wordlist: Rc<Wordlist>,
     ) -> (Option<State>, Events) {
         match event {
             Lost => (
-                Some(State::S1AAllocatingDisconnected(
-                    length,
-                    wordlist,
-                )),
+                Some(State::S1AAllocatingDisconnected(wordlist)),
                 events![],
             ),
             RxAllocated(nameplate) => {
-                let _wordlist = default_wordlist(length);
                 let words = wordlist.choose_words();
                 let code = nameplate.clone() + "-" + &words;
                 (

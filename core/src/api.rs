@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug, PartialEq)]
 pub enum APIEvent {
     // from application to IO glue to WormholeCore
-    AllocateCode,
+    AllocateCode(usize), // num_words
     InputCode,
     InputHelperRefreshNameplates,
     InputHelperChooseNameplate(String),
