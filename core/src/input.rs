@@ -118,7 +118,7 @@ impl Input {
         }
     }
 
-    // can we get the wordlist before setting the nameplate??
+    // TODO: is it possible for the wordlist to arrive before we set the nameplate?
     fn want_nameplate(&self, event: InputEvent) -> (Option<State>, Events) {
         use self::State::*;
         match event {
