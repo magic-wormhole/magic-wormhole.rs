@@ -11,7 +11,7 @@ pub use wordlist::Wordlist;
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum AllocatorEvent {
-    Allocate(usize, Rc<Wordlist>),
+    Allocate(Rc<Wordlist>),
     Connected,
     Lost,
     RxAllocated(String),
@@ -33,7 +33,7 @@ pub enum BossEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum CodeEvent {
-    AllocateCode(usize, Rc<Wordlist>), // length, wordlist
+    AllocateCode(Rc<Wordlist>),
     InputCode,
     SetCode(String),
     Allocated(String, String),

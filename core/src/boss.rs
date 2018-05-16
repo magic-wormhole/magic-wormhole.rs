@@ -57,8 +57,8 @@ impl Boss {
     pub fn process_api(&mut self, event: APIEvent) -> Events {
         use api::APIEvent::*;
         match event {
-            AllocateCode => self.allocate_code(), // TODO: len, wordlist
-            InputCode => self.input_code(),       // TODO: return Helper
+            AllocateCode(num_words) => self.allocate_code(num_words), // TODO: wordlist
+            InputCode => self.input_code(), // TODO: return Helper
             InputHelperRefreshNameplates => {
                 self.input_helper_refresh_nameplates()
             }
@@ -87,17 +87,13 @@ impl Boss {
         }
     }
 
-    fn allocate_code(&mut self) -> Events {
+    fn allocate_code(&mut self, num_words: usize) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Empty(i) => {
-                let length = 2; // TODO: configurable by AllocateCode
-                                // TODO: provide length + choice
-                let wordlist = Rc::new(default_wordlist(length));
-                (
-                    events![C_AllocateCode(length, wordlist)],
-                    Coding(i),
-                )
+                // TODO: provide choice of wordlists
+                let wordlist = Rc::new(default_wordlist(num_words));
+                (events![C_AllocateCode(wordlist)], Coding(i))
             }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
