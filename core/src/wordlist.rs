@@ -1,6 +1,5 @@
 use rand::{OsRng, Rng};
 use serde_json::{self, Value};
-use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct Wordlist {
@@ -9,6 +8,7 @@ pub struct Wordlist {
 }
 
 impl Wordlist {
+    #[cfg(test)]
     pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
         Wordlist {
             length: num_words,
@@ -101,55 +101,6 @@ pub fn default_wordlist() -> Wordlist {
     Wordlist {
         length: 2, // TODO: accept and remember a length, not hardcoded
         words: load_pgpwords(),
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct PGPWordlist {
-    _byte_even_words: HashMap<String, String>,
-    _byte_odd_words: HashMap<String, String>,
-}
-
-impl PGPWordlist {
-    pub fn new() -> Self {
-        let raw_words: Value =
-            serde_json::from_str(include_str!("pgpwords.json")).unwrap();
-        let map_obj = raw_words.as_object().unwrap();
-        let even_words = map_obj
-            .iter()
-            .map(|item| {
-                let (k, v): (&String, &Value) = item;
-                let both_words: Vec<String> = v.as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_str().unwrap().to_string())
-                    .collect();
-                (
-                    k.to_string(),
-                    both_words[0].as_str().to_string(),
-                )
-            })
-            .collect::<HashMap<String, String>>();
-        let odd_words = map_obj
-            .iter()
-            .map(|item| {
-                let (k, v): (&String, &Value) = item;
-                let both_words: Vec<String> = v.as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_str().unwrap().to_string())
-                    .collect();
-                (
-                    k.to_string(),
-                    both_words[1].as_str().to_string(),
-                )
-            })
-            .collect::<HashMap<String, String>>();
-
-        PGPWordlist {
-            _byte_even_words: even_words,
-            _byte_odd_words: odd_words,
-        }
     }
 }
 
