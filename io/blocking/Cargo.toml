@@ -1,0 +1,11 @@
+[package]
+name = "magic-wormhole-io-blocking"
+version = "0.0.1"
+authors = ["Brian Warner <warner@lothar.com>"]
+
+[dependencies]
+websocket = "0.20"
+magic-wormhole-core = { version = "0.0.1", path = "../../core" }
+futures = "0.1"
+tokio-core = "0.1"
+
