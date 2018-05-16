@@ -67,7 +67,7 @@ impl Wordlist {
     }
 }
 
-pub fn load_pgpwords() -> Vec<Vec<String>> {
+fn load_pgpwords() -> Vec<Vec<String>> {
     let raw_words_value: Value =
         serde_json::from_str(include_str!("pgpwords.json")).unwrap();
     let raw_words = raw_words_value.as_object().unwrap();
@@ -77,7 +77,6 @@ pub fn load_pgpwords() -> Vec<Vec<String>> {
     odd_words.resize(256, "".to_string());
     for (index_str, values) in raw_words.iter() {
         let index = u8::from_str_radix(index_str, 16).unwrap() as usize;
-        //println!("values {:?}", values.get(0).unwrap().as_str().unwrap().to_string());
         even_words[index] = values
             .get(1)
             .unwrap()
