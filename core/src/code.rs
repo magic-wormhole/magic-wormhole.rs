@@ -49,9 +49,9 @@ impl Code {
     fn in_idle(&mut self, event: CodeEvent) -> (Option<State>, Events) {
         use events::CodeEvent::*;
         match event {
-            AllocateCode(length, wordlist) => (
+            AllocateCode(wordlist) => (
                 Some(State::Allocating),
-                events![A_Allocate(length, wordlist)],
+                events![A_Allocate(wordlist)],
             ),
             InputCode => (
                 Some(State::InputtingNameplate),

@@ -1,5 +1,5 @@
 use events::{Events, Wordlist};
-use wordlist::PGPWordlist;
+use std::rc::Rc;
 
 // we process these
 use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
@@ -11,12 +11,12 @@ pub struct Allocator {
     state: State,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 enum State {
     S0AIdleDisconnected,
     S0BIdleConnected,
-    S1AAllocatingDisconnected(u8, Wordlist),
-    S1BAllocatingConnected(u8, Wordlist),
+    S1AAllocatingDisconnected(Rc<Wordlist>),
+    S1BAllocatingConnected(Rc<Wordlist>),
     S2Done,
 }
 
@@ -32,95 +32,82 @@ impl Allocator {
         let (newstate, actions) = match self.state {
             S0AIdleDisconnected => self.do_idle_disconnected(event),
             S0BIdleConnected => self.do_idle_connected(event),
-            S1AAllocatingDisconnected(..) => {
-                self.do_allocating_disconnected(event)
+            S1AAllocatingDisconnected(ref wordlist) => {
+                self.do_allocating_disconnected(event, wordlist.clone())
             }
-            S1BAllocatingConnected(..) => self.do_allocating_connected(event),
-            S2Done => (self.state, events![]),
+            S1BAllocatingConnected(ref wordlist) => {
+                self.do_allocating_connected(event, wordlist.clone())
+            }
+            S2Done => (None, events![]),
         };
 
-        self.state = newstate;
+        if let Some(s) = newstate {
+            self.state = s;
+        }
         actions
     }
 
     fn do_idle_disconnected(
-        &mut self,
+        &self,
         event: AllocatorEvent,
-    ) -> (State, Events) {
+    ) -> (Option<State>, Events) {
         match event {
-            Connected => (State::S0BIdleConnected, events![]),
-            Allocate(_length, _wordlist) => (
-                State::S1AAllocatingDisconnected(_length, _wordlist),
+            Connected => (Some(State::S0BIdleConnected), events![]),
+            Allocate(wordlist) => (
+                Some(State::S1AAllocatingDisconnected(wordlist)),
                 events![],
             ),
-            _ => (self.state, events![]),
+            _ => (None, events![]),
         }
     }
 
-    fn do_idle_connected(&mut self, event: AllocatorEvent) -> (State, Events) {
+    fn do_idle_connected(
+        &self,
+        event: AllocatorEvent,
+    ) -> (Option<State>, Events) {
         match event {
-            Lost => (State::S0AIdleDisconnected, events![]),
-            Allocate(_length, _wordlist) => (
-                State::S1BAllocatingConnected(_length, _wordlist),
+            Lost => (Some(State::S0AIdleDisconnected), events![]),
+            Allocate(wordlist) => (
+                Some(State::S1BAllocatingConnected(wordlist)),
                 events![RC_TxAllocate],
             ),
-            _ => (self.state, events![]),
+            _ => (None, events![]),
         }
     }
 
     fn do_allocating_disconnected(
         &self,
         event: AllocatorEvent,
-    ) -> (State, Events) {
+        wordlist: Rc<Wordlist>,
+    ) -> (Option<State>, Events) {
         match event {
-            Connected => {
-                if let State::S1AAllocatingDisconnected(_length, _wordlist) =
-                    self.state
-                {
-                    (
-                        State::S1BAllocatingConnected(_length, _wordlist),
-                        events![RC_TxAllocate],
-                    )
-                } else {
-                    panic!();
-                }
-            }
-            _ => (self.state, events![]),
+            Connected => (
+                Some(State::S1BAllocatingConnected(wordlist)),
+                events![RC_TxAllocate],
+            ),
+            _ => (None, events![]),
         }
     }
 
     fn do_allocating_connected(
-        &mut self,
+        &self,
         event: AllocatorEvent,
-    ) -> (State, Events) {
+        wordlist: Rc<Wordlist>,
+    ) -> (Option<State>, Events) {
         match event {
-            Lost => {
-                if let State::S1BAllocatingConnected(_length, _wordlist) =
-                    self.state
-                {
-                    (
-                        State::S1AAllocatingDisconnected(_length, _wordlist),
-                        events![],
-                    )
-                } else {
-                    panic!();
-                }
-            }
+            Lost => (
+                Some(State::S1AAllocatingDisconnected(wordlist)),
+                events![],
+            ),
             RxAllocated(nameplate) => {
-                let _wordlist = PGPWordlist::new();
-                if let State::S1BAllocatingConnected(_length, _) = self.state {
-                    let word = _wordlist.choose_words(_length);
-                    let code = nameplate.clone() + "-" + &word;
-                    (
-                        State::S2Done,
-                        events![C_Allocated(nameplate, code)],
-                    )
-                } else {
-                    // TODO: This should not happen but if happens we need proper error.
-                    panic!()
-                }
+                let words = wordlist.choose_words();
+                let code = nameplate.clone() + "-" + &words;
+                (
+                    Some(State::S2Done),
+                    events![C_Allocated(nameplate, code)],
+                )
             }
-            _ => (self.state, events![]),
+            _ => (None, events![]),
         }
     }
 }
