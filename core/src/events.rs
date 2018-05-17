@@ -1,22 +1,17 @@
 use std::iter::FromIterator;
+use std::rc::Rc;
 use std::str;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, IOAction, Mood};
 
-// A unit structure only used for state machine purpose. Actual wordlist is
-// implemented by wordlist::PGPWordList.
-// They are implemented differently, as when we add HashMap to structure it
-// can't be copied and hence can't be used in pattern matching in state machine
-// logic.
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub struct Wordlist {}
+pub use wordlist::Wordlist;
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum AllocatorEvent {
-    Allocate(u8, Wordlist),
+    Allocate(Rc<Wordlist>),
     Connected,
     Lost,
     RxAllocated(String),
@@ -38,7 +33,7 @@ pub enum BossEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum CodeEvent {
-    AllocateCode(u8, Wordlist), // length, wordlist
+    AllocateCode(Rc<Wordlist>),
     InputCode,
     SetCode(String),
     Allocated(String, String),
@@ -52,7 +47,7 @@ pub enum InputEvent {
     ChooseNameplate(String),
     ChooseWords(String),
     GotNameplates(Vec<String>),
-    GotWordlist(Wordlist),
+    GotWordlist(Rc<Wordlist>),
     RefreshNameplates,
 }
 
