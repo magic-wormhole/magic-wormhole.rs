@@ -16,7 +16,10 @@ rand = "0.4"
 rustc-serialize = "0.3"
 
 
+
 [dev-dependencies]
 ws = "0.7"
 url = "1.7"
 rustyline = "1.0"
+parking_lot = {version = "0.5", features = ["deadlock_detection"]}
+regex = "0.2"
