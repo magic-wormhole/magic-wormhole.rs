@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub enum APIEvent {
@@ -19,6 +21,40 @@ pub enum InputHelperError {
     MustChooseNameplateFirst,
     AlreadyChoseNameplate,
     AlreadyChoseWords,
+}
+
+impl fmt::Display for InputHelperError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            InputHelperError::Inactive => write!(f, "Inactive"),
+            InputHelperError::MustChooseNameplateFirst => {
+                write!(f, "Should Choose Nameplate first")
+            }
+            InputHelperError::AlreadyChoseNameplate => {
+                write!(f, "nameplate already chosen, can't go back")
+            }
+            InputHelperError::AlreadyChoseWords => {
+                write!(f, "Words are already chosen")
+            }
+        }
+    }
+}
+
+impl Error for InputHelperError {
+    fn description(&self) -> &str {
+        match *self {
+            InputHelperError::Inactive => "Input is not yet started",
+            InputHelperError::MustChooseNameplateFirst => {
+                "You should input name plate first!"
+            }
+            InputHelperError::AlreadyChoseNameplate => {
+                "Nameplate is already chosen, you can't go back!"
+            }
+            InputHelperError::AlreadyChoseWords => {
+                "Words are already chosen you can't go back!"
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
