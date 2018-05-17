@@ -127,6 +127,10 @@ impl WormholeCore {
         self.input.get_word_completions(prefix)
     }
 
+    pub fn input_helper_commited_nameplate(&self) -> Option<&str> {
+        self.input.commited_nameplate()
+    }
+
     fn _execute(&mut self, events: Events) -> Vec<Action> {
         let mut action_queue: Vec<Action> = Vec::new(); // returned
         let mut event_queue: VecDeque<Event> = VecDeque::new();
