@@ -120,6 +120,13 @@ impl Input {
         }
     }
 
+    pub fn commited_nameplate(&self) -> Option<&str> {
+        if self.nameplate.is_empty() {
+            return None;
+        }
+        Some(&self.nameplate)
+    }
+
     // TODO: is it possible for the wordlist to arrive before we set the nameplate?
     fn want_nameplate(&mut self, event: InputEvent) -> (Option<State>, Events) {
         use self::State::*;
