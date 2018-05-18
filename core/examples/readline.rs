@@ -86,7 +86,13 @@ impl Completer for CodeCompleter {
                 drop(&wc);
 
                 match completions {
-                    Ok(completions) => Ok((0, completions)),
+                    Ok(completions) => Ok((
+                        0,
+                        completions
+                            .iter()
+                            .map(|c| format!("{}-{}", nameplate, c))
+                            .collect(),
+                    )),
                     Err(err) => Err(ReadlineError::from(io::Error::new(
                         io::ErrorKind::Other,
                         err.description(),
