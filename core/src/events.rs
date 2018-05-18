@@ -1,6 +1,6 @@
 use std::iter::FromIterator;
-use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, IOAction, Mood};
 
@@ -11,7 +11,7 @@ pub use wordlist::Wordlist;
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum AllocatorEvent {
-    Allocate(Rc<Wordlist>),
+    Allocate(Arc<Wordlist>),
     Connected,
     Lost,
     RxAllocated(String),
@@ -33,7 +33,7 @@ pub enum BossEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum CodeEvent {
-    AllocateCode(Rc<Wordlist>),
+    AllocateCode(Arc<Wordlist>),
     InputCode,
     SetCode(String),
     Allocated(String, String),
@@ -47,7 +47,7 @@ pub enum InputEvent {
     ChooseNameplate(String),
     ChooseWords(String),
     GotNameplates(Vec<String>),
-    GotWordlist(Rc<Wordlist>),
+    GotWordlist(Arc<Wordlist>),
     RefreshNameplates,
 }
 

@@ -1,5 +1,5 @@
 use events::Events;
-use std::rc::Rc;
+use std::sync::Arc;
 // we process these
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
                          GotWordlist, RefreshNameplates, Start};
@@ -21,7 +21,7 @@ enum State {
     WantNameplateNoNameplates,
     WantNameplateHaveNameplates(Vec<String>), // nameplates
     WantCodeNoWordlist(String),               // nameplate
-    WantCodeHaveWordlist(String, Rc<Wordlist>), // (nameplate, wordlist)
+    WantCodeHaveWordlist(String, Arc<Wordlist>), // (nameplate, wordlist)
     Done,
 }
 
