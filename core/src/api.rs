@@ -62,6 +62,18 @@ pub enum Mood {
     Happy,
     Lonely,
     Error,
+    Scared,
+}
+
+impl fmt::Display for Mood {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Mood::Happy => write!(f, "happy"),
+            Mood::Lonely => write!(f, "lonely"),
+            Mood::Error => write!(f, "error"),
+            Mood::Scared => write!(f, "scared"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
