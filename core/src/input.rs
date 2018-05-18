@@ -296,7 +296,7 @@ mod test {
             vecstrings("purple green yellow"),
             vecstrings("sausages seltzer snobol"),
         ];
-        let wordlist = Rc::new(Wordlist::new(2, words));
+        let wordlist = Arc::new(Wordlist::new(2, words));
         let actions = i.process(GotWordlist(wordlist));
         assert_eq!(actions, events![]);
 
