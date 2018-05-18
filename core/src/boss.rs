@@ -1,6 +1,6 @@
 use api::Mood;
 use events::Events;
-use std::rc::Rc;
+use std::sync::Arc;
 use wordlist::default_wordlist;
 
 // we process these
@@ -92,7 +92,7 @@ impl Boss {
         let (actions, newstate) = match self.state {
             Empty(i) => {
                 // TODO: provide choice of wordlists
-                let wordlist = Rc::new(default_wordlist(num_words));
+                let wordlist = Arc::new(default_wordlist(num_words));
                 (events![C_AllocateCode(wordlist)], Coding(i))
             }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
