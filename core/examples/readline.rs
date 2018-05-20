@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use parking_lot::{deadlock, Mutex};
 use regex::Regex;
-use rustyline::{completion::{extract_word, Completer}, error::ReadlineError};
+use rustyline::{completion::Completer, error::ReadlineError};
 use url::Url;
 
 const MAILBOX_SERVER: &'static str = "ws://localhost:4000/v1";
@@ -50,13 +50,11 @@ struct CodeCompleter {
     tx_event: Sender<APIEvent>,
 }
 
-static BREAK_CHARS: [char; 1] = [' '];
-
 impl Completer for CodeCompleter {
     fn complete(
         &self,
         line: &str,
-        pos: usize,
+        _pos: usize,
     ) -> rustyline::Result<(usize, Vec<String>)> {
         let got_nameplate = line.find('-').is_some();
         let mwc = Arc::clone(&self.wcr);
@@ -65,7 +63,7 @@ impl Completer for CodeCompleter {
             let ns: Vec<_> = line.splitn(2, '-').collect();
             let nameplate = ns[0].to_string();
             let word = ns[1].to_string();
-            let mut commited_nameplate = None;
+            let commited_nameplate;
 
             {
                 let mc = mwc.lock();
