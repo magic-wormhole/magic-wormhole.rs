@@ -1,5 +1,5 @@
 use events::Events;
-use std::rc::Rc;
+use std::sync::Arc;
 // we process these
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
                          GotWordlist, RefreshNameplates, Start};
@@ -12,6 +12,7 @@ use events::Wordlist;
 
 pub struct Input {
     state: State,
+    nameplate: String,
 }
 
 #[derive(Debug)]
@@ -20,7 +21,7 @@ enum State {
     WantNameplateNoNameplates,
     WantNameplateHaveNameplates(Vec<String>), // nameplates
     WantCodeNoWordlist(String),               // nameplate
-    WantCodeHaveWordlist(String, Rc<Wordlist>), // (nameplate, wordlist)
+    WantCodeHaveWordlist(String, Arc<Wordlist>), // (nameplate, wordlist)
     Done,
 }
 
@@ -28,6 +29,7 @@ impl Input {
     pub fn new() -> Input {
         Input {
             state: State::Idle,
+            nameplate: String::new(),
         }
     }
 
@@ -118,15 +120,25 @@ impl Input {
         }
     }
 
+    pub fn commited_nameplate(&self) -> Option<&str> {
+        if self.nameplate.is_empty() {
+            return None;
+        }
+        Some(&self.nameplate)
+    }
+
     // TODO: is it possible for the wordlist to arrive before we set the nameplate?
-    fn want_nameplate(&self, event: InputEvent) -> (Option<State>, Events) {
+    fn want_nameplate(&mut self, event: InputEvent) -> (Option<State>, Events) {
         use self::State::*;
         match event {
             Start => panic!("already started"),
-            ChooseNameplate(nameplate) => (
-                Some(WantCodeNoWordlist(nameplate.clone())),
-                events![C_GotNameplate(nameplate.clone())],
-            ),
+            ChooseNameplate(nameplate) => {
+                self.nameplate = nameplate.clone();
+                (
+                    Some(WantCodeNoWordlist(nameplate.clone())),
+                    events![C_GotNameplate(nameplate.clone())],
+                )
+            }
             ChooseWords(_) => panic!("expecting nameplate, not words"),
             GotNameplates(nameplates) => (
                 Some(WantNameplateHaveNameplates(nameplates)),
@@ -284,7 +296,7 @@ mod test {
             vecstrings("purple green yellow"),
             vecstrings("sausages seltzer snobol"),
         ];
-        let wordlist = Rc::new(Wordlist::new(2, words));
+        let wordlist = Arc::new(Wordlist::new(2, words));
         let actions = i.process(GotWordlist(wordlist));
         assert_eq!(actions, events![]);
 
