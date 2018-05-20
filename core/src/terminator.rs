@@ -140,7 +140,6 @@ mod test {
     use events::MailboxEvent::Close as M_Close;
     use events::NameplateEvent::Close as N_Close;
     use events::RendezvousEvent::Stop as RC_Stop;
-    use events::TerminatorEvent::*;
 
     #[test]
     fn test_transitions1() {
@@ -201,5 +200,171 @@ mod test {
         );
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
         assert_eq!(terminator.state, State::SStopped);
+    }
+
+    #[test]
+    fn test_transitions21() {
+        let mut terminator = Terminator::new();
+
+        assert_eq!(
+            terminator.process(Close(Lonely)),
+            events![N_Close, M_Close(String::from("lonely"))]
+        );
+
+        assert_eq!(terminator.process(MailboxDone), events![]);
+        assert_eq!(
+            terminator.process(NameplateDone),
+            events![RC_Stop]
+        );
+        assert_eq!(terminator.state, State::SStopping);
+        assert_eq!(terminator.process(Stopped), events![B_Closed]);
+        assert_eq!(terminator.state, State::SStopped);
+    }
+
+    #[test]
+    fn test_transitions32() {
+        let mut terminator = Terminator::new();
+
+        assert_eq!(terminator.process(NameplateDone), events![]);
+        assert_eq!(terminator.process(MailboxDone), events![]);
+        assert_eq!(terminator.state, State::S0o);
+        assert_eq!(
+            terminator.process(Close(Scared)),
+            events![
+                N_Close,
+                M_Close(String::from("scared")),
+                RC_Stop
+            ]
+        );
+        assert_eq!(terminator.state, State::SStopping);
+        assert_eq!(terminator.process(Stopped), events![B_Closed]);
+        assert_eq!(terminator.state, State::SStopped);
+    }
+
+    #[test]
+    fn test_transitions12() {
+        let mut terminator = Terminator::new();
+
+        assert_eq!(terminator.process(MailboxDone), events![]);
+        assert_eq!(terminator.process(NameplateDone), events![]);
+        assert_eq!(terminator.state, State::S0o);
+
+        assert_eq!(
+            terminator.process(Close(Error)),
+            events![N_Close, M_Close(String::from("error")), RC_Stop]
+        );
+        assert_eq!(terminator.process(Stopped), events![B_Closed]);
+        assert_eq!(terminator.state, State::SStopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic1() {
+        let mut terminator = Terminator::new();
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic2() {
+        let mut terminator = Terminator::new();
+        terminator.process(MailboxDone);
+        terminator.process(MailboxDone);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic3() {
+        let mut terminator = Terminator::new();
+        terminator.process(MailboxDone);
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic4() {
+        let mut terminator = Terminator::new();
+        terminator.process(Close(Happy));
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic5() {
+        let mut terminator = Terminator::new();
+        terminator.process(NameplateDone);
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic6() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::S0o;
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic7() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::Sn;
+        terminator.process(MailboxDone);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic8() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::Sn;
+        terminator.process(Close(Happy));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic9() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::Sn;
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic10() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::Sm;
+        terminator.process(NameplateDone);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic11() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::Sm;
+        terminator.process(Close(Happy));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic12() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::Sm;
+        terminator.process(Stopped);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic13() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::SStopping;
+        terminator.process(NameplateDone);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic14() {
+        let mut terminator = Terminator::new();
+        terminator.state = State::SStopped;
+        terminator.process(MailboxDone);
     }
 }
