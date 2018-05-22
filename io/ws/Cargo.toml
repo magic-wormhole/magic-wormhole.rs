@@ -1,0 +1,8 @@
+[package]
+name = "magic-wormhole-io-ws"
+version = "0.0.1"
+authors = ["Brian Warner <warner@lothar.com>"]
+
+[dependencies]
+magic-wormhole-core = { version = "0.0.1", path = "../../core" }
+ws = "0.7.*"
