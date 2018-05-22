@@ -1,5 +1,5 @@
 use events::{Events, Wordlist};
-use std::rc::Rc;
+use std::sync::Arc;
 
 // we process these
 use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
@@ -15,8 +15,8 @@ pub struct Allocator {
 enum State {
     S0AIdleDisconnected,
     S0BIdleConnected,
-    S1AAllocatingDisconnected(Rc<Wordlist>),
-    S1BAllocatingConnected(Rc<Wordlist>),
+    S1AAllocatingDisconnected(Arc<Wordlist>),
+    S1BAllocatingConnected(Arc<Wordlist>),
     S2Done,
 }
 
@@ -78,7 +78,7 @@ impl Allocator {
     fn do_allocating_disconnected(
         &self,
         event: AllocatorEvent,
-        wordlist: Rc<Wordlist>,
+        wordlist: Arc<Wordlist>,
     ) -> (Option<State>, Events) {
         match event {
             Connected => (
@@ -92,7 +92,7 @@ impl Allocator {
     fn do_allocating_connected(
         &self,
         event: AllocatorEvent,
-        wordlist: Rc<Wordlist>,
+        wordlist: Arc<Wordlist>,
     ) -> (Option<State>, Events) {
         match event {
             Lost => (
