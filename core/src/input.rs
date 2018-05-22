@@ -12,7 +12,6 @@ use events::Wordlist;
 
 pub struct Input {
     state: State,
-    nameplate: String,
 }
 
 #[derive(Debug)]
@@ -29,7 +28,6 @@ impl Input {
     pub fn new() -> Input {
         Input {
             state: State::Idle,
-            nameplate: String::new(),
         }
     }
 
@@ -121,10 +119,12 @@ impl Input {
     }
 
     pub fn commited_nameplate(&self) -> Option<&str> {
-        if self.nameplate.is_empty() {
-            return None;
+        use self::State::*;
+        match self.state {
+            WantCodeHaveWordlist(ref nameplate, _)
+            | WantCodeNoWordlist(ref nameplate) => Some(nameplate),
+            _ => None,
         }
-        Some(&self.nameplate)
     }
 
     // TODO: is it possible for the wordlist to arrive before we set the nameplate?
@@ -132,13 +132,10 @@ impl Input {
         use self::State::*;
         match event {
             Start => panic!("already started"),
-            ChooseNameplate(nameplate) => {
-                self.nameplate = nameplate.clone();
-                (
-                    Some(WantCodeNoWordlist(nameplate.clone())),
-                    events![C_GotNameplate(nameplate.clone())],
-                )
-            }
+            ChooseNameplate(nameplate) => (
+                Some(WantCodeNoWordlist(nameplate.clone())),
+                events![C_GotNameplate(nameplate.clone())],
+            ),
             ChooseWords(_) => panic!("expecting nameplate, not words"),
             GotNameplates(nameplates) => (
                 Some(WantNameplateHaveNameplates(nameplates)),
