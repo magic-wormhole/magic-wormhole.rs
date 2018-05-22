@@ -1,12 +1,12 @@
 extern crate magic_wormhole_core;
-extern crate ws;
 extern crate url;
+extern crate ws;
 use magic_wormhole_core::WormholeCore;
-use magic_wormhole_core::{APIAction, APIEvent, IOAction, IOEvent, Action,
+use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
                           TimerHandle, WSHandle};
-use std::sync::mpsc::{channel, Sender, Receiver};
-use std::thread;
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
 use std::time;
 use url::Url;
 
@@ -40,14 +40,12 @@ struct CoreWrapper {
     timers: HashSet<TimerHandle>,
     websockets: HashMap<WSHandle, Sender<WSControl>>,
 
-
     tx_welcome_to_app: Sender<HashMap<String, String>>,
     tx_messages_to_app: Sender<Vec<u8>>,
     tx_code_to_app: Sender<String>,
     tx_verifier_to_app: Sender<Vec<u8>>,
     tx_versions_to_app: Sender<HashMap<String, String>>,
 }
-
 
 struct WSConnection {
     handle: WSHandle,
@@ -58,18 +56,24 @@ impl ws::Handler for WSConnection {
     fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
         // now that the outbound side is prepared to send messages, notify
         // the Core
-        self.tx.send(ToCore::WebSocketConnectionMade(self.handle)).unwrap();
+        self.tx
+            .send(ToCore::WebSocketConnectionMade(self.handle))
+            .unwrap();
         Ok(())
     }
 
     fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
         let s = msg.into_text().unwrap();
-        self.tx.send(ToCore::WebSocketMessageReceived(self.handle, s)).unwrap();
+        self.tx
+            .send(ToCore::WebSocketMessageReceived(self.handle, s))
+            .unwrap();
         Ok(())
     }
 
     fn on_close(&mut self, _code: ws::CloseCode, _reason: &str) {
-        self.tx.send(ToCore::WebSocketConnectionLost(self.handle)).unwrap();
+        self.tx
+            .send(ToCore::WebSocketConnectionLost(self.handle))
+            .unwrap();
     }
 }
 
@@ -103,10 +107,18 @@ impl ws::Factory for WSFactory {
     }
 }
 
-fn ws_connector(url: String, handle: WSHandle, tx: Sender<ToCore>,
-                ws_rx: Receiver<WSControl>) {
+fn ws_connector(
+    url: String,
+    handle: WSHandle,
+    tx: Sender<ToCore>,
+    ws_rx: Receiver<WSControl>,
+) {
     // we're called in a new thread created just for this connection
-    let f = WSFactory { handle: handle, tx: Some(tx), ws_rx: Some(ws_rx) };
+    let f = WSFactory {
+        handle: handle,
+        tx: Some(tx),
+        ws_rx: Some(ws_rx),
+    };
     let b = ws::Builder::new();
     let mut w1 = b.build(f).unwrap();
     w1.connect(Url::parse(&url).unwrap()).unwrap();
@@ -125,13 +137,13 @@ impl CoreWrapper {
                     } else {
                         vec![]
                     }
-                },
-                ToCore::WebSocketConnectionMade(handle) =>
-                    self.core.do_io(IOEvent::WebSocketConnectionMade(handle)),
-                ToCore::WebSocketMessageReceived(handle, msg) =>
-                    self.core.do_io(IOEvent::WebSocketMessageReceived(handle, msg)),
-                ToCore::WebSocketConnectionLost(handle) =>
-                    self.core.do_io(IOEvent::WebSocketConnectionLost(handle)),
+                }
+                ToCore::WebSocketConnectionMade(handle) => self.core
+                    .do_io(IOEvent::WebSocketConnectionMade(handle)),
+                ToCore::WebSocketMessageReceived(handle, msg) => self.core
+                    .do_io(IOEvent::WebSocketMessageReceived(handle, msg)),
+                ToCore::WebSocketConnectionLost(handle) => self.core
+                    .do_io(IOEvent::WebSocketConnectionLost(handle)),
             };
             for action in actions {
                 self.process_action(action);
@@ -173,12 +185,14 @@ impl CoreWrapper {
                     thread::sleep(dur);
                     tx.send(ToCore::TimerExpired(handle)).unwrap();
                 });
-            },
+            }
             CancelTimer(handle) => {
                 self.timers.remove(&handle);
-            },
+            }
             WebSocketOpen(handle, url) => self.websocket_open(handle, url),
-            WebSocketSendMessage(handle, msg) => self.websocket_send(handle, msg),
+            WebSocketSendMessage(handle, msg) => {
+                self.websocket_send(handle, msg)
+            }
             WebSocketClose(handle) => self.websocket_close(handle),
         }
     }
@@ -191,16 +205,22 @@ impl CoreWrapper {
     }
 
     fn websocket_send(&self, handle: WSHandle, msg: String) {
-        self.websockets.get(&handle).unwrap().send(WSControl::Data(msg)).unwrap();
+        self.websockets
+            .get(&handle)
+            .unwrap()
+            .send(WSControl::Data(msg))
+            .unwrap();
     }
 
     fn websocket_close(&mut self, handle: WSHandle) {
-        self.websockets.get(&handle).unwrap().send(WSControl::Close).unwrap();
+        self.websockets
+            .get(&handle)
+            .unwrap()
+            .send(WSControl::Close)
+            .unwrap();
         self.websockets.remove(&handle);
     }
-
 }
-
 
 // we have one channel per API pathway
 pub struct Wormhole {
@@ -244,7 +264,7 @@ impl Wormhole {
             tx_versions_to_app: tx_versions_to_app,
         };
 
-        thread::spawn(move|| { cw.run() } );
+        thread::spawn(move || cw.run());
 
         Wormhole {
             code: None,
@@ -261,11 +281,15 @@ impl Wormhole {
     }
 
     pub fn set_code(&mut self, code: &str) {
-        self.tx_event_to_core.send(ToCore::API(APIEvent::SetCode(code.to_string()))).unwrap();
+        self.tx_event_to_core
+            .send(ToCore::API(APIEvent::SetCode(code.to_string())))
+            .unwrap();
     }
 
     pub fn send_message(&mut self, msg: &[u8]) {
-        self.tx_event_to_core.send(ToCore::API(APIEvent::Send(msg.to_vec()))).unwrap();
+        self.tx_event_to_core
+            .send(ToCore::API(APIEvent::Send(msg.to_vec())))
+            .unwrap();
     }
 
     pub fn get_message(&mut self) -> Vec<u8> {
@@ -277,7 +301,9 @@ impl Wormhole {
     }
 
     pub fn close(&mut self) {
-        self.tx_event_to_core.send(ToCore::API(APIEvent::Close)).unwrap();
+        self.tx_event_to_core
+            .send(ToCore::API(APIEvent::Close))
+            .unwrap();
         // TODO mood
     }
 
@@ -324,5 +350,4 @@ impl Wormhole {
             }
         }
     }
-
 }

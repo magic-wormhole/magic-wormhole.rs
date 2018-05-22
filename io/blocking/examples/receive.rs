@@ -1,5 +1,5 @@
-extern crate magic_wormhole_io_blocking;
 extern crate hex;
+extern crate magic_wormhole_io_blocking;
 use magic_wormhole_io_blocking::Wormhole;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
