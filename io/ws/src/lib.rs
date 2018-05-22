@@ -1,5 +1,6 @@
 extern crate magic_wormhole_core;
 extern crate ws;
+extern crate url;
 use magic_wormhole_core::WormholeCore;
 use magic_wormhole_core::{APIAction, APIEvent, IOAction, IOEvent, Action,
                           TimerHandle, WSHandle};
@@ -7,6 +8,7 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread;
 use std::collections::{HashMap, HashSet};
 use std::time;
+use url::Url;
 
 enum ToCore {
     API(APIEvent),
@@ -15,6 +17,7 @@ enum ToCore {
     TimerExpired(TimerHandle),
     WebSocketConnectionMade(WSHandle),
     WebSocketMessageReceived(WSHandle, String),
+    WebSocketConnectionLost(WSHandle),
 }
 
 #[allow(dead_code)]
@@ -45,6 +48,71 @@ struct CoreWrapper {
     tx_versions_to_app: Sender<HashMap<String, String>>,
 }
 
+
+struct WSConnection {
+    handle: WSHandle,
+    tx: Sender<ToCore>,
+}
+
+impl ws::Handler for WSConnection {
+    fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
+        // now that the outbound side is prepared to send messages, notify
+        // the Core
+        self.tx.send(ToCore::WebSocketConnectionMade(self.handle)).unwrap();
+        Ok(())
+    }
+
+    fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
+        let s = msg.into_text().unwrap();
+        self.tx.send(ToCore::WebSocketMessageReceived(self.handle, s)).unwrap();
+        Ok(())
+    }
+
+    fn on_close(&mut self, _code: ws::CloseCode, _reason: &str) {
+        self.tx.send(ToCore::WebSocketConnectionLost(self.handle)).unwrap();
+    }
+}
+
+fn ws_outbound(ws_rx: Receiver<WSControl>, out: ws::Sender) {
+    loop {
+        let c = ws_rx.recv().unwrap();
+        match c {
+            WSControl::Data(d) => out.send(ws::Message::Text(d)).unwrap(),
+            WSControl::Close => out.close(ws::CloseCode::Normal).unwrap(),
+        };
+    }
+}
+
+struct WSFactory {
+    handle: WSHandle,
+    tx: Option<Sender<ToCore>>,
+    ws_rx: Option<Receiver<WSControl>>,
+}
+
+impl ws::Factory for WSFactory {
+    type Handler = WSConnection;
+    fn connection_made(&mut self, out: ws::Sender) -> WSConnection {
+        use std::mem;
+        let ws_rx = mem::replace(&mut self.ws_rx, None).unwrap();
+        let tx = mem::replace(&mut self.tx, None).unwrap();
+        thread::spawn(move || ws_outbound(ws_rx, out));
+        WSConnection {
+            handle: self.handle,
+            tx: tx,
+        }
+    }
+}
+
+fn ws_connector(url: String, handle: WSHandle, tx: Sender<ToCore>,
+                ws_rx: Receiver<WSControl>) {
+    // we're called in a new thread created just for this connection
+    let f = WSFactory { handle: handle, tx: Some(tx), ws_rx: Some(ws_rx) };
+    let b = ws::Builder::new();
+    let mut w1 = b.build(f).unwrap();
+    w1.connect(Url::parse(&url).unwrap()).unwrap();
+    w1.run().unwrap(); // blocks forever
+}
+
 impl CoreWrapper {
     fn run(&mut self) {
         loop {
@@ -62,6 +130,8 @@ impl CoreWrapper {
                     self.core.do_io(IOEvent::WebSocketConnectionMade(handle)),
                 ToCore::WebSocketMessageReceived(handle, msg) =>
                     self.core.do_io(IOEvent::WebSocketMessageReceived(handle, msg)),
+                ToCore::WebSocketConnectionLost(handle) =>
+                    self.core.do_io(IOEvent::WebSocketConnectionLost(handle)),
             };
             for action in actions {
                 self.process_action(action);
@@ -117,30 +187,7 @@ impl CoreWrapper {
         let tx = self.tx_to_core.clone();
         let (ws_tx, ws_rx) = channel();
         self.websockets.insert(handle, ws_tx);
-        thread::spawn(move || {
-            ws::connect(url, |out| {
-                // outbound side
-                thread::spawn(move || {
-                    loop {
-                        let c = ws_rx.recv().unwrap();
-                        match c {
-                            WSControl::Data(d) => out.send(ws::Message::Text(d)),
-                            WSControl::Close => out.close(ws::CloseCode::Normal),
-                        };
-                    }
-                });
-                // now that the outbound side is prepared to send
-                // messages, notify the Core
-                tx.send(ToCore::WebSocketConnectionMade(handle)).unwrap();
-                // inbound side: return a closure to be run for each
-                // incoming message
-                move |msg: ws::Message| {
-                    let s = msg.into_text().unwrap();
-                    tx.send(ToCore::WebSocketMessageReceived(handle, s)).unwrap();
-                    Ok(())
-                }
-            }).unwrap()
-        });
+        thread::spawn(move || ws_connector(url, handle, tx, ws_rx));
     }
 
     fn websocket_send(&self, handle: WSHandle, msg: String) {
