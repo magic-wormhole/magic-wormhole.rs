@@ -1,5 +1,5 @@
 use events::Events;
-use std::rc::Rc;
+use std::sync::Arc;
 // we process these
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
                          GotWordlist, RefreshNameplates, Start};
@@ -20,7 +20,7 @@ enum State {
     WantNameplateNoNameplates,
     WantNameplateHaveNameplates(Vec<String>), // nameplates
     WantCodeNoWordlist(String),               // nameplate
-    WantCodeHaveWordlist(String, Rc<Wordlist>), // (nameplate, wordlist)
+    WantCodeHaveWordlist(String, Arc<Wordlist>), // (nameplate, wordlist)
     Done,
 }
 
@@ -118,8 +118,19 @@ impl Input {
         }
     }
 
+    // TODO: remove this, the helper should remember whether it's called
+    // choose_nameplate yet or not instead of asking the core
+    pub fn committed_nameplate(&self) -> Option<&str> {
+        use self::State::*;
+        match self.state {
+            WantCodeHaveWordlist(ref nameplate, _)
+            | WantCodeNoWordlist(ref nameplate) => Some(nameplate),
+            _ => None,
+        }
+    }
+
     // TODO: is it possible for the wordlist to arrive before we set the nameplate?
-    fn want_nameplate(&self, event: InputEvent) -> (Option<State>, Events) {
+    fn want_nameplate(&mut self, event: InputEvent) -> (Option<State>, Events) {
         use self::State::*;
         match event {
             Start => panic!("already started"),
@@ -284,7 +295,7 @@ mod test {
             vecstrings("purple green yellow"),
             vecstrings("sausages seltzer snobol"),
         ];
-        let wordlist = Rc::new(Wordlist::new(2, words));
+        let wordlist = Arc::new(Wordlist::new(2, words));
         let actions = i.process(GotWordlist(wordlist));
         assert_eq!(actions, events![]);
 

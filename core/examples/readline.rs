@@ -1,4 +1,6 @@
 extern crate magic_wormhole_core;
+extern crate parking_lot;
+extern crate regex;
 extern crate rustyline;
 extern crate serde_json;
 extern crate url;
@@ -7,10 +9,15 @@ extern crate ws;
 use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
                           WSHandle, WormholeCore};
 
-use std::sync::{Arc, Mutex, mpsc::{channel, Sender}};
-use std::thread::spawn;
+use std::error::Error;
+use std::io;
+use std::sync::{Arc, mpsc::{channel, Sender}};
+use std::thread::{sleep, spawn};
+use std::time::Duration;
 
-use rustyline::completion::{extract_word, Completer};
+use parking_lot::{deadlock, Mutex};
+use regex::Regex;
+use rustyline::{completion::Completer, error::ReadlineError};
 use url::Url;
 
 const MAILBOX_SERVER: &'static str = "ws://localhost:4000/v1";
@@ -40,27 +47,76 @@ impl ws::Factory for Factory {
 
 struct CodeCompleter {
     wcr: Arc<Mutex<WormholeCore>>,
-    tx: Sender<Vec<Action>>,
+    tx_event: Sender<APIEvent>,
 }
-
-static BREAK_CHARS: [char; 1] = [' '];
 
 impl Completer for CodeCompleter {
     fn complete(
         &self,
         line: &str,
-        pos: usize,
+        _pos: usize,
     ) -> rustyline::Result<(usize, Vec<String>)> {
-        let (start, word) = extract_word(
-            line,
-            pos,
-            &BREAK_CHARS.iter().cloned().collect(),
-        );
+        let got_nameplate = line.find('-').is_some();
         let mwc = Arc::clone(&self.wcr);
-        let mut wc = mwc.lock().unwrap();
-        let (actions, completions) = wc.get_completions(word);
-        self.tx.send(actions).unwrap();
-        Ok((start, completions))
+
+        if got_nameplate {
+            let ns: Vec<_> = line.splitn(2, '-').collect();
+            let nameplate = ns[0].to_string();
+            let word = ns[1].to_string();
+            let committed_nameplate;
+
+            {
+                let mc = mwc.lock();
+                committed_nameplate = mc.input_helper_committed_nameplate()
+                    .map(|s| s.to_string());
+            }
+
+            if committed_nameplate.is_some() {
+                if committed_nameplate.unwrap() != nameplate {
+                    return Err(ReadlineError::from(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Nameplate already chosen can't go back",
+                    )));
+                }
+
+                let mut wc = mwc.lock();
+                let completions = wc.input_helper_get_word_completions(&word);
+                drop(&wc);
+
+                match completions {
+                    Ok(completions) => Ok((
+                        0,
+                        completions
+                            .iter()
+                            .map(|c| format!("{}-{}", nameplate, c))
+                            .collect(),
+                    )),
+                    Err(err) => Err(ReadlineError::from(io::Error::new(
+                        io::ErrorKind::Other,
+                        err.description(),
+                    ))),
+                }
+            } else {
+                self.tx_event
+                    .send(APIEvent::InputHelperChooseNameplate(
+                        nameplate.clone(),
+                    ))
+                    .unwrap();
+                Ok((0, Vec::new()))
+            }
+        } else {
+            let nameplate = line.to_string();
+            let mut mc = mwc.lock();
+            let completions =
+                mc.input_helper_get_nameplate_completions(&nameplate);
+            match completions {
+                Ok(completions) => Ok((0, completions)),
+                Err(err) => Err(ReadlineError::from(io::Error::new(
+                    io::ErrorKind::Other,
+                    err.description(),
+                ))),
+            }
+        }
     }
 }
 
@@ -69,7 +125,8 @@ impl ws::Handler for WSHandler {
         // println!("On_open");
         let mwc = Arc::clone(&self.wcr);
         {
-            let mut wc = mwc.lock().unwrap();
+            println!("Initial lock on socket open");
+            let mut wc = mwc.lock();
             let actions = wc.do_io(IOEvent::WebSocketConnectionMade(self.wsh));
             process_actions(&self.out, actions);
 
@@ -77,15 +134,15 @@ impl ws::Handler for WSHandler {
             // manually
             let actions = wc.do_api(APIEvent::InputCode);
             process_actions(&self.out, actions);
+            println!("Initial lock should be dropped now");
         }
 
-        let (tx_action, rx_action) = channel();
+        let (tx_event, rx_event) = channel();
         let completer = CodeCompleter {
             wcr: Arc::clone(&self.wcr),
-            tx: tx_action,
+            tx_event: tx_event.clone(),
         };
 
-        let (tx, rx) = channel();
         spawn(move || {
             let mut rl = rustyline::Editor::new();
             rl.set_completer(Some(completer));
@@ -96,15 +153,23 @@ impl ws::Handler for WSHandler {
                             // Wait till user enter the code
                             continue;
                         }
-
-                        tx.send(line.to_string()).unwrap();
+                        let re = Regex::new(r"\d+-\w+-\w+").unwrap();
+                        if !re.is_match(&line) {
+                            panic!("Not a valid code format");
+                        }
+                        let pieces: Vec<_> = line.splitn(2, '-').collect();
+                        let words = pieces[1].to_string();
+                        tx_event
+                            .send(APIEvent::InputHelperChooseWords(words))
+                            .unwrap();
                         break;
                     }
                     Err(rustyline::error::ReadlineError::Interrupted) => {
-                        // println!("Interrupted");
+                        println!("Interrupted");
                         continue;
                     }
                     Err(rustyline::error::ReadlineError::Eof) => {
+                        println!("Got EOF");
                         break;
                     }
                     Err(err) => {
@@ -115,21 +180,12 @@ impl ws::Handler for WSHandler {
             }
         });
 
-        let out_actions = self.out.clone();
-
-        spawn(move || {
-            for actions in rx_action {
-                // println!("{:?}", actions);
-                process_actions(&out_actions, actions);
-            }
-        });
-
         let out_events = self.out.clone();
         let emwc = Arc::clone(&self.wcr);
         spawn(move || {
-            for received in rx {
-                let mut wc = emwc.lock().unwrap();
-                let actions = wc.do_api(APIEvent::HelperChoseWord(received));
+            for received in rx_event {
+                let mut wc = emwc.lock();
+                let actions = wc.do_api(received);
                 process_actions(&out_events, actions);
             }
         });
@@ -138,13 +194,15 @@ impl ws::Handler for WSHandler {
     }
 
     fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
-        // println!("got message {}", msg);
+        println!("got message {}", msg);
         let mwc = Arc::clone(&self.wcr);
         let text = msg.as_text()?.to_string();
         let rx = IOEvent::WebSocketMessageReceived(self.wsh, text);
-        let mut wc = mwc.lock().unwrap();
+
+        let mut wc = mwc.lock();
         let actions = wc.do_io(rx);
         process_actions(&self.out, actions);
+
         Ok(())
     }
 }
@@ -196,6 +254,23 @@ fn main() {
         wsh: wsh,
         wcr: Arc::new(Mutex::new(wc)),
     };
+
+    spawn(move || loop {
+        sleep(Duration::from_secs(10));
+        let deadlocks = deadlock::check_deadlock();
+        if deadlocks.is_empty() {
+            continue;
+        }
+
+        println!("{} deadlocks detected", deadlocks.len());
+        for (i, threads) in deadlocks.iter().enumerate() {
+            println!("Deadlock #{}", i);
+            for t in threads {
+                println!("Thread Id {:#?}", t.thread_id());
+                println!("{:#?}", t.backtrace());
+            }
+        }
+    });
 
     let b = ws::Builder::new();
     let mut w1 = b.build(f).unwrap();
