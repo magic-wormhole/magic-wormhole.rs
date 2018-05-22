@@ -1,0 +1,12 @@
+[package]
+name = "magic-wormhole-io-blocking"
+version = "0.0.1"
+authors = ["Brian Warner <warner@lothar.com>"]
+
+[dependencies]
+magic-wormhole-core = { version = "0.0.1", path = "../../core" }
+ws = "0.7.*"
+url = "1.7"
+
+[dev-dependencies]
+hex = "0.3"

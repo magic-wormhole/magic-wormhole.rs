@@ -2,6 +2,7 @@
 members = [
         "core",
 #        "io/tokio",
+        "io/blocking",
         "cli",
 ]
 
