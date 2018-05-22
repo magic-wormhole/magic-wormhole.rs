@@ -118,7 +118,9 @@ impl Input {
         }
     }
 
-    pub fn commited_nameplate(&self) -> Option<&str> {
+    // TODO: remove this, the helper should remember whether it's called
+    // choose_nameplate yet or not instead of asking the core
+    pub fn committed_nameplate(&self) -> Option<&str> {
         use self::State::*;
         match self.state {
             WantCodeHaveWordlist(ref nameplate, _)

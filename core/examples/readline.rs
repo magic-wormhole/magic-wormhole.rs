@@ -63,16 +63,16 @@ impl Completer for CodeCompleter {
             let ns: Vec<_> = line.splitn(2, '-').collect();
             let nameplate = ns[0].to_string();
             let word = ns[1].to_string();
-            let commited_nameplate;
+            let committed_nameplate;
 
             {
                 let mc = mwc.lock();
-                commited_nameplate = mc.input_helper_commited_nameplate()
+                committed_nameplate = mc.input_helper_committed_nameplate()
                     .map(|s| s.to_string());
             }
 
-            if commited_nameplate.is_some() {
-                if commited_nameplate.unwrap() != nameplate {
+            if committed_nameplate.is_some() {
+                if committed_nameplate.unwrap() != nameplate {
                     return Err(ReadlineError::from(io::Error::new(
                         io::ErrorKind::Other,
                         "Nameplate already chosen can't go back",
