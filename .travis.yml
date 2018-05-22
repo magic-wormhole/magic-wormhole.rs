@@ -9,6 +9,10 @@ os:
   - linux
   - osx
 
+branches:
+  except:
+    - /^WIP-.*$/
+
 matrix:
   include:
     - rust: 1.26.0 # lock down for consistent rustfmt behavior
