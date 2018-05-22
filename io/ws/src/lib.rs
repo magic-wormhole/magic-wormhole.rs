@@ -2,7 +2,7 @@ extern crate magic_wormhole_core;
 extern crate ws;
 use magic_wormhole_core::WormholeCore;
 use magic_wormhole_core::{APIAction, APIEvent, IOAction, IOEvent, Action,
-                          TimerHandle};
+                          TimerHandle, WSHandle};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread;
 use std::collections::{HashMap, HashSet};
@@ -12,13 +12,20 @@ enum ToCore {
     API(APIEvent),
     #[allow(dead_code)]
     IO(IOEvent),
-    TimerExpired(TimerHandle), // handle
+    TimerExpired(TimerHandle),
+    WebSocketConnectionMade(WSHandle),
+    WebSocketMessageReceived(WSHandle, String),
 }
 
 #[allow(dead_code)]
 enum XXXFromCore {
     API(APIAction),
     IO(IOAction),
+}
+
+enum WSControl {
+    Data(String),
+    Close,
 }
 
 struct CoreWrapper {
@@ -28,6 +35,7 @@ struct CoreWrapper {
     rx_by_core: Receiver<ToCore>,
 
     timers: HashSet<TimerHandle>,
+    websockets: HashMap<WSHandle, Sender<WSControl>>,
 
 
     tx_welcome_to_app: Sender<HashMap<String, String>>,
@@ -50,6 +58,10 @@ impl CoreWrapper {
                         vec![]
                     }
                 },
+                ToCore::WebSocketConnectionMade(handle) =>
+                    self.core.do_io(IOEvent::WebSocketConnectionMade(handle)),
+                ToCore::WebSocketMessageReceived(handle, msg) =>
+                    self.core.do_io(IOEvent::WebSocketMessageReceived(handle, msg)),
             };
             for action in actions {
                 self.process_action(action);
@@ -59,43 +71,87 @@ impl CoreWrapper {
 
     fn process_action(&mut self, action: Action) {
         match action {
-            Action::API(a) => {
-                use APIAction::*;
-                match a {
-                    GotWelcome(w) => self.tx_welcome_to_app.send(w).unwrap(),
-                    GotMessage(m) => self.tx_messages_to_app.send(m).unwrap(),
-                    GotCode(c) => self.tx_code_to_app.send(c).unwrap(),
-                    GotUnverifiedKey(_k) => (),
-                    GotVerifier(v) => self.tx_verifier_to_app.send(v).unwrap(),
-                    GotVersions(v) => self.tx_versions_to_app.send(v).unwrap(),
-                    GotClosed(_mood) => (),
-                }
-            },
-            Action::IO(i) => {
-                use IOAction::*;
-                match i {
-                    StartTimer(handle, duration) => {
-                        let tx = self.tx_to_core.clone();
-                        self.timers.insert(handle);
-                        thread::spawn(move || {
-                            // ugh, why can't this just take a float? ok ok,
-                            // Nan, negatives, fine fine
-                            let dur_ms = (duration * 1000.0) as u64;
-                            let dur = time::Duration::from_millis(dur_ms);
-                            thread::sleep(dur);
-                            tx.send(ToCore::TimerExpired(handle)).unwrap();
-                        });
-                    },
-                    CancelTimer(handle) => {
-                        self.timers.remove(&handle);
-                    },
-                    WebSocketOpen(_handle, _url) => (),
-                    WebSocketSendMessage(_handle, _msg) => (),
-                    WebSocketClose(_handle) => (),
-                }
-            }
+            Action::API(a) => self.process_api_action(a),
+            Action::IO(i) => self.process_io_action(i),
         }
     }
+
+    fn process_api_action(&mut self, action: APIAction) {
+        use APIAction::*;
+        match action {
+            GotWelcome(w) => self.tx_welcome_to_app.send(w).unwrap(),
+            GotMessage(m) => self.tx_messages_to_app.send(m).unwrap(),
+            GotCode(c) => self.tx_code_to_app.send(c).unwrap(),
+            GotUnverifiedKey(_k) => (),
+            GotVerifier(v) => self.tx_verifier_to_app.send(v).unwrap(),
+            GotVersions(v) => self.tx_versions_to_app.send(v).unwrap(),
+            GotClosed(_mood) => (),
+        }
+    }
+
+    fn process_io_action(&mut self, action: IOAction) {
+        use IOAction::*;
+        match action {
+            StartTimer(handle, duration) => {
+                let tx = self.tx_to_core.clone();
+                self.timers.insert(handle);
+                thread::spawn(move || {
+                    // ugh, why can't this just take a float? ok ok,
+                    // Nan, negatives, fine fine
+                    let dur_ms = (duration * 1000.0) as u64;
+                    let dur = time::Duration::from_millis(dur_ms);
+                    thread::sleep(dur);
+                    tx.send(ToCore::TimerExpired(handle)).unwrap();
+                });
+            },
+            CancelTimer(handle) => {
+                self.timers.remove(&handle);
+            },
+            WebSocketOpen(handle, url) => self.websocket_open(handle, url),
+            WebSocketSendMessage(handle, msg) => self.websocket_send(handle, msg),
+            WebSocketClose(handle) => self.websocket_close(handle),
+        }
+    }
+
+    fn websocket_open(&mut self, handle: WSHandle, url: String) {
+        let tx = self.tx_to_core.clone();
+        let (ws_tx, ws_rx) = channel();
+        self.websockets.insert(handle, ws_tx);
+        thread::spawn(move || {
+            ws::connect(url, |out| {
+                // outbound side
+                thread::spawn(move || {
+                    loop {
+                        let c = ws_rx.recv().unwrap();
+                        match c {
+                            WSControl::Data(d) => out.send(ws::Message::Text(d)),
+                            WSControl::Close => out.close(ws::CloseCode::Normal),
+                        };
+                    }
+                });
+                // now that the outbound side is prepared to send
+                // messages, notify the Core
+                tx.send(ToCore::WebSocketConnectionMade(handle)).unwrap();
+                // inbound side: return a closure to be run for each
+                // incoming message
+                move |msg: ws::Message| {
+                    let s = msg.into_text().unwrap();
+                    tx.send(ToCore::WebSocketMessageReceived(handle, s)).unwrap();
+                    Ok(())
+                }
+            }).unwrap()
+        });
+    }
+
+    fn websocket_send(&self, handle: WSHandle, msg: String) {
+        self.websockets.get(&handle).unwrap().send(WSControl::Data(msg)).unwrap();
+    }
+
+    fn websocket_close(&mut self, handle: WSHandle) {
+        self.websockets.get(&handle).unwrap().send(WSControl::Close).unwrap();
+        self.websockets.remove(&handle);
+    }
+
 }
 
 
@@ -133,6 +189,7 @@ impl Wormhole {
             tx_to_core: tx_event_to_core.clone(),
             rx_by_core: rx_by_core,
             timers: HashSet::new(),
+            websockets: HashMap::new(),
             tx_welcome_to_app: tx_welcome_to_app,
             tx_messages_to_app: tx_messages_to_app,
             tx_code_to_app: tx_code_to_app,
