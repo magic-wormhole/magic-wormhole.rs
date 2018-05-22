@@ -3,7 +3,6 @@ members = [
         "core",
 #        "io/tokio",
         "io/blocking",
-        "io/ws",
         "cli",
 ]
 

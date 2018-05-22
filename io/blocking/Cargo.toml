@@ -1,5 +1,5 @@
 [package]
-name = "magic-wormhole-io-ws"
+name = "magic-wormhole-io-blocking"
 version = "0.0.1"
 authors = ["Brian Warner <warner@lothar.com>"]
 

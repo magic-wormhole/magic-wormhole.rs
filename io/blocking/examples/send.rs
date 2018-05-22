@@ -1,6 +1,6 @@
-extern crate magic_wormhole_io_ws;
+extern crate magic_wormhole_io_blocking;
 extern crate hex;
-use magic_wormhole_io_ws::Wormhole;
+use magic_wormhole_io_blocking::Wormhole;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
 const MAILBOX_SERVER: &'static str = "ws://127.0.0.1:4000/v1";
