@@ -3,6 +3,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate hkdf;
 extern crate rand;
+extern crate regex;
 extern crate rustc_serialize;
 extern crate serde_json;
 extern crate sha2;
@@ -125,6 +126,10 @@ impl WormholeCore {
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
         self.input.get_word_completions(prefix)
+    }
+
+    pub fn input_helper_commited_nameplate(&self) -> Option<&str> {
+        self.input.commited_nameplate()
     }
 
     fn _execute(&mut self, events: Events) -> Vec<Action> {

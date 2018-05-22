@@ -1,7 +1,12 @@
 use api::Mood;
 use events::Events;
-use std::rc::Rc;
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::Arc;
 use wordlist::default_wordlist;
+
+use regex::Regex;
+use serde_json::from_str;
 
 // we process these
 use api::APIEvent;
@@ -92,7 +97,7 @@ impl Boss {
         let (actions, newstate) = match self.state {
             Empty(i) => {
                 // TODO: provide choice of wordlists
-                let wordlist = Rc::new(default_wordlist(num_words));
+                let wordlist = Arc::new(default_wordlist(num_words));
                 (events![C_AllocateCode(wordlist)], Coding(i))
             }
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
@@ -190,16 +195,29 @@ impl Boss {
 
     fn got_message(&mut self, phase: &str, plaintext: Vec<u8>) -> Events {
         use self::State::*;
+        let phase_pattern = Regex::from_str("\\d+").unwrap();
         let (actions, newstate) = match self.state {
             Closing | Closed | Empty(..) | Coding(..) | Lonely(..) => {
                 (events![], self.state)
             }
             Happy(i) => {
                 if phase == "version" {
-                    // TODO deliver the "app_versions" key to API
-                    (events![], Happy(i))
-                } else if phase == "\\d+" {
-                    // TODO: match on regexp
+                    // TODO handle error conditions
+                    let version_str = String::from_utf8(plaintext).unwrap();
+                    let version_dict: HashMap<
+                        String,
+                        HashMap<String, String>,
+                    > = from_str(&version_str).unwrap();
+                    let app_versions = match version_dict.get("app_versions") {
+                        Some(versions) => versions.clone(),
+                        None => HashMap::new(),
+                    };
+
+                    (
+                        events![APIAction::GotVersions(app_versions)],
+                        Happy(i),
+                    )
+                } else if phase_pattern.is_match(phase) {
                     (
                         events![APIAction::GotMessage(plaintext)],
                         Happy(i),

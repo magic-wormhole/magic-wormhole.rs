@@ -1,5 +1,5 @@
 use events::Events;
-use std::rc::Rc;
+use std::sync::Arc;
 use wordlist::default_wordlist;
 // we process these
 use events::NameplateEvent;
@@ -165,7 +165,7 @@ impl Nameplate {
             ),
             RxClaimed(mailbox) => {
                 // TODO: use nameplate attributes to pick which wordlist we use
-                let wordlist = Rc::new(default_wordlist(2)); // TODO: num_words
+                let wordlist = Arc::new(default_wordlist(2)); // TODO: num_words
                 (
                     Some(State::S3B(nameplate.to_string())),
                     events![I_GotWordlist(wordlist), M_GotMailbox(mailbox)],
