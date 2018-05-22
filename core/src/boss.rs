@@ -1,8 +1,11 @@
 use api::Mood;
 use events::Events;
+use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use wordlist::default_wordlist;
 
+use serde_json::from_str;
 // we process these
 use api::APIEvent;
 use events::BossEvent;
@@ -196,10 +199,23 @@ impl Boss {
             }
             Happy(i) => {
                 if phase == "version" {
-                    // TODO deliver the "app_versions" key to API
-                    (events![], Happy(i))
                 } else if phase == "\\d+" {
                     // TODO: match on regexp
+                    // TODO handle error conditions
+                    let version_str = String::from_utf8(plaintext).unwrap();
+                    let version_dict: HashMap<
+                        String,
+                        HashMap<String, String>,
+                    > = from_str(&version_str).unwrap();
+                    let app_versions = match version_dict.get("app_versions") {
+                        Some(versions) => versions.clone(),
+                        None => HashMap::new(),
+                    };
+
+                    (
+                        events![APIAction::GotVersions(app_versions)],
+                        Happy(i),
+                    )
                     (
                         events![APIAction::GotMessage(plaintext)],
                         Happy(i),
