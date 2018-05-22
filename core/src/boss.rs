@@ -5,7 +5,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use wordlist::default_wordlist;
 
+use regex::Regex;
 use serde_json::from_str;
+
 // we process these
 use api::APIEvent;
 use events::BossEvent;
@@ -193,14 +195,13 @@ impl Boss {
 
     fn got_message(&mut self, phase: &str, plaintext: Vec<u8>) -> Events {
         use self::State::*;
+        let phase_pattern = Regex::from_str("\\d+").unwrap();
         let (actions, newstate) = match self.state {
             Closing | Closed | Empty(..) | Coding(..) | Lonely(..) => {
                 (events![], self.state)
             }
             Happy(i) => {
                 if phase == "version" {
-                } else if phase == "\\d+" {
-                    // TODO: match on regexp
                     // TODO handle error conditions
                     let version_str = String::from_utf8(plaintext).unwrap();
                     let version_dict: HashMap<
@@ -216,6 +217,7 @@ impl Boss {
                         events![APIAction::GotVersions(app_versions)],
                         Happy(i),
                     )
+                } else if phase_pattern.is_match(phase) {
                     (
                         events![APIAction::GotMessage(plaintext)],
                         Happy(i),
