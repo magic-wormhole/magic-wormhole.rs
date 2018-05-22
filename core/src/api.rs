@@ -88,7 +88,7 @@ pub enum APIAction {
     GotClosed(Mood),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TimerHandle {
     id: u32,
 }
