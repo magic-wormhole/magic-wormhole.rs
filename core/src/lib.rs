@@ -3,6 +3,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate hkdf;
 extern crate rand;
+extern crate regex;
 extern crate rustc_serialize;
 extern crate serde_json;
 extern crate sha2;
