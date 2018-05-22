@@ -98,7 +98,7 @@ impl TimerHandle {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WSHandle {
     id: u32,
 }
