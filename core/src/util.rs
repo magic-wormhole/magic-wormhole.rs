@@ -1,4 +1,4 @@
-use rand::{OsRng, Rng};
+use rand::{OsRng, RngCore};
 use std;
 use std::str;
 
