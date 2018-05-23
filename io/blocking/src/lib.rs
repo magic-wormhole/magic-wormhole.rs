@@ -265,6 +265,11 @@ impl Wormhole {
         };
 
         thread::spawn(move || cw.run());
+        // kickstart the core, which will start by starting a websocket
+        // connection
+        tx_event_to_core
+            .send(ToCore::API(APIEvent::Start))
+            .unwrap();
 
         Wormhole {
             code: None,
