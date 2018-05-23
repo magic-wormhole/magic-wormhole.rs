@@ -13,13 +13,14 @@ use events::CodeEvent::{AllocateCode as C_AllocateCode,
 use events::InputEvent::{ChooseNameplate as I_ChooseNameplate,
                          ChooseWords as I_ChooseWords,
                          RefreshNameplates as I_RefreshNameplates};
-use events::RendezvousEvent::Stop as RC_Stop;
+use events::RendezvousEvent::{Start as RC_Start, Stop as RC_Stop};
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
+    Unstarted(u32),
     Empty(u32),
     Coding(u32),
     Lonely(u32),
@@ -37,6 +38,7 @@ impl State {
     pub fn increment_phase(&self) -> Self {
         use self::State::*;
         match *self {
+            Unstarted(i) => Unstarted(i + 1),
             Empty(i) => Empty(i + 1),
             Coding(i) => Coding(i + 1),
             Lonely(i) => Lonely(i + 1),
@@ -46,17 +48,20 @@ impl State {
         }
     }
 }
+
 impl Boss {
     pub fn new() -> Boss {
         Boss {
-            state: State::Empty(0),
+            state: State::Unstarted(0),
             mood: Mood::Lonely,
         }
     }
 
     pub fn process_api(&mut self, event: APIEvent) -> Events {
         use api::APIEvent::*;
+
         match event {
+            Start => self.start(),
             AllocateCode(num_words) => self.allocate_code(num_words), // TODO: wordlist
             InputCode => self.input_code(), // TODO: return Helper
             InputHelperRefreshNameplates => {
@@ -87,9 +92,20 @@ impl Boss {
         }
     }
 
+    fn start(&mut self) -> Events {
+        use self::State::*;
+        let (actions, newstate) = match self.state {
+            Unstarted(i) => (events![RC_Start], Empty(i)),
+            _ => panic!("only start once"),
+        };
+        self.state = newstate;
+        actions
+    }
+
     fn allocate_code(&mut self, num_words: usize) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Empty(i) => {
                 // TODO: provide choice of wordlists
                 let wordlist = Arc::new(default_wordlist(num_words));
@@ -105,6 +121,7 @@ impl Boss {
         // TODO: validate code, maybe signal KeyFormatError
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             // we move to Coding instead of directly to Lonely because
             // Code::SetCode will signal us with Boss:GotCode in just a
             // moment, and by not special-casing set_code we get to use the
@@ -121,6 +138,7 @@ impl Boss {
         // TODO: return Helper somehow
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Empty(i) => (events![C_InputCode], Coding(i)),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
@@ -131,6 +149,7 @@ impl Boss {
     fn input_helper_refresh_nameplates(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (events![I_RefreshNameplates], Coding(i)),
             _ => panic!(),
         };
@@ -141,6 +160,7 @@ impl Boss {
     fn input_helper_choose_nameplate(&mut self, nameplate: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
                 events![I_ChooseNameplate(nameplate.to_string())],
                 Coding(i),
@@ -154,6 +174,7 @@ impl Boss {
     fn input_helper_choose_words(&mut self, word: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
                 events![I_ChooseWords(word.to_string())],
                 Coding(i),
@@ -167,6 +188,7 @@ impl Boss {
     fn got_code(&mut self, code: &str) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
                 events![APIAction::GotCode(code.to_string())],
                 Lonely(i),
@@ -180,6 +202,7 @@ impl Boss {
     fn happy(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Lonely(i) => (events![], Happy(i)),
             Closing => (events![], Closing),
             _ => panic!(),
@@ -191,6 +214,7 @@ impl Boss {
     fn got_message(&mut self, phase: &str, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Closing | Closed | Empty(..) | Coding(..) | Lonely(..) => {
                 (events![], self.state)
             }
@@ -217,6 +241,7 @@ impl Boss {
     fn send(&mut self, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Closing | Closed => (events![], self.state),
             Empty(i) | Coding(i) | Lonely(i) | Happy(i) => (
                 events![S_Send(format!("{}", i), plaintext)],
@@ -231,6 +256,7 @@ impl Boss {
     fn close(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Empty(..) | Coding(..) | Lonely(..) => {
                 self.mood = Mood::Lonely;
                 (events![T_Close(Mood::Lonely)], Closing)
@@ -249,6 +275,7 @@ impl Boss {
     fn closed(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
+            Unstarted(_) => panic!("w.start() must be called first"),
             Closing => (
                 events![APIAction::GotClosed(self.mood)],
                 Closing,
