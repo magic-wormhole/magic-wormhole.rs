@@ -148,8 +148,7 @@ impl Key {
     }
 
     pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
-        let salt = vec![0; length];
-        let hk = Hkdf::<Sha256>::extract(&salt, key);
+        let hk = Hkdf::<Sha256>::extract(None, key);
         hk.expand(purpose, length)
     }
 
