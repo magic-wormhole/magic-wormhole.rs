@@ -90,9 +90,10 @@ impl WormholeCore {
         }
     }
 
+    // the IO layer must either call start() or do_api(APIEvent::Start), and
+    // must act upon all the Actions it gets back
     pub fn start(&mut self) -> Vec<Action> {
-        // TODO: replace with Boss::Start, which will start rendezvous
-        self._execute(events![events::RendezvousEvent::Start])
+        self.do_api(APIEvent::Start)
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {

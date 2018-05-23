@@ -5,6 +5,7 @@ use std::fmt;
 #[derive(Debug, PartialEq)]
 pub enum APIEvent {
     // from application to IO glue to WormholeCore
+    Start,
     AllocateCode(usize), // num_words
     InputCode,
     InputHelperRefreshNameplates,
