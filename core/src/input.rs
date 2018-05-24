@@ -106,16 +106,22 @@ impl Input {
 
     fn got_wordlist(&mut self, wordlist: Arc<Wordlist>) -> Events {
         use self::State::*;
-        match self.state {
+        #[allow(unused_assignments)]
+        let mut newstate: Option<State> = None;
+        let events = match self.state {
             // TODO: is it possible for the wordlist to arrive before we set
             // the nameplate?
             Idle | WantNameplateNoNameplates | WantNameplateHaveNameplates(..) => panic!("I should be prepared for this, but I'm not"),
-            WantCodeNoWordlist(nameplate) => {
-                self.state = WantCodeHaveWordlist(nameplate, wordlist);
+            WantCodeNoWordlist(ref nameplate) => {
+                newstate = Some(WantCodeHaveWordlist(nameplate.clone(), wordlist));
                 events![]
             },
             _ => panic!("wordlist already set"),
+        };
+        if newstate.is_some() {
+            self.state = newstate.unwrap();
         }
+        events
     }
 
     fn refresh_nameplates(&mut self) -> Events {
