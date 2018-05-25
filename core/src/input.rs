@@ -13,13 +13,13 @@ use events::Wordlist;
 pub struct Input {
     state: State,
     wordlist: Option<Arc<Wordlist>>,
+    nameplates: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
 enum State {
     Idle,
-    WantNameplateNoNameplates,
-    WantNameplateHaveNameplates(Vec<String>), // nameplates
+    WantNameplate,
     WantCode(String),               // nameplate
     Done,
 }
@@ -29,6 +29,7 @@ impl Input {
         Input {
             state: State::Idle,
             wordlist: None,
+            nameplates: None,
         }
     }
 
@@ -51,7 +52,7 @@ impl Input {
         use self::State::*;
         match self.state {
             Idle => {
-                self.state = WantNameplateNoNameplates;
+                self.state = WantNameplate;
                 events![L_Refresh]
             },
             _ => panic!("already started"),
@@ -62,7 +63,7 @@ impl Input {
         use self::State::*;
         match self.state {
             Idle => panic!("too soon"),
-            WantNameplateNoNameplates | WantNameplateHaveNameplates(..) => {
+            WantNameplate => {
                 self.state = WantCode(nameplate.clone());
                 events![C_GotNameplate(nameplate.clone())]
             },
@@ -90,19 +91,8 @@ impl Input {
     }
 
     fn got_nameplates(&mut self, nameplates: Vec<String>) -> Events {
-        use self::State::*;
-        match self.state {
-            Idle => panic!("this shouldn't happen, I think"),
-            WantNameplateNoNameplates => {
-                self.state = WantNameplateHaveNameplates(nameplates);
-                events![]
-            },
-            WantNameplateHaveNameplates(..) => {
-                self.state = WantNameplateHaveNameplates(nameplates);
-                events![]
-            },
-            _ => events![],
-        }
+        self.nameplates = Some(nameplates);
+        events![]
     }
 
     fn got_wordlist(&mut self, wordlist: Arc<Wordlist>) -> Events {
@@ -114,8 +104,7 @@ impl Input {
         use self::State::*;
         match self.state {
             Idle => panic!("too early, I think"),
-            WantNameplateNoNameplates | WantNameplateHaveNameplates(..) =>
-                events![L_Refresh],
+            WantNameplate => events![L_Refresh],
             _ => panic!("already chose nameplate, stop refreshing"),
         }
     }
@@ -128,21 +117,26 @@ impl Input {
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
         use self::State::*;
+        use InputHelperError::*;
         match self.state {
-            Idle => Err(InputHelperError::Inactive),
-            WantNameplateNoNameplates => Ok(Vec::new()),
-            WantNameplateHaveNameplates(ref nameplates) => {
-                let mut completions = Vec::<String>::new();
-                for n in nameplates {
-                    if n.starts_with(prefix) {
-                        completions.push(n.to_string() + "-");
-                    }
+            Idle => Err(Inactive),
+            WantNameplate => {
+                match self.nameplates {
+                    None => Ok(Vec::new()),
+                    Some(ref nameplates) => {
+                        let mut completions = Vec::<String>::new();
+                        for n in nameplates {
+                            if n.starts_with(prefix) {
+                                completions.push(n.to_string() + "-");
+                            }
+                        }
+                        completions.sort();
+                        Ok(completions)
+                    },
                 }
-                completions.sort();
-                Ok(completions)
             }
-            WantCode(..) => Err(InputHelperError::AlreadyChoseNameplate),
-            Done => Err(InputHelperError::AlreadyChoseNameplate),
+            WantCode(..) => Err(AlreadyChoseNameplate),
+            Done => Err(AlreadyChoseNameplate),
         }
     }
 
@@ -154,7 +148,7 @@ impl Input {
         use InputHelperError::*;
         match self.state {
             Idle => Err(Inactive),
-            WantNameplateNoNameplates | WantNameplateHaveNameplates(..) => Err(MustChooseNameplateFirst),
+            WantNameplate => Err(MustChooseNameplateFirst),
             WantCode(..) => {
                 match self.wordlist {
                     Some(ref wordlist) => Ok(wordlist.get_completions(prefix)),
