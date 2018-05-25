@@ -99,11 +99,13 @@ impl WormholeCore {
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
+        println!("api: {:?}", event);
         let events = self.boss.process_api(event);
         self._execute(events)
     }
 
     pub fn do_io(&mut self, event: IOEvent) -> Vec<Action> {
+        println!("io: {:?}", event);
         let events = self.rendezvous.process_io(event);
         self._execute(events)
     }
