@@ -1,8 +1,9 @@
+extern crate hex;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum APIEvent {
     // from application to IO glue to WormholeCore
     Start,
@@ -14,6 +15,29 @@ pub enum APIEvent {
     SetCode(String),
     Close,
     Send(Vec<u8>),
+}
+
+impl fmt::Debug for APIEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::APIEvent::*;
+        let t = match *self {
+            Start => "Start".to_string(),
+            AllocateCode(ref num_words) => format!("AllocateCode({})", num_words),
+            InputCode => "InputCode".to_string(),
+            InputHelperRefreshNameplates => "InputHelperRefreshNameplates".to_string(),
+            InputHelperChooseNameplate(ref nameplate) => format!("InputHelperChooseNameplate({})", nameplate),
+            InputHelperChooseWords(ref words) => format!("InputHelperChooseWords({})", words),
+            SetCode(ref code) => format!("SetCode({})", code),
+            Close => "Close".to_string(),
+            Send(ref msg) => {
+                match String::from_utf8(msg.to_vec()) {
+                    Ok(m) => format!("Send(s={})", m),
+                    Err(_) => format!("Send(hex={})", hex::encode(msg)),
+                }
+            },
+        };
+        write!(f, "APIEvent::{}", t)
+    }
 }
 
 #[derive(Debug, PartialEq)]
