@@ -217,10 +217,10 @@ mod test {
     fn test_extract_pake_msg() {
         extern crate hex;
 
-        let key = super::Key::new("appid", "side1");
+        let _key = super::Key::new("appid", "side1");
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
-        let pake_msg = key.extract_pake_msg(hex::decode(s1).unwrap());
+        let pake_msg = super::Key::extract_pake_msg(hex::decode(s1).unwrap());
         assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
     }
 
