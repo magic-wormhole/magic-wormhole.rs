@@ -19,24 +19,17 @@ use events::ReceiveEvent::GotKey as R_GotKey;
 
 #[derive(Debug, PartialEq)]
 enum State {
-    S00,
-    S10(String),          // code
-    S01(Vec<u8>),         // pake
-    S11(String, Vec<u8>), // code, pake
-}
-
-#[allow(dead_code)]
-enum SKState {
     S0KnowNothing,
-    S1KnowCode,
-    S2KnowCode,
-    S3Scared,
+    S1KnowCode(spake2::SPAKE2::<Ed25519Group>), // pake_state
+    S2KnowPake(Vec<u8>), // their_pake
+    S3KnowBoth(Vec<u8>), // key
+    S4Scared,
 }
 
 pub struct Key {
     appid: String,
-    state: State,
     side: String,
+    state: State,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -44,27 +37,98 @@ struct PhaseMessage {
     pake_v1: String,
 }
 
+fn build_pake(appid: &str, code: &str) -> (spake2::SPAKE2::<Ed25519Group>, String) {
+    let (pake_state, msg1) = spake2::SPAKE2::<Ed25519Group>::start_symmetric(
+        code.as_bytes(),
+        appid.as_bytes(),
+    );
+    let payload = util::bytes_to_hexstr(&msg1);
+    let pake_msg = PhaseMessage { pake_v1: payload };
+    let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
+    (pake_state, pake_msg_ser)
+}
+
+fn finish_pake(pake_state: spake2::SPAKE2::<Ed25519Group>, peer_msg: Vec<u8>) -> Vec<u8> {
+    
+}
+
+
 impl Key {
     pub fn new(appid: &str, side: &str) -> Key {
         Key {
             appid: appid.to_string(),
-            state: State::S00,
+            state: State::S0KnowNothing,
             side: side.to_string(),
         }
     }
 
     pub fn process(&mut self, event: KeyEvent) -> Events {
-        use self::State::*;
+        use self::UnsortedKeyState::*;
 
         println!(
             "key: current state = {:?}, got event = {:?}",
             self.state, event
         );
+
+        use self::KeyEvent::*;
+        match event {
+            GotCode(ref code) => self.got_code(&code),
+            GotPake(ref pake) => self.got_pake(&pake),
+            GotMessage => self.got_message();
+        }
+    }
+
+    fn got_code(&mut self, code: String) -> Events {
+        use self::State::*;
+        let newstate: Option<State> = None;
+        let events = match self.state {
+            S0KnowNothing => {
+                let (pake_state, pake_msg_ser) = build_pake(code, &self.appid);
+                newstate = Some(S1KnowCode(pake_state));
+                events![M_AddMessage("pake".to_string(), pake_msg_ser)]
+            },
+            S1KnowCode => panic!("already got code"),
+            },
+            S2KnowPake(their_pake_msg) => {
+                let (pake_state, pake_msg_ser) = build_pake(code, &self.appid);
+                let key = finish_pake(pake_state, their_pake_msg);
+                newstate = Some(S1KnowBoth(key));
+                events![M_AddMessage("pake".to_string(), pake_msg_ser),
+                R_GotKey]
+            },
+            S3KnowBoth => panic!("already got code"),
+            S4Scared => panic!("already scared"),
+        };
+        if newstate.is_some() {
+            self.state = newstate.unwrap();
+        }
+        events
+    }
+
+    fn got_pake(&mut self, pake: Vec<u8>) -> Events {
+        if self.pake.is_some() {
+            panic!("already have PAKE");
+        }
+        self.pake = Some(pake);
+        self.maybe_sorted()
+    }
+
+    fn maybe_sorted(&mut self) -> Events {
+        if 
+
+    }
+
+        use self::UnsortedKeyState::*;
+        match self.state {
+            S00 => {
+    
         let (newstate, actions) = match self.state {
             S00 => self.do_s00(event),
-            S01(ref body) => self.do_s01(body.to_vec(), event),
-            S10(ref code) => self.do_s10(&code, event),
-            S11(ref code, ref body) => self.do_s11(&code, body.to_vec(), event),
+            S01HavePAKE(ref body) => self.do_s01(body.to_vec(), event),
+            S10HaveCode(ref code) => self.do_s10(&code, event),
+            S11HaveBoth(ref code, ref body) => {
+                self.do_s11(&code, body.to_vec(), event)
+            }
         };
 
         match newstate {
@@ -74,6 +138,94 @@ impl Key {
             None => {}
         }
         actions
+    }
+
+    fn do_s00(&self, event: KeyEvent) -> (Option<UnsortedKeyState>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(code) => {
+                // defer building and sending pake.
+                (
+                    Some(UnsortedKeyState::S10HaveCode(code.clone())),
+                    events![],
+                )
+            }
+            GotPake(body) => {
+                // early, we haven't got the code yet.
+                (Some(UnsortedKeyState::S01HavePAKE(body)), events![])
+            }
+            GotMessage => panic!(),
+        }
+    }
+
+    fn do_s01(
+        &self,
+        body: Vec<u8>,
+        event: KeyEvent,
+    ) -> (Option<UnsortedKeyState>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(code) => {
+                let es = self.send_pake_compute_key(&code, body.clone());
+                (Some(UnsortedKeyState::S11HaveBoth(code, body)), es)
+            }
+            GotPake(_) => panic!(),
+            GotMessage => panic!(),
+        }
+    }
+
+    fn do_s10(
+        &self,
+        code: &str,
+        event: KeyEvent,
+    ) -> (Option<UnsortedKeyState>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(_) => panic!(), // we already have the code
+            GotPake(body) => {
+                let es = self.send_pake_compute_key(&code, body.clone());
+                (
+                    Some(UnsortedKeyState::S11HaveBoth(code.to_string(), body)),
+                    es,
+                )
+            }
+            GotMessage => panic!(),
+        }
+    }
+
+    // no state transitions while in S11HaveBoth, we already have got code and pake
+    fn do_s11(
+        &self,
+        _code: &str,
+        _body: Vec<u8>,
+        event: KeyEvent,
+    ) -> (Option<UnsortedKeyState>, Events) {
+        use events::KeyEvent::*;
+
+        match event {
+            GotCode(_) => panic!(),
+            GotPake(_) => panic!(),
+            GotMessage => panic!(),
+        }
+    }
+
+
+    pub fn got_code(&mut self, code: &str) {}
+
+    pub fn got_pake(&mut self, pake: &[u8]) {}
+
+    fn send_pake_compute_key(&self, code: &str, body: Vec<u8>) -> Events {
+        let (buildpake_events, sp) = self.build_pake(&code);
+        let msg2 = self.extract_pake_msg(body).unwrap();
+        let key = sp.finish(&hex::decode(msg2).unwrap()).unwrap();
+        let mut key_events = self.compute_key(&key);
+
+        let mut es = buildpake_events;
+        es.append(&mut key_events);
+        es
     }
 
     fn extract_pake_msg(&self, body: Vec<u8>) -> Option<String> {
@@ -173,79 +325,6 @@ impl Key {
 
         let length = sodiumoxide::crypto::secretbox::KEYBYTES;
         Self::derive_key(key, &purpose_vec, length)
-    }
-
-    fn do_s00(&self, event: KeyEvent) -> (Option<State>, Events) {
-        use events::KeyEvent::*;
-
-        match event {
-            GotCode(code) => {
-                // defer building and sending pake.
-                (Some(State::S10(code.clone())), events![])
-            }
-            GotPake(body) => {
-                // early, we haven't got the code yet.
-                (Some(State::S01(body)), events![])
-            }
-            GotMessage => panic!(),
-        }
-    }
-
-    fn send_pake_compute_key(&self, code: &str, body: Vec<u8>) -> Events {
-        let (buildpake_events, sp) = self.build_pake(&code);
-        let msg2 = self.extract_pake_msg(body).unwrap();
-        let key = sp.finish(&hex::decode(msg2).unwrap()).unwrap();
-        let mut key_events = self.compute_key(&key);
-
-        let mut es = buildpake_events;
-        es.append(&mut key_events);
-        es
-    }
-
-    fn do_s01(
-        &self,
-        body: Vec<u8>,
-        event: KeyEvent,
-    ) -> (Option<State>, Events) {
-        use events::KeyEvent::*;
-
-        match event {
-            GotCode(code) => {
-                let es = self.send_pake_compute_key(&code, body.clone());
-                (Some(State::S11(code, body)), es)
-            }
-            GotPake(_) => panic!(),
-            GotMessage => panic!(),
-        }
-    }
-
-    fn do_s10(&self, code: &str, event: KeyEvent) -> (Option<State>, Events) {
-        use events::KeyEvent::*;
-
-        match event {
-            GotCode(_) => panic!(), // we already have the code
-            GotPake(body) => {
-                let es = self.send_pake_compute_key(&code, body.clone());
-                (Some(State::S11(code.to_string(), body)), es)
-            }
-            GotMessage => panic!(),
-        }
-    }
-
-    // no state transitions while in S11, we already have got code and pake
-    fn do_s11(
-        &self,
-        _code: &str,
-        _body: Vec<u8>,
-        event: KeyEvent,
-    ) -> (Option<State>, Events) {
-        use events::KeyEvent::*;
-
-        match event {
-            GotCode(_) => panic!(),
-            GotPake(_) => panic!(),
-            GotMessage => panic!(),
-        }
     }
 }
 
