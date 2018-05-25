@@ -1,5 +1,5 @@
 use events::Events;
-use key::Key;
+use key;
 use std::str;
 // we process these
 use events::ReceiveEvent;
@@ -61,9 +61,9 @@ impl Receive {
         phase: &str,
         body: Vec<u8>,
     ) -> Option<Vec<u8>> {
-        let data_key = Key::derive_phase_key(&side, &key, &phase);
+        let data_key = key::derive_phase_key(&side, &key, &phase);
 
-        Key::decrypt_data(data_key.clone(), &body)
+        key::decrypt_data(data_key.clone(), &body)
     }
 
     fn in_unverified_key(
@@ -79,7 +79,7 @@ impl Receive {
                     Some(plaintext) => {
                         // got_message_good
                         let msg =
-                            Key::derive_key(&key, b"wormhole:verifier", 32); // TODO: replace 32 with KEY_SIZE const
+                            key::derive_key(&key, b"wormhole:verifier", 32); // TODO: replace 32 with KEY_SIZE const
                         (
                             State::S2VerifiedKey(key.to_vec()),
                             events![
