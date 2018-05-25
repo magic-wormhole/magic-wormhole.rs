@@ -18,7 +18,7 @@ use events::CodeEvent::{AllocateCode as C_AllocateCode,
 use events::InputEvent::{ChooseNameplate as I_ChooseNameplate,
                          ChooseWords as I_ChooseWords,
                          RefreshNameplates as I_RefreshNameplates};
-use events::RendezvousEvent::{Start as RC_Start, Stop as RC_Stop};
+use events::RendezvousEvent::Start as RC_Start;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
 
@@ -79,7 +79,7 @@ impl Boss {
                 self.input_helper_choose_words(&words)
             }
             SetCode(code) => self.set_code(&code),
-            Close => events![RC_Stop], // eventually signals GotClosed
+            Close => self.close(),
             Send(plaintext) => self.send(plaintext),
         }
     }
@@ -270,7 +270,6 @@ impl Boss {
         actions
     }
 
-    #[allow(dead_code)] // TODO: drop dead code directive once core is complete
     fn close(&mut self) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
@@ -294,10 +293,7 @@ impl Boss {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
-            Closing => (
-                events![APIAction::GotClosed(self.mood)],
-                Closing,
-            ),
+            Closing => (events![APIAction::GotClosed(self.mood)], Closed),
             _ => panic!(),
         };
         self.state = newstate;
@@ -308,8 +304,8 @@ impl Boss {
 #[cfg(test)]
 mod test {
     use super::*;
-    use api::APIEvent;
-    use events::RendezvousEvent;
+    use api::{APIEvent, Mood};
+    use events::{RendezvousEvent, TerminatorEvent};
 
     #[test]
     fn create() {
@@ -319,7 +315,13 @@ mod test {
     #[test]
     fn process_api() {
         let mut b = Boss::new();
+        let actions = b.process_api(APIEvent::Start);
+        assert_eq!(actions, events![RendezvousEvent::Start]);
+
         let actions = b.process_api(APIEvent::Close);
-        assert_eq!(actions, events![RendezvousEvent::Stop]);
+        assert_eq!(
+            actions,
+            events![TerminatorEvent::Close(Mood::Lonely)]
+        );
     }
 }
