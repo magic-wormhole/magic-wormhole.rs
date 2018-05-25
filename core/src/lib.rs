@@ -3,6 +3,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate hkdf;
 extern crate rand;
+extern crate regex;
 extern crate rustc_serialize;
 extern crate serde_json;
 extern crate sha2;
@@ -37,6 +38,7 @@ use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
               InputHelperError, TimerHandle, WSHandle};
+pub use server_messages::{deserialize_peer_message, OfferType, PeerMessage};
 
 pub struct WormholeCore {
     allocator: allocator::Allocator,
