@@ -56,7 +56,6 @@ pub enum InputEvent {
 pub enum KeyEvent {
     GotCode(String),
     GotPake(Vec<u8>),
-    GotMessage,
 }
 
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
