@@ -1,11 +1,12 @@
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
 extern crate hkdf;
 extern crate rand;
 extern crate regex;
 extern crate rustc_serialize;
-extern crate serde_json;
 extern crate sha2;
 extern crate sodiumoxide;
 extern crate spake2;
