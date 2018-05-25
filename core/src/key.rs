@@ -1,12 +1,12 @@
 extern crate hex;
 
-use std::mem;
 use hkdf::Hkdf;
+use serde_json::{self, Value};
 use sha2::{Digest, Sha256};
 use sodiumoxide;
 use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, SPAKE2};
-use serde_json::{self,Value};
+use std::mem;
 
 use events::Events;
 use util;
@@ -21,8 +21,8 @@ use events::ReceiveEvent::GotKey as R_GotKey;
 enum State {
     S0KnowNothing,
     S1KnowCode(SPAKE2<Ed25519Group>), // pake_state
-    S2KnowPake(Vec<u8>), // their_pake
-    S3KnowBoth(Vec<u8>), // key
+    S2KnowPake(Vec<u8>),              // their_pake
+    S3KnowBoth(Vec<u8>),              // key
     #[allow(dead_code)] // TODO: if PAKE is somehow bad, land here
     S4Scared,
 }
@@ -37,7 +37,6 @@ pub struct Key {
 struct PhaseMessage {
     pake_v1: String,
 }
-
 
 impl Key {
     pub fn new(appid: &str, side: &str) -> Key {
@@ -66,23 +65,27 @@ impl Key {
         let oldstate = mem::replace(&mut self.state, None);
         let events = match oldstate.unwrap() {
             S0KnowNothing => {
-                let (pake_state, pake_msg_ser) = Self::start_pake(&code, &self.appid);
+                let (pake_state, pake_msg_ser) =
+                    Self::start_pake(&code, &self.appid);
                 self.state = Some(S1KnowCode(pake_state));
                 events![M_AddMessage("pake".to_string(), pake_msg_ser)]
-            },
+            }
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
-                let (pake_state, pake_msg_ser) = Self::start_pake(&code, &self.appid);
+                let (pake_state, pake_msg_ser) =
+                    Self::start_pake(&code, &self.appid);
                 let key = Self::finish_pake(pake_state, their_pake_msg.clone());
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
-                let (version_phase, version_msg) = Self::build_version_msg(&self.side,
-                                                                           &key, &versions);
+                let (version_phase, version_msg) =
+                    Self::build_version_msg(&self.side, &key, &versions);
                 self.state = Some(S3KnowBoth(key.clone()));
-                events![M_AddMessage("pake".to_string(), pake_msg_ser),
-                        M_AddMessage(version_phase, version_msg),
-                        B_GotKey(key.clone()),
-                        R_GotKey(key.clone())]
-            },
+                events![
+                    M_AddMessage("pake".to_string(), pake_msg_ser),
+                    M_AddMessage(version_phase, version_msg),
+                    B_GotKey(key.clone()),
+                    R_GotKey(key.clone())
+                ]
+            }
             S3KnowBoth(_) => panic!("already got code"),
             S4Scared => panic!("already scared"),
         };
@@ -96,18 +99,19 @@ impl Key {
             S0KnowNothing => {
                 self.state = Some(S2KnowPake(pake));
                 events![]
-            },
+            }
             S1KnowCode(pake_state) => {
                 let key = Self::finish_pake(pake_state, pake);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
-                let (version_phase, version_msg) = Self::build_version_msg(&self.side,
-                                                                           &key, &versions);
+                let (version_phase, version_msg) =
+                    Self::build_version_msg(&self.side, &key, &versions);
                 self.state = Some(S3KnowBoth(key.clone()));
-                events![M_AddMessage(version_phase, version_msg),
-                        B_GotKey(key.clone()),
-                        R_GotKey(key.clone())]
-
-            },
+                events![
+                    M_AddMessage(version_phase, version_msg),
+                    B_GotKey(key.clone()),
+                    R_GotKey(key.clone())
+                ]
+            }
             S2KnowPake(_) => panic!("already got pake"),
             S3KnowBoth(_) => panic!("already got pake"),
             S4Scared => panic!("already scared"),
@@ -121,18 +125,29 @@ impl Key {
             appid.as_bytes(),
         );
         let payload = util::bytes_to_hexstr(&msg1);
-        let pake_msg = PhaseMessage { pake_v1: payload };
+        let pake_msg = PhaseMessage {
+            pake_v1: payload,
+        };
         let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
         (pake_state, pake_msg_ser)
     }
 
-    fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: Vec<u8>) -> Vec<u8> {
+    fn finish_pake(
+        pake_state: SPAKE2<Ed25519Group>,
+        peer_msg: Vec<u8>,
+    ) -> Vec<u8> {
         let msg2 = Self::extract_pake_msg(peer_msg).unwrap();
-        let key = pake_state.finish(&hex::decode(msg2).unwrap()).unwrap();
+        let key = pake_state
+            .finish(&hex::decode(msg2).unwrap())
+            .unwrap();
         key
     }
 
-    fn build_version_msg(side: &str, key: &Vec<u8>, versions: &Value) -> (String, Vec<u8>) {
+    fn build_version_msg(
+        side: &str,
+        key: &Vec<u8>,
+        versions: &Value,
+    ) -> (String, Vec<u8>) {
         let phase = "version";
         let data_key = Key::derive_phase_key(side, key, &phase);
         let plaintext = versions.to_string();
