@@ -1,5 +1,5 @@
 use events::Events;
-use key::Key;
+use key;
 // we process these
 use events::SendEvent;
 // we emit these
@@ -62,8 +62,8 @@ impl Send {
         let mut es = Events::new();
 
         for &(ref phase, ref plaintext) in &self.queue {
-            let data_key = Key::derive_phase_key(&self.side, &key, phase);
-            let (_nonce, encrypted) = Key::encrypt_data(data_key, plaintext);
+            let data_key = key::derive_phase_key(&self.side, &key, phase);
+            let (_nonce, encrypted) = key::encrypt_data(data_key, plaintext);
             es.push(M_AddMessage(phase.to_string(), encrypted));
         }
 
@@ -76,8 +76,8 @@ impl Send {
         phase: String,
         plaintext: Vec<u8>,
     ) -> Events {
-        let data_key = Key::derive_phase_key(&self.side, &key, &phase);
-        let (_nonce, encrypted) = Key::encrypt_data(data_key, &plaintext);
+        let data_key = key::derive_phase_key(&self.side, &key, &phase);
+        let (_nonce, encrypted) = key::encrypt_data(data_key, &plaintext);
         events![M_AddMessage(phase, encrypted)]
     }
 
