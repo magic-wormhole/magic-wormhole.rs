@@ -17,7 +17,7 @@ use events::BossEvent::GotKey as B_GotKey;
 use events::MailboxEvent::AddMessage as M_AddMessage;
 use events::ReceiveEvent::GotKey as R_GotKey;
 
-//#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 enum State {
     S0KnowNothing,
     S1KnowCode(SPAKE2<Ed25519Group>), // pake_state
