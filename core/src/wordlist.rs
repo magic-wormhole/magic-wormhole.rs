@@ -1,6 +1,6 @@
-use std::fmt;
 use rand::{OsRng, Rng};
 use serde_json::{self, Value};
+use std::fmt;
 
 #[derive(PartialEq)]
 pub struct Wordlist {
@@ -10,10 +10,13 @@ pub struct Wordlist {
 
 impl fmt::Debug for Wordlist {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Wordlist ( {}, lots of words...)", self.num_words)
+        write!(
+            f,
+            "Wordlist ( {}, lots of words...)",
+            self.num_words
+        )
     }
 }
-
 
 impl Wordlist {
     #[cfg(test)]

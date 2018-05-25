@@ -22,18 +22,24 @@ impl fmt::Debug for APIEvent {
         use self::APIEvent::*;
         let t = match *self {
             Start => "Start".to_string(),
-            AllocateCode(ref num_words) => format!("AllocateCode({})", num_words),
+            AllocateCode(ref num_words) => {
+                format!("AllocateCode({})", num_words)
+            }
             InputCode => "InputCode".to_string(),
-            InputHelperRefreshNameplates => "InputHelperRefreshNameplates".to_string(),
-            InputHelperChooseNameplate(ref nameplate) => format!("InputHelperChooseNameplate({})", nameplate),
-            InputHelperChooseWords(ref words) => format!("InputHelperChooseWords({})", words),
+            InputHelperRefreshNameplates => {
+                "InputHelperRefreshNameplates".to_string()
+            }
+            InputHelperChooseNameplate(ref nameplate) => {
+                format!("InputHelperChooseNameplate({})", nameplate)
+            }
+            InputHelperChooseWords(ref words) => {
+                format!("InputHelperChooseWords({})", words)
+            }
             SetCode(ref code) => format!("SetCode({})", code),
             Close => "Close".to_string(),
-            Send(ref msg) => {
-                match String::from_utf8(msg.to_vec()) {
-                    Ok(m) => format!("Send(s={})", m),
-                    Err(_) => format!("Send(hex={})", hex::encode(msg)),
-                }
+            Send(ref msg) => match String::from_utf8(msg.to_vec()) {
+                Ok(m) => format!("Send(s={})", m),
+                Err(_) => format!("Send(hex={})", hex::encode(msg)),
             },
         };
         write!(f, "APIEvent::{}", t)
