@@ -12,8 +12,8 @@ extern crate hex;
 use api::{TimerHandle, WSHandle};
 use events::Events;
 use serde_json;
-use server_messages::{add, allocate, bind, claim, deserialize, list, open,
-                      Message};
+use server_messages::{add, allocate, bind, claim, close, deserialize, list,
+                      open, release, Message};
 // we process these
 use api::IOEvent;
 use events::RendezvousEvent;
@@ -93,10 +93,10 @@ impl Rendezvous {
             TxBind(appid, side) => self.send(bind(&appid, &side)),
             TxOpen(mailbox) => self.send(open(&mailbox)),
             TxAdd(phase, body) => self.send(add(&phase, &body)),
-            TxClose => events![],
+            TxClose(mailbox, mood) => self.send(close(&mailbox, mood)),
             Stop => self.stop(),
             TxClaim(nameplate) => self.send(claim(&nameplate)),
-            TxRelease(_nameplate) => events![],
+            TxRelease(nameplate) => self.send(release(&nameplate)),
             TxAllocate => self.send(allocate()),
             TxList => self.send(list()),
         }

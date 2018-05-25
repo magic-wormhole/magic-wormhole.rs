@@ -302,7 +302,7 @@ impl Mailbox {
             RxClosed => panic!(),
             Close(mood) => (
                 Some(State::S3B(mailbox.to_string(), mood)),
-                events![RC_TxClose],
+                events![RC_TxClose(mailbox.to_string(), mood)],
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
@@ -332,7 +332,7 @@ impl Mailbox {
         match event {
             Connected => (
                 Some(State::S3B(mailbox.to_string(), mood)),
-                events![RC_TxClose],
+                events![RC_TxClose(mailbox.to_string(), mood)],
                 QueueCtrl::NoAction,
             ),
             Lost => panic!(),

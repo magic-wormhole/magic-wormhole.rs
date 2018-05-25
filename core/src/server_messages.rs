@@ -132,7 +132,6 @@ pub fn claim(nameplate: &str) -> Message {
     }
 }
 
-#[allow(dead_code)]
 pub fn release(nameplate: &str) -> Message {
     Message::Release {
         nameplate: nameplate.to_string(),
@@ -154,7 +153,6 @@ pub fn add(phase: &str, body: &[u8]) -> Message {
     }
 }
 
-#[allow(dead_code)]
 pub fn close(mailbox: &str, mood: Mood) -> Message {
     Message::Close {
         mailbox: mailbox.to_string(),
