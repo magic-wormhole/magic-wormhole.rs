@@ -108,7 +108,7 @@ pub enum MailboxEvent {
     Lost,
     RxMessage(String, String, Vec<u8>), // side, phase, body
     RxClosed,
-    Close(String),      // mood
+    Close(Mood),        // mood
     GotMailbox(String), // mailbox id
     GotMessage,
     AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
@@ -127,7 +127,7 @@ impl fmt::Debug for MailboxEvent {
                 maybe_utf8(body)
             ),
             RxClosed => "RxClosed".to_string(),
-            Close(ref mood) => format!("Close({})", mood),
+            Close(ref mood) => format!("Close({:?})", mood),
             GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
             GotMessage => "GotMessage".to_string(),
             AddMessage(ref phase, ref body) => {

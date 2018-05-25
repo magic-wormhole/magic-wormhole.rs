@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use api::Mood;
 use events::Events;
 // we process these
 use events::MailboxEvent;
@@ -22,8 +23,8 @@ enum State {
     S2A(String),
     S2B(String), // opened
     // S3: closing
-    S3A(String, String), // mailbox, mood
-    S3B(String, String), // mailbox, mood
+    S3A(String, Mood), // mailbox, mood
+    S3B(String, Mood), // mailbox, mood
     // S4: closed
     S4A,
     S4B,
@@ -68,8 +69,8 @@ impl Mailbox {
             S1A(ref mailbox) => self.do_s1a(&mailbox, event),
             S2A(ref mailbox) => self.do_s2a(&mailbox, event),
             S2B(ref mailbox) => self.do_s2b(&mailbox, event),
-            S3A(ref mailbox, ref mood) => self.do_s3a(&mailbox, &mood, event),
-            S3B(ref mailbox, ref mood) => self.do_s3b(&mailbox, &mood, event),
+            S3A(ref mailbox, mood) => self.do_s3a(&mailbox, mood, event),
+            S3B(ref mailbox, mood) => self.do_s3b(&mailbox, mood, event),
             S4A => self.do_s4a(event),
             S4B => self.do_s4b(event),
         };
@@ -300,10 +301,7 @@ impl Mailbox {
             }
             RxClosed => panic!(),
             Close(mood) => (
-                Some(State::S3B(
-                    mailbox.to_string(),
-                    mood.to_string(),
-                )),
+                Some(State::S3B(mailbox.to_string(), mood)),
                 events![RC_TxClose],
                 QueueCtrl::NoAction,
             ),
@@ -326,17 +324,14 @@ impl Mailbox {
     fn do_s3a(
         &self,
         mailbox: &str,
-        mood: &str,
+        mood: Mood,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
             Connected => (
-                Some(State::S3B(
-                    mailbox.to_string(),
-                    mood.to_string(),
-                )),
+                Some(State::S3B(mailbox.to_string(), mood)),
                 events![RC_TxClose],
                 QueueCtrl::NoAction,
             ),
@@ -353,7 +348,7 @@ impl Mailbox {
     fn do_s3b(
         &self,
         mailbox: &str,
-        mood: &str,
+        mood: Mood,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
@@ -361,20 +356,14 @@ impl Mailbox {
         match event {
             Connected => panic!(),
             Lost => (
-                Some(State::S3A(
-                    mailbox.to_string(),
-                    mood.to_string(),
-                )),
+                Some(State::S3A(mailbox.to_string(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),
             RxMessage(_side, _phase, _body) => {
                 // irrespective of the side, enter into S3B, do nothing, generate no events
                 (
-                    Some(State::S3B(
-                        mailbox.to_string(),
-                        mood.to_string(),
-                    )),
+                    Some(State::S3B(mailbox.to_string(), mood)),
                     events![],
                     QueueCtrl::NoAction,
                 )
@@ -385,20 +374,14 @@ impl Mailbox {
                 QueueCtrl::NoAction,
             ),
             Close(mood) => (
-                Some(State::S3B(
-                    mailbox.to_string(),
-                    mood.to_string(),
-                )),
+                Some(State::S3B(mailbox.to_string(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
             AddMessage(_, _) => (
-                Some(State::S3B(
-                    mailbox.to_string(),
-                    mood.to_string(),
-                )),
+                Some(State::S3B(mailbox.to_string(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),
