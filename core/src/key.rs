@@ -1,5 +1,6 @@
 extern crate hex;
 
+use std::mem;
 use hkdf::Hkdf;
 use sha2::{Digest, Sha256};
 use sodiumoxide;
@@ -22,13 +23,14 @@ enum State {
     S1KnowCode(SPAKE2<Ed25519Group>), // pake_state
     S2KnowPake(Vec<u8>), // their_pake
     S3KnowBoth(Vec<u8>), // key
+    #[allow(dead_code)] // TODO: if PAKE is somehow bad, land here
     S4Scared,
 }
 
 pub struct Key {
     appid: String,
     side: String,
-    state: State,
+    state: Option<State>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -41,7 +43,7 @@ impl Key {
     pub fn new(appid: &str, side: &str) -> Key {
         Key {
             appid: appid.to_string(),
-            state: State::S0KnowNothing,
+            state: Some(State::S0KnowNothing),
             side: side.to_string(),
         }
     }
@@ -61,11 +63,11 @@ impl Key {
 
     fn got_code(&mut self, code: String) -> Events {
         use self::State::*;
-        let mut newstate: Option<State> = None;
-        let events = match self.state {
+        let oldstate = mem::replace(&mut self.state, None);
+        let events = match oldstate.unwrap() {
             S0KnowNothing => {
                 let (pake_state, pake_msg_ser) = Self::start_pake(&code, &self.appid);
-                newstate = Some(S1KnowCode(pake_state));
+                self.state = Some(S1KnowCode(pake_state));
                 events![M_AddMessage("pake".to_string(), pake_msg_ser)]
             },
             S1KnowCode(_) => panic!("already got code"),
@@ -75,7 +77,7 @@ impl Key {
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) = Self::build_version_msg(&self.side,
                                                                            &key, &versions);
-                newstate = Some(S3KnowBoth(key.clone()));
+                self.state = Some(S3KnowBoth(key.clone()));
                 events![M_AddMessage("pake".to_string(), pake_msg_ser),
                         M_AddMessage(version_phase, version_msg),
                         B_GotKey(key.clone()),
@@ -84,18 +86,15 @@ impl Key {
             S3KnowBoth(_) => panic!("already got code"),
             S4Scared => panic!("already scared"),
         };
-        if newstate.is_some() {
-            self.state = newstate.unwrap();
-        }
         events
     }
 
     fn got_pake(&mut self, pake: Vec<u8>) -> Events {
         use self::State::*;
-        let mut newstate: Option<State> = None;
-        let events = match self.state {
+        let oldstate = mem::replace(&mut self.state, None);
+        let events = match oldstate.unwrap() {
             S0KnowNothing => {
-                newstate = Some(S2KnowPake(pake));
+                self.state = Some(S2KnowPake(pake));
                 events![]
             },
             S1KnowCode(pake_state) => {
@@ -103,7 +102,7 @@ impl Key {
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) = Self::build_version_msg(&self.side,
                                                                            &key, &versions);
-                newstate = Some(S3KnowBoth(key.clone()));
+                self.state = Some(S3KnowBoth(key.clone()));
                 events![M_AddMessage(version_phase, version_msg),
                         B_GotKey(key.clone()),
                         R_GotKey(key.clone())]
@@ -113,9 +112,6 @@ impl Key {
             S3KnowBoth(_) => panic!("already got pake"),
             S4Scared => panic!("already scared"),
         };
-        if newstate.is_some() {
-            self.state = newstate.unwrap();
-        }
         events
     }
 
