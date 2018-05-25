@@ -1,11 +1,19 @@
+use std::fmt;
 use rand::{OsRng, Rng};
 use serde_json::{self, Value};
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Wordlist {
     num_words: usize,
     words: Vec<Vec<String>>,
 }
+
+impl fmt::Debug for Wordlist {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Wordlist ( {}, lots of words...)", self.num_words)
+    }
+}
+
 
 impl Wordlist {
     #[cfg(test)]
