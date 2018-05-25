@@ -23,6 +23,33 @@ where
     Option::<T>::deserialize(de).or_else(|_| Ok(None))
 }
 
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PeerMessage {
+    Offer(OfferType),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OfferType {
+    Message(String),
+    File {
+        filename: String,
+        filesize: u32,
+    },
+    Directory {
+        dirname: String,
+        mode: String,
+        zipsize: u32,
+        numbytes: u32,
+        numfiles: u32,
+    },
+}
+
+pub fn deserialize_peer_message(msg: &str) -> PeerMessage {
+    serde_json::from_str(msg).unwrap()
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
