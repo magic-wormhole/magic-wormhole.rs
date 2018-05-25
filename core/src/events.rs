@@ -1,8 +1,10 @@
+use hex;
+use std::fmt;
 use std::iter::FromIterator;
-use std::str;
 use std::sync::Arc;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, IOAction, Mood};
+use util::maybe_utf8;
 
 pub use wordlist::Wordlist;
 
@@ -17,7 +19,7 @@ pub enum AllocatorEvent {
     RxAllocated(String),
 }
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum BossEvent {
     RxWelcome,
     RxError,
@@ -29,6 +31,27 @@ pub enum BossEvent {
     Happy,
     GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
     GotMessage(String, Vec<u8>),
+}
+
+impl fmt::Debug for BossEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::BossEvent::*;
+        let t = match *self {
+            RxWelcome => "RxWelcome".to_string(),
+            RxError => "RxError".to_string(),
+            Error => "Error".to_string(),
+            Closed => "Closed".to_string(),
+            GotCode(ref code) => format!("GotCode({})", code),
+            GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
+            Scared => "Scared".to_string(),
+            Happy => "Happy".to_string(),
+            GotVerifier(ref v) => format!("GotVerifier({})", maybe_utf8(v)),
+            GotMessage(ref phase, ref msg) => {
+                format!("GotMessage({}, {})", phase, maybe_utf8(msg))
+            }
+        };
+        write!(f, "BossEvent::{}", t)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,10 +75,21 @@ pub enum InputEvent {
 }
 
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum KeyEvent {
     GotCode(String),
     GotPake(Vec<u8>),
+}
+
+impl fmt::Debug for KeyEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::KeyEvent::*;
+        let t = match *self {
+            GotCode(ref code) => format!("GotCode({})", code),
+            GotPake(ref pake) => format!("GotPake({})", hex::encode(pake)),
+        };
+        write!(f, "KeyEvent::{}", t)
+    }
 }
 
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
@@ -68,16 +102,40 @@ pub enum ListerEvent {
 }
 
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage(String, String, Vec<u8>),
+    RxMessage(String, String, Vec<u8>), // side, phase, body
     RxClosed,
-    Close(String),
-    GotMailbox(String),
+    Close(String),      // mood
+    GotMailbox(String), // mailbox id
     GotMessage,
     AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
+}
+
+impl fmt::Debug for MailboxEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::MailboxEvent::*;
+        let t = match *self {
+            Connected => "Connected".to_string(),
+            Lost => "Lost".to_string(),
+            RxMessage(ref side, ref phase, ref body) => format!(
+                "RxMessage(side={}, phase={}, body={})",
+                side,
+                phase,
+                maybe_utf8(body)
+            ),
+            RxClosed => "RxClosed".to_string(),
+            Close(ref mood) => format!("Close({})", mood),
+            GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
+            GotMessage => "GotMessage".to_string(),
+            AddMessage(ref phase, ref body) => {
+                format!("AddMessage({}, {})", phase, maybe_utf8(body))
+            }
+        };
+        write!(f, "MailboxEvent::{}", t)
+    }
 }
 
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -93,18 +151,49 @@ pub enum NameplateEvent {
     Close,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum OrderEvent {
-    GotMessage(String, String, Vec<u8>),
+    GotMessage(String, String, Vec<u8>), // side, phase, body
 }
 
-#[derive(Debug, PartialEq)]
+impl fmt::Debug for OrderEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::OrderEvent::*;
+        let t = match *self {
+            GotMessage(ref side, ref phase, ref body) => format!(
+                "GotMessage(side={}, phase={}, body={})",
+                side,
+                phase,
+                maybe_utf8(body)
+            ),
+        };
+        write!(f, "OrderEvent::{}", t)
+    }
+}
+
+#[derive(PartialEq)]
 pub enum ReceiveEvent {
-    GotMessage(String, String, Vec<u8>),
-    GotKey(Vec<u8>),
+    GotMessage(String, String, Vec<u8>), // side, phase, body
+    GotKey(Vec<u8>),                     // key
 }
 
-#[derive(Debug, PartialEq)]
+impl fmt::Debug for ReceiveEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ReceiveEvent::*;
+        let t = match *self {
+            GotMessage(ref side, ref phase, ref body) => format!(
+                "GotMessage(side={}, phase={}, body={})",
+                side,
+                phase,
+                maybe_utf8(body)
+            ),
+            GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
+        };
+        write!(f, "ReceiveEvent::{}", t)
+    }
+}
+
+#[derive(PartialEq)]
 pub enum RendezvousEvent {
     Start,
     TxBind(String, String), // appid, side
@@ -118,21 +207,40 @@ pub enum RendezvousEvent {
     TxList,
 }
 
+impl fmt::Debug for RendezvousEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::RendezvousEvent::*;
+        let t = match *self {
+            Start => "Start".to_string(),
+            TxBind(ref appid, ref side) => {
+                format!("TxBind(appid={}, side={})", appid, side)
+            }
+            TxOpen(ref mailbox) => format!("TxOpen({})", mailbox),
+            TxAdd(ref phase, ref body) => {
+                format!("TxAdd({}, {})", phase, maybe_utf8(body))
+            }
+            TxClose => "TxClose".to_string(),
+            Stop => "Stop".to_string(),
+            TxClaim(ref nameplate) => format!("TxClaim({})", nameplate),
+            TxRelease(ref nameplate) => format!("TxRelease({})", nameplate),
+            TxAllocate => "TxAllocate".to_string(),
+            TxList => "TxList".to_string(),
+        };
+        write!(f, "RendezvousEvent::{}", t)
+    }
+}
+
 #[derive(PartialEq)]
 pub enum SendEvent {
     Send(String, Vec<u8>), // phase, plaintext
     GotVerifiedKey(Vec<u8>),
 }
-use std::fmt;
+
 impl fmt::Debug for SendEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &SendEvent::Send(ref phase, ref _plaintext) => {
-                let p = str::from_utf8(phase.as_bytes());
-                match p {
-                    Ok(p1) => write!(f, "Send({})", p1),
-                    Err(_) => write!(f, "Send(non-UTF8)"),
-                }
+            &SendEvent::Send(ref phase, ref plaintext) => {
+                write!(f, "Send({}, {})", phase, maybe_utf8(plaintext))
             }
             &SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
         }

@@ -1,3 +1,4 @@
+use hex;
 use rand::{OsRng, RngCore};
 use std;
 use std::str;
@@ -34,6 +35,13 @@ pub fn hexstr_to_string(hexstr: &str) -> String {
         .collect();
 
     s.iter().collect::<String>()
+}
+
+pub fn maybe_utf8(s: &[u8]) -> String {
+    match String::from_utf8(s.to_vec()) {
+        Ok(m) => format!("(s={})", m),
+        Err(_) => format!("(hex={})", hex::encode(s)),
+    }
 }
 
 #[cfg(test)]
