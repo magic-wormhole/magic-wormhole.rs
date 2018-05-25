@@ -1,7 +1,8 @@
-extern crate hex;
+use hex;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use util::maybe_utf8;
 
 #[derive(PartialEq)]
 pub enum APIEvent {
@@ -37,10 +38,7 @@ impl fmt::Debug for APIEvent {
             }
             SetCode(ref code) => format!("SetCode({})", code),
             Close => "Close".to_string(),
-            Send(ref msg) => match String::from_utf8(msg.to_vec()) {
-                Ok(m) => format!("Send(s={})", m),
-                Err(_) => format!("Send(hex={})", hex::encode(msg)),
-            },
+            Send(ref msg) => format!("Send({})", maybe_utf8(msg)),
         };
         write!(f, "APIEvent::{}", t)
     }
@@ -107,7 +105,7 @@ impl fmt::Display for Mood {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum APIAction {
     // from WormholeCore out through IO glue to application
     GotWelcome(HashMap<String, String>), // actually anything JSON-able: Value
@@ -117,6 +115,24 @@ pub enum APIAction {
     GotVersions(HashMap<String, String>), // actually anything JSON-able
     GotMessage(Vec<u8>),
     GotClosed(Mood),
+}
+
+impl fmt::Debug for APIAction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::APIAction::*;
+        let t = match *self {
+            GotWelcome(ref welcome) => format!("GotWelcome({:?})", welcome),
+            GotCode(ref code) => format!("GotCode({})", code),
+            GotUnverifiedKey(ref _key) => {
+                "GotUnverifiedKey(REDACTED)".to_string()
+            }
+            GotVerifier(ref v) => format!("GotVerifier({})", hex::encode(v)),
+            GotVersions(ref versions) => format!("GotVersions({:?})", versions),
+            GotMessage(ref msg) => format!("GotMessage({})", maybe_utf8(msg)),
+            GotClosed(ref mood) => format!("GotClosed({:?})", mood),
+        };
+        write!(f, "APIAction::{}", t)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
