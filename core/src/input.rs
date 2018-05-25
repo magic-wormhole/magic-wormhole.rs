@@ -20,7 +20,7 @@ pub struct Input {
 enum State {
     Idle,
     WantNameplate,
-    WantCode(String),               // nameplate
+    WantCode(String), // nameplate
     Done,
 }
 
@@ -54,7 +54,7 @@ impl Input {
             Idle => {
                 self.state = WantNameplate;
                 events![L_Refresh]
-            },
+            }
             _ => panic!("already started"),
         }
     }
@@ -66,7 +66,7 @@ impl Input {
             WantNameplate => {
                 self.state = WantCode(nameplate.clone());
                 events![C_GotNameplate(nameplate.clone())]
-            },
+            }
             _ => panic!("already set nameplate"),
         }
     }
@@ -80,7 +80,7 @@ impl Input {
                 let code = format!("{}-{}", nameplate, words);
                 newstate = Some(Done);
                 events![C_FinishedInput(code)]
-            },
+            }
             Done => events![], // REMOVE
             _ => panic!("already set nameplate"),
         };
@@ -109,7 +109,6 @@ impl Input {
         }
     }
 
-
     // InputHelper functions
 
     pub fn get_nameplate_completions(
@@ -120,21 +119,19 @@ impl Input {
         use InputHelperError::*;
         match self.state {
             Idle => Err(Inactive),
-            WantNameplate => {
-                match self.nameplates {
-                    None => Ok(Vec::new()),
-                    Some(ref nameplates) => {
-                        let mut completions = Vec::<String>::new();
-                        for n in nameplates {
-                            if n.starts_with(prefix) {
-                                completions.push(n.to_string() + "-");
-                            }
+            WantNameplate => match self.nameplates {
+                None => Ok(Vec::new()),
+                Some(ref nameplates) => {
+                    let mut completions = Vec::<String>::new();
+                    for n in nameplates {
+                        if n.starts_with(prefix) {
+                            completions.push(n.to_string() + "-");
                         }
-                        completions.sort();
-                        Ok(completions)
-                    },
+                    }
+                    completions.sort();
+                    Ok(completions)
                 }
-            }
+            },
             WantCode(..) => Err(AlreadyChoseNameplate),
             Done => Err(AlreadyChoseNameplate),
         }
@@ -154,7 +151,7 @@ impl Input {
                     Some(ref wordlist) => Ok(wordlist.get_completions(prefix)),
                     None => Ok(Vec::new()), // no wordlist, no completions
                 }
-            },
+            }
             Done => Err(AlreadyChoseWords),
         }
     }
@@ -168,7 +165,6 @@ impl Input {
             _ => None,
         }
     }
-
 }
 
 #[cfg(test)]
