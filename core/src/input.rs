@@ -12,15 +12,15 @@ use events::Wordlist;
 
 pub struct Input {
     state: State,
+    wordlist: Option<Arc<Wordlist>>,
+    nameplates: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
 enum State {
     Idle,
-    WantNameplateNoNameplates,
-    WantNameplateHaveNameplates(Vec<String>), // nameplates
-    WantCodeNoWordlist(String),               // nameplate
-    WantCodeHaveWordlist(String, Arc<Wordlist>), // (nameplate, wordlist)
+    WantNameplate,
+    WantCode(String),               // nameplate
     Done,
 }
 
@@ -28,71 +28,115 @@ impl Input {
     pub fn new() -> Input {
         Input {
             state: State::Idle,
+            wordlist: None,
+            nameplates: None,
         }
     }
 
     pub fn process(&mut self, event: InputEvent) -> Events {
-        use self::State::*;
-        let (newstate, actions) = match self.state {
-            Idle => self.idle(event),
-            WantNameplateNoNameplates => self.want_nameplate(event),
-            WantNameplateHaveNameplates(_) => self.want_nameplate(event),
-            WantCodeNoWordlist(ref nameplate) => {
-                self.want_code(event, &nameplate)
-            }
-            WantCodeHaveWordlist(ref nameplate, _) => {
-                self.want_code(event, &nameplate)
-            }
-            Done => (Some(Done), events![]),
-        };
+        // switch on event first, to avoid a conflict between the match()'s
+        // mutable borrow of self.state and the borrow needed by per-state
+        // dispatch functions.
 
-        if let Some(s) = newstate {
-            self.state = s;
-        }
-        actions
-    }
-
-    fn idle(&self, event: InputEvent) -> (Option<State>, Events) {
-        use self::State::*;
-        use events::InputEvent::*;
         match event {
-            Start => (
-                Some(WantNameplateNoNameplates),
-                events![L_Refresh],
-            ),
-            ChooseNameplate(_) => panic!("too soon"),
-            ChooseWords(_) => panic!("too soon"),
-            GotNameplates(_) => panic!("also too soon"),
-            GotWordlist(_) => panic!("probably too soon"),
-            RefreshNameplates => panic!("almost certainly too soon"),
+            Start => self.start(),
+            ChooseNameplate(nameplate) => self.choose_nameplate(nameplate),
+            ChooseWords(words) => self.choose_words(words),
+            GotNameplates(nameplates) => self.got_nameplates(nameplates),
+            GotWordlist(wordlist) => self.got_wordlist(wordlist),
+            RefreshNameplates => self.refresh_nameplates(),
         }
     }
+
+    fn start(&mut self) -> Events {
+        use self::State::*;
+        match self.state {
+            Idle => {
+                self.state = WantNameplate;
+                events![L_Refresh]
+            },
+            _ => panic!("already started"),
+        }
+    }
+
+    fn choose_nameplate(&mut self, nameplate: String) -> Events {
+        use self::State::*;
+        match self.state {
+            Idle => panic!("too soon"),
+            WantNameplate => {
+                self.state = WantCode(nameplate.clone());
+                events![C_GotNameplate(nameplate.clone())]
+            },
+            _ => panic!("already set nameplate"),
+        }
+    }
+
+    fn choose_words(&mut self, words: String) -> Events {
+        use self::State::*;
+        let mut newstate: Option<State> = None;
+        let events = match self.state {
+            Idle => panic!("too soon"),
+            WantCode(ref nameplate) => {
+                let code = format!("{}-{}", nameplate, words);
+                newstate = Some(Done);
+                events![C_FinishedInput(code)]
+            },
+            Done => events![], // REMOVE
+            _ => panic!("already set nameplate"),
+        };
+        if newstate.is_some() {
+            self.state = newstate.unwrap();
+        }
+        events
+    }
+
+    fn got_nameplates(&mut self, nameplates: Vec<String>) -> Events {
+        self.nameplates = Some(nameplates);
+        events![]
+    }
+
+    fn got_wordlist(&mut self, wordlist: Arc<Wordlist>) -> Events {
+        self.wordlist = Some(wordlist);
+        events![]
+    }
+
+    fn refresh_nameplates(&mut self) -> Events {
+        use self::State::*;
+        match self.state {
+            Idle => panic!("too early, I think"),
+            WantNameplate => events![L_Refresh],
+            _ => panic!("already chose nameplate, stop refreshing"),
+        }
+    }
+
+
+    // InputHelper functions
 
     pub fn get_nameplate_completions(
         &self,
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
         use self::State::*;
+        use InputHelperError::*;
         match self.state {
-            Idle => Err(InputHelperError::Inactive),
-            WantNameplateNoNameplates => Ok(Vec::new()),
-            WantNameplateHaveNameplates(ref nameplates) => {
-                let mut completions = Vec::<String>::new();
-                for n in nameplates {
-                    if n.starts_with(prefix) {
-                        completions.push(n.to_string() + "-");
-                    }
+            Idle => Err(Inactive),
+            WantNameplate => {
+                match self.nameplates {
+                    None => Ok(Vec::new()),
+                    Some(ref nameplates) => {
+                        let mut completions = Vec::<String>::new();
+                        for n in nameplates {
+                            if n.starts_with(prefix) {
+                                completions.push(n.to_string() + "-");
+                            }
+                        }
+                        completions.sort();
+                        Ok(completions)
+                    },
                 }
-                completions.sort();
-                Ok(completions)
             }
-            WantCodeNoWordlist(_) => {
-                Err(InputHelperError::AlreadyChoseNameplate)
-            }
-            WantCodeHaveWordlist(_, _) => {
-                Err(InputHelperError::AlreadyChoseNameplate)
-            }
-            Done => Err(InputHelperError::AlreadyChoseNameplate),
+            WantCode(..) => Err(AlreadyChoseNameplate),
+            Done => Err(AlreadyChoseNameplate),
         }
     }
 
@@ -100,21 +144,18 @@ impl Input {
         &self,
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
-        let _completions: Vec<String>;
         use self::State::*;
+        use InputHelperError::*;
         match self.state {
-            Idle => Err(InputHelperError::Inactive),
-            WantNameplateNoNameplates => {
-                Err(InputHelperError::MustChooseNameplateFirst)
-            }
-            WantNameplateHaveNameplates(_) => {
-                Err(InputHelperError::MustChooseNameplateFirst)
-            }
-            WantCodeNoWordlist(_) => Ok(Vec::new()), // no wordlist, no completions
-            WantCodeHaveWordlist(_, ref wordlist) => {
-                Ok(wordlist.get_completions(prefix))
-            }
-            Done => Err(InputHelperError::AlreadyChoseWords),
+            Idle => Err(Inactive),
+            WantNameplate => Err(MustChooseNameplateFirst),
+            WantCode(..) => {
+                match self.wordlist {
+                    Some(ref wordlist) => Ok(wordlist.get_completions(prefix)),
+                    None => Ok(Vec::new()), // no wordlist, no completions
+                }
+            },
+            Done => Err(AlreadyChoseWords),
         }
     }
 
@@ -123,55 +164,11 @@ impl Input {
     pub fn committed_nameplate(&self) -> Option<&str> {
         use self::State::*;
         match self.state {
-            WantCodeHaveWordlist(ref nameplate, _)
-            | WantCodeNoWordlist(ref nameplate) => Some(nameplate),
+            WantCode(ref nameplate) => Some(nameplate),
             _ => None,
         }
     }
 
-    // TODO: is it possible for the wordlist to arrive before we set the nameplate?
-    fn want_nameplate(&mut self, event: InputEvent) -> (Option<State>, Events) {
-        use self::State::*;
-        match event {
-            Start => panic!("already started"),
-            ChooseNameplate(nameplate) => (
-                Some(WantCodeNoWordlist(nameplate.clone())),
-                events![C_GotNameplate(nameplate.clone())],
-            ),
-            ChooseWords(_) => panic!("expecting nameplate, not words"),
-            GotNameplates(nameplates) => (
-                Some(WantNameplateHaveNameplates(nameplates)),
-                events![],
-            ),
-            GotWordlist(_) => panic!("expecting nameplate, not words"),
-            RefreshNameplates => (None, events![L_Refresh]),
-        }
-    }
-
-    fn want_code(
-        &self,
-        event: InputEvent,
-        nameplate: &str,
-    ) -> (Option<State>, Events) {
-        use self::State::*;
-        match event {
-            Start => panic!("already started"),
-            ChooseNameplate(_) => panic!("expecting words, not nameplate"),
-            ChooseWords(words) => {
-                let code = format!("{}-{}", nameplate, words);
-                (Some(Done), events![C_FinishedInput(code)])
-            }
-            GotNameplates(_) => (None, events![]),
-            GotWordlist(wordlist) => (
-                Some(WantCodeHaveWordlist(
-                    nameplate.to_string(),
-                    wordlist,
-                )),
-                events![],
-            ),
-            RefreshNameplates => panic!("already set nameplate"),
-        }
-    }
 }
 
 #[cfg(test)]
