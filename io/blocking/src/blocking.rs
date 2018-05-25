@@ -1,6 +1,6 @@
 use magic_wormhole_core::WormholeCore;
 use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
-                          TimerHandle, WSHandle};
+                          Mood, TimerHandle, WSHandle};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
@@ -43,6 +43,7 @@ struct CoreWrapper {
     tx_code_to_app: Sender<String>,
     tx_verifier_to_app: Sender<Vec<u8>>,
     tx_versions_to_app: Sender<HashMap<String, String>>,
+    tx_close_to_app: Sender<Mood>,
 }
 
 struct WSConnection {
@@ -165,7 +166,7 @@ impl CoreWrapper {
             GotUnverifiedKey(_k) => (),
             GotVerifier(v) => self.tx_verifier_to_app.send(v).unwrap(),
             GotVersions(v) => self.tx_versions_to_app.send(v).unwrap(),
-            GotClosed(_mood) => (),
+            GotClosed(mood) => self.tx_close_to_app.send(mood).unwrap(),
         }
     }
 
@@ -229,6 +230,7 @@ pub struct Wormhole {
     rx_code_from_core: Receiver<String>,
     rx_verifier_from_core: Receiver<Vec<u8>>,
     rx_versions_from_core: Receiver<HashMap<String, String>>,
+    rx_close_from_core: Receiver<Mood>,
 
     code: Option<String>,
     welcome: Option<HashMap<String, String>>,
@@ -248,6 +250,7 @@ impl Wormhole {
         let (tx_code_to_app, rx_code_from_core) = channel();
         let (tx_verifier_to_app, rx_verifier_from_core) = channel();
         let (tx_versions_to_app, rx_versions_from_core) = channel();
+        let (tx_close_to_app, rx_close_from_core) = channel();
 
         let mut cw = CoreWrapper {
             core: WormholeCore::new(appid, relay_url),
@@ -260,6 +263,7 @@ impl Wormhole {
             tx_code_to_app: tx_code_to_app,
             tx_verifier_to_app: tx_verifier_to_app,
             tx_versions_to_app: tx_versions_to_app,
+            tx_close_to_app: tx_close_to_app,
         };
 
         thread::spawn(move || cw.run());
@@ -280,6 +284,7 @@ impl Wormhole {
             rx_code_from_core: rx_code_from_core,
             rx_verifier_from_core: rx_verifier_from_core,
             rx_versions_from_core: rx_versions_from_core,
+            rx_close_from_core: rx_close_from_core,
         }
     }
 
@@ -303,11 +308,11 @@ impl Wormhole {
         self.rx_messages_from_core.recv().unwrap()
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&mut self) -> Mood {
         self.tx_event_to_core
             .send(ToCore::API(APIEvent::Close))
             .unwrap();
-        // TODO mood
+        self.rx_close_from_core.recv().unwrap()
     }
 
     pub fn get_code(&mut self) -> String {
