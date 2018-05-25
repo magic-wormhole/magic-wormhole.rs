@@ -12,6 +12,7 @@ use events::Wordlist;
 
 pub struct Input {
     state: State,
+    wordlist: Option<Arc<Wordlist>>,
 }
 
 #[derive(Debug)]
@@ -19,8 +20,7 @@ enum State {
     Idle,
     WantNameplateNoNameplates,
     WantNameplateHaveNameplates(Vec<String>), // nameplates
-    WantCodeNoWordlist(String),               // nameplate
-    WantCodeHaveWordlist(String, Arc<Wordlist>), // (nameplate, wordlist)
+    WantCode(String),               // nameplate
     Done,
 }
 
@@ -28,6 +28,7 @@ impl Input {
     pub fn new() -> Input {
         Input {
             state: State::Idle,
+            wordlist: None,
         }
     }
 
@@ -62,7 +63,7 @@ impl Input {
         match self.state {
             Idle => panic!("too soon"),
             WantNameplateNoNameplates | WantNameplateHaveNameplates(..) => {
-                self.state = WantCodeNoWordlist(nameplate.clone());
+                self.state = WantCode(nameplate.clone());
                 events![C_GotNameplate(nameplate.clone())]
             },
             _ => panic!("already set nameplate"),
@@ -74,7 +75,7 @@ impl Input {
         let mut newstate: Option<State> = None;
         let events = match self.state {
             Idle => panic!("too soon"),
-            WantCodeNoWordlist(ref nameplate) | WantCodeHaveWordlist(ref nameplate, _) => {
+            WantCode(ref nameplate) => {
                 let code = format!("{}-{}", nameplate, words);
                 newstate = Some(Done);
                 events![C_FinishedInput(code)]
@@ -105,23 +106,8 @@ impl Input {
     }
 
     fn got_wordlist(&mut self, wordlist: Arc<Wordlist>) -> Events {
-        use self::State::*;
-        #[allow(unused_assignments)]
-        let mut newstate: Option<State> = None;
-        let events = match self.state {
-            // TODO: is it possible for the wordlist to arrive before we set
-            // the nameplate?
-            Idle | WantNameplateNoNameplates | WantNameplateHaveNameplates(..) => panic!("I should be prepared for this, but I'm not"),
-            WantCodeNoWordlist(ref nameplate) => {
-                newstate = Some(WantCodeHaveWordlist(nameplate.clone(), wordlist));
-                events![]
-            },
-            _ => panic!("wordlist already set"),
-        };
-        if newstate.is_some() {
-            self.state = newstate.unwrap();
-        }
-        events
+        self.wordlist = Some(wordlist);
+        events![]
     }
 
     fn refresh_nameplates(&mut self) -> Events {
@@ -155,12 +141,7 @@ impl Input {
                 completions.sort();
                 Ok(completions)
             }
-            WantCodeNoWordlist(_) => {
-                Err(InputHelperError::AlreadyChoseNameplate)
-            }
-            WantCodeHaveWordlist(_, _) => {
-                Err(InputHelperError::AlreadyChoseNameplate)
-            }
+            WantCode(..) => Err(InputHelperError::AlreadyChoseNameplate),
             Done => Err(InputHelperError::AlreadyChoseNameplate),
         }
     }
@@ -169,21 +150,18 @@ impl Input {
         &self,
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
-        let _completions: Vec<String>;
         use self::State::*;
+        use InputHelperError::*;
         match self.state {
-            Idle => Err(InputHelperError::Inactive),
-            WantNameplateNoNameplates => {
-                Err(InputHelperError::MustChooseNameplateFirst)
-            }
-            WantNameplateHaveNameplates(_) => {
-                Err(InputHelperError::MustChooseNameplateFirst)
-            }
-            WantCodeNoWordlist(_) => Ok(Vec::new()), // no wordlist, no completions
-            WantCodeHaveWordlist(_, ref wordlist) => {
-                Ok(wordlist.get_completions(prefix))
-            }
-            Done => Err(InputHelperError::AlreadyChoseWords),
+            Idle => Err(Inactive),
+            WantNameplateNoNameplates | WantNameplateHaveNameplates(..) => Err(MustChooseNameplateFirst),
+            WantCode(..) => {
+                match self.wordlist {
+                    Some(ref wordlist) => Ok(wordlist.get_completions(prefix)),
+                    None => Ok(Vec::new()), // no wordlist, no completions
+                }
+            },
+            Done => Err(AlreadyChoseWords),
         }
     }
 
@@ -192,8 +170,7 @@ impl Input {
     pub fn committed_nameplate(&self) -> Option<&str> {
         use self::State::*;
         match self.state {
-            WantCodeHaveWordlist(ref nameplate, _)
-            | WantCodeNoWordlist(ref nameplate) => Some(nameplate),
+            WantCode(ref nameplate) => Some(nameplate),
             _ => None,
         }
     }
