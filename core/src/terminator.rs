@@ -56,10 +56,7 @@ impl Terminator {
         match event {
             MailboxDone => (State::Sno, events![]),
             NameplateDone => (State::Smo, events![]),
-            Close(mood) => (
-                State::Snm,
-                events![N_Close, M_Close(mood.to_string())],
-            ),
+            Close(mood) => (State::Snm, events![N_Close, M_Close(mood)]),
             Stopped => panic!(
                 "Got stopped to early. Nameplate and Mailbox are still active"
             ),
@@ -69,10 +66,7 @@ impl Terminator {
     fn in_nameplate_open(&self, event: TerminatorEvent) -> (State, Events) {
         match event {
             NameplateDone => (State::S0o, events![]),
-            Close(mood) => (
-                State::Sn,
-                events![N_Close, M_Close(mood.to_string())],
-            ),
+            Close(mood) => (State::Sn, events![N_Close, M_Close(mood)]),
             _ => panic!("Got {:?} too early, Nameplate still active"),
         }
     }
@@ -80,10 +74,7 @@ impl Terminator {
     fn in_mailbox_open(&self, event: TerminatorEvent) -> (State, Events) {
         match event {
             MailboxDone => (State::S0o, events![]),
-            Close(mood) => (
-                State::Sm,
-                events![N_Close, M_Close(mood.to_string())],
-            ),
+            Close(mood) => (State::Sm, events![N_Close, M_Close(mood)]),
             _ => panic!("Got {:?} too early, Mailbox still active"),
         }
     }
@@ -92,7 +83,7 @@ impl Terminator {
         match event {
             Close(mood) => (
                 State::SStopping,
-                events![N_Close, M_Close(mood.to_string()), RC_Stop],
+                events![N_Close, M_Close(mood), RC_Stop],
             ),
             MailboxDone | NameplateDone => panic!("Got {:?} too late", event),
             _ => panic!("Too early to stop"),
@@ -152,7 +143,7 @@ mod test {
 
         assert_eq!(
             terminator.process(Close(Happy)),
-            events![N_Close, M_Close(String::from("happy"))]
+            events![N_Close, M_Close(Happy)]
         );
         assert_eq!(terminator.state, State::Sn);
 
@@ -172,7 +163,7 @@ mod test {
 
         assert_eq!(
             terminator.process(Close(Happy)),
-            events![N_Close, M_Close(String::from("happy"))]
+            events![N_Close, M_Close(Happy)]
         );
 
         assert_eq!(terminator.process(NameplateDone), events![]);
@@ -192,7 +183,7 @@ mod test {
         assert_eq!(terminator.process(NameplateDone), events![]);
         assert_eq!(
             terminator.process(Close(Happy)),
-            events![N_Close, M_Close(String::from("happy"))]
+            events![N_Close, M_Close(Happy)]
         );
         assert_eq!(
             terminator.process(MailboxDone),
@@ -208,7 +199,7 @@ mod test {
 
         assert_eq!(
             terminator.process(Close(Lonely)),
-            events![N_Close, M_Close(String::from("lonely"))]
+            events![N_Close, M_Close(Lonely)]
         );
 
         assert_eq!(terminator.process(MailboxDone), events![]);
@@ -230,11 +221,7 @@ mod test {
         assert_eq!(terminator.state, State::S0o);
         assert_eq!(
             terminator.process(Close(Scared)),
-            events![
-                N_Close,
-                M_Close(String::from("scared")),
-                RC_Stop
-            ]
+            events![N_Close, M_Close(Scared), RC_Stop]
         );
         assert_eq!(terminator.state, State::SStopping);
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
@@ -251,7 +238,7 @@ mod test {
 
         assert_eq!(
             terminator.process(Close(Error)),
-            events![N_Close, M_Close(String::from("error")), RC_Stop]
+            events![N_Close, M_Close(Error), RC_Stop]
         );
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
         assert_eq!(terminator.state, State::SStopped);

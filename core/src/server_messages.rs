@@ -1,5 +1,6 @@
 use serde_json;
 
+use api::Mood;
 use serde::{Deserialize, Deserializer};
 use util;
 
@@ -131,7 +132,6 @@ pub fn claim(nameplate: &str) -> Message {
     }
 }
 
-#[allow(dead_code)]
 pub fn release(nameplate: &str) -> Message {
     Message::Release {
         nameplate: nameplate.to_string(),
@@ -153,8 +153,7 @@ pub fn add(phase: &str, body: &[u8]) -> Message {
     }
 }
 
-#[allow(dead_code)]
-pub fn close(mailbox: &str, mood: &str) -> Message {
+pub fn close(mailbox: &str, mood: Mood) -> Message {
     Message::Close {
         mailbox: mailbox.to_string(),
         mood: mood.to_string(),
@@ -186,6 +185,7 @@ pub fn deserialize(s: &str) -> Message {
 #[cfg(test)]
 mod test {
     use super::*;
+    use api::Mood;
 
     #[test]
     fn test_bind() {
@@ -245,7 +245,7 @@ mod test {
 
     #[test]
     fn test_close() {
-        let m1 = close("mailbox1", "mood");
+        let m1 = close("mailbox1", Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);

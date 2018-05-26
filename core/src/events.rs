@@ -108,7 +108,7 @@ pub enum MailboxEvent {
     Lost,
     RxMessage(String, String, Vec<u8>), // side, phase, body
     RxClosed,
-    Close(String),      // mood
+    Close(Mood),        // mood
     GotMailbox(String), // mailbox id
     GotMessage,
     AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
@@ -127,7 +127,7 @@ impl fmt::Debug for MailboxEvent {
                 maybe_utf8(body)
             ),
             RxClosed => "RxClosed".to_string(),
-            Close(ref mood) => format!("Close({})", mood),
+            Close(ref mood) => format!("Close({:?})", mood),
             GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
             GotMessage => "GotMessage".to_string(),
             AddMessage(ref phase, ref body) => {
@@ -199,10 +199,10 @@ pub enum RendezvousEvent {
     TxBind(String, String), // appid, side
     TxOpen(String),         // mailbox
     TxAdd(String, Vec<u8>), // phase, body
-    TxClose,
+    TxClose(String, Mood),  // mailbox, mood
     Stop,
-    TxClaim(String),
-    TxRelease(String),
+    TxClaim(String),   // nameplate
+    TxRelease(String), // nameplate
     TxAllocate,
     TxList,
 }
@@ -219,7 +219,9 @@ impl fmt::Debug for RendezvousEvent {
             TxAdd(ref phase, ref body) => {
                 format!("TxAdd({}, {})", phase, maybe_utf8(body))
             }
-            TxClose => "TxClose".to_string(),
+            TxClose(ref mailbox, ref mood) => {
+                format!("TxClose({}, {:?})", mailbox, mood)
+            }
             Stop => "Stop".to_string(),
             TxClaim(ref nameplate) => format!("TxClaim({})", nameplate),
             TxRelease(ref nameplate) => format!("TxRelease({})", nameplate),
