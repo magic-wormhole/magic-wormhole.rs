@@ -34,7 +34,7 @@ enum State {
     Closed,
 }
 
-pub struct Boss {
+pub struct BossMachine {
     state: State,
     mood: Mood,
 }
@@ -54,9 +54,9 @@ impl State {
     }
 }
 
-impl Boss {
-    pub fn new() -> Boss {
-        Boss {
+impl BossMachine {
+    pub fn new() -> BossMachine {
+        BossMachine {
             state: State::Unstarted(0),
             mood: Mood::Lonely,
         }
@@ -309,12 +309,12 @@ mod test {
 
     #[test]
     fn create() {
-        let _b = Boss::new();
+        let _b = BossMachine::new();
     }
 
     #[test]
     fn process_api() {
-        let mut b = Boss::new();
+        let mut b = BossMachine::new();
         let actions = b.process_api(APIEvent::Start);
         assert_eq!(actions, events![RendezvousEvent::Start]);
 

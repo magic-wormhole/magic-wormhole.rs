@@ -43,9 +43,9 @@ pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
 pub use server_messages::{AnswerType, OfferType, PeerMessage};
 
 pub struct WormholeCore {
-    allocator: allocator::Allocator,
-    boss: boss::Boss,
-    code: code::Code,
+    allocator: allocator::AllocatorMachine,
+    boss: boss::BossMachine,
+    code: code::CodeMachine,
     input: input::Input,
     key: key::KeyMachine,
     lister: lister::Lister,
@@ -73,9 +73,9 @@ impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
         let side = generate_side();
         WormholeCore {
-            allocator: allocator::Allocator::new(),
-            boss: boss::Boss::new(),
-            code: code::Code::new(),
+            allocator: allocator::AllocatorMachine::new(),
+            boss: boss::BossMachine::new(),
+            code: code::CodeMachine::new(),
             input: input::Input::new(),
             key: key::KeyMachine::new(appid, side.as_str()),
             lister: lister::Lister::new(),
