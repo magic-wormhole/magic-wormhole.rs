@@ -1,4 +1,4 @@
-use events::{Key, Events};
+use events::{Events, Key};
 use key;
 // we process these
 use events::SendEvent;
@@ -68,12 +68,7 @@ impl SendMachine {
         es
     }
 
-    fn deliver(
-        &self,
-        key: Key,
-        phase: String,
-        plaintext: Vec<u8>,
-    ) -> Events {
+    fn deliver(&self, key: Key, phase: String, plaintext: Vec<u8>) -> Events {
         let data_key = key::derive_phase_key(&self.side, &key, &phase);
         let (_nonce, encrypted) = key::encrypt_data(data_key, &plaintext);
         events![M_AddMessage(phase, encrypted)]
