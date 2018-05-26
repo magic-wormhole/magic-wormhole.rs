@@ -43,19 +43,19 @@ pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
 pub use server_messages::{AnswerType, OfferType, PeerMessage};
 
 pub struct WormholeCore {
-    allocator: allocator::Allocator,
-    boss: boss::Boss,
-    code: code::Code,
-    input: input::Input,
-    key: key::Key,
-    lister: lister::Lister,
-    mailbox: mailbox::Mailbox,
-    nameplate: nameplate::Nameplate,
-    order: order::Order,
-    receive: receive::Receive,
-    rendezvous: rendezvous::Rendezvous,
-    send: send::Send,
-    terminator: terminator::Terminator,
+    allocator: allocator::AllocatorMachine,
+    boss: boss::BossMachine,
+    code: code::CodeMachine,
+    input: input::InputMachine,
+    key: key::KeyMachine,
+    lister: lister::ListerMachine,
+    mailbox: mailbox::MailboxMachine,
+    nameplate: nameplate::NameplateMachine,
+    order: order::OrderMachine,
+    receive: receive::ReceiveMachine,
+    rendezvous: rendezvous::RendezvousMachine,
+    send: send::SendMachine,
+    terminator: terminator::TerminatorMachine,
 }
 
 // I don't know how to write this
@@ -73,24 +73,24 @@ impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
         let side = generate_side();
         WormholeCore {
-            allocator: allocator::Allocator::new(),
-            boss: boss::Boss::new(),
-            code: code::Code::new(),
-            input: input::Input::new(),
-            key: key::Key::new(appid, side.as_str()),
-            lister: lister::Lister::new(),
-            mailbox: mailbox::Mailbox::new(&side),
-            nameplate: nameplate::Nameplate::new(),
-            order: order::Order::new(),
-            receive: receive::Receive::new(),
-            rendezvous: rendezvous::Rendezvous::new(
+            allocator: allocator::AllocatorMachine::new(),
+            boss: boss::BossMachine::new(),
+            code: code::CodeMachine::new(),
+            input: input::InputMachine::new(),
+            key: key::KeyMachine::new(appid, side.as_str()),
+            lister: lister::ListerMachine::new(),
+            mailbox: mailbox::MailboxMachine::new(&side),
+            nameplate: nameplate::NameplateMachine::new(),
+            order: order::OrderMachine::new(),
+            receive: receive::ReceiveMachine::new(),
+            rendezvous: rendezvous::RendezvousMachine::new(
                 appid,
                 relay_url,
                 side.as_str(),
                 5.0,
             ),
-            send: send::Send::new(side.as_str()),
-            terminator: terminator::Terminator::new(),
+            send: send::SendMachine::new(side.as_str()),
+            terminator: terminator::TerminatorMachine::new(),
         }
     }
 

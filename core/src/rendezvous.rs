@@ -42,7 +42,7 @@ enum State {
 }
 
 #[derive(Debug)]
-pub struct Rendezvous {
+pub struct RendezvousMachine {
     appid: String,
     relay_url: String,
     side: String,
@@ -53,18 +53,18 @@ pub struct Rendezvous {
     reconnect_timer: Option<TimerHandle>,
 }
 
-impl Rendezvous {
+impl RendezvousMachine {
     pub fn new(
         appid: &str,
         relay_url: &str,
         side: &str,
         retry_timer: f32,
-    ) -> Rendezvous {
+    ) -> RendezvousMachine {
         // we use a handle here just in case we need to open multiple
         // connections in the future. For now we ignore it, but the IO layer
         // is supposed to pass this back in websocket_* messages
         let wsh = WSHandle::new(1);
-        Rendezvous {
+        RendezvousMachine {
             appid: appid.to_string(),
             relay_url: relay_url.to_string(),
             side: side.to_string(),
@@ -264,7 +264,7 @@ mod test {
 
     #[test]
     fn create() {
-        let mut r = super::Rendezvous::new("appid", "url", "side1", 5.0);
+        let mut r = super::RendezvousMachine::new("appid", "url", "side1", 5.0);
 
         let wsh: WSHandle;
         let th: TimerHandle;
