@@ -83,7 +83,7 @@ impl ReceiveMachine {
                         (
                             State::S2VerifiedKey(key.clone()),
                             events![
-                                S_GotVerifiedKey(key.to_vec()),
+                                S_GotVerifiedKey(key.clone()),
                                 B_Happy,
                                 B_GotVerifier(msg),
                                 B_GotMessage(phase, plaintext)

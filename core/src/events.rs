@@ -250,7 +250,7 @@ impl fmt::Debug for RendezvousEvent {
 #[derive(PartialEq)]
 pub enum SendEvent {
     Send(String, Vec<u8>), // phase, plaintext
-    GotVerifiedKey(Vec<u8>),
+    GotVerifiedKey(Key),
 }
 
 impl fmt::Debug for SendEvent {
