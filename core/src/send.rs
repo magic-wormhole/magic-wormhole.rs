@@ -60,7 +60,7 @@ impl SendMachine {
         let mut es = Events::new();
 
         for &(ref phase, ref plaintext) in &self.queue {
-            let data_key = key::derive_phase_key(&self.side, &key.to_vec(), phase);
+            let data_key = key::derive_phase_key(&self.side, &key, phase);
             let (_nonce, encrypted) = key::encrypt_data(data_key, plaintext);
             es.push(M_AddMessage(phase.to_string(), encrypted));
         }
@@ -74,7 +74,7 @@ impl SendMachine {
         phase: String,
         plaintext: Vec<u8>,
     ) -> Events {
-        let data_key = key::derive_phase_key(&self.side, &key.to_vec(), &phase);
+        let data_key = key::derive_phase_key(&self.side, &key, &phase);
         let (_nonce, encrypted) = key::encrypt_data(data_key, &plaintext);
         events![M_AddMessage(phase, encrypted)]
     }
