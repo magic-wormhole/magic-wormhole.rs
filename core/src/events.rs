@@ -23,6 +23,16 @@ impl fmt::Debug for Key {
     }
 }
 
+// MySide is used for the String that we send in all our outbound messages
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct MySide(pub String);
+impl Deref for MySide {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -211,7 +221,7 @@ impl fmt::Debug for ReceiveEvent {
 #[derive(PartialEq)]
 pub enum RendezvousEvent {
     Start,
-    TxBind(String, String), // appid, side
+    TxBind(String, MySide), // appid, side
     TxOpen(String),         // mailbox
     TxAdd(String, Vec<u8>), // phase, body
     TxClose(String, Mood),  // mailbox, mood
@@ -228,7 +238,7 @@ impl fmt::Debug for RendezvousEvent {
         let t = match *self {
             Start => "Start".to_string(),
             TxBind(ref appid, ref side) => {
-                format!("TxBind(appid={}, side={})", appid, side)
+                format!("TxBind(appid={}, side={:?})", appid, side)
             }
             TxOpen(ref mailbox) => format!("TxOpen({})", mailbox),
             TxAdd(ref phase, ref body) => {

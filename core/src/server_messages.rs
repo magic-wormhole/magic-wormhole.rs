@@ -1,6 +1,7 @@
 use serde_json;
 
 use api::Mood;
+use events::MySide;
 use serde::{Deserialize, Deserializer};
 use util;
 
@@ -131,7 +132,7 @@ pub enum Message {
 // Client only sends: bind, list, allocate, claim, release, open, add, close,
 // ping
 
-pub fn bind(appid: &str, side: &str) -> Message {
+pub fn bind(appid: &str, side: &MySide) -> Message {
     Message::Bind {
         appid: appid.to_string(),
         side: side.to_string(),
@@ -206,7 +207,7 @@ mod test {
 
     #[test]
     fn test_bind() {
-        let m1 = bind("appid", "side1");
+        let m1 = bind("appid", &MySide("side1".to_string()));
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);
