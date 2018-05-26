@@ -28,6 +28,8 @@ where
 #[serde(rename_all = "kebab-case")]
 pub enum PeerMessage {
     Offer(OfferType),
+    Answer(AnswerType),
+    Error(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -45,6 +47,13 @@ pub enum OfferType {
         numbytes: u32,
         numfiles: u32,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnswerType {
+    MessageAck(String),
+    FileAck(String),
 }
 
 pub fn deserialize_peer_message(msg: &str) -> PeerMessage {

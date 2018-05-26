@@ -39,8 +39,10 @@ use events::{Event, Events};
 use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
-              InputHelperError, Mood, TimerHandle, WSHandle};
-pub use server_messages::{deserialize_peer_message, OfferType, PeerMessage};
+              InputHelperError, TimerHandle, WSHandle};
+pub use server_messages::{deserialize_peer_message, AnswerType, OfferType,
+                          PeerMessage};
+
 
 pub struct WormholeCore {
     allocator: allocator::Allocator,
