@@ -20,13 +20,13 @@ enum State {
     SStopped,
 }
 
-pub struct Terminator {
+pub struct TerminatorMachine {
     state: State,
 }
 
-impl Terminator {
-    pub fn new() -> Terminator {
-        Terminator {
+impl TerminatorMachine {
+    pub fn new() -> TerminatorMachine {
+        TerminatorMachine {
             state: State::Snmo,
         }
     }
@@ -134,7 +134,7 @@ mod test {
 
     #[test]
     fn test_transitions1() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
 
         assert_eq!(terminator.state, State::Snmo);
 
@@ -159,7 +159,7 @@ mod test {
 
     #[test]
     fn test_transitions2() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
 
         assert_eq!(
             terminator.process(Close(Happy)),
@@ -178,7 +178,7 @@ mod test {
 
     #[test]
     fn test_transitions3() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
 
         assert_eq!(terminator.process(NameplateDone), events![]);
         assert_eq!(
@@ -195,7 +195,7 @@ mod test {
 
     #[test]
     fn test_transitions21() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
 
         assert_eq!(
             terminator.process(Close(Lonely)),
@@ -214,7 +214,7 @@ mod test {
 
     #[test]
     fn test_transitions32() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
 
         assert_eq!(terminator.process(NameplateDone), events![]);
         assert_eq!(terminator.process(MailboxDone), events![]);
@@ -230,7 +230,7 @@ mod test {
 
     #[test]
     fn test_transitions12() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
 
         assert_eq!(terminator.process(MailboxDone), events![]);
         assert_eq!(terminator.process(NameplateDone), events![]);
@@ -247,14 +247,14 @@ mod test {
     #[test]
     #[should_panic]
     fn panic1() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.process(Stopped);
     }
 
     #[test]
     #[should_panic]
     fn panic2() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.process(MailboxDone);
         terminator.process(MailboxDone);
     }
@@ -262,7 +262,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic3() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.process(MailboxDone);
         terminator.process(Stopped);
     }
@@ -270,7 +270,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic4() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.process(Close(Happy));
         terminator.process(Stopped);
     }
@@ -278,7 +278,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic5() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.process(NameplateDone);
         terminator.process(Stopped);
     }
@@ -286,7 +286,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic6() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::S0o;
         terminator.process(Stopped);
     }
@@ -294,7 +294,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic7() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::Sn;
         terminator.process(MailboxDone);
     }
@@ -302,7 +302,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic8() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::Sn;
         terminator.process(Close(Happy));
     }
@@ -310,7 +310,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic9() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::Sn;
         terminator.process(Stopped);
     }
@@ -318,7 +318,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic10() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::Sm;
         terminator.process(NameplateDone);
     }
@@ -326,7 +326,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic11() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::Sm;
         terminator.process(Close(Happy));
     }
@@ -334,7 +334,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic12() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::Sm;
         terminator.process(Stopped);
     }
@@ -342,7 +342,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic13() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::SStopping;
         terminator.process(NameplateDone);
     }
@@ -350,7 +350,7 @@ mod test {
     #[test]
     #[should_panic]
     fn panic14() {
-        let mut terminator = Terminator::new();
+        let mut terminator = TerminatorMachine::new();
         terminator.state = State::SStopped;
         terminator.process(MailboxDone);
     }

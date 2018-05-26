@@ -53,9 +53,9 @@ pub struct WormholeCore {
     nameplate: nameplate::NameplateMachine,
     order: order::OrderMachine,
     receive: receive::ReceiveMachine,
-    rendezvous: rendezvous::Rendezvous,
-    send: send::Send,
-    terminator: terminator::Terminator,
+    rendezvous: rendezvous::RendezvousMachine,
+    send: send::SendMachine,
+    terminator: terminator::TerminatorMachine,
 }
 
 // I don't know how to write this
@@ -83,14 +83,14 @@ impl WormholeCore {
             nameplate: nameplate::NameplateMachine::new(),
             order: order::OrderMachine::new(),
             receive: receive::ReceiveMachine::new(),
-            rendezvous: rendezvous::Rendezvous::new(
+            rendezvous: rendezvous::RendezvousMachine::new(
                 appid,
                 relay_url,
                 side.as_str(),
                 5.0,
             ),
-            send: send::Send::new(side.as_str()),
-            terminator: terminator::Terminator::new(),
+            send: send::SendMachine::new(side.as_str()),
+            terminator: terminator::TerminatorMachine::new(),
         }
     }
 

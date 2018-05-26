@@ -6,7 +6,7 @@ use events::SendEvent;
 use events::MailboxEvent::AddMessage as M_AddMessage;
 
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
-pub struct Send {
+pub struct SendMachine {
     state: State,
     side: String,
     key: Vec<u8>,
@@ -25,9 +25,9 @@ enum QueueStatus {
     NoAction,
 }
 
-impl Send {
-    pub fn new(side: &str) -> Send {
-        Send {
+impl SendMachine {
+    pub fn new(side: &str) -> SendMachine {
+        SendMachine {
             state: State::S0,
             side: side.to_string(),
             key: Vec::new(),
