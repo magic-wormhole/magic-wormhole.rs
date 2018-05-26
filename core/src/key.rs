@@ -22,7 +22,7 @@ enum State {
     S0KnowNothing,
     S1KnowCode(SPAKE2<Ed25519Group>), // pake_state
     S2KnowPake(Vec<u8>),              // their_pake
-    S3KnowBoth(Vec<u8>),              // key
+    S3KnowBoth(Key),                  // key
     #[allow(dead_code)] // TODO: if PAKE is somehow bad, land here
     S4Scared,
 }
@@ -76,7 +76,7 @@ impl KeyMachine {
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
-                self.state = Some(S3KnowBoth(key.to_vec()));
+                self.state = Some(S3KnowBoth(key.clone()));
                 events![
                     M_AddMessage("pake".to_string(), pake_msg_ser),
                     M_AddMessage(version_phase, version_msg),
@@ -103,7 +103,7 @@ impl KeyMachine {
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
-                self.state = Some(S3KnowBoth(key.to_vec()));
+                self.state = Some(S3KnowBoth(key.clone()));
                 events![
                     M_AddMessage(version_phase, version_msg),
                     B_GotKey(key.to_vec()),
@@ -140,7 +140,7 @@ fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: Vec<u8>) -> Key {
 
 fn build_version_msg(
     side: &str,
-    key: &Vec<u8>,
+    key: &Key,
     versions: &Value,
 ) -> (String, Vec<u8>) {
     let phase = "version";
