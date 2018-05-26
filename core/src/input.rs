@@ -1,4 +1,4 @@
-use events::Events;
+use events::{Events, Nameplate};
 use std::sync::Arc;
 // we process these
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
@@ -13,14 +13,14 @@ use events::Wordlist;
 pub struct InputMachine {
     state: State,
     wordlist: Option<Arc<Wordlist>>,
-    nameplates: Option<Vec<String>>,
+    nameplates: Option<Vec<Nameplate>>,
 }
 
 #[derive(Debug)]
 enum State {
     Idle,
     WantNameplate,
-    WantCode(String), // nameplate
+    WantCode(Nameplate), // nameplate
     Done,
 }
 
@@ -59,7 +59,7 @@ impl InputMachine {
         }
     }
 
-    fn choose_nameplate(&mut self, nameplate: String) -> Events {
+    fn choose_nameplate(&mut self, nameplate: Nameplate) -> Events {
         use self::State::*;
         match self.state {
             Idle => panic!("too soon"),
@@ -77,7 +77,7 @@ impl InputMachine {
         let events = match self.state {
             Idle => panic!("too soon"),
             WantCode(ref nameplate) => {
-                let code = format!("{}-{}", nameplate, words);
+                let code = format!("{}-{}", nameplate.to_string(), words);
                 newstate = Some(Done);
                 events![C_FinishedInput(code)]
             }
@@ -90,7 +90,7 @@ impl InputMachine {
         events
     }
 
-    fn got_nameplates(&mut self, nameplates: Vec<String>) -> Events {
+    fn got_nameplates(&mut self, nameplates: Vec<Nameplate>) -> Events {
         self.nameplates = Some(nameplates);
         events![]
     }
@@ -158,7 +158,7 @@ impl InputMachine {
 
     // TODO: remove this, the helper should remember whether it's called
     // choose_nameplate yet or not instead of asking the core
-    pub fn committed_nameplate(&self) -> Option<&str> {
+    pub fn committed_nameplate(&self) -> Option<&Nameplate> {
         use self::State::*;
         match self.state {
             WantCode(ref nameplate) => Some(nameplate),
@@ -179,10 +179,10 @@ mod test {
 
         let actions = i.process(Start);
         assert_eq!(actions, events![L_Refresh]);
-        let actions = i.process(ChooseNameplate("4".to_string()));
+        let actions = i.process(ChooseNameplate(Nameplate("4".to_string())));
         assert_eq!(
             actions,
-            events![C_GotNameplate("4".to_string())]
+            events![C_GotNameplate(Nameplate("4".to_string()))]
         );
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
@@ -214,6 +214,19 @@ mod test {
         assert_eq!(vecstrings("4 ."), expected);
     }
 
+    fn vecnameplates(all: &str) -> Vec<Nameplate> {
+        all.split_whitespace()
+            .map(|s| {
+                if s == "." {
+                    "".to_string()
+                } else {
+                    s.to_string()
+                }
+            })
+            .map(|s| Nameplate(s))
+            .collect()
+    }
+
     #[test]
     #[allow(unreachable_code)]
     fn test_completions() {
@@ -242,7 +255,7 @@ mod test {
         );
 
         // now we pretend that we've received a set of active nameplates
-        let actions = i.process(GotNameplates(vecstrings("4 48 5 49")));
+        let actions = i.process(GotNameplates(vecnameplates("4 48 5 49")));
         assert_eq!(actions, events![]);
 
         // still too early to make word compltions
@@ -265,10 +278,10 @@ mod test {
         // will be empty until we get back the wordlist (for now this is
         // synchronous and fixed, but in the long run this will be informed
         // by server-side properties)
-        let actions = i.process(ChooseNameplate("4".to_string()));
+        let actions = i.process(ChooseNameplate(Nameplate("4".to_string())));
         assert_eq!(
             actions,
-            events![C_GotNameplate("4".to_string())]
+            events![C_GotNameplate(Nameplate("4".to_string()))]
         );
 
         // now it's too late to complete the nameplate

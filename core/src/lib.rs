@@ -35,7 +35,7 @@ mod wordlist;
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 
-use events::{Event, Events, MySide};
+use events::{Event, Events, MySide, Nameplate};
 use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
@@ -136,7 +136,7 @@ impl WormholeCore {
 
     // TODO: remove this, the helper should remember whether it's called
     // choose_nameplate yet or not instead of asking the core
-    pub fn input_helper_committed_nameplate(&self) -> Option<&str> {
+    pub fn input_helper_committed_nameplate(&self) -> Option<&Nameplate> {
         self.input.committed_nameplate()
     }
 

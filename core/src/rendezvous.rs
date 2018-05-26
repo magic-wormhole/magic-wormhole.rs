@@ -10,7 +10,7 @@
 extern crate hex;
 
 use api::{TimerHandle, WSHandle};
-use events::{Events, MySide, TheirSide};
+use events::{Events, MySide, Nameplate, TheirSide};
 use serde_json;
 use server_messages::{add, allocate, bind, claim, close, deserialize, list,
                       open, release, Message};
@@ -180,11 +180,13 @@ impl RendezvousMachine {
                     hex::decode(body).unwrap()
                 )
             ],
-            Allocated { nameplate } => events![A_RxAllocated(nameplate)],
+            Allocated { nameplate } => {
+                events![A_RxAllocated(Nameplate(nameplate))]
+            }
             Nameplates { nameplates } => {
-                let nids: Vec<String> = nameplates
+                let nids: Vec<Nameplate> = nameplates
                     .iter()
-                    .map(|n| n.id.to_owned())
+                    .map(|n| Nameplate(n.id.to_owned()))
                     .collect();
                 events![L_RxNamePlates(nids)]
             }

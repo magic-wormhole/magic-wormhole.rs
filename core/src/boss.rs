@@ -1,5 +1,5 @@
 use api::Mood;
-use events::Events;
+use events::{Events, Nameplate};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -167,7 +167,9 @@ impl BossMachine {
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
-                events![I_ChooseNameplate(nameplate.to_string())],
+                events![
+                    I_ChooseNameplate(Nameplate(nameplate.to_string()))
+                ],
                 Coding(i),
             ),
             _ => panic!(),

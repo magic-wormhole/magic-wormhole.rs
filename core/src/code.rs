@@ -1,4 +1,4 @@
-use events::Events;
+use events::{Events, Nameplate};
 // we process these
 use events::CodeEvent;
 // we emit these
@@ -60,11 +60,11 @@ impl CodeMachine {
             SetCode(code) => {
                 // TODO: try!(validate_code(code))
                 let nc: Vec<&str> = code.splitn(2, "-").collect();
-                let nameplate = nc[0];
+                let nameplate = Nameplate(nc[0].to_string());
                 (
                     Some(State::Known),
                     events![
-                        N_SetNameplate(nameplate.to_string()),
+                        N_SetNameplate(nameplate.clone()),
                         B_GotCode(code.to_string()),
                         K_GotCode(code.to_string())
                     ],
@@ -126,7 +126,7 @@ impl CodeMachine {
                 (
                     Some(State::Known),
                     events![
-                        N_SetNameplate(nameplate.to_string()),
+                        N_SetNameplate(nameplate.clone()),
                         B_GotCode(code.to_string()),
                         K_GotCode(code.to_string())
                     ],
