@@ -1,4 +1,4 @@
-use events::Events;
+use events::{Events, Key};
 use key;
 // we process these
 use events::SendEvent;
@@ -9,14 +9,13 @@ use events::MailboxEvent::AddMessage as M_AddMessage;
 pub struct SendMachine {
     state: State,
     side: String,
-    key: Vec<u8>,
     queue: Vec<(String, Vec<u8>)>,
 }
 
 #[derive(Debug, PartialEq)]
 enum State {
-    S0,
-    S1(Vec<u8>),
+    S0NoKey,
+    S1HaveVerifiedKey(Key),
 }
 
 enum QueueStatus {
@@ -28,9 +27,8 @@ enum QueueStatus {
 impl SendMachine {
     pub fn new(side: &str) -> SendMachine {
         SendMachine {
-            state: State::S0,
+            state: State::S0NoKey,
             side: side.to_string(),
-            key: Vec::new(),
             queue: Vec::new(),
         }
     }
@@ -41,8 +39,8 @@ impl SendMachine {
             self.state, event
         );
         let (newstate, actions, queue_status) = match self.state {
-            State::S0 => self.do_s0(event),
-            State::S1(ref key) => self.do_s1(key.to_vec(), event),
+            State::S0NoKey => self.do_s0(event),
+            State::S1HaveVerifiedKey(ref key) => self.do_s1(&key, event),
         };
 
         // process the queue
@@ -58,7 +56,7 @@ impl SendMachine {
         actions
     }
 
-    fn drain(&self, key: Vec<u8>) -> Events {
+    fn drain(&self, key: Key) -> Events {
         let mut es = Events::new();
 
         for &(ref phase, ref plaintext) in &self.queue {
@@ -70,12 +68,7 @@ impl SendMachine {
         es
     }
 
-    fn deliver(
-        &self,
-        key: Vec<u8>,
-        phase: String,
-        plaintext: Vec<u8>,
-    ) -> Events {
+    fn deliver(&self, key: Key, phase: String, plaintext: Vec<u8>) -> Events {
         let data_key = key::derive_phase_key(&self.side, &key, &phase);
         let (_nonce, encrypted) = key::encrypt_data(data_key, &plaintext);
         events![M_AddMessage(phase, encrypted)]
@@ -85,13 +78,13 @@ impl SendMachine {
         use events::SendEvent::*;
         match event {
             GotVerifiedKey(ref key) => (
-                State::S1(key.to_vec()),
-                self.drain(key.to_vec()),
+                State::S1HaveVerifiedKey(key.clone()),
+                self.drain(key.clone()),
                 QueueStatus::Drain,
             ),
             // we don't have a verified key, yet we got messages to send, so queue it up.
             Send(phase, plaintext) => (
-                State::S0,
+                State::S0NoKey,
                 events![],
                 QueueStatus::Enqueue((phase, plaintext)),
             ),
@@ -100,7 +93,7 @@ impl SendMachine {
 
     fn do_s1(
         &self,
-        key: Vec<u8>,
+        key: &Key,
         event: SendEvent,
     ) -> (State, Events, QueueStatus) {
         use events::SendEvent::*;
@@ -110,7 +103,7 @@ impl SendMachine {
                 let deliver_events =
                     self.deliver(key.clone(), phase, plaintext);
                 (
-                    State::S1(key),
+                    State::S1HaveVerifiedKey(key.clone()),
                     deliver_events,
                     QueueStatus::NoAction,
                 )

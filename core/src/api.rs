@@ -1,3 +1,4 @@
+use events::Key;
 use hex;
 use std::collections::HashMap;
 use std::error::Error;
@@ -119,7 +120,7 @@ pub enum APIAction {
     // from WormholeCore out through IO glue to application
     GotWelcome(HashMap<String, String>), // actually anything JSON-able: Value
     GotCode(String), // must be easy to canonically encode into UTF-8 bytes
-    GotUnverifiedKey(Vec<u8>),
+    GotUnverifiedKey(Key),
     GotVerifier(Vec<u8>),
     GotVersions(HashMap<String, String>), // actually anything JSON-able
     GotMessage(Vec<u8>),

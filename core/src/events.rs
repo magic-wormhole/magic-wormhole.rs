@@ -1,12 +1,27 @@
 use hex;
 use std::fmt;
 use std::iter::FromIterator;
+use std::ops::Deref;
 use std::sync::Arc;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use api::{APIAction, IOAction, Mood};
 use util::maybe_utf8;
 
 pub use wordlist::Wordlist;
+
+#[derive(PartialEq, Eq, Clone)]
+pub struct Key(pub Vec<u8>);
+impl Deref for Key {
+    type Target = Vec<u8>;
+    fn deref(&self) -> &Vec<u8> {
+        &self.0
+    }
+}
+impl fmt::Debug for Key {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Key(REDACTED)")
+    }
+}
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
@@ -26,7 +41,7 @@ pub enum BossEvent {
     Error,
     Closed,
     GotCode(String),
-    GotKey(Vec<u8>), // TODO: fixed length?
+    GotKey(Key), // TODO: fixed length?
     Scared,
     Happy,
     GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
@@ -174,7 +189,7 @@ impl fmt::Debug for OrderEvent {
 #[derive(PartialEq)]
 pub enum ReceiveEvent {
     GotMessage(String, String, Vec<u8>), // side, phase, body
-    GotKey(Vec<u8>),                     // key
+    GotKey(Key),
 }
 
 impl fmt::Debug for ReceiveEvent {
@@ -235,7 +250,7 @@ impl fmt::Debug for RendezvousEvent {
 #[derive(PartialEq)]
 pub enum SendEvent {
     Send(String, Vec<u8>), // phase, plaintext
-    GotVerifiedKey(Vec<u8>),
+    GotVerifiedKey(Key),
 }
 
 impl fmt::Debug for SendEvent {
