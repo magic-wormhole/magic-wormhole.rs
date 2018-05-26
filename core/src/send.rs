@@ -15,8 +15,8 @@ pub struct SendMachine {
 
 #[derive(Debug, PartialEq)]
 enum State {
-    S0,
-    S1(Vec<u8>),
+    S0NoKey,
+    S1HaveVerifiedKey(Vec<u8>),
 }
 
 enum QueueStatus {
@@ -28,7 +28,7 @@ enum QueueStatus {
 impl SendMachine {
     pub fn new(side: &str) -> SendMachine {
         SendMachine {
-            state: State::S0,
+            state: State::S0NoKey,
             side: side.to_string(),
             key: Vec::new(),
             queue: Vec::new(),
@@ -41,8 +41,8 @@ impl SendMachine {
             self.state, event
         );
         let (newstate, actions, queue_status) = match self.state {
-            State::S0 => self.do_s0(event),
-            State::S1(ref key) => self.do_s1(key.to_vec(), event),
+            State::S0NoKey => self.do_s0(event),
+            State::S1HaveVerifiedKey(ref key) => self.do_s1(key.to_vec(), event),
         };
 
         // process the queue
@@ -85,13 +85,13 @@ impl SendMachine {
         use events::SendEvent::*;
         match event {
             GotVerifiedKey(ref key) => (
-                State::S1(key.to_vec()),
+                State::S1HaveVerifiedKey(key.to_vec()),
                 self.drain(key.to_vec()),
                 QueueStatus::Drain,
             ),
             // we don't have a verified key, yet we got messages to send, so queue it up.
             Send(phase, plaintext) => (
-                State::S0,
+                State::S0NoKey,
                 events![],
                 QueueStatus::Enqueue((phase, plaintext)),
             ),
@@ -110,7 +110,7 @@ impl SendMachine {
                 let deliver_events =
                     self.deliver(key.clone(), phase, plaintext);
                 (
-                    State::S1(key),
+                    State::S1HaveVerifiedKey(key),
                     deliver_events,
                     QueueStatus::NoAction,
                 )
