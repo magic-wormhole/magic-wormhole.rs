@@ -1,10 +1,9 @@
 extern crate magic_wormhole_core;
-#[macro_use]
-extern crate serde_json;
 extern crate url;
 extern crate ws;
-use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
-                          WSHandle, WormholeCore};
+use magic_wormhole_core::{APIAction, APIEvent, Action, AnswerType, IOAction,
+                          IOEvent, OfferType, PeerMessage, WSHandle,
+                          WormholeCore};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
@@ -78,10 +77,14 @@ impl ws::Handler for MyHandler {
         // TODO: this should go just after .start()
         let actions = wc.do_api(APIEvent::AllocateCode(2));
         process_actions(&self.out, actions);
-        let offer = json!({"offer": {"message": "hello from rust"}});
+        let offer = PeerMessage::Offer(OfferType::Message(
+            "hello from rust!".to_string(),
+        )).serialize();
+        // let offer = json!({"offer": {"message": "hello from rust"}});
         // then expect {"answer": {"message_ack": "ok"}}
         let actions = wc.do_api(APIEvent::Send(offer.to_string().into_bytes()));
         process_actions(&self.out, actions);
+
         Ok(())
     }
     fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
@@ -118,12 +121,39 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
                 }
             },
             Action::API(api) => match api {
-                // TODO: deliver API events to app
                 APIAction::GotMessage(msg) => {
-                    println!(
-                        "API got message: {}",
-                        String::from_utf8(msg).unwrap()
-                    );
+                    let message = String::from_utf8(msg).unwrap();
+                    let peer_msg = PeerMessage::deserialize(&message);
+                    match peer_msg {
+                        PeerMessage::Offer(_) => {
+                            panic!("Sender can't get offer")
+                        }
+                        PeerMessage::Error(errmsg) => println!(
+                            "remote error, transfer abandoned: {}",
+                            errmsg
+                        ),
+                        PeerMessage::Answer(answer) => match answer {
+                            AnswerType::MessageAck(ack) => {
+                                if ack == "ok" {
+                                    println!(
+                                        "Message transferred successfully!"
+                                    );
+                                } else {
+                                    println!(
+                                        "Failed to transfer message: {}",
+                                        ack
+                                    );
+                                }
+                            }
+                            AnswerType::FileAck(ack) => {
+                                if ack == "ok" {
+                                    println!("File transferred successfully");
+                                } else {
+                                    println!("File transfer failed: {}", ack);
+                                }
+                            }
+                        },
+                    }
                 }
                 _ => println!("action {:?}", api),
             },
