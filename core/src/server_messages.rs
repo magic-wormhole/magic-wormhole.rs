@@ -56,8 +56,16 @@ pub enum AnswerType {
     FileAck(String),
 }
 
-pub fn deserialize_peer_message(msg: &str) -> PeerMessage {
-    serde_json::from_str(msg).unwrap()
+impl PeerMessage {
+    pub fn serialize(&self) -> String {
+        json!(self).to_string()
+    }
+
+    // TODO: This can error out so we should actually have error returning
+    // capability here
+    pub fn deserialize(msg: &str) -> Self {
+        serde_json::from_str(msg).unwrap()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
