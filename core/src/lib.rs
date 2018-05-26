@@ -35,7 +35,7 @@ mod wordlist;
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 
-use events::{Event, Events};
+use events::{Event, Events, MySide};
 use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
@@ -71,7 +71,7 @@ fn generate_side() -> String {
 
 impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
-        let side = generate_side();
+        let side = MySide(generate_side());
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
@@ -86,10 +86,10 @@ impl WormholeCore {
             rendezvous: rendezvous::RendezvousMachine::new(
                 appid,
                 relay_url,
-                side.as_str(),
+                &side,
                 5.0,
             ),
-            send: send::SendMachine::new(side.as_str()),
+            send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
         }
     }
