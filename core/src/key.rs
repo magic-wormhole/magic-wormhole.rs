@@ -27,7 +27,7 @@ enum State {
     S4Scared,
 }
 
-pub struct Key {
+pub struct KeyMachine {
     appid: String,
     side: String,
     state: Option<State>,
@@ -38,9 +38,9 @@ struct PhaseMessage {
     pake_v1: String,
 }
 
-impl Key {
-    pub fn new(appid: &str, side: &str) -> Key {
-        Key {
+impl KeyMachine {
+    pub fn new(appid: &str, side: &str) -> KeyMachine {
+        KeyMachine {
             appid: appid.to_string(),
             state: Some(State::S0KnowNothing),
             side: side.to_string(),
@@ -226,7 +226,7 @@ mod test {
     fn test_extract_pake_msg() {
         extern crate hex;
 
-        let _key = super::Key::new("appid", "side1");
+        let _key = super::KeyMachine::new("appid", "side1");
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = super::extract_pake_msg(hex::decode(s1).unwrap());
@@ -244,7 +244,7 @@ mod test {
         // output of derive_phase_key is:
         // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
-        let _k = Key::new("appid1", "side");
+        let _k = KeyMachine::new("appid1", "side");
 
         let key = "key".as_bytes();
         let side = "side";

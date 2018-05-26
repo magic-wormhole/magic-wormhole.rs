@@ -31,13 +31,13 @@ enum State {
     S5,
 }
 
-pub(crate) struct Nameplate {
+pub(crate) struct NameplateMachine {
     state: State,
 }
 
-impl Nameplate {
-    pub fn new() -> Nameplate {
-        Nameplate {
+impl NameplateMachine {
+    pub fn new() -> NameplateMachine {
+        NameplateMachine {
             state: State::S0A,
         }
     }
