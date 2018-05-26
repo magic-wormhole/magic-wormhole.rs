@@ -1,4 +1,4 @@
-use events::{Key, Events};
+use events::{Events, Key};
 use key;
 use std::str;
 // we process these

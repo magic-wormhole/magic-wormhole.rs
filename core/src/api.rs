@@ -1,9 +1,9 @@
+use events::Key;
 use hex;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use util::maybe_utf8;
-use events::Key;
 
 #[derive(PartialEq)]
 pub enum APIEvent {
