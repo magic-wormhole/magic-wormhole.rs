@@ -33,6 +33,16 @@ impl Deref for MySide {
     }
 }
 
+// TheirSide is used for the String that arrives inside inbound messages
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct TheirSide(pub String);
+impl Deref for TheirSide {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -131,7 +141,7 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage(String, String, Vec<u8>), // side, phase, body
+    RxMessage(TheirSide, String, Vec<u8>), // side, phase, body
     RxClosed,
     Close(Mood),        // mood
     GotMailbox(String), // mailbox id
@@ -146,7 +156,7 @@ impl fmt::Debug for MailboxEvent {
             Connected => "Connected".to_string(),
             Lost => "Lost".to_string(),
             RxMessage(ref side, ref phase, ref body) => format!(
-                "RxMessage(side={}, phase={}, body={})",
+                "RxMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -178,7 +188,7 @@ pub enum NameplateEvent {
 
 #[derive(PartialEq)]
 pub enum OrderEvent {
-    GotMessage(String, String, Vec<u8>), // side, phase, body
+    GotMessage(TheirSide, String, Vec<u8>), // side, phase, body
 }
 
 impl fmt::Debug for OrderEvent {
@@ -186,7 +196,7 @@ impl fmt::Debug for OrderEvent {
         use self::OrderEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -198,7 +208,7 @@ impl fmt::Debug for OrderEvent {
 
 #[derive(PartialEq)]
 pub enum ReceiveEvent {
-    GotMessage(String, String, Vec<u8>), // side, phase, body
+    GotMessage(TheirSide, String, Vec<u8>), // side, phase, body
     GotKey(Key),
 }
 
@@ -207,7 +217,7 @@ impl fmt::Debug for ReceiveEvent {
         use self::ReceiveEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)

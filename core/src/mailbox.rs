@@ -270,7 +270,7 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             RxMessage(side, phase, body) => {
-                if side != self.side.to_string() {
+                if side.to_string() != self.side.to_string() {
                     // theirs
                     // N_release_and_accept
                     let is_phase_in_processed = self.processed.contains(&phase);
