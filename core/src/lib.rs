@@ -43,7 +43,6 @@ pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
 pub use server_messages::{deserialize_peer_message, AnswerType, OfferType,
                           PeerMessage};
 
-
 pub struct WormholeCore {
     allocator: allocator::Allocator,
     boss: boss::Boss,
