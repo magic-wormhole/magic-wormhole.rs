@@ -237,6 +237,7 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
                                 println!("Recieved directory offer")
                             }
                         },
+                        _ => panic!("Unknown message received: {:?}", peer_msg),
                     }
                 }
                 _ => println!("action {:?}", api),
