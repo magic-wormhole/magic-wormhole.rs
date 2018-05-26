@@ -10,6 +10,9 @@ fn main() {
     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
     println!("connecting..");
     w.set_code("4-purple-sausages");
+    //w.allocate_code(2);
+    let code = w.get_code();
+    println!("code is: {}", code);
     println!("sending..");
     w.send_message(b"hello");
     println!("sent..");

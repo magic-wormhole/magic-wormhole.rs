@@ -299,6 +299,12 @@ impl Wormhole {
             .unwrap();
     }
 
+    pub fn allocate_code(&mut self, num_words: usize) {
+        self.tx_event_to_core
+            .send(ToCore::API(APIEvent::AllocateCode(num_words)))
+            .unwrap();
+    }
+
     pub fn send_message(&mut self, msg: &[u8]) {
         self.tx_event_to_core
             .send(ToCore::API(APIEvent::Send(msg.to_vec())))
