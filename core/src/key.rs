@@ -8,7 +8,7 @@ use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, SPAKE2};
 use std::mem;
 
-use events::Events;
+use events::{Events, Key};
 use util;
 // we process these
 use events::KeyEvent;
@@ -72,16 +72,16 @@ impl KeyMachine {
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
-                let key = finish_pake(pake_state, their_pake_msg.clone());
+                let key: Key = finish_pake(pake_state, their_pake_msg.clone());
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
-                self.state = Some(S3KnowBoth(key.clone()));
+                self.state = Some(S3KnowBoth(key.to_vec()));
                 events![
                     M_AddMessage("pake".to_string(), pake_msg_ser),
                     M_AddMessage(version_phase, version_msg),
-                    B_GotKey(key.clone()),
-                    R_GotKey(key.clone())
+                    B_GotKey(key.to_vec()),
+                    R_GotKey(key.to_vec())
                 ]
             }
             S3KnowBoth(_) => panic!("already got code"),
@@ -99,15 +99,15 @@ impl KeyMachine {
                 events![]
             }
             S1KnowCode(pake_state) => {
-                let key = finish_pake(pake_state, pake);
+                let key: Key = finish_pake(pake_state, pake);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
-                self.state = Some(S3KnowBoth(key.clone()));
+                self.state = Some(S3KnowBoth(key.to_vec()));
                 events![
                     M_AddMessage(version_phase, version_msg),
-                    B_GotKey(key.clone()),
-                    R_GotKey(key.clone())
+                    B_GotKey(key.to_vec()),
+                    R_GotKey(key.to_vec())
                 ]
             }
             S2KnowPake(_) => panic!("already got pake"),
@@ -131,12 +131,11 @@ fn start_pake(appid: &str, code: &str) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     (pake_state, pake_msg_ser)
 }
 
-fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: Vec<u8>) -> Vec<u8> {
+fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: Vec<u8>) -> Key {
     let msg2 = extract_pake_msg(peer_msg).unwrap();
-    let key = pake_state
+    Key(pake_state
         .finish(&hex::decode(msg2).unwrap())
-        .unwrap();
-    key
+        .unwrap())
 }
 
 fn build_version_msg(
