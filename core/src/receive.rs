@@ -51,7 +51,7 @@ impl ReceiveMachine {
         use events::ReceiveEvent::*;
         match event {
             GotMessage(..) => panic!(),
-            GotKey(key) => (State::S1UnverifiedKey(key), events![]),
+            GotKey(key) => (State::S1UnverifiedKey(key.to_vec()), events![]),
         }
     }
 
