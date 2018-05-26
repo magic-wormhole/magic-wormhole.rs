@@ -17,13 +17,13 @@ enum State {
     Known,
 }
 
-pub struct Code {
+pub struct CodeMachine {
     state: State,
 }
 
-impl Code {
-    pub fn new() -> Code {
-        Code {
+impl CodeMachine {
+    pub fn new() -> CodeMachine {
+        CodeMachine {
             state: State::Idle,
         }
     }

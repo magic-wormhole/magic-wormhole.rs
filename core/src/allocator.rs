@@ -7,7 +7,7 @@ use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
 use events::CodeEvent::Allocated as C_Allocated;
 use events::RendezvousEvent::TxAllocate as RC_TxAllocate;
 
-pub struct Allocator {
+pub struct AllocatorMachine {
     state: State,
 }
 
@@ -20,9 +20,9 @@ enum State {
     S2Done,
 }
 
-impl Allocator {
-    pub fn new() -> Allocator {
-        Allocator {
+impl AllocatorMachine {
+    pub fn new() -> AllocatorMachine {
+        AllocatorMachine {
             state: State::S0AIdleDisconnected,
         }
     }
@@ -114,6 +114,6 @@ impl Allocator {
 
 #[cfg(test)]
 mod test {
-    //use super::Allocator;
+    //use super::AllocatorMachine;
     //use super::State::*;
 }
