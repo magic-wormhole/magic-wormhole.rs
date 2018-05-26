@@ -23,10 +23,13 @@ use events::AllocatorEvent::{Connected as A_Connected,
                              RxAllocated as A_RxAllocated};
 use events::ListerEvent::{Connected as L_Connected,
                           RxNameplates as L_RxNamePlates};
-use events::MailboxEvent::{Connected as M_Connected, RxMessage as M_RxMessage};
+use events::MailboxEvent::{Connected as M_Connected, RxClosed as M_RxClosed,
+                           RxMessage as M_RxMessage};
 use events::NameplateEvent::{Connected as N_Connected,
-                             RxClaimed as N_RxClaimed};
+                             RxClaimed as N_RxClaimed,
+                             RxReleased as N_RxReleased};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
+use events::TerminatorEvent::Stopped as T_Stopped;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -145,12 +148,27 @@ impl Rendezvous {
 
     fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
         println!("msg is {:?}", message);
+        // TODO: log+ignore unrecognized messages. They should flunk unit
+        // tests, but not break normal operation
         let m = deserialize(message);
+        use self::Message::*;
         match m {
-            Message::Claimed { mailbox } => {
-                events![N_RxClaimed(mailbox.to_string())]
-            }
-            Message::Message {
+            Bind { .. }
+            | List { .. }
+            | Allocate { .. }
+            | Claim { .. }
+            | Release { .. }
+            | Open { .. }
+            | Add { .. }
+            | Close { .. }
+            | Ping { .. } => panic!("client should not be receiving this"),
+            Welcome { .. } => events![], // TODO
+            Released { .. } => events![N_RxReleased],
+            Closed { .. } => events![M_RxClosed],
+            Pong { .. } => events![], // TODO
+            Ack { .. } => events![], // we ignore this, it's only for the timing log
+            Claimed { mailbox } => events![N_RxClaimed(mailbox.to_string())],
+            Message {
                 side,
                 phase,
                 body,
@@ -158,17 +176,14 @@ impl Rendezvous {
             } => events![
                 M_RxMessage(side, phase, hex::decode(body).unwrap())
             ],
-            Message::Allocated { nameplate } => {
-                events![A_RxAllocated(nameplate)]
-            }
-            Message::Nameplates { nameplates } => {
+            Allocated { nameplate } => events![A_RxAllocated(nameplate)],
+            Nameplates { nameplates } => {
                 let nids: Vec<String> = nameplates
                     .iter()
                     .map(|n| n.id.to_owned())
                     .collect();
                 events![L_RxNamePlates(nids)]
             }
-            _ => events![], // TODO
         }
     }
 
@@ -185,7 +200,7 @@ impl Rendezvous {
                     State::Waiting,
                 )
             }
-            State::Disconnecting => (events![], State::Stopped),
+            State::Disconnecting => (events![T_Stopped], State::Stopped),
             _ => panic!("bad transition from {:?}", self),
         };
         self.state = newstate;
@@ -241,9 +256,10 @@ mod test {
     use api::IOAction;
     use api::IOEvent;
     use api::{TimerHandle, WSHandle};
-    use events::Event::{Nameplate, Rendezvous, IO};
+    use events::Event::{Nameplate, Rendezvous, Terminator, IO};
     use events::NameplateEvent::Connected as N_Connected;
     use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
+    use events::TerminatorEvent::Stopped as T_Stopped;
     use server_messages::{deserialize, Message};
 
     #[test]
@@ -361,6 +377,6 @@ mod test {
 
         actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2))
             .events;
-        assert_eq!(actions.len(), 0);
+        assert_eq!(actions, vec![Terminator(T_Stopped)]);
     }
 }
