@@ -101,7 +101,7 @@ impl AllocatorMachine {
             ),
             RxAllocated(nameplate) => {
                 let words = wordlist.choose_words();
-                let code = nameplate.clone() + "-" + &words;
+                let code = nameplate.to_string() + "-" + &words;
                 (
                     Some(State::S2Done),
                     events![C_Allocated(nameplate, code)],

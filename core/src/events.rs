@@ -43,6 +43,15 @@ impl Deref for TheirSide {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Nameplate(pub String);
+impl Deref for Nameplate {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -51,7 +60,7 @@ pub enum AllocatorEvent {
     Allocate(Arc<Wordlist>),
     Connected,
     Lost,
-    RxAllocated(String),
+    RxAllocated(Nameplate),
 }
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(PartialEq)]
@@ -94,17 +103,17 @@ pub enum CodeEvent {
     AllocateCode(Arc<Wordlist>),
     InputCode,
     SetCode(String),
-    Allocated(String, String),
-    GotNameplate(String),
+    Allocated(Nameplate, String),
+    GotNameplate(Nameplate),
     FinishedInput(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Start,
-    ChooseNameplate(String),
+    ChooseNameplate(Nameplate),
     ChooseWords(String),
-    GotNameplates(Vec<String>),
+    GotNameplates(Vec<Nameplate>),
     GotWordlist(Arc<Wordlist>),
     RefreshNameplates,
 }
@@ -132,7 +141,7 @@ impl fmt::Debug for KeyEvent {
 pub enum ListerEvent {
     Connected,
     Lost,
-    RxNameplates(Vec<String>),
+    RxNameplates(Vec<Nameplate>),
     Refresh,
 }
 
@@ -181,7 +190,7 @@ pub enum NameplateEvent {
     Lost,
     RxClaimed(String),
     RxReleased,
-    SetNameplate(String),
+    SetNameplate(Nameplate),
     Release,
     Close,
 }
@@ -236,8 +245,8 @@ pub enum RendezvousEvent {
     TxAdd(String, Vec<u8>), // phase, body
     TxClose(String, Mood),  // mailbox, mood
     Stop,
-    TxClaim(String),   // nameplate
-    TxRelease(String), // nameplate
+    TxClaim(Nameplate),   // nameplate
+    TxRelease(Nameplate), // nameplate
     TxAllocate,
     TxList,
 }
@@ -258,8 +267,8 @@ impl fmt::Debug for RendezvousEvent {
                 format!("TxClose({}, {:?})", mailbox, mood)
             }
             Stop => "Stop".to_string(),
-            TxClaim(ref nameplate) => format!("TxClaim({})", nameplate),
-            TxRelease(ref nameplate) => format!("TxRelease({})", nameplate),
+            TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
+            TxRelease(ref nameplate) => format!("TxRelease({:?})", nameplate),
             TxAllocate => "TxAllocate".to_string(),
             TxList => "TxList".to_string(),
         };
