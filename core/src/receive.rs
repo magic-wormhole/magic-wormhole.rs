@@ -17,13 +17,13 @@ enum State {
     S3Scared,
 }
 
-pub struct Receive {
+pub struct ReceiveMachine {
     state: State,
 }
 
-impl Receive {
-    pub fn new() -> Receive {
-        Receive {
+impl ReceiveMachine {
+    pub fn new() -> ReceiveMachine {
+        ReceiveMachine {
             state: State::S0UnknownKey,
         }
     }
