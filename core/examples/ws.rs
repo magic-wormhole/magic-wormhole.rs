@@ -1,11 +1,9 @@
 extern crate magic_wormhole_core;
-#[macro_use]
-extern crate serde_json;
 extern crate url;
 extern crate ws;
-use magic_wormhole_core::{deserialize_peer_message, APIAction, APIEvent,
-                          Action, AnswerType, IOAction, IOEvent, OfferType,
-                          PeerMessage, WSHandle, WormholeCore};
+use magic_wormhole_core::{APIAction, APIEvent, Action, AnswerType, IOAction,
+                          IOEvent, OfferType, PeerMessage, WSHandle,
+                          WormholeCore};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
@@ -79,9 +77,9 @@ impl ws::Handler for MyHandler {
         // TODO: this should go just after .start()
         let actions = wc.do_api(APIEvent::AllocateCode(2));
         process_actions(&self.out, actions);
-        let offer = json!(PeerMessage::Offer(OfferType::Message(
-            "hello from rust!".to_string()
-        )));
+        let offer = PeerMessage::Offer(OfferType::Message(
+            "hello from rust!".to_string(),
+        )).serialize();
         // let offer = json!({"offer": {"message": "hello from rust"}});
         // then expect {"answer": {"message_ack": "ok"}}
         let actions = wc.do_api(APIEvent::Send(offer.to_string().into_bytes()));
@@ -125,7 +123,7 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
             Action::API(api) => match api {
                 APIAction::GotMessage(msg) => {
                     let message = String::from_utf8(msg).unwrap();
-                    let peer_msg = deserialize_peer_message(&message);
+                    let peer_msg = PeerMessage::deserialize(&message);
                     match peer_msg {
                         PeerMessage::Offer(_) => {
                             panic!("Sender can't get offer")

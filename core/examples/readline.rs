@@ -6,9 +6,8 @@ extern crate serde_json;
 extern crate url;
 extern crate ws;
 
-use magic_wormhole_core::{deserialize_peer_message, APIAction, APIEvent,
-                          Action, IOAction, IOEvent, OfferType, PeerMessage,
-                          WSHandle, WormholeCore};
+use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
+                          OfferType, PeerMessage, WSHandle, WormholeCore};
 
 use std::error::Error;
 use std::io;
@@ -226,7 +225,7 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
             Action::API(api) => match api {
                 APIAction::GotMessage(msg) => {
                     let message = String::from_utf8(msg).unwrap();
-                    let peer_msg = deserialize_peer_message(&message);
+                    let peer_msg = PeerMessage::deserialize(&message);
                     match peer_msg {
                         PeerMessage::Offer(offer) => match offer {
                             OfferType::Message(msg) => println!("{}", msg),
