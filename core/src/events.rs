@@ -41,7 +41,7 @@ pub enum BossEvent {
     Error,
     Closed,
     GotCode(String),
-    GotKey(Vec<u8>), // TODO: fixed length?
+    GotKey(Key), // TODO: fixed length?
     Scared,
     Happy,
     GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
