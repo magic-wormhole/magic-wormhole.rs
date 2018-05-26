@@ -11,7 +11,7 @@ enum State {
     S1, //yes pake
 }
 
-pub struct Order {
+pub struct OrderMachine {
     state: State,
     queue: Vec<(String, String, Vec<u8>)>,
 }
@@ -22,9 +22,9 @@ enum QueueStatus {
     NoAction,
 }
 
-impl Order {
-    pub fn new() -> Order {
-        Order {
+impl OrderMachine {
+    pub fn new() -> OrderMachine {
+        OrderMachine {
             state: State::S0,
             queue: Vec::new(),
         }

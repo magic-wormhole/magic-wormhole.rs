@@ -10,7 +10,7 @@ use events::CodeEvent::{FinishedInput as C_FinishedInput,
 use events::ListerEvent::Refresh as L_Refresh;
 use events::Wordlist;
 
-pub struct Input {
+pub struct InputMachine {
     state: State,
     wordlist: Option<Arc<Wordlist>>,
     nameplates: Option<Vec<String>>,
@@ -24,9 +24,9 @@ enum State {
     Done,
 }
 
-impl Input {
-    pub fn new() -> Input {
-        Input {
+impl InputMachine {
+    pub fn new() -> InputMachine {
+        InputMachine {
             state: State::Idle,
             wordlist: None,
             nameplates: None,
@@ -175,7 +175,7 @@ mod test {
     fn test() {
         // in this test, we'll pretend the user charges on through before any
         // nameplates or wordlists ever arrive
-        let mut i = Input::new();
+        let mut i = InputMachine::new();
 
         let actions = i.process(Start);
         assert_eq!(actions, events![L_Refresh]);
@@ -217,7 +217,7 @@ mod test {
     #[test]
     #[allow(unreachable_code)]
     fn test_completions() {
-        let mut i = Input::new();
+        let mut i = InputMachine::new();
         // you aren't allowed to call these before w.input_code()
         assert_eq!(
             i.get_nameplate_completions(""),

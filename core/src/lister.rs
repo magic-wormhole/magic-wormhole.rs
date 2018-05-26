@@ -6,7 +6,7 @@ use events::InputEvent::GotNameplates as I_GotNameplates;
 use events::ListerEvent::*;
 use events::RendezvousEvent::TxList as RC_TxList;
 
-pub struct Lister {
+pub struct ListerMachine {
     state: State,
 }
 
@@ -26,9 +26,9 @@ enum State {
     S1B,
 }
 
-impl Lister {
-    pub fn new() -> Lister {
-        Lister {
+impl ListerMachine {
+    pub fn new() -> ListerMachine {
+        ListerMachine {
             state: State::S0A,
         }
     }
@@ -89,13 +89,13 @@ impl Lister {
 
 #[cfg(test)]
 mod test {
-    use super::{Lister, State};
+    use super::{ListerMachine, State};
     use events::{InputEvent::GotNameplates, ListerEvent::*,
                  RendezvousEvent::TxList};
 
     #[test]
     fn test_lister() {
-        let mut lister = Lister::new();
+        let mut lister = ListerMachine::new();
 
         assert_eq!(lister.state, State::S0A);
 

@@ -30,7 +30,7 @@ enum State {
     S4B,
 }
 
-pub struct Mailbox {
+pub struct MailboxMachine {
     state: State,
     side: String,
     pending_outbound: HashMap<String, Vec<u8>>, // HashMap<phase, body>
@@ -45,9 +45,9 @@ enum QueueCtrl {
     Dequeue(String), // remove an element from the Map given the key
 }
 
-impl Mailbox {
-    pub fn new(side: &str) -> Mailbox {
-        Mailbox {
+impl MailboxMachine {
+    pub fn new(side: &str) -> MailboxMachine {
+        MailboxMachine {
             state: State::S0A,
             side: side.to_string(),
             pending_outbound: HashMap::new(),
