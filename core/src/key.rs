@@ -144,7 +144,7 @@ fn build_version_msg(
     versions: &Value,
 ) -> (String, Vec<u8>) {
     let phase = "version";
-    let data_key = derive_phase_key(side, key, &phase);
+    let data_key = derive_phase_key(side, &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(data_key, &plaintext.as_bytes());
     (phase.to_string(), encrypted)
@@ -195,7 +195,7 @@ pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
     hk.expand(purpose, length)
 }
 
-pub fn derive_phase_key(side: &str, key: &[u8], phase: &str) -> Vec<u8> {
+pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
     let side_bytes = side.as_bytes();
     let phase_bytes = phase.as_bytes();
     let side_digest: Vec<u8> = sha256_digest(side_bytes)
@@ -215,7 +215,7 @@ pub fn derive_phase_key(side: &str, key: &[u8], phase: &str) -> Vec<u8> {
     purpose_vec.extend(phase_digest);
 
     let length = sodiumoxide::crypto::secretbox::KEYBYTES;
-    derive_key(key, &purpose_vec, length)
+    derive_key(&key.to_vec(), &purpose_vec, length)
 }
 
 #[cfg(test)]
@@ -245,10 +245,10 @@ mod test {
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
         let _k = KeyMachine::new("appid1", "side");
 
-        let key = "key".as_bytes();
+        let key = Key("key".as_bytes().to_vec());
         let side = "side";
         let phase = "phase1";
-        let phase1_key = derive_phase_key(side, key, phase);
+        let phase1_key = derive_phase_key(side, &key, phase);
 
         assert_eq!(
             hex::encode(phase1_key),
@@ -260,10 +260,10 @@ mod test {
     fn test_encrypt_data_decrypt_data_roundtrip() {
         use super::*;
 
-        let key = "key".as_bytes();
+        let key = Key("key".as_bytes().to_vec());
         let side = "side";
         let phase = "phase";
-        let data_key = derive_phase_key(side, key, phase);
+        let data_key = derive_phase_key(side, &key, phase);
         let plaintext = "hello world";
 
         let (_nonce, encrypted) =
