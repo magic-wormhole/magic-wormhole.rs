@@ -1,4 +1,4 @@
-use events::Events;
+use events::{Events, Key};
 use key;
 use std::str;
 // we process these
@@ -12,8 +12,8 @@ use events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
 #[derive(Debug, PartialEq)]
 enum State {
     S0UnknownKey,
-    S1UnverifiedKey(Vec<u8>),
-    S2VerifiedKey(Vec<u8>),
+    S1UnverifiedKey(Key),
+    S2VerifiedKey(Key),
     S3Scared,
 }
 
@@ -51,13 +51,13 @@ impl ReceiveMachine {
         use events::ReceiveEvent::*;
         match event {
             GotMessage(..) => panic!(),
-            GotKey(key) => (State::S1UnverifiedKey(key), events![]),
+            GotKey(key) => (State::S1UnverifiedKey(key.clone()), events![]),
         }
     }
 
     fn derive_key_and_decrypt(
         side: &str,
-        key: &[u8],
+        key: &Key,
         phase: &str,
         body: Vec<u8>,
     ) -> Option<Vec<u8>> {
@@ -68,7 +68,7 @@ impl ReceiveMachine {
 
     fn in_unverified_key(
         &self,
-        key: &[u8],
+        key: &Key,
         event: ReceiveEvent,
     ) -> (State, Events) {
         use events::ReceiveEvent::*;
@@ -81,9 +81,9 @@ impl ReceiveMachine {
                         let msg =
                             key::derive_key(&key, b"wormhole:verifier", 32); // TODO: replace 32 with KEY_SIZE const
                         (
-                            State::S2VerifiedKey(key.to_vec()),
+                            State::S2VerifiedKey(key.clone()),
                             events![
-                                S_GotVerifiedKey(key.to_vec()),
+                                S_GotVerifiedKey(key.clone()),
                                 B_Happy,
                                 B_GotVerifier(msg),
                                 B_GotMessage(phase, plaintext)
@@ -101,7 +101,7 @@ impl ReceiveMachine {
 
     fn in_verified_key(
         &self,
-        key: &[u8],
+        key: &Key,
         event: ReceiveEvent,
     ) -> (State, Events) {
         use events::ReceiveEvent::*;
@@ -112,7 +112,7 @@ impl ReceiveMachine {
                     Some(plaintext) => {
                         // got_message_good
                         (
-                            State::S2VerifiedKey(key.to_vec()),
+                            State::S2VerifiedKey(key.clone()),
                             events![B_GotMessage(phase, plaintext)],
                         )
                     }
