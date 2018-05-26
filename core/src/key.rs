@@ -81,7 +81,7 @@ impl KeyMachine {
                     M_AddMessage("pake".to_string(), pake_msg_ser),
                     M_AddMessage(version_phase, version_msg),
                     B_GotKey(key.clone()),
-                    R_GotKey(key.to_vec())
+                    R_GotKey(key.clone())
                 ]
             }
             S3KnowBoth(_) => panic!("already got code"),
@@ -107,7 +107,7 @@ impl KeyMachine {
                 events![
                     M_AddMessage(version_phase, version_msg),
                     B_GotKey(key.clone()),
-                    R_GotKey(key.to_vec())
+                    R_GotKey(key.clone())
                 ]
             }
             S2KnowPake(_) => panic!("already got pake"),

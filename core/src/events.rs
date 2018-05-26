@@ -189,7 +189,7 @@ impl fmt::Debug for OrderEvent {
 #[derive(PartialEq)]
 pub enum ReceiveEvent {
     GotMessage(String, String, Vec<u8>), // side, phase, body
-    GotKey(Vec<u8>),                     // key
+    GotKey(Key),
 }
 
 impl fmt::Debug for ReceiveEvent {
