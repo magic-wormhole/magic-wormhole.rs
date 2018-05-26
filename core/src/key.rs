@@ -80,7 +80,7 @@ impl KeyMachine {
                 events![
                     M_AddMessage("pake".to_string(), pake_msg_ser),
                     M_AddMessage(version_phase, version_msg),
-                    B_GotKey(key.to_vec()),
+                    B_GotKey(key.clone()),
                     R_GotKey(key.to_vec())
                 ]
             }
@@ -106,7 +106,7 @@ impl KeyMachine {
                 self.state = Some(S3KnowBoth(key.clone()));
                 events![
                     M_AddMessage(version_phase, version_msg),
-                    B_GotKey(key.to_vec()),
+                    B_GotKey(key.clone()),
                     R_GotKey(key.to_vec())
                 ]
             }

@@ -88,7 +88,7 @@ impl BossMachine {
         use events::BossEvent::*;
         match event {
             GotCode(code) => self.got_code(&code),
-            GotKey(key) => events![APIAction::GotUnverifiedKey(key)],
+            GotKey(key) => events![APIAction::GotUnverifiedKey(key.to_vec())],
             Happy => self.happy(),
             GotVerifier(verifier) => events![APIAction::GotVerifier(verifier)],
             GotMessage(phase, plaintext) => self.got_message(&phase, plaintext),
