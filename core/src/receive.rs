@@ -1,4 +1,4 @@
-use events::{Events, Key};
+use events::{Events, Key, TheirSide};
 use key;
 use std::str;
 // we process these
@@ -56,7 +56,7 @@ impl ReceiveMachine {
     }
 
     fn derive_key_and_decrypt(
-        side: &str,
+        side: &TheirSide,
         key: &Key,
         phase: &str,
         body: Vec<u8>,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use api::Mood;
-use events::Events;
+use events::{Events, MySide};
 // we process these
 use events::MailboxEvent;
 use events::NameplateEvent::Release as N_Release;
@@ -32,7 +32,7 @@ enum State {
 
 pub struct MailboxMachine {
     state: State,
-    side: String,
+    side: MySide,
     pending_outbound: HashMap<String, Vec<u8>>, // HashMap<phase, body>
     processed: HashSet<String>,
 }
@@ -46,10 +46,10 @@ enum QueueCtrl {
 }
 
 impl MailboxMachine {
-    pub fn new(side: &str) -> MailboxMachine {
+    pub fn new(side: &MySide) -> MailboxMachine {
         MailboxMachine {
             state: State::S0A,
-            side: side.to_string(),
+            side: side.clone(),
             pending_outbound: HashMap::new(),
             processed: HashSet::new(),
         }
@@ -270,7 +270,7 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             RxMessage(side, phase, body) => {
-                if side != self.side {
+                if side.to_string() != self.side.to_string() {
                     // theirs
                     // N_release_and_accept
                     let is_phase_in_processed = self.processed.contains(&phase);

@@ -35,7 +35,8 @@ mod wordlist;
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 
-use events::{Event, Events};
+pub use events::Code;
+use events::{Event, Events, MySide, Nameplate};
 use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
@@ -71,7 +72,7 @@ fn generate_side() -> String {
 
 impl WormholeCore {
     pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
-        let side = generate_side();
+        let side = MySide(generate_side());
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
@@ -86,10 +87,10 @@ impl WormholeCore {
             rendezvous: rendezvous::RendezvousMachine::new(
                 appid,
                 relay_url,
-                side.as_str(),
+                &side,
                 5.0,
             ),
-            send: send::SendMachine::new(side.as_str()),
+            send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
         }
     }
@@ -136,7 +137,7 @@ impl WormholeCore {
 
     // TODO: remove this, the helper should remember whether it's called
     // choose_nameplate yet or not instead of asking the core
-    pub fn input_helper_committed_nameplate(&self) -> Option<&str> {
+    pub fn input_helper_committed_nameplate(&self) -> Option<&Nameplate> {
         self.input.committed_nameplate()
     }
 

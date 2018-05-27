@@ -23,6 +23,44 @@ impl fmt::Debug for Key {
     }
 }
 
+// MySide is used for the String that we send in all our outbound messages
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct MySide(pub String);
+impl Deref for MySide {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
+// TheirSide is used for the String that arrives inside inbound messages
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct TheirSide(pub String);
+impl Deref for TheirSide {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Nameplate(pub String);
+impl Deref for Nameplate {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Code(pub String);
+impl Deref for Code {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -31,7 +69,7 @@ pub enum AllocatorEvent {
     Allocate(Arc<Wordlist>),
     Connected,
     Lost,
-    RxAllocated(String),
+    RxAllocated(Nameplate),
 }
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(PartialEq)]
@@ -40,7 +78,7 @@ pub enum BossEvent {
     RxError,
     Error,
     Closed,
-    GotCode(String),
+    GotCode(Code),
     GotKey(Key), // TODO: fixed length?
     Scared,
     Happy,
@@ -56,7 +94,7 @@ impl fmt::Debug for BossEvent {
             RxError => "RxError".to_string(),
             Error => "Error".to_string(),
             Closed => "Closed".to_string(),
-            GotCode(ref code) => format!("GotCode({})", code),
+            GotCode(ref code) => format!("GotCode({:?})", code),
             GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
             Scared => "Scared".to_string(),
             Happy => "Happy".to_string(),
@@ -73,18 +111,18 @@ impl fmt::Debug for BossEvent {
 pub enum CodeEvent {
     AllocateCode(Arc<Wordlist>),
     InputCode,
-    SetCode(String),
-    Allocated(String, String),
-    GotNameplate(String),
-    FinishedInput(String),
+    SetCode(Code),
+    Allocated(Nameplate, Code),
+    GotNameplate(Nameplate),
+    FinishedInput(Code),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum InputEvent {
     Start,
-    ChooseNameplate(String),
+    ChooseNameplate(Nameplate),
     ChooseWords(String),
-    GotNameplates(Vec<String>),
+    GotNameplates(Vec<Nameplate>),
     GotWordlist(Arc<Wordlist>),
     RefreshNameplates,
 }
@@ -92,7 +130,7 @@ pub enum InputEvent {
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(PartialEq)]
 pub enum KeyEvent {
-    GotCode(String),
+    GotCode(Code),
     GotPake(Vec<u8>),
 }
 
@@ -100,7 +138,7 @@ impl fmt::Debug for KeyEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::KeyEvent::*;
         let t = match *self {
-            GotCode(ref code) => format!("GotCode({})", code),
+            GotCode(ref code) => format!("GotCode({:?})", code),
             GotPake(ref pake) => format!("GotPake({})", hex::encode(pake)),
         };
         write!(f, "KeyEvent::{}", t)
@@ -112,7 +150,7 @@ impl fmt::Debug for KeyEvent {
 pub enum ListerEvent {
     Connected,
     Lost,
-    RxNameplates(Vec<String>),
+    RxNameplates(Vec<Nameplate>),
     Refresh,
 }
 
@@ -121,7 +159,7 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage(String, String, Vec<u8>), // side, phase, body
+    RxMessage(TheirSide, String, Vec<u8>), // side, phase, body
     RxClosed,
     Close(Mood),        // mood
     GotMailbox(String), // mailbox id
@@ -136,7 +174,7 @@ impl fmt::Debug for MailboxEvent {
             Connected => "Connected".to_string(),
             Lost => "Lost".to_string(),
             RxMessage(ref side, ref phase, ref body) => format!(
-                "RxMessage(side={}, phase={}, body={})",
+                "RxMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -161,14 +199,14 @@ pub enum NameplateEvent {
     Lost,
     RxClaimed(String),
     RxReleased,
-    SetNameplate(String),
+    SetNameplate(Nameplate),
     Release,
     Close,
 }
 
 #[derive(PartialEq)]
 pub enum OrderEvent {
-    GotMessage(String, String, Vec<u8>), // side, phase, body
+    GotMessage(TheirSide, String, Vec<u8>), // side, phase, body
 }
 
 impl fmt::Debug for OrderEvent {
@@ -176,7 +214,7 @@ impl fmt::Debug for OrderEvent {
         use self::OrderEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -188,7 +226,7 @@ impl fmt::Debug for OrderEvent {
 
 #[derive(PartialEq)]
 pub enum ReceiveEvent {
-    GotMessage(String, String, Vec<u8>), // side, phase, body
+    GotMessage(TheirSide, String, Vec<u8>), // side, phase, body
     GotKey(Key),
 }
 
@@ -197,7 +235,7 @@ impl fmt::Debug for ReceiveEvent {
         use self::ReceiveEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -211,13 +249,13 @@ impl fmt::Debug for ReceiveEvent {
 #[derive(PartialEq)]
 pub enum RendezvousEvent {
     Start,
-    TxBind(String, String), // appid, side
+    TxBind(String, MySide), // appid, side
     TxOpen(String),         // mailbox
     TxAdd(String, Vec<u8>), // phase, body
     TxClose(String, Mood),  // mailbox, mood
     Stop,
-    TxClaim(String),   // nameplate
-    TxRelease(String), // nameplate
+    TxClaim(Nameplate),   // nameplate
+    TxRelease(Nameplate), // nameplate
     TxAllocate,
     TxList,
 }
@@ -228,7 +266,7 @@ impl fmt::Debug for RendezvousEvent {
         let t = match *self {
             Start => "Start".to_string(),
             TxBind(ref appid, ref side) => {
-                format!("TxBind(appid={}, side={})", appid, side)
+                format!("TxBind(appid={}, side={:?})", appid, side)
             }
             TxOpen(ref mailbox) => format!("TxOpen({})", mailbox),
             TxAdd(ref phase, ref body) => {
@@ -238,8 +276,8 @@ impl fmt::Debug for RendezvousEvent {
                 format!("TxClose({}, {:?})", mailbox, mood)
             }
             Stop => "Stop".to_string(),
-            TxClaim(ref nameplate) => format!("TxClaim({})", nameplate),
-            TxRelease(ref nameplate) => format!("TxRelease({})", nameplate),
+            TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
+            TxRelease(ref nameplate) => format!("TxRelease({:?})", nameplate),
             TxAllocate => "TxAllocate".to_string(),
             TxList => "TxList".to_string(),
         };

@@ -1,5 +1,5 @@
 use api::Mood;
-use events::Events;
+use events::{Code, Events, Nameplate};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -122,7 +122,7 @@ impl BossMachine {
         actions
     }
 
-    fn set_code(&mut self, code: &str) -> Events {
+    fn set_code(&mut self, code: &Code) -> Events {
         // TODO: validate code, maybe signal KeyFormatError
         use self::State::*;
         let (actions, newstate) = match self.state {
@@ -131,7 +131,7 @@ impl BossMachine {
             // Code::SetCode will signal us with Boss:GotCode in just a
             // moment, and by not special-casing set_code we get to use the
             // same flow for allocate_code and input_code
-            Empty(i) => (events![C_SetCode(code.to_string())], Coding(i)),
+            Empty(i) => (events![C_SetCode(code.clone())], Coding(i)),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -167,7 +167,9 @@ impl BossMachine {
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
-                events![I_ChooseNameplate(nameplate.to_string())],
+                events![
+                    I_ChooseNameplate(Nameplate(nameplate.to_string()))
+                ],
                 Coding(i),
             ),
             _ => panic!(),
@@ -190,12 +192,12 @@ impl BossMachine {
         actions
     }
 
-    fn got_code(&mut self, code: &str) -> Events {
+    fn got_code(&mut self, code: &Code) -> Events {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
-                events![APIAction::GotCode(code.to_string())],
+                events![APIAction::GotCode(code.clone())],
                 Lonely(i),
             ),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError

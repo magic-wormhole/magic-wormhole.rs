@@ -1,4 +1,4 @@
-use events::Key;
+use events::{Code, Key};
 use hex;
 use std::collections::HashMap;
 use std::error::Error;
@@ -14,7 +14,7 @@ pub enum APIEvent {
     InputHelperRefreshNameplates,
     InputHelperChooseNameplate(String),
     InputHelperChooseWords(String),
-    SetCode(String),
+    SetCode(Code),
     Close,
     Send(Vec<u8>),
 }
@@ -37,7 +37,7 @@ impl fmt::Debug for APIEvent {
             InputHelperChooseWords(ref words) => {
                 format!("InputHelperChooseWords({})", words)
             }
-            SetCode(ref code) => format!("SetCode({})", code),
+            SetCode(ref code) => format!("SetCode({:?})", code),
             Close => "Close".to_string(),
             Send(ref msg) => format!("Send({})", maybe_utf8(msg)),
         };
@@ -119,7 +119,7 @@ impl fmt::Display for Mood {
 pub enum APIAction {
     // from WormholeCore out through IO glue to application
     GotWelcome(HashMap<String, String>), // actually anything JSON-able: Value
-    GotCode(String), // must be easy to canonically encode into UTF-8 bytes
+    GotCode(Code), // must be easy to canonically encode into UTF-8 bytes
     GotUnverifiedKey(Key),
     GotVerifier(Vec<u8>),
     GotVersions(HashMap<String, String>), // actually anything JSON-able
@@ -132,7 +132,7 @@ impl fmt::Debug for APIAction {
         use self::APIAction::*;
         let t = match *self {
             GotWelcome(ref welcome) => format!("GotWelcome({:?})", welcome),
-            GotCode(ref code) => format!("GotCode({})", code),
+            GotCode(ref code) => format!("GotCode({:?})", code),
             GotUnverifiedKey(ref _key) => {
                 "GotUnverifiedKey(REDACTED)".to_string()
             }
