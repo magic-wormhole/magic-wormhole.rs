@@ -1,4 +1,4 @@
-use events::{Events, Nameplate};
+use events::{Code, Events, Nameplate};
 use std::sync::Arc;
 // we process these
 use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
@@ -77,7 +77,7 @@ impl InputMachine {
         let events = match self.state {
             Idle => panic!("too soon"),
             WantCode(ref nameplate) => {
-                let code = format!("{}-{}", nameplate.to_string(), words);
+                let code = Code(format!("{}-{}", nameplate.to_string(), words));
                 newstate = Some(Done);
                 events![C_FinishedInput(code)]
             }
@@ -187,7 +187,9 @@ mod test {
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
             actions,
-            events![C_FinishedInput("4-purple-sausages".to_string())]
+            events![
+                C_FinishedInput(Code("4-purple-sausages".to_string()))
+            ]
         );
     }
 
@@ -314,7 +316,9 @@ mod test {
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
             actions,
-            events![C_FinishedInput("4-purple-sausages".to_string())]
+            events![
+                C_FinishedInput(Code("4-purple-sausages".to_string()))
+            ]
         );
     }
 }

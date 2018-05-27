@@ -59,14 +59,15 @@ impl CodeMachine {
             ), // TODO: return Input object
             SetCode(code) => {
                 // TODO: try!(validate_code(code))
-                let nc: Vec<&str> = code.splitn(2, "-").collect();
+                let code_string = code.to_string();
+                let nc: Vec<&str> = code_string.splitn(2, "-").collect();
                 let nameplate = Nameplate(nc[0].to_string());
                 (
                     Some(State::Known),
                     events![
                         N_SetNameplate(nameplate.clone()),
-                        B_GotCode(code.to_string()),
-                        K_GotCode(code.to_string())
+                        B_GotCode(code.clone()),
+                        K_GotCode(code.clone())
                     ],
                 )
             }
@@ -107,10 +108,7 @@ impl CodeMachine {
             GotNameplate(..) => panic!(),
             FinishedInput(code) => (
                 Some(State::Known),
-                events![
-                    B_GotCode(code.to_string()),
-                    K_GotCode(code.to_string())
-                ],
+                events![B_GotCode(code.clone()), K_GotCode(code.clone())],
             ),
         }
     }
@@ -127,8 +125,8 @@ impl CodeMachine {
                     Some(State::Known),
                     events![
                         N_SetNameplate(nameplate.clone()),
-                        B_GotCode(code.to_string()),
-                        K_GotCode(code.to_string())
+                        B_GotCode(code.clone()),
+                        K_GotCode(code.clone())
                     ],
                 )
             }

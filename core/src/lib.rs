@@ -35,6 +35,7 @@ mod wordlist;
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 
+pub use events::Code;
 use events::{Event, Events, MySide, Nameplate};
 use util::random_bytes;
 

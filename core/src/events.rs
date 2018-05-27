@@ -52,6 +52,15 @@ impl Deref for Nameplate {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Code(pub String);
+impl Deref for Code {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
@@ -69,7 +78,7 @@ pub enum BossEvent {
     RxError,
     Error,
     Closed,
-    GotCode(String),
+    GotCode(Code),
     GotKey(Key), // TODO: fixed length?
     Scared,
     Happy,
@@ -85,7 +94,7 @@ impl fmt::Debug for BossEvent {
             RxError => "RxError".to_string(),
             Error => "Error".to_string(),
             Closed => "Closed".to_string(),
-            GotCode(ref code) => format!("GotCode({})", code),
+            GotCode(ref code) => format!("GotCode({:?})", code),
             GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
             Scared => "Scared".to_string(),
             Happy => "Happy".to_string(),
@@ -102,10 +111,10 @@ impl fmt::Debug for BossEvent {
 pub enum CodeEvent {
     AllocateCode(Arc<Wordlist>),
     InputCode,
-    SetCode(String),
-    Allocated(Nameplate, String),
+    SetCode(Code),
+    Allocated(Nameplate, Code),
     GotNameplate(Nameplate),
-    FinishedInput(String),
+    FinishedInput(Code),
 }
 
 #[derive(Debug, PartialEq)]
@@ -121,7 +130,7 @@ pub enum InputEvent {
 #[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(PartialEq)]
 pub enum KeyEvent {
-    GotCode(String),
+    GotCode(Code),
     GotPake(Vec<u8>),
 }
 
@@ -129,7 +138,7 @@ impl fmt::Debug for KeyEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::KeyEvent::*;
         let t = match *self {
-            GotCode(ref code) => format!("GotCode({})", code),
+            GotCode(ref code) => format!("GotCode({:?})", code),
             GotPake(ref pake) => format!("GotPake({})", hex::encode(pake)),
         };
         write!(f, "KeyEvent::{}", t)
