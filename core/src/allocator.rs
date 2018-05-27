@@ -1,4 +1,4 @@
-use events::{Events, Wordlist};
+use events::{Code, Events, Wordlist};
 use std::sync::Arc;
 
 // we process these
@@ -101,7 +101,7 @@ impl AllocatorMachine {
             ),
             RxAllocated(nameplate) => {
                 let words = wordlist.choose_words();
-                let code = nameplate.to_string() + "-" + &words;
+                let code = Code(nameplate.to_string() + "-" + &words);
                 (
                     Some(State::S2Done),
                     events![C_Allocated(nameplate, code)],

@@ -1,6 +1,6 @@
 use magic_wormhole_core::WormholeCore;
-use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
-                          Mood, TimerHandle, WSHandle};
+use magic_wormhole_core::{APIAction, APIEvent, Action, Code, IOAction,
+                          IOEvent, Mood, TimerHandle, WSHandle};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
@@ -167,7 +167,7 @@ impl CoreWrapper {
         match action {
             GotWelcome(w) => self.tx_welcome_to_app.send(w).unwrap(),
             GotMessage(m) => self.tx_messages_to_app.send(m).unwrap(),
-            GotCode(c) => self.tx_code_to_app.send(c).unwrap(),
+            GotCode(c) => self.tx_code_to_app.send(c.to_string()).unwrap(),
             GotUnverifiedKey(_k) => (),
             GotVerifier(v) => self.tx_verifier_to_app.send(v).unwrap(),
             GotVersions(v) => self.tx_versions_to_app.send(v).unwrap(),
@@ -295,7 +295,9 @@ impl Wormhole {
 
     pub fn set_code(&mut self, code: &str) {
         self.tx_event_to_core
-            .send(ToCore::API(APIEvent::SetCode(code.to_string())))
+            .send(ToCore::API(APIEvent::SetCode(Code(
+                code.to_string(),
+            ))))
             .unwrap();
     }
 

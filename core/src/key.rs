@@ -8,7 +8,7 @@ use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, SPAKE2};
 use std::mem;
 
-use events::{Events, Key};
+use events::{Code, Events, Key};
 use util;
 // we process these
 use events::KeyEvent;
@@ -55,12 +55,12 @@ impl KeyMachine {
 
         use self::KeyEvent::*;
         match event {
-            GotCode(ref code) => self.got_code(code.to_string()),
+            GotCode(ref code) => self.got_code(code.clone()),
             GotPake(ref pake) => self.got_pake(pake.clone()),
         }
     }
 
-    fn got_code(&mut self, code: String) -> Events {
+    fn got_code(&mut self, code: Code) -> Events {
         use self::State::*;
         let oldstate = mem::replace(&mut self.state, None);
         let events = match oldstate.unwrap() {
