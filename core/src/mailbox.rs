@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use api::Mood;
-use events::{Events, MySide, Phase};
+use events::{Events, Mailbox, MySide, Phase};
 // we process these
 use events::MailboxEvent;
 use events::NameplateEvent::Release as N_Release;
@@ -18,13 +18,13 @@ enum State {
     S0A,
     S0B,
     // S1: mailbox known
-    S1A(String),
+    S1A(Mailbox),
     // S2: mailbox known, maybe open
-    S2A(String),
-    S2B(String), // opened
+    S2A(Mailbox),
+    S2B(Mailbox), // opened
     // S3: closing
-    S3A(String, Mood), // mailbox, mood
-    S3B(String, Mood), // mailbox, mood
+    S3A(Mailbox, Mood),
+    S3B(Mailbox, Mood),
     // S4: closed
     S4A,
     S4B,
@@ -175,19 +175,19 @@ impl MailboxMachine {
 
     fn do_s1a(
         &self,
-        mailbox: &str,
+        mailbox: &Mailbox,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
             Connected => {
-                let mut rc_events = events![RC_TxOpen(mailbox.to_string())];
+                let mut rc_events = events![RC_TxOpen(mailbox.clone())];
                 for (ph, body) in self.pending_outbound.iter() {
                     rc_events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
-                    Some(State::S2B(mailbox.to_string())),
+                    Some(State::S2B(mailbox.clone())),
                     rc_events,
                     QueueCtrl::Drain,
                 )
@@ -206,7 +206,7 @@ impl MailboxMachine {
                 let mut v = vec![];
                 v.push((phase, body));
                 (
-                    Some(State::S1A(mailbox.to_string())),
+                    Some(State::S1A(mailbox.clone())),
                     events![],
                     QueueCtrl::Enqueue(v),
                 )
@@ -216,19 +216,19 @@ impl MailboxMachine {
 
     fn do_s2a(
         &self,
-        mailbox: &str,
+        mailbox: &Mailbox,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
         match event {
             Connected => {
-                let mut events = events![RC_TxOpen(mailbox.to_string())];
+                let mut events = events![RC_TxOpen(mailbox.clone())];
                 for (ph, body) in self.pending_outbound.iter() {
                     events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
-                    Some(State::S2B(mailbox.to_string())),
+                    Some(State::S2B(mailbox.clone())),
                     events,
                     QueueCtrl::Drain,
                 )
@@ -237,7 +237,7 @@ impl MailboxMachine {
             RxMessage(_, _, _) => panic!(),
             RxClosed => panic!(),
             Close(mood) => (
-                Some(State::S3A(mailbox.to_string(), mood)),
+                Some(State::S3A(mailbox.clone(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),
@@ -247,7 +247,7 @@ impl MailboxMachine {
                 let mut v = vec![];
                 v.push((phase, body));
                 (
-                    Some(State::S2A(mailbox.to_string())),
+                    Some(State::S2A(mailbox.clone())),
                     events![],
                     QueueCtrl::Enqueue(v),
                 )
@@ -257,7 +257,7 @@ impl MailboxMachine {
 
     fn do_s2b(
         &self,
-        mailbox: &str,
+        mailbox: &Mailbox,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
@@ -265,7 +265,7 @@ impl MailboxMachine {
         match event {
             Connected => panic!(),
             Lost => (
-                Some(State::S2A(mailbox.to_string())),
+                Some(State::S2A(mailbox.clone())),
                 events![],
                 QueueCtrl::NoAction,
             ),
@@ -276,13 +276,13 @@ impl MailboxMachine {
                     let is_phase_in_processed = self.processed.contains(&phase);
                     if is_phase_in_processed {
                         (
-                            Some(State::S2B(mailbox.to_string())),
+                            Some(State::S2B(mailbox.clone())),
                             events![N_Release],
                             QueueCtrl::NoAction,
                         )
                     } else {
                         (
-                            Some(State::S2B(mailbox.to_string())),
+                            Some(State::S2B(mailbox.clone())),
                             events![
                                 N_Release,
                                 O_GotMessage(side, phase.clone(), body)
@@ -293,7 +293,7 @@ impl MailboxMachine {
                 } else {
                     // ours
                     (
-                        Some(State::S2B(mailbox.to_string())),
+                        Some(State::S2B(mailbox.clone())),
                         events![],
                         QueueCtrl::Dequeue(phase),
                     )
@@ -301,8 +301,8 @@ impl MailboxMachine {
             }
             RxClosed => panic!(),
             Close(mood) => (
-                Some(State::S3B(mailbox.to_string(), mood)),
-                events![RC_TxClose(mailbox.to_string(), mood)],
+                Some(State::S3B(mailbox.clone(), mood)),
+                events![RC_TxClose(mailbox.clone(), mood)],
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
@@ -313,7 +313,7 @@ impl MailboxMachine {
                 v.push((phase.clone(), body.clone()));
                 // rc_tx_add
                 (
-                    Some(State::S2B(mailbox.to_string())),
+                    Some(State::S2B(mailbox.clone())),
                     events![RC_TxAdd(phase, body)],
                     QueueCtrl::Enqueue(v),
                 )
@@ -323,7 +323,7 @@ impl MailboxMachine {
 
     fn do_s3a(
         &self,
-        mailbox: &str,
+        mailbox: &Mailbox,
         mood: Mood,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
@@ -331,8 +331,8 @@ impl MailboxMachine {
 
         match event {
             Connected => (
-                Some(State::S3B(mailbox.to_string(), mood)),
-                events![RC_TxClose(mailbox.to_string(), mood)],
+                Some(State::S3B(mailbox.clone(), mood)),
+                events![RC_TxClose(mailbox.clone(), mood)],
                 QueueCtrl::NoAction,
             ),
             Lost => panic!(),
@@ -347,7 +347,7 @@ impl MailboxMachine {
 
     fn do_s3b(
         &self,
-        mailbox: &str,
+        mailbox: &Mailbox,
         mood: Mood,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
@@ -356,14 +356,14 @@ impl MailboxMachine {
         match event {
             Connected => panic!(),
             Lost => (
-                Some(State::S3A(mailbox.to_string(), mood)),
+                Some(State::S3A(mailbox.clone(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),
             RxMessage(_side, _phase, _body) => {
                 // irrespective of the side, enter into S3B, do nothing, generate no events
                 (
-                    Some(State::S3B(mailbox.to_string(), mood)),
+                    Some(State::S3B(mailbox.clone(), mood)),
                     events![],
                     QueueCtrl::NoAction,
                 )
@@ -374,14 +374,14 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             Close(mood) => (
-                Some(State::S3B(mailbox.to_string(), mood)),
+                Some(State::S3B(mailbox.clone(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
             GotMessage => panic!(),
             AddMessage(_, _) => (
-                Some(State::S3B(mailbox.to_string(), mood)),
+                Some(State::S3B(mailbox.clone(), mood)),
                 events![],
                 QueueCtrl::NoAction,
             ),

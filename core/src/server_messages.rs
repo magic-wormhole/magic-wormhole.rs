@@ -1,7 +1,7 @@
 use serde_json;
 
 use api::Mood;
-use events::MySide;
+use events::{Mailbox, MySide};
 use serde::{Deserialize, Deserializer};
 use util;
 
@@ -155,7 +155,7 @@ pub fn release(nameplate: &str) -> Message {
         nameplate: nameplate.to_string(),
     }
 }
-pub fn open(mailbox: &str) -> Message {
+pub fn open(mailbox: &Mailbox) -> Message {
     Message::Open {
         mailbox: mailbox.to_string(),
     }
@@ -171,7 +171,7 @@ pub fn add(phase: &str, body: &[u8]) -> Message {
     }
 }
 
-pub fn close(mailbox: &str, mood: Mood) -> Message {
+pub fn close(mailbox: &Mailbox, mood: Mood) -> Message {
     Message::Close {
         mailbox: mailbox.to_string(),
         mood: mood.to_string(),
@@ -247,7 +247,7 @@ mod test {
 
     #[test]
     fn test_open() {
-        let m1 = open("mailbox1");
+        let m1 = open(&Mailbox("mailbox1".to_string()));
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);
@@ -263,7 +263,7 @@ mod test {
 
     #[test]
     fn test_close() {
-        let m1 = close("mailbox1", Mood::Happy);
+        let m1 = close(&Mailbox("mailbox1".to_string()), Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
         let m2 = deserialize(&s);
         assert_eq!(m1, m2);
