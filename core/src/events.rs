@@ -1,4 +1,5 @@
 use hex;
+use serde_json::Value;
 use std::fmt;
 use std::iter::FromIterator;
 use std::ops::Deref;
@@ -118,10 +119,11 @@ pub enum AllocatorEvent {
     Lost,
     RxAllocated(Nameplate),
 }
+
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(PartialEq)]
 pub enum BossEvent {
-    RxWelcome,
+    RxWelcome(Value),
     RxError,
     Error,
     Closed,
@@ -137,7 +139,7 @@ impl fmt::Debug for BossEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::BossEvent::*;
         let t = match *self {
-            RxWelcome => "RxWelcome".to_string(),
+            RxWelcome(ref v) => format!("RxWelcome({:?})", v),
             RxError => "RxError".to_string(),
             Error => "Error".to_string(),
             Closed => "Closed".to_string(),
