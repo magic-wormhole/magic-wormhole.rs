@@ -23,6 +23,12 @@ impl fmt::Display for AppID {
     }
 }
 
+impl<'a> From<&'a str> for AppID {
+    fn from(s: &'a str) -> AppID {
+        AppID(s.to_string())
+    }
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub struct Key(pub Vec<u8>);
 impl Deref for Key {

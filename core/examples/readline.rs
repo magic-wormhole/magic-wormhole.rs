@@ -6,9 +6,8 @@ extern crate serde_json;
 extern crate url;
 extern crate ws;
 
-use magic_wormhole_core::{APIAction, APIEvent, Action, AppID, IOAction,
-                          IOEvent, OfferType, PeerMessage, WSHandle,
-                          WormholeCore};
+use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
+                          OfferType, PeerMessage, WSHandle, WormholeCore};
 
 use std::error::Error;
 use std::io;
@@ -249,7 +248,7 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
 fn main() {
     println!("Receive start");
 
-    let mut wc = WormholeCore::new(&AppID(APPID.to_string()), MAILBOX_SERVER);
+    let mut wc = WormholeCore::new(APPID, MAILBOX_SERVER);
     let wsh;
     let ws_url;
     let mut actions = wc.start();
