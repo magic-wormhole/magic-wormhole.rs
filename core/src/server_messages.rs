@@ -1,4 +1,4 @@
-use serde_json;
+use serde_json::{self, Value};
 
 use api::Mood;
 use events::{AppID, Mailbox, MySide};
@@ -111,7 +111,7 @@ pub fn release(nameplate: &str) -> OutboundMessage {
 }
 pub fn open(mailbox: &Mailbox) -> OutboundMessage {
     OutboundMessage::Open {
-        mailbox: mailbox.to_string(),
+        mailbox: mailbox.0.to_string(),
     }
 }
 
@@ -127,7 +127,7 @@ pub fn add(phase: &str, body: &[u8]) -> OutboundMessage {
 
 pub fn close(mailbox: &Mailbox, mood: Mood) -> OutboundMessage {
     OutboundMessage::Close {
-        mailbox: mailbox.to_string(),
+        mailbox: mailbox.0.to_string(),
         mood: mood.to_string(),
     }
 }
@@ -149,7 +149,7 @@ pub fn ping(ping: u32) -> OutboundMessage {
 #[serde(tag = "type")]
 pub enum InboundMessage {
     Welcome {
-        welcome: serde_json::Value, // left mostly-intact for application
+        welcome: Value, // left mostly-intact for application
     },
     Nameplates {
         nameplates: Vec<Nameplate>,
@@ -183,6 +183,7 @@ pub fn deserialize(s: &str) -> InboundMessage {
 mod test {
     use super::*;
     use api::Mood;
+    use serde_json::from_str;
 
     #[test]
     fn test_bind() {
@@ -191,72 +192,117 @@ mod test {
             &MySide("side1".to_string()),
         );
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "bind", "appid": "appid",
+                              "side": "side1"})
+        );
     }
 
     #[test]
     fn test_list() {
         let m1 = list();
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(m2, json!({"type": "list"}));
     }
 
     #[test]
     fn test_allocate() {
         let m1 = allocate();
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(m2, json!({"type": "allocate"}));
     }
 
     #[test]
     fn test_claim() {
         let m1 = claim("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "claim", "nameplate": "nameplate1"})
+        );
     }
 
     #[test]
     fn test_release() {
         let m1 = release("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "release", "nameplate": "nameplate1"})
+        );
     }
 
     #[test]
     fn test_open() {
         let m1 = open(&Mailbox("mailbox1".to_string()));
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "open", "mailbox": "mailbox1"})
+        );
     }
 
     #[test]
     fn test_add() {
         let m1 = add("phase1", b"body");
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "add", "phase": "phase1",
+                              "body": "626f6479"})
+        ); // body is hex-encoded
     }
 
     #[test]
     fn test_close() {
         let m1 = close(&Mailbox("mailbox1".to_string()), Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "close", "mailbox": "mailbox1",
+                              "mood": "happy"})
+        );
+    }
+
+    #[test]
+    fn test_close_errory() {
+        let m1 = close(&Mailbox("mailbox1".to_string()), Mood::Error);
+        let s = serde_json::to_string(&m1).unwrap();
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "close", "mailbox": "mailbox1",
+                              "mood": "errory"})
+        );
+    }
+
+    #[test]
+    fn test_close_scared() {
+        let m1 = close(&Mailbox("mailbox1".to_string()), Mood::Scared);
+        let s = serde_json::to_string(&m1).unwrap();
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            json!({"type": "close", "mailbox": "mailbox1",
+                              "mood": "scary"})
+        );
     }
 
     #[test]
     fn test_ping() {
         let m1 = ping(123);
         let s = serde_json::to_string(&m1).unwrap();
-        let m2 = deserialize_outbound(&s);
-        assert_eq!(m1, m2);
+        let m2: Value = from_str(&s).unwrap();
+        assert_eq!(m2, json!({"type": "ping", "ping": 123}));
     }
 
     #[test]
