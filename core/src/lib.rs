@@ -35,7 +35,7 @@ mod wordlist;
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 
-pub use events::Code;
+pub use events::{AppID, Code};
 use events::{Event, Events, MySide, Nameplate};
 use util::random_bytes;
 
@@ -71,21 +71,21 @@ fn generate_side() -> String {
 }
 
 impl WormholeCore {
-    pub fn new(appid: &str, relay_url: &str) -> WormholeCore {
+    pub fn new(appid: &AppID, relay_url: &str) -> WormholeCore {
         let side = MySide(generate_side());
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
             code: code::CodeMachine::new(),
             input: input::InputMachine::new(),
-            key: key::KeyMachine::new(appid, side.as_str()),
+            key: key::KeyMachine::new(&appid.clone(), side.as_str()),
             lister: lister::ListerMachine::new(),
             mailbox: mailbox::MailboxMachine::new(&side),
             nameplate: nameplate::NameplateMachine::new(),
             order: order::OrderMachine::new(),
             receive: receive::ReceiveMachine::new(),
             rendezvous: rendezvous::RendezvousMachine::new(
-                appid,
+                &appid.clone(),
                 relay_url,
                 &side,
                 5.0,
