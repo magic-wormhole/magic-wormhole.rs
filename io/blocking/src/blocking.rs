@@ -43,7 +43,7 @@ struct CoreWrapper {
     tx_messages_to_app: Sender<Vec<u8>>,
     tx_code_to_app: Sender<String>,
     tx_verifier_to_app: Sender<Vec<u8>>,
-    tx_versions_to_app: Sender<HashMap<String, String>>,
+    tx_versions_to_app: Sender<Value>,
     tx_close_to_app: Sender<Mood>,
 }
 
@@ -235,12 +235,12 @@ pub struct Wormhole {
     rx_messages_from_core: Receiver<Vec<u8>>,
     rx_code_from_core: Receiver<String>,
     rx_verifier_from_core: Receiver<Vec<u8>>,
-    rx_versions_from_core: Receiver<HashMap<String, String>>,
+    rx_versions_from_core: Receiver<Value>,
     rx_close_from_core: Receiver<Mood>,
 
     code: Option<String>,
     welcome: Option<Value>,
-    versions: Option<HashMap<String, String>>,
+    versions: Option<Value>,
     verifier: Option<Vec<u8>>,
 }
 
@@ -351,7 +351,7 @@ impl Wormhole {
         }
     }
 
-    pub fn get_versions(&mut self) -> HashMap<String, String> {
+    pub fn get_versions(&mut self) -> Value {
         match self.versions {
             Some(ref versions) => versions.clone(),
             None => {

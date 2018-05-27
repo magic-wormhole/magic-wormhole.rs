@@ -1,7 +1,6 @@
 use events::{Code, Key};
 use hex;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use util::maybe_utf8;
@@ -123,7 +122,7 @@ pub enum APIAction {
     GotCode(Code), // must be easy to canonically encode into UTF-8 bytes
     GotUnverifiedKey(Key),
     GotVerifier(Vec<u8>),
-    GotVersions(HashMap<String, String>), // actually anything JSON-able
+    GotVersions(Value),
     GotMessage(Vec<u8>),
     GotClosed(Mood),
 }

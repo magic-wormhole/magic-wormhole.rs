@@ -1,12 +1,11 @@
 use api::Mood;
 use events::{Code, Events, Nameplate, Phase};
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use wordlist::default_wordlist;
 
 use regex::Regex;
-use serde_json::from_str;
+use serde_json;
 
 // we process these
 use api::APIEvent;
@@ -229,14 +228,12 @@ impl BossMachine {
             Happy(i) => {
                 if phase.to_string() == "version" {
                     // TODO handle error conditions
+                    use serde_json::Value;
                     let version_str = String::from_utf8(plaintext).unwrap();
-                    let version_dict: HashMap<
-                        String,
-                        HashMap<String, String>,
-                    > = from_str(&version_str).unwrap();
-                    let app_versions = match version_dict.get("app_versions") {
+                    let v: Value = serde_json::from_str(&version_str).unwrap();
+                    let app_versions = match v.get("app_versions") {
                         Some(versions) => versions.clone(),
-                        None => HashMap::new(),
+                        None => json!({}),
                     };
 
                     (
@@ -307,7 +304,7 @@ impl BossMachine {
 mod test {
     use super::*;
     use api::{APIEvent, Mood};
-    use events::{RendezvousEvent, TerminatorEvent};
+    use events::{Key, RendezvousEvent, TerminatorEvent};
 
     #[test]
     fn create() {
@@ -326,4 +323,30 @@ mod test {
             events![TerminatorEvent::Close(Mood::Lonely)]
         );
     }
+
+    #[test]
+    fn versions() {
+        let mut b = BossMachine::new();
+        use self::BossEvent::*;
+        b.process_api(APIEvent::Start); // -> Started
+        b.process_api(APIEvent::SetCode(Code("4-foo".to_string()))); // -> Coding
+        b.process(GotCode(Code("4-foo".to_string()))); // -> Lonely
+        b.process(GotKey(Key(b"".to_vec()))); // not actually necessary
+        b.process(Happy);
+        let v = json!({"for_wormhole": 123,
+                       "app_versions": {
+                           "hello_app": 456,
+                       }}).to_string();
+        let actions = b.process(GotMessage(
+            Phase("version".to_string()),
+            v.as_bytes().to_vec(),
+        ));
+        assert_eq!(
+            actions,
+            events![
+                APIAction::GotVersions(json!({"hello_app": 456})),
+            ]
+        );
+    }
+
 }
