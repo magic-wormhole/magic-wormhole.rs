@@ -8,7 +8,7 @@ use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, SPAKE2};
 use std::mem;
 
-use events::{AppID, Code, Events, Key, Phase};
+use events::{AppID, Code, Events, Key, MySide, Phase};
 use util;
 // we process these
 use events::KeyEvent;
@@ -29,7 +29,7 @@ enum State {
 
 pub struct KeyMachine {
     appid: AppID,
-    side: String,
+    side: MySide,
     state: Option<State>,
 }
 
@@ -39,11 +39,11 @@ struct PhaseMessage {
 }
 
 impl KeyMachine {
-    pub fn new(appid: &AppID, side: &str) -> KeyMachine {
+    pub fn new(appid: &AppID, side: &MySide) -> KeyMachine {
         KeyMachine {
             appid: appid.clone(),
             state: Some(State::S0KnowNothing),
-            side: side.to_string(),
+            side: side.clone(),
         }
     }
 
@@ -141,12 +141,12 @@ fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: Vec<u8>) -> Key {
 }
 
 fn build_version_msg(
-    side: &str,
+    side: &MySide,
     key: &Key,
     versions: &Value,
 ) -> (Phase, Vec<u8>) {
     let phase = "version";
-    let data_key = derive_phase_key(side, &key, &phase);
+    let data_key = derive_phase_key(&side.to_string(), &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(data_key, &plaintext.as_bytes());
     (Phase(phase.to_string()), encrypted)
@@ -222,13 +222,16 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
+    use events::{AppID, MySide};
 
     #[test]
     fn test_extract_pake_msg() {
         extern crate hex;
-        use events::AppID;
 
-        let _key = super::KeyMachine::new(&AppID("appid".to_string()), "side1");
+        let _key = super::KeyMachine::new(
+            &AppID("appid".to_string()),
+            &MySide("side1".to_string()),
+        );
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = super::extract_pake_msg(hex::decode(s1).unwrap());
@@ -246,7 +249,10 @@ mod test {
         // output of derive_phase_key is:
         // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
-        let _k = KeyMachine::new(&AppID("appid1".to_string()), "side");
+        let _k = KeyMachine::new(
+            &AppID("appid1".to_string()),
+            &MySide("side".to_string()),
+        );
 
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
