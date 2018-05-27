@@ -43,6 +43,20 @@ impl Deref for TheirSide {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub struct Phase(pub String);
+impl Deref for Phase {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+impl fmt::Display for Phase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Phase({})", &self.0)
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Nameplate(pub String);
 impl Deref for Nameplate {
@@ -83,7 +97,7 @@ pub enum BossEvent {
     Scared,
     Happy,
     GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
-    GotMessage(String, Vec<u8>),
+    GotMessage(Phase, Vec<u8>),
 }
 
 impl fmt::Debug for BossEvent {
@@ -100,7 +114,7 @@ impl fmt::Debug for BossEvent {
             Happy => "Happy".to_string(),
             GotVerifier(ref v) => format!("GotVerifier({})", maybe_utf8(v)),
             GotMessage(ref phase, ref msg) => {
-                format!("GotMessage({}, {})", phase, maybe_utf8(msg))
+                format!("GotMessage({:?}, {})", phase, maybe_utf8(msg))
             }
         };
         write!(f, "BossEvent::{}", t)
@@ -159,12 +173,12 @@ pub enum ListerEvent {
 pub enum MailboxEvent {
     Connected,
     Lost,
-    RxMessage(TheirSide, String, Vec<u8>), // side, phase, body
+    RxMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
     RxClosed,
     Close(Mood),        // mood
     GotMailbox(String), // mailbox id
     GotMessage,
-    AddMessage(String, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
+    AddMessage(Phase, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
 }
 
 impl fmt::Debug for MailboxEvent {
@@ -206,7 +220,7 @@ pub enum NameplateEvent {
 
 #[derive(PartialEq)]
 pub enum OrderEvent {
-    GotMessage(TheirSide, String, Vec<u8>), // side, phase, body
+    GotMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
 }
 
 impl fmt::Debug for OrderEvent {
@@ -226,7 +240,7 @@ impl fmt::Debug for OrderEvent {
 
 #[derive(PartialEq)]
 pub enum ReceiveEvent {
-    GotMessage(TheirSide, String, Vec<u8>), // side, phase, body
+    GotMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
     GotKey(Key),
 }
 
@@ -251,7 +265,7 @@ pub enum RendezvousEvent {
     Start,
     TxBind(String, MySide), // appid, side
     TxOpen(String),         // mailbox
-    TxAdd(String, Vec<u8>), // phase, body
+    TxAdd(Phase, Vec<u8>),  // phase, body
     TxClose(String, Mood),  // mailbox, mood
     Stop,
     TxClaim(Nameplate),   // nameplate
@@ -287,7 +301,7 @@ impl fmt::Debug for RendezvousEvent {
 
 #[derive(PartialEq)]
 pub enum SendEvent {
-    Send(String, Vec<u8>), // phase, plaintext
+    Send(Phase, Vec<u8>), // phase, plaintext
     GotVerifiedKey(Key),
 }
 

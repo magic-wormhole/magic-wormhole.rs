@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use api::Mood;
-use events::{Events, MySide};
+use events::{Events, MySide, Phase};
 // we process these
 use events::MailboxEvent;
 use events::NameplateEvent::Release as N_Release;
@@ -33,16 +33,16 @@ enum State {
 pub struct MailboxMachine {
     state: State,
     side: MySide,
-    pending_outbound: HashMap<String, Vec<u8>>, // HashMap<phase, body>
-    processed: HashSet<String>,
+    pending_outbound: HashMap<Phase, Vec<u8>>, // HashMap<phase, body>
+    processed: HashSet<Phase>,
 }
 
 enum QueueCtrl {
-    Enqueue(Vec<(String, Vec<u8>)>), // append
-    Drain,                           // replace with an empty vec
-    NoAction,                        // TODO: find a better name for the field
-    AddToProcessed(String),          // add to the list of processed "phase"
-    Dequeue(String), // remove an element from the Map given the key
+    Enqueue(Vec<(Phase, Vec<u8>)>), // append
+    Drain,                          // replace with an empty vec
+    NoAction,                       // TODO: find a better name for the field
+    AddToProcessed(Phase),          // add to the list of processed "phase"
+    Dequeue(Phase), // remove an element from the Map given the key
 }
 
 impl MailboxMachine {
@@ -83,7 +83,7 @@ impl MailboxMachine {
         match queue {
             QueueCtrl::Enqueue(v) => for &(ref phase, ref body) in &v {
                 self.pending_outbound
-                    .insert(phase.to_string(), body.to_vec());
+                    .insert(phase.clone(), body.to_vec());
             },
             QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
@@ -152,7 +152,7 @@ impl MailboxMachine {
                 // TODO: move this abstraction into a function
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
+                    rc_events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.clone())),
@@ -184,7 +184,7 @@ impl MailboxMachine {
             Connected => {
                 let mut rc_events = events![RC_TxOpen(mailbox.to_string())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    rc_events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
+                    rc_events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.to_string())),
@@ -225,7 +225,7 @@ impl MailboxMachine {
             Connected => {
                 let mut events = events![RC_TxOpen(mailbox.to_string())];
                 for (ph, body) in self.pending_outbound.iter() {
-                    events.push(RC_TxAdd(ph.to_string(), body.to_vec()));
+                    events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
                     Some(State::S2B(mailbox.to_string())),

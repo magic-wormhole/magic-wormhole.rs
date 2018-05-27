@@ -8,7 +8,7 @@ use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, SPAKE2};
 use std::mem;
 
-use events::{Code, Events, Key};
+use events::{Code, Events, Key, Phase};
 use util;
 // we process these
 use events::KeyEvent;
@@ -67,7 +67,9 @@ impl KeyMachine {
             S0KnowNothing => {
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
                 self.state = Some(S1KnowCode(pake_state));
-                events![M_AddMessage("pake".to_string(), pake_msg_ser)]
+                events![
+                    M_AddMessage(Phase("pake".to_string()), pake_msg_ser)
+                ]
             }
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
@@ -78,7 +80,7 @@ impl KeyMachine {
                     build_version_msg(&self.side, &key, &versions);
                 self.state = Some(S3KnowBoth(key.clone()));
                 events![
-                    M_AddMessage("pake".to_string(), pake_msg_ser),
+                    M_AddMessage(Phase("pake".to_string()), pake_msg_ser),
                     M_AddMessage(version_phase, version_msg),
                     B_GotKey(key.clone()),
                     R_GotKey(key.clone())
@@ -142,12 +144,12 @@ fn build_version_msg(
     side: &str,
     key: &Key,
     versions: &Value,
-) -> (String, Vec<u8>) {
+) -> (Phase, Vec<u8>) {
     let phase = "version";
     let data_key = derive_phase_key(side, &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(data_key, &plaintext.as_bytes());
-    (phase.to_string(), encrypted)
+    (Phase(phase.to_string()), encrypted)
 }
 
 fn extract_pake_msg(body: Vec<u8>) -> Option<String> {

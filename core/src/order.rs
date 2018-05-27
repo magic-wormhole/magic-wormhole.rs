@@ -1,4 +1,4 @@
-use events::{Events, TheirSide};
+use events::{Events, Phase, TheirSide};
 // we process these
 use events::OrderEvent;
 // we emit these
@@ -13,11 +13,11 @@ enum State {
 
 pub struct OrderMachine {
     state: State,
-    queue: Vec<(TheirSide, String, Vec<u8>)>,
+    queue: Vec<(TheirSide, Phase, Vec<u8>)>,
 }
 
 enum QueueStatus {
-    Enqueue((TheirSide, String, Vec<u8>)),
+    Enqueue((TheirSide, Phase, Vec<u8>)),
     Drain,
     NoAction,
 }
@@ -62,7 +62,7 @@ impl OrderMachine {
         for &(ref side, ref phase, ref body) in &self.queue {
             es.push(R_GotMessage(
                 side.clone(),
-                phase.to_string(),
+                phase.clone(),
                 body.to_vec(),
             ));
         }
@@ -74,7 +74,7 @@ impl OrderMachine {
         use events::OrderEvent::*;
         match event {
             GotMessage(side, phase, body) => {
-                if phase == "pake" {
+                if phase.to_string() == "pake" {
                     // got a pake message
                     let mut es = self.drain();
                     let mut key_events = events![K_GotPake(body)];

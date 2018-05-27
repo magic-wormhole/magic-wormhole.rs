@@ -10,7 +10,7 @@
 extern crate hex;
 
 use api::{TimerHandle, WSHandle};
-use events::{Events, MySide, Nameplate, TheirSide};
+use events::{Events, MySide, Nameplate, Phase, TheirSide};
 use serde_json;
 use server_messages::{add, allocate, bind, claim, close, deserialize, list,
                       open, release, Message};
@@ -176,7 +176,7 @@ impl RendezvousMachine {
             } => events![
                 M_RxMessage(
                     TheirSide(side),
-                    phase,
+                    Phase(phase),
                     hex::decode(body).unwrap()
                 )
             ],

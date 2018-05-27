@@ -1,5 +1,5 @@
 use api::Mood;
-use events::{Code, Events, Nameplate};
+use events::{Code, Events, Nameplate, Phase};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -218,7 +218,7 @@ impl BossMachine {
         actions
     }
 
-    fn got_message(&mut self, phase: &str, plaintext: Vec<u8>) -> Events {
+    fn got_message(&mut self, phase: &Phase, plaintext: Vec<u8>) -> Events {
         use self::State::*;
         let phase_pattern = Regex::from_str("\\d+").unwrap();
         let (actions, newstate) = match self.state {
@@ -227,7 +227,7 @@ impl BossMachine {
                 (events![], self.state)
             }
             Happy(i) => {
-                if phase == "version" {
+                if phase.to_string() == "version" {
                     // TODO handle error conditions
                     let version_str = String::from_utf8(plaintext).unwrap();
                     let version_dict: HashMap<
@@ -264,7 +264,7 @@ impl BossMachine {
             Unstarted(_) => panic!("w.start() must be called first"),
             Closing | Closed => (events![], self.state),
             Empty(i) | Coding(i) | Lonely(i) | Happy(i) => (
-                events![S_Send(format!("{}", i), plaintext)],
+                events![S_Send(Phase(format!("{}", i)), plaintext)],
                 self.state.increment_phase(),
             ),
         };

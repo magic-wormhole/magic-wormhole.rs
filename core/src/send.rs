@@ -1,4 +1,4 @@
-use events::{Events, Key, MySide};
+use events::{Events, Key, MySide, Phase};
 use key;
 // we process these
 use events::SendEvent;
@@ -9,7 +9,7 @@ use events::MailboxEvent::AddMessage as M_AddMessage;
 pub struct SendMachine {
     state: State,
     side: MySide,
-    queue: Vec<(String, Vec<u8>)>,
+    queue: Vec<(Phase, Vec<u8>)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -19,7 +19,7 @@ enum State {
 }
 
 enum QueueStatus {
-    Enqueue((String, Vec<u8>)),
+    Enqueue((Phase, Vec<u8>)),
     Drain,
     NoAction,
 }
@@ -62,13 +62,13 @@ impl SendMachine {
         for &(ref phase, ref plaintext) in &self.queue {
             let data_key = key::derive_phase_key(&self.side, &key, phase);
             let (_nonce, encrypted) = key::encrypt_data(data_key, plaintext);
-            es.push(M_AddMessage(phase.to_string(), encrypted));
+            es.push(M_AddMessage(phase.clone(), encrypted));
         }
 
         es
     }
 
-    fn deliver(&self, key: Key, phase: String, plaintext: Vec<u8>) -> Events {
+    fn deliver(&self, key: Key, phase: Phase, plaintext: Vec<u8>) -> Events {
         let data_key = key::derive_phase_key(&self.side, &key, &phase);
         let (_nonce, encrypted) = key::encrypt_data(data_key, &plaintext);
         events![M_AddMessage(phase, encrypted)]
