@@ -10,7 +10,7 @@
 extern crate hex;
 
 use api::{TimerHandle, WSHandle};
-use events::{Events, MySide, Nameplate, Phase, TheirSide};
+use events::{Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
 use serde_json;
 use server_messages::{add, allocate, bind, claim, close, deserialize, list,
                       open, release, Message};
@@ -167,7 +167,7 @@ impl RendezvousMachine {
             Closed { .. } => events![M_RxClosed],
             Pong { .. } => events![], // TODO
             Ack { .. } => events![], // we ignore this, it's only for the timing log
-            Claimed { mailbox } => events![N_RxClaimed(mailbox.to_string())],
+            Claimed { mailbox } => events![N_RxClaimed(Mailbox(mailbox))],
             Message {
                 side,
                 phase,

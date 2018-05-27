@@ -58,6 +58,20 @@ impl fmt::Display for Phase {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
+pub struct Mailbox(pub String);
+impl Deref for Mailbox {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+impl fmt::Display for Mailbox {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Mailbox({})", &self.0)
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Nameplate(pub String);
 impl Deref for Nameplate {
     type Target = String;
@@ -175,8 +189,8 @@ pub enum MailboxEvent {
     Lost,
     RxMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
     RxClosed,
-    Close(Mood),        // mood
-    GotMailbox(String), // mailbox id
+    Close(Mood),
+    GotMailbox(Mailbox),
     GotMessage,
     AddMessage(Phase, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
 }
@@ -211,7 +225,7 @@ pub enum NameplateEvent {
     NameplateDone,
     Connected,
     Lost,
-    RxClaimed(String),
+    RxClaimed(Mailbox),
     RxReleased,
     SetNameplate(Nameplate),
     Release,
@@ -264,9 +278,9 @@ impl fmt::Debug for ReceiveEvent {
 pub enum RendezvousEvent {
     Start,
     TxBind(String, MySide), // appid, side
-    TxOpen(String),         // mailbox
-    TxAdd(Phase, Vec<u8>),  // phase, body
-    TxClose(String, Mood),  // mailbox, mood
+    TxOpen(Mailbox),
+    TxAdd(Phase, Vec<u8>), // phase, body
+    TxClose(Mailbox, Mood),
     Stop,
     TxClaim(Nameplate),   // nameplate
     TxRelease(Nameplate), // nameplate
