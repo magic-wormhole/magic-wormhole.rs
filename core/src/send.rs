@@ -5,7 +5,6 @@ use events::SendEvent;
 // we emit these
 use events::MailboxEvent::AddMessage as M_AddMessage;
 
-#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 pub struct SendMachine {
     state: State,
     side: MySide,

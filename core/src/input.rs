@@ -230,7 +230,6 @@ mod test {
     }
 
     #[test]
-    #[allow(unreachable_code)]
     fn test_completions() {
         let mut i = InputMachine::new();
         // you aren't allowed to call these before w.input_code()
@@ -307,7 +306,6 @@ mod test {
         let actions = i.process(GotWordlist(wordlist));
         assert_eq!(actions, events![]);
 
-        return; // TODO: word completions aren't yet implemented
         assert_eq!(
             i.get_word_completions("pur").unwrap(),
             vecstrings("purple-")
