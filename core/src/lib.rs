@@ -29,6 +29,8 @@ mod rendezvous;
 mod send;
 mod server_messages;
 mod terminator;
+#[cfg(test)]
+mod test;
 mod util;
 mod wordlist;
 
