@@ -13,7 +13,7 @@ use api::{TimerHandle, WSHandle};
 use events::{AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
 use serde_json;
 use server_messages::{add, allocate, bind, claim, close, deserialize, list,
-                      open, release, Message};
+                      open, release, InboundMessage, OutboundMessage};
 // we process these
 use api::IOEvent;
 use events::RendezvousEvent;
@@ -21,6 +21,7 @@ use events::RendezvousEvent;
 use api::IOAction;
 use events::AllocatorEvent::{Connected as A_Connected, Lost as A_Lost,
                              RxAllocated as A_RxAllocated};
+use events::BossEvent::RxWelcome as B_RxWelcome;
 use events::ListerEvent::{Connected as L_Connected, Lost as L_Lost,
                           RxNameplates as L_RxNamePlates};
 use events::MailboxEvent::{Connected as M_Connected, Lost as M_Lost,
@@ -149,18 +150,9 @@ impl RendezvousMachine {
         // TODO: log+ignore unrecognized messages. They should flunk unit
         // tests, but not break normal operation
         let m = deserialize(message);
-        use self::Message::*;
+        use self::InboundMessage::*;
         match m {
-            Bind { .. }
-            | List { .. }
-            | Allocate { .. }
-            | Claim { .. }
-            | Release { .. }
-            | Open { .. }
-            | Add { .. }
-            | Close { .. }
-            | Ping { .. } => panic!("client should not be receiving this"),
-            Welcome { .. } => events![], // TODO
+            Welcome { ref welcome } => events![B_RxWelcome(welcome.clone())],
             Released { .. } => events![N_RxReleased],
             Closed { .. } => events![M_RxClosed],
             Pong { .. } => events![], // TODO
@@ -258,7 +250,7 @@ impl RendezvousMachine {
         actions
     }
 
-    fn send(&mut self, m: Message) -> Events {
+    fn send(&mut self, m: OutboundMessage) -> Events {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
         let s = IOAction::WebSocketSendMessage(
@@ -282,7 +274,7 @@ mod test {
     use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
     use events::TerminatorEvent::Stopped as T_Stopped;
     use events::{AppID, MySide};
-    use server_messages::{deserialize, Message};
+    use server_messages::{deserialize_outbound, OutboundMessage};
 
     #[test]
     fn create() {
@@ -356,7 +348,9 @@ mod test {
         match e {
             IO(IOAction::WebSocketSendMessage(wsh0, m)) => {
                 assert_eq!(wsh0, wsh);
-                if let Message::Bind { appid, side } = deserialize(&m) {
+                if let OutboundMessage::Bind { appid, side } =
+                    deserialize_outbound(&m)
+                {
                     assert_eq!(appid, "appid");
                     assert_eq!(side, "side1");
                 } else {
