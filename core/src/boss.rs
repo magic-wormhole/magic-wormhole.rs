@@ -22,7 +22,6 @@ use events::RendezvousEvent::Start as RC_Start;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
 
-#[allow(dead_code)]
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
     Unstarted(u32),
