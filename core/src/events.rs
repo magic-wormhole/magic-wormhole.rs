@@ -73,7 +73,7 @@ impl Deref for Phase {
 }
 impl fmt::Display for Phase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Phase({})", &self.0)
+        write!(f, "{}", &self.0)
     }
 }
 
