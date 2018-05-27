@@ -119,7 +119,6 @@ impl MailboxMachine {
                 events![],
                 QueueCtrl::NoAction,
             ),
-            GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
@@ -160,7 +159,6 @@ impl MailboxMachine {
                     QueueCtrl::Drain,
                 )
             }
-            GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
@@ -201,7 +199,6 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
-            GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
@@ -242,7 +239,6 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
-            GotMessage => panic!(),
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
@@ -306,7 +302,6 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
-            GotMessage => panic!(),
             AddMessage(phase, body) => {
                 // queue
                 let mut v = vec![];
@@ -340,7 +335,6 @@ impl MailboxMachine {
             RxClosed => panic!(),
             Close(_) => panic!(),
             GotMailbox(_) => panic!(),
-            GotMessage => panic!(),
             AddMessage(_, _) => panic!(),
         }
     }
@@ -379,7 +373,6 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             GotMailbox(_) => panic!(),
-            GotMessage => panic!(),
             AddMessage(_, _) => (
                 Some(State::S3B(mailbox.clone(), mood)),
                 events![],
@@ -401,7 +394,6 @@ impl MailboxMachine {
             RxClosed => panic!(),
             Close(..) => panic!(),
             GotMailbox(..) => panic!(),
-            GotMessage => panic!(),
             AddMessage(_, _) => panic!(),
         }
     }
@@ -421,7 +413,6 @@ impl MailboxMachine {
             RxClosed => panic!(),
             Close(_) => (Some(State::S4B), events![], QueueCtrl::NoAction),
             GotMailbox(..) => panic!(),
-            GotMessage => panic!(),
             AddMessage(_, _) => {
                 (Some(State::S4B), events![], QueueCtrl::NoAction)
             }
