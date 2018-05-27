@@ -118,7 +118,7 @@ impl KeyMachine {
     }
 }
 
-fn start_pake(appid: &str, code: &str) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
+fn start_pake(code: &Code, appid: &str) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
         code.as_bytes(),
         appid.as_bytes(),
