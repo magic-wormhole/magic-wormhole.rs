@@ -71,7 +71,11 @@ fn generate_side() -> String {
 }
 
 impl WormholeCore {
-    pub fn new(appid: &AppID, relay_url: &str) -> WormholeCore {
+    pub fn new<T>(appid: T, relay_url: &str) -> WormholeCore
+    where
+        T: Into<AppID>,
+    {
+        let appid: AppID = appid.into();
         let side = MySide(generate_side());
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
