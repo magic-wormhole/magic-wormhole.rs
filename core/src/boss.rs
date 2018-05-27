@@ -92,7 +92,8 @@ impl BossMachine {
             GotVerifier(verifier) => events![APIAction::GotVerifier(verifier)],
             GotMessage(phase, plaintext) => self.got_message(&phase, plaintext),
             Closed => self.closed(),
-            Error | RxError | RxWelcome(_) | Scared => events![], // TODO
+            Error | RxError | Scared => events![], // TODO
+            RxWelcome(ref v) => events![APIAction::GotWelcome(v.clone())],
         }
     }
 
