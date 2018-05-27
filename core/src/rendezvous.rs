@@ -19,13 +19,13 @@ use api::IOEvent;
 use events::RendezvousEvent;
 // we emit these
 use api::IOAction;
-use events::AllocatorEvent::{Connected as A_Connected,
+use events::AllocatorEvent::{Connected as A_Connected, Lost as A_Lost,
                              RxAllocated as A_RxAllocated};
-use events::ListerEvent::{Connected as L_Connected,
+use events::ListerEvent::{Connected as L_Connected, Lost as L_Lost,
                           RxNameplates as L_RxNamePlates};
-use events::MailboxEvent::{Connected as M_Connected, RxClosed as M_RxClosed,
-                           RxMessage as M_RxMessage};
-use events::NameplateEvent::{Connected as N_Connected,
+use events::MailboxEvent::{Connected as M_Connected, Lost as M_Lost,
+                           RxClosed as M_RxClosed, RxMessage as M_RxMessage};
+use events::NameplateEvent::{Connected as N_Connected, Lost as N_Lost,
                              RxClaimed as N_RxClaimed,
                              RxReleased as N_RxReleased};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
@@ -136,8 +136,6 @@ impl RendezvousMachine {
                     L_Connected,
                     A_Connected
                 ];
-                //actions.push(A_Connected);
-                //actions.push(L_Connected);
                 (a, State::Connected)
             }
             _ => panic!("bad transition from {:?}", self),
@@ -196,12 +194,26 @@ impl RendezvousMachine {
     fn connection_lost(&mut self, _handle: WSHandle) -> Events {
         // TODO: assert handle == self.handle
         let (actions, newstate) = match self.state {
-            State::Connecting | State::Connected => {
+            State::Connecting => {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 (
                     events![
                         IOAction::StartTimer(new_handle, self.retry_timer)
+                    ],
+                    State::Waiting,
+                )
+            }
+            State::Connected => {
+                let new_handle = TimerHandle::new(2);
+                self.reconnect_timer = Some(new_handle);
+                (
+                    events![
+                        IOAction::StartTimer(new_handle, self.retry_timer),
+                        N_Lost,
+                        M_Lost,
+                        L_Lost,
+                        A_Lost
                     ],
                     State::Waiting,
                 )
@@ -262,8 +274,11 @@ mod test {
     use api::IOAction;
     use api::IOEvent;
     use api::{TimerHandle, WSHandle};
+    use events::AllocatorEvent::Lost as A_Lost;
     use events::Event::{Nameplate, Rendezvous, Terminator, IO};
-    use events::NameplateEvent::Connected as N_Connected;
+    use events::ListerEvent::Lost as L_Lost;
+    use events::MailboxEvent::Lost as M_Lost;
+    use events::NameplateEvent::{Connected as N_Connected, Lost as N_Lost};
     use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
     use events::TerminatorEvent::Stopped as T_Stopped;
     use events::{AppID, MySide};
@@ -353,8 +368,8 @@ mod test {
 
         actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh))
             .events;
-        assert_eq!(actions.len(), 1);
-        let e = actions.pop().unwrap();
+        assert_eq!(actions.len(), 5);
+        let e = actions.remove(0);
         match e {
             IO(IOAction::StartTimer(handle, duration)) => {
                 assert_eq!(duration, 5.0);
@@ -362,6 +377,10 @@ mod test {
             }
             _ => panic!(),
         }
+        assert_eq!(
+            actions,
+            events![N_Lost, M_Lost, L_Lost, A_Lost].events
+        );
 
         actions = r.process_io(IOEvent::TimerExpired(th)).events;
         assert_eq!(actions.len(), 1);

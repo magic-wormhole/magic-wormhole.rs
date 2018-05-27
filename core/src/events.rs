@@ -111,7 +111,6 @@ impl Deref for Code {
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
-#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum AllocatorEvent {
     Allocate(Arc<Wordlist>),
@@ -193,7 +192,6 @@ impl fmt::Debug for KeyEvent {
     }
 }
 
-#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum ListerEvent {
     Connected,
