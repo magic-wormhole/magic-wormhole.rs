@@ -10,7 +10,7 @@
 extern crate hex;
 
 use api::{TimerHandle, WSHandle};
-use events::Events;
+use events::{Events, MySide, Nameplate, TheirSide};
 use serde_json;
 use server_messages::{add, allocate, bind, claim, close, deserialize, list,
                       open, release, Message};
@@ -45,7 +45,7 @@ enum State {
 pub struct RendezvousMachine {
     appid: String,
     relay_url: String,
-    side: String,
+    side: MySide,
     retry_timer: f32,
     state: State,
     connected_at_least_once: bool,
@@ -57,7 +57,7 @@ impl RendezvousMachine {
     pub fn new(
         appid: &str,
         relay_url: &str,
-        side: &str,
+        side: &MySide,
         retry_timer: f32,
     ) -> RendezvousMachine {
         // we use a handle here just in case we need to open multiple
@@ -67,7 +67,7 @@ impl RendezvousMachine {
         RendezvousMachine {
             appid: appid.to_string(),
             relay_url: relay_url.to_string(),
-            side: side.to_string(),
+            side: side.clone(),
             retry_timer: retry_timer,
             state: State::Idle,
             connected_at_least_once: false,
@@ -130,7 +130,7 @@ impl RendezvousMachine {
             State::Connecting => {
                 // TODO: does the order of this matter? if so, oh boy.
                 let a = events![
-                    RC_TxBind(self.appid.to_string(), self.side.to_string()),
+                    RC_TxBind(self.appid.to_string(), self.side.clone()),
                     N_Connected,
                     M_Connected,
                     L_Connected,
@@ -174,13 +174,19 @@ impl RendezvousMachine {
                 body,
                 //id,
             } => events![
-                M_RxMessage(side, phase, hex::decode(body).unwrap())
+                M_RxMessage(
+                    TheirSide(side),
+                    phase,
+                    hex::decode(body).unwrap()
+                )
             ],
-            Allocated { nameplate } => events![A_RxAllocated(nameplate)],
+            Allocated { nameplate } => {
+                events![A_RxAllocated(Nameplate(nameplate))]
+            }
             Nameplates { nameplates } => {
-                let nids: Vec<String> = nameplates
+                let nids: Vec<Nameplate> = nameplates
                     .iter()
-                    .map(|n| n.id.to_owned())
+                    .map(|n| Nameplate(n.id.to_owned()))
                     .collect();
                 events![L_RxNamePlates(nids)]
             }
@@ -257,6 +263,7 @@ mod test {
     use api::IOEvent;
     use api::{TimerHandle, WSHandle};
     use events::Event::{Nameplate, Rendezvous, Terminator, IO};
+    use events::MySide;
     use events::NameplateEvent::Connected as N_Connected;
     use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
     use events::TerminatorEvent::Stopped as T_Stopped;
@@ -264,7 +271,8 @@ mod test {
 
     #[test]
     fn create() {
-        let mut r = super::RendezvousMachine::new("appid", "url", "side1", 5.0);
+        let side = MySide("side1".to_string());
+        let mut r = super::RendezvousMachine::new("appid", "url", &side, 5.0);
 
         let wsh: WSHandle;
         let th: TimerHandle;
@@ -303,7 +311,7 @@ mod test {
                 match &b {
                     &RC_TxBind(ref appid0, ref side0) => {
                         assert_eq!(appid0, "appid");
-                        assert_eq!(side0, "side1");
+                        assert_eq!(side0, &MySide("side1".to_string()));
                     }
                     _ => panic!(),
                 }

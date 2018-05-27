@@ -90,7 +90,7 @@ impl ListerMachine {
 #[cfg(test)]
 mod test {
     use super::{ListerMachine, State};
-    use events::{InputEvent::GotNameplates, ListerEvent::*,
+    use events::{InputEvent::GotNameplates, ListerEvent::*, Nameplate,
                  RendezvousEvent::TxList};
 
     #[test]
@@ -106,9 +106,13 @@ mod test {
         assert_eq!(lister.state, State::S0A);
 
         lister.state = State::S0B;
+        let nameplates: Vec<Nameplate> = vec!["3"]
+            .into_iter()
+            .map(|s| Nameplate(s.to_string()))
+            .collect();
         assert_eq!(
-            lister.process(RxNameplates(vec!["3".to_string()])),
-            events![GotNameplates(vec!["3".to_string()])]
+            lister.process(RxNameplates(nameplates.clone())),
+            events![GotNameplates(nameplates)]
         );
         assert_eq!(lister.state, State::S0B);
 
