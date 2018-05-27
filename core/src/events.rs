@@ -200,7 +200,6 @@ pub enum ListerEvent {
     Refresh,
 }
 
-#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(PartialEq)]
 pub enum MailboxEvent {
     Connected,
@@ -209,7 +208,6 @@ pub enum MailboxEvent {
     RxClosed,
     Close(Mood),
     GotMailbox(Mailbox),
-    GotMessage,
     AddMessage(Phase, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
 }
 
@@ -228,7 +226,6 @@ impl fmt::Debug for MailboxEvent {
             RxClosed => "RxClosed".to_string(),
             Close(ref mood) => format!("Close({:?})", mood),
             GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
-            GotMessage => "GotMessage".to_string(),
             AddMessage(ref phase, ref body) => {
                 format!("AddMessage({}, {})", phase, maybe_utf8(body))
             }
