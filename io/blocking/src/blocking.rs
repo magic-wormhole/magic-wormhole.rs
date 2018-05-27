@@ -261,15 +261,15 @@ impl Wormhole {
         let mut cw = CoreWrapper {
             core: WormholeCore::new(appid, relay_url),
             tx_to_core: tx_event_to_core.clone(),
-            rx_by_core: rx_by_core,
+            rx_by_core,
             timers: HashSet::new(),
             websockets: HashMap::new(),
-            tx_welcome_to_app: tx_welcome_to_app,
-            tx_messages_to_app: tx_messages_to_app,
-            tx_code_to_app: tx_code_to_app,
-            tx_verifier_to_app: tx_verifier_to_app,
-            tx_versions_to_app: tx_versions_to_app,
-            tx_close_to_app: tx_close_to_app,
+            tx_welcome_to_app,
+            tx_messages_to_app,
+            tx_code_to_app,
+            tx_verifier_to_app,
+            tx_versions_to_app,
+            tx_close_to_app,
         };
 
         thread::spawn(move || cw.run());
@@ -284,13 +284,13 @@ impl Wormhole {
             welcome: None,
             versions: None,
             verifier: None,
-            tx_event_to_core: tx_event_to_core,
-            rx_messages_from_core: rx_messages_from_core,
-            rx_welcome_from_core: rx_welcome_from_core,
-            rx_code_from_core: rx_code_from_core,
-            rx_verifier_from_core: rx_verifier_from_core,
-            rx_versions_from_core: rx_versions_from_core,
-            rx_close_from_core: rx_close_from_core,
+            tx_event_to_core,
+            rx_messages_from_core,
+            rx_welcome_from_core,
+            rx_code_from_core,
+            rx_verifier_from_core,
+            rx_versions_from_core,
+            rx_close_from_core,
         }
     }
 
