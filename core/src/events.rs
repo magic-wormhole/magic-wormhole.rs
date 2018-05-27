@@ -343,7 +343,6 @@ impl fmt::Debug for SendEvent {
     }
 }
 
-#[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum TerminatorEvent {
     Close(Mood),
