@@ -1,5 +1,6 @@
 use events::{Code, Key};
 use hex;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -118,7 +119,7 @@ impl fmt::Display for Mood {
 #[derive(PartialEq)]
 pub enum APIAction {
     // from WormholeCore out through IO glue to application
-    GotWelcome(HashMap<String, String>), // actually anything JSON-able: Value
+    GotWelcome(Value),
     GotCode(Code), // must be easy to canonically encode into UTF-8 bytes
     GotUnverifiedKey(Key),
     GotVerifier(Vec<u8>),

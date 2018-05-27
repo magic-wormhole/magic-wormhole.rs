@@ -1,6 +1,7 @@
 use magic_wormhole_core::WormholeCore;
 use magic_wormhole_core::{APIAction, APIEvent, Action, Code, IOAction,
                           IOEvent, Mood, TimerHandle, WSHandle};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
@@ -38,7 +39,7 @@ struct CoreWrapper {
     timers: HashSet<TimerHandle>,
     websockets: HashMap<WSHandle, Sender<WSControl>>,
 
-    tx_welcome_to_app: Sender<HashMap<String, String>>,
+    tx_welcome_to_app: Sender<Value>,
     tx_messages_to_app: Sender<Vec<u8>>,
     tx_code_to_app: Sender<String>,
     tx_verifier_to_app: Sender<Vec<u8>>,
@@ -230,7 +231,7 @@ impl CoreWrapper {
 pub struct Wormhole {
     tx_event_to_core: Sender<ToCore>,
 
-    rx_welcome_from_core: Receiver<HashMap<String, String>>,
+    rx_welcome_from_core: Receiver<Value>,
     rx_messages_from_core: Receiver<Vec<u8>>,
     rx_code_from_core: Receiver<String>,
     rx_verifier_from_core: Receiver<Vec<u8>>,
@@ -238,7 +239,7 @@ pub struct Wormhole {
     rx_close_from_core: Receiver<Mood>,
 
     code: Option<String>,
-    welcome: Option<HashMap<String, String>>,
+    welcome: Option<Value>,
     versions: Option<HashMap<String, String>>,
     verifier: Option<Vec<u8>>,
 }
@@ -361,7 +362,7 @@ impl Wormhole {
         }
     }
 
-    pub fn get_welcome(&mut self) -> HashMap<String, String> {
+    pub fn get_welcome(&mut self) -> Value {
         match self.welcome {
             Some(ref welcome) => welcome.clone(),
             None => {
