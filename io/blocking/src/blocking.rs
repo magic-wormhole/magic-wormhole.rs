@@ -77,17 +77,11 @@ impl ws::Handler for WSConnection {
     }
 }
 
-fn ws_outbound(ws_rx: Receiver<WSControl>, out: ws::Sender) {
-    loop {
-        match ws_rx.recv() {
-            Ok(c) => match c {
-                WSControl::Data(d) => out.send(ws::Message::Text(d)).unwrap(),
-                WSControl::Close => out.close(ws::CloseCode::Normal).unwrap(),
-            },
-            Err(_e) => {
-                //println!("ws_rx.recv Err {:?}", e);
-                break;
-            }
+fn ws_outbound(ws_rx: &Receiver<WSControl>, out: &ws::Sender) {
+    while let Ok(c) = ws_rx.recv() {
+        match c {
+            WSControl::Data(d) => out.send(ws::Message::Text(d)).unwrap(),
+            WSControl::Close => out.close(ws::CloseCode::Normal).unwrap(),
         }
     }
 }
@@ -104,29 +98,29 @@ impl ws::Factory for WSFactory {
         use std::mem;
         let ws_rx = mem::replace(&mut self.ws_rx, None).unwrap();
         let tx = mem::replace(&mut self.tx, None).unwrap();
-        thread::spawn(move || ws_outbound(ws_rx, out));
+        thread::spawn(move || ws_outbound(&ws_rx, &out));
         WSConnection {
             handle: self.handle,
-            tx: tx,
+            tx,
         }
     }
 }
 
 fn ws_connector(
-    url: String,
+    url: &str,
     handle: WSHandle,
     tx: Sender<ToCore>,
     ws_rx: Receiver<WSControl>,
 ) {
     // we're called in a new thread created just for this connection
     let f = WSFactory {
-        handle: handle,
+        handle,
         tx: Some(tx),
         ws_rx: Some(ws_rx),
     };
     let b = ws::Builder::new();
     let mut w1 = b.build(f).unwrap();
-    w1.connect(Url::parse(&url).unwrap()).unwrap();
+    w1.connect(Url::parse(url).unwrap()).unwrap();
     w1.run().unwrap(); // blocks forever
 }
 
@@ -206,21 +200,17 @@ impl CoreWrapper {
         let tx = self.tx_to_core.clone();
         let (ws_tx, ws_rx) = channel();
         self.websockets.insert(handle, ws_tx);
-        thread::spawn(move || ws_connector(url, handle, tx, ws_rx));
+        thread::spawn(move || ws_connector(&url, handle, tx, ws_rx));
     }
 
     fn websocket_send(&self, handle: WSHandle, msg: String) {
-        self.websockets
-            .get(&handle)
-            .unwrap()
+        self.websockets[&handle]
             .send(WSControl::Data(msg))
             .unwrap();
     }
 
     fn websocket_close(&mut self, handle: WSHandle) {
-        self.websockets
-            .get(&handle)
-            .unwrap()
+        self.websockets[&handle]
             .send(WSControl::Close)
             .unwrap();
         self.websockets.remove(&handle);
