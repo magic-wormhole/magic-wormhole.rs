@@ -234,10 +234,8 @@ impl fmt::Debug for MailboxEvent {
     }
 }
 
-#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(Debug, PartialEq)]
 pub enum NameplateEvent {
-    NameplateDone,
     Connected,
     Lost,
     RxClaimed(Mailbox),

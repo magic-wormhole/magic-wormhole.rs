@@ -68,7 +68,6 @@ impl NameplateMachine {
     fn do_s0a(&self, event: NameplateEvent) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (Some(State::S0B), events![]),
             Lost => panic!(),
             RxClaimed(_mailbox) => panic!(),
@@ -85,7 +84,6 @@ impl NameplateMachine {
     fn do_s0b(&self, event: NameplateEvent) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => panic!(),
             Lost => (Some(State::S0A), events![]),
             RxClaimed(_mailbox) => panic!(),
@@ -109,7 +107,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (
                 Some(State::S2B(nameplate.clone())),
                 events![RC_TxClaim(nameplate.clone())],
@@ -130,7 +127,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (
                 Some(State::S2B(nameplate.clone())),
                 events![RC_TxClaim(nameplate.clone())],
@@ -151,7 +147,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => panic!(),
             Lost => (Some(State::S2A(nameplate.clone())), events![]),
             RxClaimed(mailbox) => {
@@ -179,7 +174,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (Some(State::S3B(nameplate.clone())), events![]),
             Lost => panic!(),
             RxClaimed(_mailbox) => panic!(),
@@ -197,7 +191,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => panic!(),
             Lost => (Some(State::S3A(nameplate.clone())), events![]),
             RxClaimed(_mailbox) => panic!(),
@@ -221,7 +214,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (
                 Some(State::S4B(nameplate.clone())),
                 events![RC_TxRelease(nameplate.clone())],
@@ -242,7 +234,6 @@ impl NameplateMachine {
     ) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (
                 Some(State::S4B(nameplate.clone())),
                 events![RC_TxRelease(nameplate.clone())],
@@ -259,7 +250,6 @@ impl NameplateMachine {
     fn do_s5(&self, event: NameplateEvent) -> (Option<State>, Events) {
         use events::NameplateEvent::*;
         match event {
-            NameplateDone => panic!(),
             Connected => (None, events![]),
             Lost => (None, events![]),
             RxClaimed(_mailbox) => panic!(),
