@@ -9,6 +9,20 @@ use util::maybe_utf8;
 
 pub use wordlist::Wordlist;
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct AppID(pub String);
+impl Deref for AppID {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+impl fmt::Display for AppID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub struct Key(pub Vec<u8>);
 impl Deref for Key {
@@ -277,7 +291,7 @@ impl fmt::Debug for ReceiveEvent {
 #[derive(PartialEq)]
 pub enum RendezvousEvent {
     Start,
-    TxBind(String, MySide), // appid, side
+    TxBind(AppID, MySide),
     TxOpen(Mailbox),
     TxAdd(Phase, Vec<u8>), // phase, body
     TxClose(Mailbox, Mood),

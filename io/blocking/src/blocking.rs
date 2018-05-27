@@ -1,5 +1,5 @@
 use magic_wormhole_core::WormholeCore;
-use magic_wormhole_core::{APIAction, APIEvent, Action, Code, IOAction,
+use magic_wormhole_core::{APIAction, APIEvent, Action, AppID, Code, IOAction,
                           IOEvent, Mood, TimerHandle, WSHandle};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -258,7 +258,7 @@ impl Wormhole {
         let (tx_close_to_app, rx_close_from_core) = channel();
 
         let mut cw = CoreWrapper {
-            core: WormholeCore::new(appid, relay_url),
+            core: WormholeCore::new(&AppID(appid.to_string()), relay_url),
             tx_to_core: tx_event_to_core.clone(),
             rx_by_core: rx_by_core,
             timers: HashSet::new(),

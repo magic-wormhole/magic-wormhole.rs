@@ -10,7 +10,7 @@
 extern crate hex;
 
 use api::{TimerHandle, WSHandle};
-use events::{Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
+use events::{AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
 use serde_json;
 use server_messages::{add, allocate, bind, claim, close, deserialize, list,
                       open, release, Message};
@@ -43,7 +43,7 @@ enum State {
 
 #[derive(Debug)]
 pub struct RendezvousMachine {
-    appid: String,
+    appid: AppID,
     relay_url: String,
     side: MySide,
     retry_timer: f32,
@@ -55,7 +55,7 @@ pub struct RendezvousMachine {
 
 impl RendezvousMachine {
     pub fn new(
-        appid: &str,
+        appid: &AppID,
         relay_url: &str,
         side: &MySide,
         retry_timer: f32,
@@ -65,7 +65,7 @@ impl RendezvousMachine {
         // is supposed to pass this back in websocket_* messages
         let wsh = WSHandle::new(1);
         RendezvousMachine {
-            appid: appid.to_string(),
+            appid: appid.clone(),
             relay_url: relay_url.to_string(),
             side: side.clone(),
             retry_timer: retry_timer,
@@ -130,7 +130,7 @@ impl RendezvousMachine {
             State::Connecting => {
                 // TODO: does the order of this matter? if so, oh boy.
                 let a = events![
-                    RC_TxBind(self.appid.to_string(), self.side.clone()),
+                    RC_TxBind(self.appid.clone(), self.side.clone()),
                     N_Connected,
                     M_Connected,
                     L_Connected,
@@ -263,16 +263,21 @@ mod test {
     use api::IOEvent;
     use api::{TimerHandle, WSHandle};
     use events::Event::{Nameplate, Rendezvous, Terminator, IO};
-    use events::MySide;
     use events::NameplateEvent::Connected as N_Connected;
     use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
     use events::TerminatorEvent::Stopped as T_Stopped;
+    use events::{AppID, MySide};
     use server_messages::{deserialize, Message};
 
     #[test]
     fn create() {
         let side = MySide("side1".to_string());
-        let mut r = super::RendezvousMachine::new("appid", "url", &side, 5.0);
+        let mut r = super::RendezvousMachine::new(
+            &AppID("appid".to_string()),
+            "url",
+            &side,
+            5.0,
+        );
 
         let wsh: WSHandle;
         let th: TimerHandle;
@@ -310,7 +315,7 @@ mod test {
                 b = b0;
                 match &b {
                     &RC_TxBind(ref appid0, ref side0) => {
-                        assert_eq!(appid0, "appid");
+                        assert_eq!(appid0.to_string(), "appid");
                         assert_eq!(side0, &MySide("side1".to_string()));
                     }
                     _ => panic!(),
