@@ -67,7 +67,7 @@ impl TerminatorMachine {
         match event {
             NameplateDone => (State::S0o, events![]),
             Close(mood) => (State::Sn, events![N_Close, M_Close(mood)]),
-            _ => panic!("Got {:?} too early, Nameplate still active"),
+            _ => panic!("Got too early, Nameplate still active"),
         }
     }
 
@@ -75,7 +75,7 @@ impl TerminatorMachine {
         match event {
             MailboxDone => (State::S0o, events![]),
             Close(mood) => (State::Sm, events![N_Close, M_Close(mood)]),
-            _ => panic!("Got {:?} too early, Mailbox still active"),
+            _ => panic!("Got too early, Mailbox still active"),
         }
     }
 

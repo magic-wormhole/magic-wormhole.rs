@@ -40,8 +40,8 @@ impl InputMachine {
 
         match event {
             Start => self.start(),
-            ChooseNameplate(nameplate) => self.choose_nameplate(nameplate),
-            ChooseWords(words) => self.choose_words(words),
+            ChooseNameplate(nameplate) => self.choose_nameplate(&nameplate),
+            ChooseWords(words) => self.choose_words(&words),
             GotNameplates(nameplates) => self.got_nameplates(nameplates),
             GotWordlist(wordlist) => self.got_wordlist(wordlist),
             RefreshNameplates => self.refresh_nameplates(),
@@ -59,7 +59,7 @@ impl InputMachine {
         }
     }
 
-    fn choose_nameplate(&mut self, nameplate: Nameplate) -> Events {
+    fn choose_nameplate(&mut self, nameplate: &Nameplate) -> Events {
         use self::State::*;
         match self.state {
             Idle => panic!("too soon"),
@@ -71,13 +71,13 @@ impl InputMachine {
         }
     }
 
-    fn choose_words(&mut self, words: String) -> Events {
+    fn choose_words(&mut self, words: &str) -> Events {
         use self::State::*;
         let mut newstate: Option<State> = None;
         let events = match self.state {
             Idle => panic!("too soon"),
             WantCode(ref nameplate) => {
-                let code = Code(format!("{}-{}", nameplate.to_string(), words));
+                let code = Code(format!("{}-{}", *nameplate, words));
                 newstate = Some(Done);
                 events![C_FinishedInput(code)]
             }
@@ -187,9 +187,9 @@ mod test {
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
             actions,
-            events![
-                C_FinishedInput(Code("4-purple-sausages".to_string()))
-            ]
+            events![C_FinishedInput(Code(
+                "4-purple-sausages".to_string()
+            ))]
         );
     }
 
@@ -314,9 +314,9 @@ mod test {
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
             actions,
-            events![
-                C_FinishedInput(Code("4-purple-sausages".to_string()))
-            ]
+            events![C_FinishedInput(Code(
+                "4-purple-sausages".to_string()
+            ))]
         );
     }
 }

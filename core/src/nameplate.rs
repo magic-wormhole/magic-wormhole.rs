@@ -56,11 +56,8 @@ impl NameplateMachine {
             S4B(ref nameplate) => self.do_s4b(&nameplate, event),
             S5 => self.do_s5(event),
         };
-        match newstate {
-            Some(s) => {
-                self.state = s;
-            }
-            None => {}
+        if let Some(s) = newstate {
+            self.state = s;
         }
         actions
     }

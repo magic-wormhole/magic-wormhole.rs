@@ -69,17 +69,16 @@ impl MailboxMachine {
             S1A(ref mailbox) => self.do_s1a(&mailbox, event),
             S2A(ref mailbox) => self.do_s2a(&mailbox, event),
             S2B(ref mailbox) => self.do_s2b(&mailbox, event),
-            S3A(ref mailbox, mood) => self.do_s3a(&mailbox, mood, event),
+            S3A(ref mailbox, mood) => self.do_s3a(&mailbox, mood, &event),
             S3B(ref mailbox, mood) => self.do_s3b(&mailbox, mood, event),
-            S4A => self.do_s4a(event),
+            S4A => self.do_s4a(&event),
             S4B => self.do_s4b(event),
         };
-        match newstate {
-            Some(s) => {
-                self.state = s;
-            }
-            None => {}
+
+        if let Some(s) = newstate {
+            self.state = s;
         }
+
         match queue {
             QueueCtrl::Enqueue(v) => for &(ref phase, ref body) in &v {
                 self.pending_outbound
@@ -150,7 +149,7 @@ impl MailboxMachine {
             GotMailbox(mailbox) => {
                 // TODO: move this abstraction into a function
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
-                for (ph, body) in self.pending_outbound.iter() {
+                for (ph, body) in &self.pending_outbound {
                     rc_events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
@@ -181,7 +180,7 @@ impl MailboxMachine {
         match event {
             Connected => {
                 let mut rc_events = events![RC_TxOpen(mailbox.clone())];
-                for (ph, body) in self.pending_outbound.iter() {
+                for (ph, body) in &self.pending_outbound {
                     rc_events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
@@ -221,7 +220,7 @@ impl MailboxMachine {
         match event {
             Connected => {
                 let mut events = events![RC_TxOpen(mailbox.clone())];
-                for (ph, body) in self.pending_outbound.iter() {
+                for (ph, body) in &self.pending_outbound {
                     events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
                 (
@@ -266,7 +265,7 @@ impl MailboxMachine {
                 QueueCtrl::NoAction,
             ),
             RxMessage(side, phase, body) => {
-                if side.to_string() != self.side.to_string() {
+                if *side != *self.side {
                     // theirs
                     // N_release_and_accept
                     let is_phase_in_processed = self.processed.contains(&phase);
@@ -320,11 +319,11 @@ impl MailboxMachine {
         &self,
         mailbox: &Mailbox,
         mood: Mood,
-        event: MailboxEvent,
+        event: &MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
-        match event {
+        match *event {
             Connected => (
                 Some(State::S3B(mailbox.clone(), mood)),
                 events![RC_TxClose(mailbox.clone(), mood)],
@@ -383,7 +382,7 @@ impl MailboxMachine {
 
     fn do_s4a(
         &self,
-        event: MailboxEvent,
+        event: &MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
         use events::MailboxEvent::*;
 
