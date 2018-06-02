@@ -39,7 +39,7 @@ impl ReceiveMachine {
             S0UnknownKey => self.in_unknown_key(event),
             S1UnverifiedKey(ref key) => self.in_unverified_key(key, event),
             S2VerifiedKey(ref key) => self.in_verified_key(key, event),
-            S3Scared => self.in_scared(event),
+            S3Scared => self.in_scared(&event),
         };
 
         self.state = newstate;
@@ -58,11 +58,10 @@ impl ReceiveMachine {
         side: &TheirSide,
         key: &Key,
         phase: &Phase,
-        body: Vec<u8>,
+        body: &[u8],
     ) -> Option<Vec<u8>> {
         let data_key = key::derive_phase_key(&side, &key, &phase);
-
-        key::decrypt_data(data_key.clone(), &body)
+        key::decrypt_data(&data_key, body)
     }
 
     fn in_unverified_key(
@@ -74,7 +73,7 @@ impl ReceiveMachine {
         match event {
             GotKey(_) => panic!(),
             GotMessage(side, phase, body) => {
-                match Self::derive_key_and_decrypt(&side, &key, &phase, body) {
+                match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
                     Some(plaintext) => {
                         // got_message_good
                         let msg =
@@ -107,7 +106,7 @@ impl ReceiveMachine {
         match event {
             GotKey(_) => panic!(),
             GotMessage(side, phase, body) => {
-                match Self::derive_key_and_decrypt(&side, &key, &phase, body) {
+                match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
                     Some(plaintext) => {
                         // got_message_good
                         (
@@ -124,7 +123,7 @@ impl ReceiveMachine {
         }
     }
 
-    fn in_scared(&self, event: ReceiveEvent) -> (State, Events) {
+    fn in_scared(&self, event: &ReceiveEvent) -> (State, Events) {
         use events::ReceiveEvent::*;
         match event {
             GotKey(_) => panic!(),

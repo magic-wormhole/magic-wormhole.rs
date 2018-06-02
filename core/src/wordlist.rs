@@ -22,8 +22,8 @@ impl Wordlist {
     #[cfg(test)]
     pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
         Wordlist {
-            num_words: num_words,
-            words: words,
+            num_words,
+            words,
         }
     }
 
@@ -105,7 +105,7 @@ fn load_pgpwords() -> Vec<Vec<String>> {
 
 pub fn default_wordlist(num_words: usize) -> Wordlist {
     Wordlist {
-        num_words: num_words,
+        num_words,
         words: load_pgpwords(),
     }
 }
