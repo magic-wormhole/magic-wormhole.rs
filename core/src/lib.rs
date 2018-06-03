@@ -31,6 +31,7 @@ mod server_messages;
 mod terminator;
 #[cfg(test)]
 mod test;
+mod transfer;
 mod util;
 mod wordlist;
 
@@ -43,7 +44,9 @@ use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
               InputHelperError, Mood, TimerHandle, WSHandle};
-pub use server_messages::{AnswerType, OfferType, PeerMessage};
+pub use transfer::{error_message, file_ack, message, message_ack,
+                   offer_directory, offer_file, AnswerType, OfferType,
+                   PeerMessage};
 
 pub struct WormholeCore {
     allocator: allocator::AllocatorMachine,
