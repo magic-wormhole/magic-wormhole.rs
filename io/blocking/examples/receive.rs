@@ -32,6 +32,7 @@ fn main() {
             }
             OfferType::Directory { .. } => {
                 println!("Received directory offer: {:?}", offer);
+                // TODO: We are doing file_ack without asking user
                 w.send_message(file_ack("ok").serialize().as_bytes());
             }
         },
@@ -39,6 +40,10 @@ fn main() {
             panic!("Should not receive answer type, I'm receiver")
         }
         PeerMessage::Error(err) => println!("Something went wrong: {}", err),
+        PeerMessage::Transit(transit) => {
+            // TODO: This should start transit server connection or direct file transfer
+            println!("Transit Message received: {:?}", transit)
+        }
     };
     println!("closing..");
     w.close();
