@@ -151,6 +151,9 @@ fn process_actions(out: &ws::Sender, actions: Vec<Action>) {
                                 }
                             }
                         },
+                        PeerMessage::Transit(..) => {
+                            println!("transit message recieved")
+                        }
                     }
                 }
                 _ => println!("action {:?}", api),
