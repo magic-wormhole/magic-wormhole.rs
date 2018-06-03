@@ -6,6 +6,7 @@ pub enum PeerMessage {
     Offer(OfferType),
     Answer(AnswerType),
     Error(String),
+    Transit(TransitType),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -30,6 +31,41 @@ pub enum OfferType {
 pub enum AnswerType {
     MessageAck(String),
     FileAck(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct TransitType {
+    pub abilities_v1: Vec<Abilities>,
+    pub hints_v1: Vec<Hints>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct Abilities {
+    #[serde(rename = "type")]
+    pub ttype: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Hints {
+    DirectTcpV1(DirectType),
+    RelayV1(RelayType),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct DirectType {
+    priority: f32,
+    hostname: String,
+    port: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct RelayType {
+    hints: Vec<DirectType>,
 }
 
 impl PeerMessage {
@@ -83,6 +119,25 @@ pub fn offer_directory(
     })
 }
 
+pub fn transit(abilities: Vec<Abilities>, hints: Vec<Hints>) -> PeerMessage {
+    PeerMessage::Transit(TransitType {
+        abilities_v1: abilities,
+        hints_v1: hints,
+    })
+}
+
+pub fn direct_type(priority: f32, hostname: &str, port: u16) -> DirectType {
+    DirectType {
+        priority,
+        hostname: hostname.to_string(),
+        port,
+    }
+}
+
+pub fn relay_type(h: Vec<DirectType>) -> RelayType {
+    RelayType { hints: h }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -130,5 +185,27 @@ mod test {
             f1.serialize(),
             "{\"answer\":{\"file_ack\":\"ok\"}}"
         );
+    }
+
+    #[test]
+    fn test_transit() {
+        let abilities = vec![
+            Abilities {
+                ttype: "direct-tcp-v1".to_string(),
+            },
+            Abilities {
+                ttype: "relay-v1".to_string(),
+            },
+        ];
+        let hints = vec![
+            Hints::DirectTcpV1(direct_type(0.0, "192.168.1.8", 46295)),
+            Hints::RelayV1(relay_type(vec![direct_type(
+                2.0,
+                "magic-wormhole-transit.debian.net",
+                4001,
+            )])),
+        ];
+        let t = transit(abilities, hints);
+        assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"priority\":0.0,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001,\"priority\":2.0}],\"type\":\"relay-v1\"}]}}")
     }
 }
