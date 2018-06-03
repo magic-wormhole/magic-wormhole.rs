@@ -67,10 +67,9 @@ impl KeyMachine {
             S0KnowNothing => {
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
                 self.state = Some(S1KnowCode(pake_state));
-                events![M_AddMessage(
-                    Phase("pake".to_string()),
-                    pake_msg_ser
-                )]
+                events![
+                    M_AddMessage(Phase("pake".to_string()), pake_msg_ser)
+                ]
             }
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
