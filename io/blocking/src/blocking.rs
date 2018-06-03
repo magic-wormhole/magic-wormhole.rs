@@ -78,10 +78,16 @@ impl ws::Handler for WSConnection {
 }
 
 fn ws_outbound(ws_rx: &Receiver<WSControl>, out: &ws::Sender) {
-    while let Ok(c) = ws_rx.recv() {
-        match c {
-            WSControl::Data(d) => out.send(ws::Message::Text(d)).unwrap(),
-            WSControl::Close => out.close(ws::CloseCode::Normal).unwrap(),
+    loop {
+        match ws_rx.recv() {
+            Ok(c) => match c {
+                WSControl::Data(d) => out.send(ws::Message::Text(d)).unwrap(),
+                WSControl::Close => out.close(ws::CloseCode::Normal).unwrap(),
+            },
+            Err(e) => {
+                println!("ws_rx.recv Err {:?}", e);
+                break;
+            }
         }
     }
 }
