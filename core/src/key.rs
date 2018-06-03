@@ -55,15 +55,15 @@ impl KeyMachine {
 
         use self::KeyEvent::*;
         match event {
-            GotCode(ref code) => self.got_code(code.clone()),
-            GotPake(ref pake) => self.got_pake(pake.clone()),
+            GotCode(code) => self.got_code(&code),
+            GotPake(pake) => self.got_pake(pake),
         }
     }
 
-    fn got_code(&mut self, code: Code) -> Events {
+    fn got_code(&mut self, code: &Code) -> Events {
         use self::State::*;
         let oldstate = mem::replace(&mut self.state, None);
-        let events = match oldstate.unwrap() {
+        match oldstate.unwrap() {
             S0KnowNothing => {
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
                 self.state = Some(S1KnowCode(pake_state));
@@ -74,7 +74,7 @@ impl KeyMachine {
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
-                let key: Key = finish_pake(pake_state, their_pake_msg.clone());
+                let key: Key = finish_pake(pake_state, &their_pake_msg);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
@@ -88,20 +88,19 @@ impl KeyMachine {
             }
             S3KnowBoth(_) => panic!("already got code"),
             S4Scared => panic!("already scared"),
-        };
-        events
+        }
     }
 
     fn got_pake(&mut self, pake: Vec<u8>) -> Events {
         use self::State::*;
         let oldstate = mem::replace(&mut self.state, None);
-        let events = match oldstate.unwrap() {
+        match oldstate.unwrap() {
             S0KnowNothing => {
                 self.state = Some(S2KnowPake(pake));
                 events![]
             }
             S1KnowCode(pake_state) => {
-                let key: Key = finish_pake(pake_state, pake);
+                let key: Key = finish_pake(pake_state, &pake);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
@@ -115,8 +114,7 @@ impl KeyMachine {
             S2KnowPake(_) => panic!("already got pake"),
             S3KnowBoth(_) => panic!("already got pake"),
             S4Scared => panic!("already scared"),
-        };
-        events
+        }
     }
 }
 
@@ -133,8 +131,8 @@ fn start_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     (pake_state, pake_msg_ser)
 }
 
-fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: Vec<u8>) -> Key {
-    let msg2 = extract_pake_msg(peer_msg).unwrap();
+fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: &[u8]) -> Key {
+    let msg2 = extract_pake_msg(&peer_msg).unwrap();
     Key(pake_state
         .finish(&hex::decode(msg2).unwrap())
         .unwrap())
@@ -148,19 +146,17 @@ fn build_version_msg(
     let phase = "version";
     let data_key = derive_phase_key(&side.to_string(), &key, &phase);
     let plaintext = versions.to_string();
-    let (_nonce, encrypted) = encrypt_data(data_key, &plaintext.as_bytes());
+    let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
     (Phase(phase.to_string()), encrypted)
 }
 
-fn extract_pake_msg(body: Vec<u8>) -> Option<String> {
-    let pake_msg = serde_json::from_slice(&body)
+fn extract_pake_msg(body: &[u8]) -> Option<String> {
+    serde_json::from_slice(&body)
         .and_then(|res: PhaseMessage| Ok(res.pake_v1))
-        .ok();
-
-    pake_msg
+        .ok()
 }
 
-pub fn encrypt_data(key: Vec<u8>, plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
+pub fn encrypt_data(key: &[u8], plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let nonce = secretbox::gen_nonce();
     let sodium_key = secretbox::Key::from_slice(&key).unwrap();
     let ciphertext = secretbox::seal(&plaintext, &nonce, &sodium_key);
@@ -172,7 +168,7 @@ pub fn encrypt_data(key: Vec<u8>, plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
 
 // TODO: return an Result with a proper error type
 // secretbox::open() returns Result<Vec<u8>, ()> which is not helpful.
-pub fn decrypt_data(key: Vec<u8>, encrypted: &[u8]) -> Option<Vec<u8>> {
+pub fn decrypt_data(key: &[u8], encrypted: &[u8]) -> Option<Vec<u8>> {
     let (nonce, ciphertext) =
         encrypted.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
     assert_eq!(
@@ -200,19 +196,9 @@ pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
 pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
     let side_bytes = side.as_bytes();
     let phase_bytes = phase.as_bytes();
-    let side_digest: Vec<u8> = sha256_digest(side_bytes)
-        .iter()
-        .cloned()
-        .collect();
-    let phase_digest: Vec<u8> = sha256_digest(phase_bytes)
-        .iter()
-        .cloned()
-        .collect();
-    let mut purpose_vec: Vec<u8> = "wormhole:phase:"
-        .as_bytes()
-        .iter()
-        .cloned()
-        .collect();
+    let side_digest: Vec<u8> = sha256_digest(side_bytes);
+    let phase_digest: Vec<u8> = sha256_digest(phase_bytes);
+    let mut purpose_vec: Vec<u8> = b"wormhole:phase:".to_vec();
     purpose_vec.extend(side_digest);
     purpose_vec.extend(phase_digest);
 
@@ -234,7 +220,7 @@ mod test {
         );
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
-        let pake_msg = super::extract_pake_msg(hex::decode(s1).unwrap());
+        let pake_msg = super::extract_pake_msg(&hex::decode(s1).unwrap());
         assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
     }
 
@@ -276,8 +262,8 @@ mod test {
         let plaintext = "hello world";
 
         let (_nonce, encrypted) =
-            encrypt_data(data_key.clone(), &plaintext.as_bytes());
-        let maybe_plaintext = decrypt_data(data_key, &encrypted);
+            encrypt_data(&data_key, &plaintext.as_bytes());
+        let maybe_plaintext = decrypt_data(&data_key, &encrypted);
         match maybe_plaintext {
             Some(plaintext_decrypted) => {
                 assert_eq!(

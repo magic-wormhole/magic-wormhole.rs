@@ -140,7 +140,7 @@ pub fn deserialize_outbound(s: &str) -> OutboundMessage {
 
 #[allow(dead_code)]
 pub fn ping(ping: u32) -> OutboundMessage {
-    OutboundMessage::Ping { ping: ping }
+    OutboundMessage::Ping { ping }
 }
 
 // Server sends only these

@@ -33,7 +33,7 @@ impl AllocatorMachine {
             S0AIdleDisconnected => self.do_idle_disconnected(event),
             S0BIdleConnected => self.do_idle_connected(event),
             S1AAllocatingDisconnected(ref wordlist) => {
-                self.do_allocating_disconnected(event, wordlist.clone())
+                self.do_allocating_disconnected(&event, wordlist.clone())
             }
             S1BAllocatingConnected(ref wordlist) => {
                 self.do_allocating_connected(event, wordlist.clone())
@@ -77,10 +77,10 @@ impl AllocatorMachine {
 
     fn do_allocating_disconnected(
         &self,
-        event: AllocatorEvent,
+        event: &AllocatorEvent,
         wordlist: Arc<Wordlist>,
     ) -> (Option<State>, Events) {
-        match event {
+        match *event {
             Connected => (
                 Some(State::S1BAllocatingConnected(wordlist)),
                 events![RC_TxAllocate],

@@ -151,7 +151,7 @@ pub struct TimerHandle {
 }
 impl TimerHandle {
     pub fn new(id: u32) -> TimerHandle {
-        TimerHandle { id: id }
+        TimerHandle { id }
     }
 }
 
@@ -161,7 +161,7 @@ pub struct WSHandle {
 }
 impl WSHandle {
     pub fn new(id: u32) -> WSHandle {
-        WSHandle { id: id }
+        WSHandle { id }
     }
 }
 
