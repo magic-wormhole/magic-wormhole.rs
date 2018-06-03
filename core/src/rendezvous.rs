@@ -69,10 +69,10 @@ impl RendezvousMachine {
             appid: appid.clone(),
             relay_url: relay_url.to_string(),
             side: side.clone(),
-            retry_timer: retry_timer,
+            retry_timer,
             state: State::Idle,
             connected_at_least_once: false,
-            wsh: wsh,
+            wsh,
             reconnect_timer: None,
         }
     }
@@ -94,15 +94,15 @@ impl RendezvousMachine {
         println!("rendezvous: {:?}", e);
         match e {
             Start => self.start(),
-            TxBind(appid, side) => self.send(bind(&appid, &side)),
-            TxOpen(mailbox) => self.send(open(&mailbox)),
-            TxAdd(phase, body) => self.send(add(&phase, &body)),
-            TxClose(mailbox, mood) => self.send(close(&mailbox, mood)),
+            TxBind(appid, side) => self.send(&bind(&appid, &side)),
+            TxOpen(mailbox) => self.send(&open(&mailbox)),
+            TxAdd(phase, body) => self.send(&add(&phase, &body)),
+            TxClose(mailbox, mood) => self.send(&close(&mailbox, mood)),
             Stop => self.stop(),
-            TxClaim(nameplate) => self.send(claim(&nameplate)),
-            TxRelease(nameplate) => self.send(release(&nameplate)),
-            TxAllocate => self.send(allocate()),
-            TxList => self.send(list()),
+            TxClaim(nameplate) => self.send(&claim(&nameplate)),
+            TxRelease(nameplate) => self.send(&release(&nameplate)),
+            TxAllocate => self.send(&allocate()),
+            TxList => self.send(&list()),
         }
     }
 
@@ -250,12 +250,12 @@ impl RendezvousMachine {
         actions
     }
 
-    fn send(&mut self, m: OutboundMessage) -> Events {
+    fn send(&mut self, m: &OutboundMessage) -> Events {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
         let s = IOAction::WebSocketSendMessage(
             self.wsh,
-            serde_json::to_string(&m).unwrap(),
+            serde_json::to_string(m).unwrap(),
         );
         events![s]
     }

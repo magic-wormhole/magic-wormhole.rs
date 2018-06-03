@@ -36,9 +36,9 @@ impl ListerMachine {
     pub fn process(&mut self, event: ListerEvent) -> Events {
         use self::State::*;
         let (newstate, actions) = match self.state {
-            S0A => self.do_s0a(event),
+            S0A => self.do_s0a(&event),
             S0B => self.do_s0b(event),
-            S1A => self.do_s1a(event),
+            S1A => self.do_s1a(&event),
             S1B => self.do_s1b(event),
         };
 
@@ -46,8 +46,8 @@ impl ListerMachine {
         actions
     }
 
-    fn do_s0a(&self, event: ListerEvent) -> (State, Events) {
-        match event {
+    fn do_s0a(&self, event: &ListerEvent) -> (State, Events) {
+        match *event {
             Connected => (State::S0B, events![]),
             Refresh => (State::S1A, events![]),
             _ => (State::S0A, events![]),
@@ -66,7 +66,7 @@ impl ListerMachine {
         }
     }
 
-    fn do_s1a(&self, event: ListerEvent) -> (State, Events) {
+    fn do_s1a(&self, event: &ListerEvent) -> (State, Events) {
         match event {
             Connected => (State::S1B, events![RC_TxList]),
             Refresh => (State::S1B, events![RC_TxList]),

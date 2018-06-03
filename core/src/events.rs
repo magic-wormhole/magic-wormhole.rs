@@ -38,6 +38,7 @@ impl Deref for Key {
         &self.0
     }
 }
+
 impl fmt::Debug for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Key(REDACTED)")
@@ -54,6 +55,12 @@ impl Deref for MySide {
     }
 }
 
+impl fmt::Display for MySide {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
 // TheirSide is used for the String that arrives inside inbound messages
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct TheirSide(pub String);
@@ -61,6 +68,12 @@ impl Deref for TheirSide {
     type Target = String;
     fn deref(&self) -> &String {
         &self.0
+    }
+}
+
+impl fmt::Display for TheirSide {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.0)
     }
 }
 
@@ -101,12 +114,24 @@ impl Deref for Nameplate {
     }
 }
 
+impl fmt::Display for Nameplate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Code(pub String);
 impl Deref for Code {
     type Target = String;
     fn deref(&self) -> &String {
         &self.0
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.0)
     }
 }
 
@@ -337,15 +362,15 @@ pub enum SendEvent {
 impl fmt::Debug for SendEvent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &SendEvent::Send(ref phase, ref plaintext) => {
+            SendEvent::Send(ref phase, ref plaintext) => {
                 write!(f, "Send({}, {})", phase, maybe_utf8(plaintext))
             }
-            &SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
+            SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum TerminatorEvent {
     Close(Mood),
     MailboxDone,

@@ -35,14 +35,13 @@ impl CodeMachine {
             InputtingNameplate => self.in_inputting_nameplate(event),
             InputtingWords => self.in_inputting_words(event),
             Allocating => self.in_allocating(event),
-            Known => self.in_known(event),
+            Known => self.in_known(&event),
         };
-        match newstate {
-            Some(s) => {
-                self.state = s;
-            }
-            None => {}
+
+        if let Some(s) = newstate {
+            self.state = s;
         }
+
         actions
     }
 
@@ -60,7 +59,7 @@ impl CodeMachine {
             SetCode(code) => {
                 // TODO: try!(validate_code(code))
                 let code_string = code.to_string();
-                let nc: Vec<&str> = code_string.splitn(2, "-").collect();
+                let nc: Vec<&str> = code_string.splitn(2, '-').collect();
                 let nameplate = Nameplate(nc[0].to_string());
                 (
                     Some(State::Known),
@@ -135,9 +134,9 @@ impl CodeMachine {
         }
     }
 
-    fn in_known(&mut self, event: CodeEvent) -> (Option<State>, Events) {
+    fn in_known(&mut self, event: &CodeEvent) -> (Option<State>, Events) {
         use events::CodeEvent::*;
-        match event {
+        match *event {
             AllocateCode(..) => panic!(),
             InputCode => panic!(),
             SetCode(..) => panic!(),
