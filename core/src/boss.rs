@@ -166,9 +166,9 @@ impl BossMachine {
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
-                events![
-                    I_ChooseNameplate(Nameplate(nameplate.to_string()))
-                ],
+                events![I_ChooseNameplate(Nameplate(
+                    nameplate.to_string()
+                ))],
                 Coding(i),
             ),
             _ => panic!(),
@@ -343,9 +343,9 @@ mod test {
         ));
         assert_eq!(
             actions,
-            events![
-                APIAction::GotVersions(json!({"hello_app": 456})),
-            ]
+            events![APIAction::GotVersions(
+                json!({"hello_app": 456})
+            ),]
         );
     }
 
