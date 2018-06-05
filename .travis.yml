@@ -19,6 +19,7 @@ matrix:
       env: RUSTFMT
       install:
         - rustup component add rustfmt-preview
+        - rustfmt --version
       script:
         - cargo fmt -- --write-mode=diff
   allow_failures:
