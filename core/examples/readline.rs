@@ -11,7 +11,8 @@ use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
 
 use std::error::Error;
 use std::io;
-use std::sync::{Arc, mpsc::{channel, Sender}};
+use std::sync::{mpsc::{channel, Sender},
+                Arc};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 

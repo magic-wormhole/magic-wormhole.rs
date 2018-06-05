@@ -113,9 +113,10 @@ impl RendezvousMachine {
         let actions;
         let newstate = match self.state {
             State::Idle => {
-                actions = events![
-                    IOAction::WebSocketOpen(self.wsh, self.relay_url.clone())
-                ];
+                actions = events![IOAction::WebSocketOpen(
+                    self.wsh,
+                    self.relay_url.clone()
+                )];
                 //"url".to_string());
                 State::Connecting
             }
@@ -163,13 +164,11 @@ impl RendezvousMachine {
                 phase,
                 body,
                 //id,
-            } => events![
-                M_RxMessage(
-                    TheirSide(side),
-                    Phase(phase),
-                    hex::decode(body).unwrap()
-                )
-            ],
+            } => events![M_RxMessage(
+                TheirSide(side),
+                Phase(phase),
+                hex::decode(body).unwrap()
+            )],
             Allocated { nameplate } => {
                 events![A_RxAllocated(Nameplate(nameplate))]
             }
@@ -190,9 +189,10 @@ impl RendezvousMachine {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 (
-                    events![
-                        IOAction::StartTimer(new_handle, self.retry_timer)
-                    ],
+                    events![IOAction::StartTimer(
+                        new_handle,
+                        self.retry_timer
+                    )],
                     State::Waiting,
                 )
             }
