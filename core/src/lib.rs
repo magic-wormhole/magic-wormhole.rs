@@ -1,3 +1,4 @@
+#![deny(warnings)]
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -31,6 +32,7 @@ mod server_messages;
 mod terminator;
 #[cfg(test)]
 mod test;
+mod transfer;
 mod util;
 mod wordlist;
 
@@ -43,7 +45,10 @@ use util::random_bytes;
 
 pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
               InputHelperError, Mood, TimerHandle, WSHandle};
-pub use server_messages::{AnswerType, OfferType, PeerMessage};
+pub use transfer::{direct_type, error_message, file_ack, message, message_ack,
+                   offer_directory, offer_file, relay_type, transit,
+                   Abilities, AnswerType, DirectType, Hints, OfferType,
+                   PeerMessage, RelayType, TransitType};
 
 pub struct WormholeCore {
     allocator: allocator::AllocatorMachine,

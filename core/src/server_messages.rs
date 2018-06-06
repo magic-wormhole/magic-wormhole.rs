@@ -9,50 +9,6 @@ pub struct Nameplate {
     pub id: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum PeerMessage {
-    Offer(OfferType),
-    Answer(AnswerType),
-    Error(String),
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum OfferType {
-    Message(String),
-    File {
-        filename: String,
-        filesize: u32,
-    },
-    Directory {
-        dirname: String,
-        mode: String,
-        zipsize: u32,
-        numbytes: u32,
-        numfiles: u32,
-    },
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum AnswerType {
-    MessageAck(String),
-    FileAck(String),
-}
-
-impl PeerMessage {
-    pub fn serialize(&self) -> String {
-        json!(self).to_string()
-    }
-
-    // TODO: This can error out so we should actually have error returning
-    // capability here
-    pub fn deserialize(msg: &str) -> Self {
-        serde_json::from_str(msg).unwrap()
-    }
-}
-
 // Client sends only these
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
