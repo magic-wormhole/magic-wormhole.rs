@@ -537,10 +537,15 @@ impl FromIterator<Event> for Events {
 
 // macro to build a whole Events vector, instead of adding them one at a time
 macro_rules! events {
+    ( ) => {
+        {
+            use events::Events;
+            Events::new()
+        }
+    };
     ( $( $x:expr ),* $(,)*) => {
         {
             use events::Events;
-            #[allow(unused_mut)] // hush warning on events![]
             let mut temp_vec = Events::new();
             $(
                 temp_vec.push($x);
