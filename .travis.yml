@@ -22,8 +22,15 @@ matrix:
         - rustfmt --version
       script:
         - cargo fmt -- --write-mode=diff
-  allow_failures:
     - rust: nightly
+      env: CLIPPY
+      install:
+        - cargo +nightly install clippy
+      script:
+        - cargo +nightly clippy
+  allow_failures:
+    - rust: nightly # both compiles and clippy
+
 
 # copied from https://github.com/dnaq/sodiumoxide/blob/master/.travis.yml
 install:
