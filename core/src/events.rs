@@ -201,7 +201,6 @@ pub enum InputEvent {
     RefreshNameplates,
 }
 
-#[allow(dead_code)] // TODO: Drop dead code directive once core is complete
 #[derive(PartialEq)]
 pub enum KeyEvent {
     GotCode(Code),
