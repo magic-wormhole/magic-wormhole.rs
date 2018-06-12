@@ -27,6 +27,7 @@ matrix:
       install:
         - cargo +nightly install clippy
       script:
+        - cargo build
         - cargo +nightly clippy
   allow_failures:
     - rust: nightly # both compiles and clippy
