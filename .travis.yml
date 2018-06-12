@@ -17,16 +17,24 @@ matrix:
   include:
     - rust: 1.26.2 # lock down for consistent rustfmt behavior
       env: RUSTFMT
+      before_install:
       install:
         - rustup component add rustfmt-preview
         - rustfmt --version
       script:
         - cargo fmt -- --write-mode=diff
-  allow_failures:
     - rust: nightly
+      env: CLIPPY
+      install:
+        - cargo +nightly install clippy
+      script:
+        - cargo +nightly clippy
+  allow_failures:
+    - rust: nightly # both compiles and clippy
+
 
 # copied from https://github.com/dnaq/sodiumoxide/blob/master/.travis.yml
-install:
+before_install:
   - wget https://github.com/jedisct1/libsodium/releases/download/1.0.16/libsodium-1.0.16.tar.gz
   - tar xvfz libsodium-1.0.16.tar.gz
   - cd libsodium-1.0.16 && ./configure --prefix=$HOME/installed_libsodium && make && make install && cd ..
