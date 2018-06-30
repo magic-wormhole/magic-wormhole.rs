@@ -1,9 +1,10 @@
 extern crate magic_wormhole_core;
 extern crate url;
 extern crate ws;
-use magic_wormhole_core::{message, APIAction, APIEvent, Action, AnswerType,
-                          IOAction, IOEvent, PeerMessage, WSHandle,
-                          WormholeCore};
+use magic_wormhole_core::{
+    message, APIAction, APIEvent, Action, AnswerType, IOAction, IOEvent,
+    PeerMessage, WSHandle, WormholeCore,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;

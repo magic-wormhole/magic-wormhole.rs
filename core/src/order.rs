@@ -60,11 +60,7 @@ impl OrderMachine {
         let mut es = Events::new();
 
         for &(ref side, ref phase, ref body) in &self.queue {
-            es.push(R_GotMessage(
-                side.clone(),
-                phase.clone(),
-                body.to_vec(),
-            ));
+            es.push(R_GotMessage(side.clone(), phase.clone(), body.to_vec()));
         }
 
         es

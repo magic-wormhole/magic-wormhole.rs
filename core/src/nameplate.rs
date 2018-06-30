@@ -6,7 +6,9 @@ use events::NameplateEvent;
 // we emit these
 use events::InputEvent::GotWordlist as I_GotWordlist;
 use events::MailboxEvent::GotMailbox as M_GotMailbox;
-use events::RendezvousEvent::{TxClaim as RC_TxClaim, TxRelease as RC_TxRelease};
+use events::RendezvousEvent::{
+    TxClaim as RC_TxClaim, TxRelease as RC_TxRelease,
+};
 use events::TerminatorEvent::NameplateDone as T_NameplateDone;
 
 // all -A states are not-connected, while -B states are yes-connected
@@ -37,9 +39,7 @@ pub(crate) struct NameplateMachine {
 
 impl NameplateMachine {
     pub fn new() -> NameplateMachine {
-        NameplateMachine {
-            state: State::S0A,
-        }
+        NameplateMachine { state: State::S0A }
     }
 
     pub fn process(&mut self, event: NameplateEvent) -> Events {

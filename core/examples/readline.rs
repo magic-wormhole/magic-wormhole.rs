@@ -6,13 +6,16 @@ extern crate serde_json;
 extern crate url;
 extern crate ws;
 
-use magic_wormhole_core::{APIAction, APIEvent, Action, IOAction, IOEvent,
-                          OfferType, PeerMessage, WSHandle, WormholeCore};
+use magic_wormhole_core::{
+    APIAction, APIEvent, Action, IOAction, IOEvent, OfferType, PeerMessage,
+    WSHandle, WormholeCore,
+};
 
 use std::error::Error;
 use std::io;
-use std::sync::{mpsc::{channel, Sender},
-                Arc};
+use std::sync::{
+    mpsc::{channel, Sender}, Arc,
+};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 

@@ -3,9 +3,10 @@ use key;
 // we process these
 use events::ReceiveEvent;
 // we emit these
-use events::BossEvent::{GotMessage as B_GotMessage,
-                        GotVerifier as B_GotVerifier, Happy as B_Happy,
-                        Scared as B_Scared};
+use events::BossEvent::{
+    GotMessage as B_GotMessage, GotVerifier as B_GotVerifier, Happy as B_Happy,
+    Scared as B_Scared,
+};
 use events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
 
 #[derive(Debug, PartialEq)]

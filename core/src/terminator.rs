@@ -1,6 +1,8 @@
 use events::Events;
 // we process these
-use events::TerminatorEvent::{self, Close, MailboxDone, NameplateDone, Stopped};
+use events::TerminatorEvent::{
+    self, Close, MailboxDone, NameplateDone, Stopped,
+};
 // we emit these
 use events::BossEvent::Closed as B_Closed;
 use events::MailboxEvent::Close as M_Close;
@@ -26,9 +28,7 @@ pub struct TerminatorMachine {
 
 impl TerminatorMachine {
     pub fn new() -> TerminatorMachine {
-        TerminatorMachine {
-            state: State::Snmo,
-        }
+        TerminatorMachine { state: State::Snmo }
     }
 
     pub fn process(&mut self, event: TerminatorEvent) -> Events {
@@ -81,10 +81,9 @@ impl TerminatorMachine {
 
     fn in_open(&self, event: TerminatorEvent) -> (State, Events) {
         match event {
-            Close(mood) => (
-                State::SStopping,
-                events![N_Close, M_Close(mood), RC_Stop],
-            ),
+            Close(mood) => {
+                (State::SStopping, events![N_Close, M_Close(mood), RC_Stop])
+            }
             MailboxDone | NameplateDone => panic!("Got {:?} too late", event),
             _ => panic!("Too early to stop"),
         }
@@ -147,10 +146,7 @@ mod test {
         );
         assert_eq!(terminator.state, State::Sn);
 
-        assert_eq!(
-            terminator.process(NameplateDone),
-            events![RC_Stop]
-        );
+        assert_eq!(terminator.process(NameplateDone), events![RC_Stop]);
         assert_eq!(terminator.state, State::SStopping);
 
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
@@ -167,10 +163,7 @@ mod test {
         );
 
         assert_eq!(terminator.process(NameplateDone), events![]);
-        assert_eq!(
-            terminator.process(MailboxDone),
-            events![RC_Stop]
-        );
+        assert_eq!(terminator.process(MailboxDone), events![RC_Stop]);
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
 
         assert_eq!(terminator.state, State::SStopped);
@@ -185,10 +178,7 @@ mod test {
             terminator.process(Close(Happy)),
             events![N_Close, M_Close(Happy)]
         );
-        assert_eq!(
-            terminator.process(MailboxDone),
-            events![RC_Stop]
-        );
+        assert_eq!(terminator.process(MailboxDone), events![RC_Stop]);
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
         assert_eq!(terminator.state, State::SStopped);
     }
@@ -203,10 +193,7 @@ mod test {
         );
 
         assert_eq!(terminator.process(MailboxDone), events![]);
-        assert_eq!(
-            terminator.process(NameplateDone),
-            events![RC_Stop]
-        );
+        assert_eq!(terminator.process(NameplateDone), events![RC_Stop]);
         assert_eq!(terminator.state, State::SStopping);
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
         assert_eq!(terminator.state, State::SStopped);

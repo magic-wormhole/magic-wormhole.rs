@@ -172,19 +172,13 @@ mod test {
     #[test]
     fn test_message_ack() {
         let m1 = message_ack("ok");
-        assert_eq!(
-            m1.serialize(),
-            "{\"answer\":{\"message_ack\":\"ok\"}}"
-        );
+        assert_eq!(m1.serialize(), "{\"answer\":{\"message_ack\":\"ok\"}}");
     }
 
     #[test]
     fn test_file_ack() {
         let f1 = file_ack("ok");
-        assert_eq!(
-            f1.serialize(),
-            "{\"answer\":{\"file_ack\":\"ok\"}}"
-        );
+        assert_eq!(f1.serialize(), "{\"answer\":{\"file_ack\":\"ok\"}}");
     }
 
     #[test]

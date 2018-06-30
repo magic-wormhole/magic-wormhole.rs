@@ -67,10 +67,7 @@ impl KeyMachine {
             S0KnowNothing => {
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
                 self.state = Some(S1KnowCode(pake_state));
-                events![M_AddMessage(
-                    Phase("pake".to_string()),
-                    pake_msg_ser
-                )]
+                events![M_AddMessage(Phase("pake".to_string()), pake_msg_ser)]
             }
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
@@ -125,18 +122,14 @@ fn start_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
         appid.as_bytes(),
     );
     let payload = util::bytes_to_hexstr(&msg1);
-    let pake_msg = PhaseMessage {
-        pake_v1: payload,
-    };
+    let pake_msg = PhaseMessage { pake_v1: payload };
     let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
     (pake_state, pake_msg_ser)
 }
 
 fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: &[u8]) -> Key {
     let msg2 = extract_pake_msg(&peer_msg).unwrap();
-    Key(pake_state
-        .finish(&hex::decode(msg2).unwrap())
-        .unwrap())
+    Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap())
 }
 
 fn build_version_msg(
@@ -172,10 +165,7 @@ pub fn encrypt_data(key: &[u8], plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
 pub fn decrypt_data(key: &[u8], encrypted: &[u8]) -> Option<Vec<u8>> {
     let (nonce, ciphertext) =
         encrypted.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
-    assert_eq!(
-        nonce.len(),
-        sodiumoxide::crypto::secretbox::NONCEBYTES
-    );
+    assert_eq!(nonce.len(), sodiumoxide::crypto::secretbox::NONCEBYTES);
     secretbox::open(
         &ciphertext,
         &secretbox::Nonce::from_slice(nonce).unwrap(),
@@ -267,10 +257,7 @@ mod test {
         let maybe_plaintext = decrypt_data(&data_key, &encrypted);
         match maybe_plaintext {
             Some(plaintext_decrypted) => {
-                assert_eq!(
-                    plaintext.as_bytes().to_vec(),
-                    plaintext_decrypted
-                );
+                assert_eq!(plaintext.as_bytes().to_vec(), plaintext_decrypted);
             }
             None => panic!(),
         }

@@ -10,21 +10,14 @@ pub struct Wordlist {
 
 impl fmt::Debug for Wordlist {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Wordlist ( {}, lots of words...)",
-            self.num_words
-        )
+        write!(f, "Wordlist ( {}, lots of words...)", self.num_words)
     }
 }
 
 impl Wordlist {
     #[cfg(test)]
     pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
-        Wordlist {
-            num_words,
-            words,
-        }
+        Wordlist { num_words, words }
     }
 
     pub fn get_completions(&self, prefix: &str) -> Vec<String> {
@@ -154,16 +147,10 @@ mod test {
         ];
 
         let w = Wordlist::new(2, words);
-        assert_eq!(
-            w.get_completions(""),
-            vec!["green-", "purple-", "yellow-"]
-        );
+        assert_eq!(w.get_completions(""), vec!["green-", "purple-", "yellow-"]);
         assert_eq!(w.get_completions("pur"), vec!["purple-"]);
         assert_eq!(w.get_completions("blu"), Vec::<String>::new());
-        assert_eq!(
-            w.get_completions("purple-sa"),
-            vec!["purple-sausages"]
-        );
+        assert_eq!(w.get_completions("purple-sa"), vec!["purple-sausages"]);
     }
 
     #[test]
@@ -176,18 +163,13 @@ mod test {
         let w = Wordlist::new(3, few_words.clone());
         assert_eq!(w.choose_words(), "purple-sausages-purple");
         let w = Wordlist::new(4, few_words.clone());
-        assert_eq!(
-            w.choose_words(),
-            "purple-sausages-purple-sausages"
-        );
+        assert_eq!(w.choose_words(), "purple-sausages-purple-sausages");
     }
 
     #[test]
     fn test_choose_more_words() {
-        let more_words: Vec<Vec<String>> = vec![
-            vecstrings("purple yellow"),
-            vecstrings("sausages"),
-        ];
+        let more_words: Vec<Vec<String>> =
+            vec![vecstrings("purple yellow"), vecstrings("sausages")];
 
         let expected2 = vecstrings("purple-sausages yellow-sausages");
         let expected3: Vec<String> = vec![

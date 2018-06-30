@@ -53,10 +53,9 @@ impl AllocatorMachine {
     ) -> (Option<State>, Events) {
         match event {
             Connected => (Some(State::S0BIdleConnected), events![]),
-            Allocate(wordlist) => (
-                Some(State::S1AAllocatingDisconnected(wordlist)),
-                events![],
-            ),
+            Allocate(wordlist) => {
+                (Some(State::S1AAllocatingDisconnected(wordlist)), events![])
+            }
             _ => (None, events![]),
         }
     }
@@ -95,17 +94,13 @@ impl AllocatorMachine {
         wordlist: Arc<Wordlist>,
     ) -> (Option<State>, Events) {
         match event {
-            Lost => (
-                Some(State::S1AAllocatingDisconnected(wordlist)),
-                events![],
-            ),
+            Lost => {
+                (Some(State::S1AAllocatingDisconnected(wordlist)), events![])
+            }
             RxAllocated(nameplate) => {
                 let words = wordlist.choose_words();
                 let code = Code(nameplate.to_string() + "-" + &words);
-                (
-                    Some(State::S2Done),
-                    events![C_Allocated(nameplate, code)],
-                )
+                (Some(State::S2Done), events![C_Allocated(nameplate, code)])
             }
             _ => (None, events![]),
         }
