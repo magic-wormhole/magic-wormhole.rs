@@ -1,12 +1,15 @@
 use events::{Code, Events, Nameplate};
 use std::sync::Arc;
 // we process these
-use events::InputEvent::{self, ChooseNameplate, ChooseWords, GotNameplates,
-                         GotWordlist, RefreshNameplates, Start};
+use events::InputEvent::{
+    self, ChooseNameplate, ChooseWords, GotNameplates, GotWordlist,
+    RefreshNameplates, Start,
+};
 // we emit these
 use api::InputHelperError;
-use events::CodeEvent::{FinishedInput as C_FinishedInput,
-                        GotNameplate as C_GotNameplate};
+use events::CodeEvent::{
+    FinishedInput as C_FinishedInput, GotNameplate as C_GotNameplate,
+};
 use events::ListerEvent::Refresh as L_Refresh;
 use events::Wordlist;
 
@@ -187,9 +190,7 @@ mod test {
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
             actions,
-            events![C_FinishedInput(Code(
-                "4-purple-sausages".to_string()
-            ))]
+            events![C_FinishedInput(Code("4-purple-sausages".to_string()))]
         );
     }
 
@@ -237,18 +238,12 @@ mod test {
             i.get_nameplate_completions(""),
             Err(InputHelperError::Inactive)
         );
-        assert_eq!(
-            i.get_word_completions(""),
-            Err(InputHelperError::Inactive)
-        );
+        assert_eq!(i.get_word_completions(""), Err(InputHelperError::Inactive));
 
         let actions = i.process(Start);
         assert_eq!(actions, events![L_Refresh]);
         // we haven't received any nameplates yet, so completions are empty
-        assert_eq!(
-            i.get_nameplate_completions("").unwrap(),
-            vecstrings("")
-        );
+        assert_eq!(i.get_nameplate_completions("").unwrap(), vecstrings(""));
         // and it's too early to make word compltions
         assert_eq!(
             i.get_word_completions(""),
@@ -292,10 +287,7 @@ mod test {
         );
 
         // wordlist hasn't been received yet, so completions are empty
-        assert_eq!(
-            i.get_word_completions("pur").unwrap(),
-            vecstrings("")
-        );
+        assert_eq!(i.get_word_completions("pur").unwrap(), vecstrings(""));
 
         // receive the wordlist for this nameplate
         let words = vec![
@@ -314,9 +306,7 @@ mod test {
         let actions = i.process(ChooseWords("purple-sausages".to_string()));
         assert_eq!(
             actions,
-            events![C_FinishedInput(Code(
-                "4-purple-sausages".to_string()
-            ))]
+            events![C_FinishedInput(Code("4-purple-sausages".to_string()))]
         );
     }
 }

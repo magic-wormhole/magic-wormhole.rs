@@ -29,10 +29,7 @@ pub fn hexstr_to_string(hexstr: &str) -> String {
         .map(|ch| str::from_utf8(ch).unwrap())
         .collect();
 
-    let s: Vec<char> = chars
-        .iter()
-        .map(|x| hex_to_char(x).unwrap())
-        .collect();
+    let s: Vec<char> = chars.iter().map(|x| hex_to_char(x).unwrap()).collect();
 
     s.iter().collect::<String>()
 }

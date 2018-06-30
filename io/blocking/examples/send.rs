@@ -17,11 +17,7 @@ fn main() {
     let code = w.get_code();
     println!("code is: {}", code);
     println!("sending..");
-    w.send_message(
-        message("hello from rust!")
-            .serialize()
-            .as_bytes(),
-    );
+    w.send_message(message("hello from rust!").serialize().as_bytes());
     println!("sent..");
     // if we close right away, we won't actually send anything. Wait for at
     // least the verifier to be printed, that ought to give our outbound

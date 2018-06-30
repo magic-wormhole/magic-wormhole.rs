@@ -28,9 +28,7 @@ enum State {
 
 impl ListerMachine {
     pub fn new() -> ListerMachine {
-        ListerMachine {
-            state: State::S0A,
-        }
+        ListerMachine { state: State::S0A }
     }
 
     pub fn process(&mut self, event: ListerEvent) -> Events {
@@ -58,10 +56,9 @@ impl ListerMachine {
         match event {
             Refresh => (State::S1B, events![RC_TxList]),
             Lost => (State::S0A, events![]),
-            RxNameplates(nids) => (
-                State::S0B,
-                events![I_GotNameplates(nids.clone())],
-            ),
+            RxNameplates(nids) => {
+                (State::S0B, events![I_GotNameplates(nids.clone())])
+            }
             Connected => (State::S0B, events![]),
         }
     }
@@ -78,10 +75,9 @@ impl ListerMachine {
         match event {
             Lost => (State::S1A, events![]),
             Refresh => (State::S1B, events![RC_TxList]),
-            RxNameplates(nids) => (
-                State::S0B,
-                events![I_GotNameplates(nids.clone())],
-            ),
+            RxNameplates(nids) => {
+                (State::S0B, events![I_GotNameplates(nids.clone())])
+            }
             Connected => (State::S1B, events![]),
         }
     }
@@ -90,8 +86,10 @@ impl ListerMachine {
 #[cfg(test)]
 mod test {
     use super::{ListerMachine, State};
-    use events::{InputEvent::GotNameplates, ListerEvent::*, Nameplate,
-                 RendezvousEvent::TxList};
+    use events::{
+        InputEvent::GotNameplates, ListerEvent::*, Nameplate,
+        RendezvousEvent::TxList,
+    };
 
     #[test]
     fn test_lister() {

@@ -12,23 +12,30 @@ extern crate hex;
 use api::{TimerHandle, WSHandle};
 use events::{AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
 use serde_json;
-use server_messages::{add, allocate, bind, claim, close, deserialize, list,
-                      open, release, InboundMessage, OutboundMessage};
+use server_messages::{
+    add, allocate, bind, claim, close, deserialize, list, open, release,
+    InboundMessage, OutboundMessage,
+};
 // we process these
 use api::IOEvent;
 use events::RendezvousEvent;
 // we emit these
 use api::IOAction;
-use events::AllocatorEvent::{Connected as A_Connected, Lost as A_Lost,
-                             RxAllocated as A_RxAllocated};
+use events::AllocatorEvent::{
+    Connected as A_Connected, Lost as A_Lost, RxAllocated as A_RxAllocated,
+};
 use events::BossEvent::RxWelcome as B_RxWelcome;
-use events::ListerEvent::{Connected as L_Connected, Lost as L_Lost,
-                          RxNameplates as L_RxNamePlates};
-use events::MailboxEvent::{Connected as M_Connected, Lost as M_Lost,
-                           RxClosed as M_RxClosed, RxMessage as M_RxMessage};
-use events::NameplateEvent::{Connected as N_Connected, Lost as N_Lost,
-                             RxClaimed as N_RxClaimed,
-                             RxReleased as N_RxReleased};
+use events::ListerEvent::{
+    Connected as L_Connected, Lost as L_Lost, RxNameplates as L_RxNamePlates,
+};
+use events::MailboxEvent::{
+    Connected as M_Connected, Lost as M_Lost, RxClosed as M_RxClosed,
+    RxMessage as M_RxMessage,
+};
+use events::NameplateEvent::{
+    Connected as N_Connected, Lost as N_Lost, RxClaimed as N_RxClaimed,
+    RxReleased as N_RxReleased,
+};
 use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 use events::TerminatorEvent::Stopped as T_Stopped;
 
@@ -189,10 +196,7 @@ impl RendezvousMachine {
                 let new_handle = TimerHandle::new(2);
                 self.reconnect_timer = Some(new_handle);
                 (
-                    events![IOAction::StartTimer(
-                        new_handle,
-                        self.retry_timer
-                    )],
+                    events![IOAction::StartTimer(new_handle, self.retry_timer)],
                     State::Waiting,
                 )
             }
@@ -308,8 +312,7 @@ mod test {
         }
 
         // now we tell it we're connected
-        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh))
-            .events;
+        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
         // it should tell itself to send a BIND then it should notify several
         // other machines at this point, we have BIND, N_Connected, M_Connected
         // L_Connected and A_Connected
@@ -360,8 +363,7 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh))
-            .events;
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).events;
         assert_eq!(actions.len(), 5);
         let e = actions.remove(0);
         match e {
@@ -371,10 +373,7 @@ mod test {
             }
             _ => panic!(),
         }
-        assert_eq!(
-            actions,
-            events![N_Lost, M_Lost, L_Lost, A_Lost].events
-        );
+        assert_eq!(actions, events![N_Lost, M_Lost, L_Lost, A_Lost].events);
 
         actions = r.process_io(IOEvent::TimerExpired(th)).events;
         assert_eq!(actions.len(), 1);
@@ -401,8 +400,7 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2))
-            .events;
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2)).events;
         assert_eq!(actions, vec![Terminator(T_Stopped)]);
     }
 }

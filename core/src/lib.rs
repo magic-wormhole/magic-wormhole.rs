@@ -43,12 +43,15 @@ pub use events::{AppID, Code};
 use events::{Event, Events, MySide, Nameplate};
 use util::random_bytes;
 
-pub use api::{APIAction, APIEvent, Action, IOAction, IOEvent,
-              InputHelperError, Mood, TimerHandle, WSHandle};
-pub use transfer::{direct_type, error_message, file_ack, message, message_ack,
-                   offer_directory, offer_file, relay_type, transit,
-                   Abilities, AnswerType, DirectType, Hints, OfferType,
-                   PeerMessage, RelayType, TransitType};
+pub use api::{
+    APIAction, APIEvent, Action, IOAction, IOEvent, InputHelperError, Mood,
+    TimerHandle, WSHandle,
+};
+pub use transfer::{
+    direct_type, error_message, file_ack, message, message_ack,
+    offer_directory, offer_file, relay_type, transit, Abilities, AnswerType,
+    DirectType, Hints, OfferType, PeerMessage, RelayType, TransitType,
+};
 
 pub struct WormholeCore {
     allocator: allocator::AllocatorMachine,

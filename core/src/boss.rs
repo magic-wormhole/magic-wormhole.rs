@@ -12,11 +12,14 @@ use api::APIEvent;
 use events::BossEvent;
 // we emit these
 use api::APIAction;
-use events::CodeEvent::{AllocateCode as C_AllocateCode,
-                        InputCode as C_InputCode, SetCode as C_SetCode};
-use events::InputEvent::{ChooseNameplate as I_ChooseNameplate,
-                         ChooseWords as I_ChooseWords,
-                         RefreshNameplates as I_RefreshNameplates};
+use events::CodeEvent::{
+    AllocateCode as C_AllocateCode, InputCode as C_InputCode,
+    SetCode as C_SetCode,
+};
+use events::InputEvent::{
+    ChooseNameplate as I_ChooseNameplate, ChooseWords as I_ChooseWords,
+    RefreshNameplates as I_RefreshNameplates,
+};
 use events::RendezvousEvent::Start as RC_Start;
 use events::SendEvent::Send as S_Send;
 use events::TerminatorEvent::Close as T_Close;
@@ -166,9 +169,7 @@ impl BossMachine {
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
             Coding(i) => (
-                events![I_ChooseNameplate(Nameplate(
-                    nameplate.to_string()
-                ))],
+                events![I_ChooseNameplate(Nameplate(nameplate.to_string()))],
                 Coding(i),
             ),
             _ => panic!(),
@@ -181,10 +182,7 @@ impl BossMachine {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
-            Coding(i) => (
-                events![I_ChooseWords(word.to_string())],
-                Coding(i),
-            ),
+            Coding(i) => (events![I_ChooseWords(word.to_string())], Coding(i)),
             _ => panic!(),
         };
         self.state = newstate;
@@ -195,10 +193,7 @@ impl BossMachine {
         use self::State::*;
         let (actions, newstate) = match self.state {
             Unstarted(_) => panic!("w.start() must be called first"),
-            Coding(i) => (
-                events![APIAction::GotCode(code.clone())],
-                Lonely(i),
-            ),
+            Coding(i) => (events![APIAction::GotCode(code.clone())], Lonely(i)),
             _ => panic!(), // TODO: signal AlreadyStartedCodeError
         };
         self.state = newstate;
@@ -236,15 +231,9 @@ impl BossMachine {
                         None => json!({}),
                     };
 
-                    (
-                        events![APIAction::GotVersions(app_versions)],
-                        Happy(i),
-                    )
+                    (events![APIAction::GotVersions(app_versions)], Happy(i))
                 } else if phase_pattern.is_match(phase) {
-                    (
-                        events![APIAction::GotMessage(plaintext)],
-                        Happy(i),
-                    )
+                    (events![APIAction::GotMessage(plaintext)], Happy(i))
                 } else {
                     // TODO: log and ignore, for future expansion
                     (events![], Happy(i))
@@ -318,10 +307,7 @@ mod test {
         assert_eq!(actions, events![RendezvousEvent::Start]);
 
         let actions = b.process_api(APIEvent::Close);
-        assert_eq!(
-            actions,
-            events![TerminatorEvent::Close(Mood::Lonely)]
-        );
+        assert_eq!(actions, events![TerminatorEvent::Close(Mood::Lonely)]);
     }
 
     #[test]
@@ -343,9 +329,7 @@ mod test {
         ));
         assert_eq!(
             actions,
-            events![APIAction::GotVersions(
-                json!({"hello_app": 456})
-            ),]
+            events![APIAction::GotVersions(json!({"hello_app": 456})),]
         );
     }
 

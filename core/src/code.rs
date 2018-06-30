@@ -23,9 +23,7 @@ pub struct CodeMachine {
 
 impl CodeMachine {
     pub fn new() -> CodeMachine {
-        CodeMachine {
-            state: State::Idle,
-        }
+        CodeMachine { state: State::Idle }
     }
 
     pub fn process(&mut self, event: CodeEvent) -> Events {
@@ -48,14 +46,10 @@ impl CodeMachine {
     fn in_idle(&mut self, event: CodeEvent) -> (Option<State>, Events) {
         use events::CodeEvent::*;
         match event {
-            AllocateCode(wordlist) => (
-                Some(State::Allocating),
-                events![A_Allocate(wordlist)],
-            ),
-            InputCode => (
-                Some(State::InputtingNameplate),
-                events![I_Start],
-            ), // TODO: return Input object
+            AllocateCode(wordlist) => {
+                (Some(State::Allocating), events![A_Allocate(wordlist)])
+            }
+            InputCode => (Some(State::InputtingNameplate), events![I_Start]), // TODO: return Input object
             SetCode(code) => {
                 // TODO: try!(validate_code(code))
                 let code_string = code.to_string();

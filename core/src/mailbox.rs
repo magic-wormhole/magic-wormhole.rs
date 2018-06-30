@@ -7,8 +7,9 @@ use events::{Events, Mailbox, MySide, Phase};
 use events::MailboxEvent;
 use events::NameplateEvent::Release as N_Release;
 use events::OrderEvent::GotMessage as O_GotMessage;
-use events::RendezvousEvent::{TxAdd as RC_TxAdd, TxClose as RC_TxClose,
-                              TxOpen as RC_TxOpen};
+use events::RendezvousEvent::{
+    TxAdd as RC_TxAdd, TxClose as RC_TxClose, TxOpen as RC_TxOpen,
+};
 use events::TerminatorEvent::MailboxDone as T_MailboxDone;
 // we emit these
 
@@ -81,8 +82,7 @@ impl MailboxMachine {
 
         match queue {
             QueueCtrl::Enqueue(v) => for &(ref phase, ref body) in &v {
-                self.pending_outbound
-                    .insert(phase.clone(), body.to_vec());
+                self.pending_outbound.insert(phase.clone(), body.to_vec());
             },
             QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
@@ -113,19 +113,13 @@ impl MailboxMachine {
                 events![T_MailboxDone],
                 QueueCtrl::NoAction,
             ),
-            GotMailbox(mailbox) => (
-                Some(State::S1A(mailbox)),
-                events![],
-                QueueCtrl::NoAction,
-            ),
+            GotMailbox(mailbox) => {
+                (Some(State::S1A(mailbox)), events![], QueueCtrl::NoAction)
+            }
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
-                (
-                    Some(State::S0A),
-                    events![],
-                    QueueCtrl::Enqueue(v),
-                )
+                (Some(State::S0A), events![], QueueCtrl::Enqueue(v))
             }
         }
     }
@@ -161,11 +155,7 @@ impl MailboxMachine {
             AddMessage(phase, body) => {
                 let mut v = vec![];
                 v.push((phase, body));
-                (
-                    Some(State::S0B),
-                    events![],
-                    QueueCtrl::Enqueue(v),
-                )
+                (Some(State::S0B), events![], QueueCtrl::Enqueue(v))
             }
         }
     }
@@ -223,11 +213,7 @@ impl MailboxMachine {
                 for (ph, body) in &self.pending_outbound {
                     events.push(RC_TxAdd(ph.clone(), body.to_vec()));
                 }
-                (
-                    Some(State::S2B(mailbox.clone())),
-                    events,
-                    QueueCtrl::Drain,
-                )
+                (Some(State::S2B(mailbox.clone())), events, QueueCtrl::Drain)
             }
             Lost => panic!(),
             RxMessage(_, _, _) => panic!(),

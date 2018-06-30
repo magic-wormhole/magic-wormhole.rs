@@ -14,32 +14,15 @@ pub struct Nameplate {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum OutboundMessage {
-    Bind {
-        appid: String,
-        side: String,
-    },
+    Bind { appid: String, side: String },
     List {},
     Allocate {},
-    Claim {
-        nameplate: String,
-    },
-    Release {
-        nameplate: String,
-    }, // TODO: nominally optional
-    Open {
-        mailbox: String,
-    },
-    Add {
-        phase: String,
-        body: String,
-    },
-    Close {
-        mailbox: String,
-        mood: String,
-    },
-    Ping {
-        ping: u32,
-    },
+    Claim { nameplate: String },
+    Release { nameplate: String }, // TODO: nominally optional
+    Open { mailbox: String },
+    Add { phase: String, body: String },
+    Close { mailbox: String, mood: String },
+    Ping { ping: u32 },
 }
 
 pub fn bind(appid: &AppID, side: &MySide) -> OutboundMessage {
@@ -143,10 +126,8 @@ mod test {
 
     #[test]
     fn test_bind() {
-        let m1 = bind(
-            &AppID("appid".to_string()),
-            &MySide("side1".to_string()),
-        );
+        let m1 =
+            bind(&AppID("appid".to_string()), &MySide("side1".to_string()));
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -177,10 +158,7 @@ mod test {
         let m1 = claim("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
-        assert_eq!(
-            m2,
-            json!({"type": "claim", "nameplate": "nameplate1"})
-        );
+        assert_eq!(m2, json!({"type": "claim", "nameplate": "nameplate1"}));
     }
 
     #[test]
@@ -188,10 +166,7 @@ mod test {
         let m1 = release("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
-        assert_eq!(
-            m2,
-            json!({"type": "release", "nameplate": "nameplate1"})
-        );
+        assert_eq!(m2, json!({"type": "release", "nameplate": "nameplate1"}));
     }
 
     #[test]
@@ -199,10 +174,7 @@ mod test {
         let m1 = open(&Mailbox("mailbox1".to_string()));
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
-        assert_eq!(
-            m2,
-            json!({"type": "open", "mailbox": "mailbox1"})
-        );
+        assert_eq!(m2, json!({"type": "open", "mailbox": "mailbox1"}));
     }
 
     #[test]
