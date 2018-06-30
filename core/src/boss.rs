@@ -38,9 +38,9 @@ pub struct BossMachine {
 }
 
 impl State {
-    pub fn increment_phase(&self) -> Self {
+    pub fn increment_phase(self) -> Self {
         use self::State::*;
-        match *self {
+        match self {
             Unstarted(i) => Unstarted(i + 1),
             Empty(i) => Empty(i + 1),
             Coding(i) => Coding(i + 1),
