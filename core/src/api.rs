@@ -97,9 +97,9 @@ pub enum Mood {
 }
 
 impl Mood {
-    fn to_string(&self) -> String {
+    fn to_protocol_string(self) -> String {
         // this is used for protocol messages as well as debug output
-        match *self {
+        match self {
             Mood::Happy => "happy".to_string(),
             Mood::Lonely => "lonely".to_string(),
             Mood::Error => "errory".to_string(),
@@ -111,7 +111,7 @@ impl Mood {
 
 impl fmt::Display for Mood {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.to_protocol_string())
     }
 }
 
