@@ -150,14 +150,25 @@ fn extract_pake_msg(body: &[u8]) -> Option<String> {
         .ok()
 }
 
-pub fn encrypt_data(key: &[u8], plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let nonce = secretbox::gen_nonce();
+fn encrypt_data_with_nonce(
+    key: &[u8],
+    plaintext: &[u8],
+    noncebuf: &[u8],
+) -> Vec<u8> {
+    let nonce = secretbox::Nonce::from_slice(&noncebuf).unwrap();
     let sodium_key = secretbox::Key::from_slice(&key).unwrap();
     let ciphertext = secretbox::seal(&plaintext, &nonce, &sodium_key);
     let mut nonce_and_ciphertext = Vec::new();
     nonce_and_ciphertext.extend(nonce.as_ref().to_vec());
     nonce_and_ciphertext.extend(ciphertext);
-    (nonce.as_ref().to_vec(), nonce_and_ciphertext)
+    nonce_and_ciphertext
+}
+
+pub fn encrypt_data(key: &[u8], plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let noncebuf = secretbox::gen_nonce().as_ref().to_vec();
+    let nonce_and_ciphertext =
+        encrypt_data_with_nonce(key, plaintext, &noncebuf);
+    (noncebuf, nonce_and_ciphertext)
 }
 
 // TODO: return an Result with a proper error type
@@ -202,11 +213,11 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
 #[cfg(test)]
 mod test {
     use events::{AppID, MySide};
+    extern crate hex;
+    use super::*;
 
     #[test]
     fn test_extract_pake_msg() {
-        extern crate hex;
-
         let _key = super::KeyMachine::new(
             &AppID("appid".to_string()),
             &MySide("side1".to_string()),
@@ -218,9 +229,49 @@ mod test {
     }
 
     #[test]
-    fn test_derive_phase_key() {
-        use super::*;
+    fn test_derive_key() {
+        let main = hex::decode(
+            "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
+        ).unwrap();
+        let dk1 = derive_key(&main, b"purpose1", 32);
+        assert_eq!(
+            hex::encode(dk1),
+            "835b5df80ce9ca46908e8524fb308649122cfbcefbeaa7e65061c6ef08ee1b2a"
+        );
 
+        let dk2 = derive_key(&main, b"purpose2", 10);
+        assert_eq!(hex::encode(dk2), "f2238e84315b47eb6279");
+    }
+
+    #[test]
+    fn test_derive_phase_key() {
+        let main = Key(hex::decode(
+            "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
+        ).unwrap());
+        let dk11 = derive_phase_key("side1", &main, "phase1");
+        assert_eq!(
+            hex::encode(dk11),
+            "3af6a61d1a111225cc8968c6ca6265efe892065c3ab46de79dda21306b062990"
+        );
+        let dk12 = derive_phase_key("side1", &main, "phase2");
+        assert_eq!(
+            hex::encode(dk12),
+            "88a1dd12182d989ff498022a9656d1e2806f17328d8bf5d8d0c9753e4381a752"
+        );
+        let dk21 = derive_phase_key("side2", &main, "phase1");
+        assert_eq!(
+            hex::encode(dk21),
+            "a306627b436ec23bdae3af8fa90c9ac927780d86be1831003e7f617c518ea689"
+        );
+        let dk22 = derive_phase_key("side2", &main, "phase2");
+        assert_eq!(
+            hex::encode(dk22),
+            "bf99e3e16420f2dad33f9b1ccb0be1462b253d639dacdb50ed9496fa528d8758"
+        );
+    }
+
+    #[test]
+    fn test_derive_phase_key2() {
         // feed python's derive_phase_key with these inputs:
         // key = b"key"
         // side = u"side"
@@ -245,9 +296,42 @@ mod test {
     }
 
     #[test]
-    fn test_encrypt_data_decrypt_data_roundtrip() {
-        use super::*;
+    fn test_encrypt_data() {
+        let k = hex::decode(
+            "ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679",
+        ).unwrap();
+        let plaintext =
+            hex::decode("edc089a518219ec1cee184e89d2d37af").unwrap();
+        assert_eq!(plaintext.len(), 16);
+        let nonce = hex::decode(
+            "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80",
+        ).unwrap();
+        assert_eq!(nonce.len(), 24);
+        let msg = encrypt_data_with_nonce(&k, &plaintext, &nonce);
+        assert_eq!(hex::encode(msg), "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a");
+    }
 
+    #[test]
+    fn test_decrypt_data() {
+        let k = hex::decode(
+            "ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679",
+        ).unwrap();
+        let encrypted = hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a").unwrap();
+        match decrypt_data(&k, &encrypted) {
+            Some(plaintext) => {
+                assert_eq!(
+                    hex::encode(plaintext),
+                    "edc089a518219ec1cee184e89d2d37af"
+                );
+            }
+            None => {
+                panic!("failed to decrypt");
+            }
+        };
+    }
+
+    #[test]
+    fn test_encrypt_data_decrypt_data_roundtrip() {
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
         let phase = "phase";
