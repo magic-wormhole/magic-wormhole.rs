@@ -14,7 +14,8 @@ use magic_wormhole_core::{
 use std::error::Error;
 use std::io;
 use std::sync::{
-    mpsc::{channel, Sender}, Arc,
+    mpsc::{channel, Sender},
+    Arc,
 };
 use std::thread::{sleep, spawn};
 use std::time::Duration;
@@ -71,7 +72,8 @@ impl Completer for CodeCompleter {
 
             {
                 let mc = mwc.lock();
-                committed_nameplate = mc.input_helper_committed_nameplate()
+                committed_nameplate = mc
+                    .input_helper_committed_nameplate()
                     .map(|s| s.to_string());
             }
 
