@@ -5,7 +5,7 @@ use serde_json::{self, Value};
 use sha2::{Digest, Sha256};
 use sodiumoxide;
 use sodiumoxide::crypto::secretbox;
-use spake2::{Ed25519Group, SPAKE2};
+use spake2::{Ed25519Group, Identity, Password, SPAKE2};
 use std::mem;
 
 use events::{AppID, Code, Events, Key, MySide, Phase};
@@ -118,8 +118,8 @@ impl KeyMachine {
 
 fn start_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
-        code.as_bytes(),
-        appid.as_bytes(),
+        &Password::new(code.as_bytes()),
+        &Identity::new(appid.as_bytes()),
     );
     let payload = util::bytes_to_hexstr(&msg1);
     let pake_msg = PhaseMessage { pake_v1: payload };
