@@ -57,7 +57,8 @@ impl Wordlist {
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng::new().unwrap();
         let components: Vec<String>;
-        components = self.words
+        components = self
+            .words
             .iter()
             .cycle()
             .take(self.num_words)

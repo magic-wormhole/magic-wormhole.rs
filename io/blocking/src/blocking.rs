@@ -135,24 +135,26 @@ fn ws_connector(
 impl CoreWrapper {
     fn run(&mut self) {
         loop {
-            let actions =
-                match self.rx_by_core.recv().unwrap() {
-                    ToCore::API(a) => self.core.do_api(a),
-                    ToCore::IO(i) => self.core.do_io(i),
-                    ToCore::TimerExpired(handle) => {
-                        if self.timers.contains(&handle) {
-                            self.core.do_io(IOEvent::TimerExpired(handle))
-                        } else {
-                            vec![]
-                        }
+            let actions = match self.rx_by_core.recv().unwrap() {
+                ToCore::API(a) => self.core.do_api(a),
+                ToCore::IO(i) => self.core.do_io(i),
+                ToCore::TimerExpired(handle) => {
+                    if self.timers.contains(&handle) {
+                        self.core.do_io(IOEvent::TimerExpired(handle))
+                    } else {
+                        vec![]
                     }
-                    ToCore::WebSocketConnectionMade(handle) => self.core
-                        .do_io(IOEvent::WebSocketConnectionMade(handle)),
-                    ToCore::WebSocketMessageReceived(handle, msg) => self.core
-                        .do_io(IOEvent::WebSocketMessageReceived(handle, msg)),
-                    ToCore::WebSocketConnectionLost(handle) => self.core
-                        .do_io(IOEvent::WebSocketConnectionLost(handle)),
-                };
+                }
+                ToCore::WebSocketConnectionMade(handle) => {
+                    self.core.do_io(IOEvent::WebSocketConnectionMade(handle))
+                }
+                ToCore::WebSocketMessageReceived(handle, msg) => self
+                    .core
+                    .do_io(IOEvent::WebSocketMessageReceived(handle, msg)),
+                ToCore::WebSocketConnectionLost(handle) => {
+                    self.core.do_io(IOEvent::WebSocketConnectionLost(handle))
+                }
+            };
             for action in actions {
                 self.process_action(action);
             }
