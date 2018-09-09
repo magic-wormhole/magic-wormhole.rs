@@ -22,7 +22,10 @@ use std::time::Duration;
 
 use parking_lot::{deadlock, Mutex};
 use regex::Regex;
-use rustyline::{completion::Completer, error::ReadlineError};
+use rustyline::{
+    completion::Completer, error::ReadlineError, highlight::Highlighter,
+    hint::Hinter, Helper,
+};
 use url::Url;
 
 const MAILBOX_SERVER: &'static str = "ws://localhost:4000/v1";
@@ -56,6 +59,8 @@ struct CodeCompleter {
 }
 
 impl Completer for CodeCompleter {
+    type Candidate = String;
+
     fn complete(
         &self,
         line: &str,
@@ -126,6 +131,16 @@ impl Completer for CodeCompleter {
     }
 }
 
+impl Hinter for CodeCompleter {
+    fn hint(&self, _line: &str, _pos: usize) -> Option<String> {
+        None
+    }
+}
+
+impl Highlighter for CodeCompleter {}
+
+impl Helper for CodeCompleter {}
+
 impl ws::Handler for WSHandler {
     fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
         // println!("On_open");
@@ -151,7 +166,7 @@ impl ws::Handler for WSHandler {
 
         spawn(move || {
             let mut rl = rustyline::Editor::new();
-            rl.set_completer(Some(completer));
+            rl.set_helper(Some(completer));
             loop {
                 match rl.readline("Enter receive wormhole code: ") {
                     Ok(line) => {
