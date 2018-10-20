@@ -26,7 +26,7 @@ but not the file-transfer part.
 [docs-image]: https://docs.rs/magic-wormhole/badge.svg
 [docs-url]: https://docs.rs/magic-wormhole
 [license-image]: https://img.shields.io/crates/l/magic-wormhole.svg
-[license-url]: LICENSE-MIT
+[license-url]: LICENSE
 [iim-resolution-image]: http://isitmaintained.com/badge/resolution/warner/magic-wormhole.rs.svg
 [iim-resolution-url]: http://isitmaintained.com/project/warner/magic-wormhole.rs
 [iim-open-image]: http://isitmaintained.com/badge/open/warner/magic-wormhole.rs.svg
