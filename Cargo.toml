@@ -8,3 +8,7 @@ members = [
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }
+
+
+[profile.release]
+overflow-checks = true
