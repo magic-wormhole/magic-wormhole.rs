@@ -23,12 +23,12 @@ matrix:
         - rustfmt --version
       script:
         - cargo fmt -- --write-mode=diff
-    - rust: nightly
+    - rust: stable
       env: CLIPPY
       install:
-        - cargo +nightly install clippy
+        - rustup component add clippy-preview
       script:
-        - cargo +nightly clippy
+        - cargo clippy
   allow_failures:
     - rust: nightly # both compiles and clippy
 
