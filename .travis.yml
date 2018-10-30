@@ -15,14 +15,12 @@ branches:
 
 matrix:
   include:
-    - rust: 1.27.0 # lock down for consistent rustfmt behavior
+    - rust: 1.30.0 # lock down for consistent rustfmt behavior
       env: RUSTFMT
-      before_install:
       install:
         - rustup component add rustfmt-preview
-        - rustfmt --version
       script:
-        - cargo fmt -- --write-mode=diff
+        - cargo fmt -- --check
     - rust: stable
       env: CLIPPY
       install:
