@@ -1,5 +1,5 @@
-use magic_wormhole_core::WormholeCore;
-use magic_wormhole_core::{
+use core::WormholeCore;
+use core::{
     APIAction, APIEvent, Action, Code, IOAction, IOEvent, Mood, TimerHandle,
     WSHandle,
 };
