@@ -1,15 +1,15 @@
-use events::{Events, Nameplate};
+use super::events::{Events, Nameplate};
 use std::sync::Arc;
-use wordlist::default_wordlist;
+use super::wordlist::default_wordlist;
 // we process these
-use events::NameplateEvent;
+use super::events::NameplateEvent;
 // we emit these
-use events::InputEvent::GotWordlist as I_GotWordlist;
-use events::MailboxEvent::GotMailbox as M_GotMailbox;
-use events::RendezvousEvent::{
+use super::events::InputEvent::GotWordlist as I_GotWordlist;
+use super::events::MailboxEvent::GotMailbox as M_GotMailbox;
+use super::events::RendezvousEvent::{
     TxClaim as RC_TxClaim, TxRelease as RC_TxRelease,
 };
-use events::TerminatorEvent::NameplateDone as T_NameplateDone;
+use super::events::TerminatorEvent::NameplateDone as T_NameplateDone;
 
 // all -A states are not-connected, while -B states are yes-connected
 // B states serialize as A, so we wake up disconnected
@@ -63,7 +63,7 @@ impl NameplateMachine {
     }
 
     fn do_s0a(&self, event: NameplateEvent) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (Some(State::S0B), events![]),
             Lost => panic!(),
@@ -79,7 +79,7 @@ impl NameplateMachine {
     }
 
     fn do_s0b(&self, event: NameplateEvent) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => panic!(),
             Lost => (Some(State::S0A), events![]),
@@ -102,7 +102,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (
                 Some(State::S2B(nameplate.clone())),
@@ -122,7 +122,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (
                 Some(State::S2B(nameplate.clone())),
@@ -142,7 +142,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => panic!(),
             Lost => (Some(State::S2A(nameplate.clone())), events![]),
@@ -169,7 +169,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (Some(State::S3B(nameplate.clone())), events![]),
             Lost => panic!(),
@@ -186,7 +186,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => panic!(),
             Lost => (Some(State::S3A(nameplate.clone())), events![]),
@@ -209,7 +209,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (
                 Some(State::S4B(nameplate.clone())),
@@ -229,7 +229,7 @@ impl NameplateMachine {
         nameplate: &Nameplate,
         event: NameplateEvent,
     ) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (
                 Some(State::S4B(nameplate.clone())),
@@ -245,7 +245,7 @@ impl NameplateMachine {
     }
 
     fn do_s5(&self, event: NameplateEvent) -> (Option<State>, Events) {
-        use events::NameplateEvent::*;
+        use super::events::NameplateEvent::*;
         match event {
             Connected => (None, events![]),
             Lost => (None, events![]),

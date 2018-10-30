@@ -5,10 +5,10 @@ use std::iter::FromIterator;
 use std::ops::Deref;
 use std::sync::Arc;
 // Events come into the core, Actions go out of it (to the IO glue layer)
-use api::{APIAction, IOAction, Mood};
-use util::maybe_utf8;
+use super::api::{APIAction, IOAction, Mood};
+use super::util::maybe_utf8;
 
-pub use wordlist::Wordlist;
+pub use super::wordlist::Wordlist;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct AppID(pub String);
@@ -538,13 +538,13 @@ impl FromIterator<Event> for Events {
 macro_rules! events {
     ( ) => {
         {
-            use events::Events;
+            use core::events::Events;
             Events::new()
         }
     };
     ( $( $x:expr ),* $(,)*) => {
         {
-            use events::Events;
+            use core::events::Events;
             let mut temp_vec = Events::new();
             $(
                 temp_vec.push($x);

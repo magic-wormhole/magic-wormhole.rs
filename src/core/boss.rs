@@ -1,28 +1,28 @@
-use api::Mood;
-use events::{Code, Events, Nameplate, Phase};
+use super::api::Mood;
+use super::events::{Code, Events, Nameplate, Phase};
 use std::str::FromStr;
 use std::sync::Arc;
-use wordlist::default_wordlist;
+use super::wordlist::default_wordlist;
 
 use regex::Regex;
 use serde_json;
 
 // we process these
-use api::APIEvent;
-use events::BossEvent;
+use super::api::APIEvent;
+use super::events::BossEvent;
 // we emit these
-use api::APIAction;
-use events::CodeEvent::{
+use super::api::APIAction;
+use super::events::CodeEvent::{
     AllocateCode as C_AllocateCode, InputCode as C_InputCode,
     SetCode as C_SetCode,
 };
-use events::InputEvent::{
+use super::events::InputEvent::{
     ChooseNameplate as I_ChooseNameplate, ChooseWords as I_ChooseWords,
     RefreshNameplates as I_RefreshNameplates,
 };
-use events::RendezvousEvent::Start as RC_Start;
-use events::SendEvent::Send as S_Send;
-use events::TerminatorEvent::Close as T_Close;
+use super::events::RendezvousEvent::Start as RC_Start;
+use super::events::SendEvent::Send as S_Send;
+use super::events::TerminatorEvent::Close as T_Close;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
@@ -64,7 +64,7 @@ impl BossMachine {
     }
 
     pub fn process_api(&mut self, event: APIEvent) -> Events {
-        use api::APIEvent::*;
+        use super::api::APIEvent::*;
 
         match event {
             Start => self.start(),
@@ -86,7 +86,7 @@ impl BossMachine {
     }
 
     pub fn process(&mut self, event: BossEvent) -> Events {
-        use events::BossEvent::*;
+        use super::events::BossEvent::*;
         match event {
             GotCode(code) => self.got_code(&code),
             GotKey(key) => events![APIAction::GotUnverifiedKey(key.clone())],
@@ -292,8 +292,8 @@ impl BossMachine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use api::{APIEvent, Mood};
-    use events::{Key, RendezvousEvent, TerminatorEvent};
+    use core::api::{APIEvent, Mood};
+    use core::events::{Key, RendezvousEvent, TerminatorEvent};
 
     #[test]
     fn create() {

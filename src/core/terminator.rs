@@ -1,13 +1,13 @@
-use events::Events;
+use super::events::Events;
 // we process these
-use events::TerminatorEvent::{
+use super::events::TerminatorEvent::{
     self, Close, MailboxDone, NameplateDone, Stopped,
 };
 // we emit these
-use events::BossEvent::Closed as B_Closed;
-use events::MailboxEvent::Close as M_Close;
-use events::NameplateEvent::Close as N_Close;
-use events::RendezvousEvent::Stop as RC_Stop;
+use super::events::BossEvent::Closed as B_Closed;
+use super::events::MailboxEvent::Close as M_Close;
+use super::events::NameplateEvent::Close as N_Close;
+use super::events::RendezvousEvent::Stop as RC_Stop;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
@@ -125,11 +125,11 @@ impl TerminatorMachine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use api::Mood::*;
-    use events::BossEvent::Closed as B_Closed;
-    use events::MailboxEvent::Close as M_Close;
-    use events::NameplateEvent::Close as N_Close;
-    use events::RendezvousEvent::Stop as RC_Stop;
+    use core::api::Mood::*;
+    use core::events::BossEvent::Closed as B_Closed;
+    use core::events::MailboxEvent::Close as M_Close;
+    use core::events::NameplateEvent::Close as N_Close;
+    use core::events::RendezvousEvent::Stop as RC_Stop;
 
     #[test]
     fn test_transitions1() {

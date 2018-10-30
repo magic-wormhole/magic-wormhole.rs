@@ -1,13 +1,13 @@
-use events::{Events, Key, Phase, TheirSide};
-use key;
+use super::events::{Events, Key, Phase, TheirSide};
+use super::key;
 // we process these
-use events::ReceiveEvent;
+use super::events::ReceiveEvent;
 // we emit these
-use events::BossEvent::{
+use super::events::BossEvent::{
     GotMessage as B_GotMessage, GotVerifier as B_GotVerifier, Happy as B_Happy,
     Scared as B_Scared,
 };
-use events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
+use super::events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -48,7 +48,7 @@ impl ReceiveMachine {
     }
 
     fn in_unknown_key(&self, event: ReceiveEvent) -> (State, Events) {
-        use events::ReceiveEvent::*;
+        use super::events::ReceiveEvent::*;
         match event {
             GotMessage(..) => panic!(),
             GotKey(key) => (State::S1UnverifiedKey(key.clone()), events![]),
@@ -70,7 +70,7 @@ impl ReceiveMachine {
         key: &Key,
         event: ReceiveEvent,
     ) -> (State, Events) {
-        use events::ReceiveEvent::*;
+        use super::events::ReceiveEvent::*;
         match event {
             GotKey(_) => panic!(),
             GotMessage(side, phase, body) => {
@@ -103,7 +103,7 @@ impl ReceiveMachine {
         key: &Key,
         event: ReceiveEvent,
     ) -> (State, Events) {
-        use events::ReceiveEvent::*;
+        use super::events::ReceiveEvent::*;
         match event {
             GotKey(_) => panic!(),
             GotMessage(side, phase, body) => {
@@ -125,7 +125,7 @@ impl ReceiveMachine {
     }
 
     fn in_scared(&self, event: &ReceiveEvent) -> (State, Events) {
-        use events::ReceiveEvent::*;
+        use super::events::ReceiveEvent::*;
         match event {
             GotKey(_) => panic!(),
             GotMessage(_, _, _) => (State::S3Scared, events![]),

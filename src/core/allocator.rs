@@ -1,11 +1,11 @@
-use events::{Code, Events, Wordlist};
+use super::events::{Code, Events, Wordlist};
 use std::sync::Arc;
 
 // we process these
-use events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
+use super::events::AllocatorEvent::{self, Allocate, Connected, Lost, RxAllocated};
 // we emit these
-use events::CodeEvent::Allocated as C_Allocated;
-use events::RendezvousEvent::TxAllocate as RC_TxAllocate;
+use super::events::CodeEvent::Allocated as C_Allocated;
+use super::events::RendezvousEvent::TxAllocate as RC_TxAllocate;
 
 pub struct AllocatorMachine {
     state: State,

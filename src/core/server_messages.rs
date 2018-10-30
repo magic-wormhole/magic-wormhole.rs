@@ -1,8 +1,8 @@
 use serde_json::{self, Value};
 
-use api::Mood;
-use events::{AppID, Mailbox, MySide};
-use util;
+use super::api::Mood;
+use super::events::{AppID, Mailbox, MySide};
+use super::util;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
@@ -121,7 +121,7 @@ pub fn deserialize(s: &str) -> InboundMessage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use api::Mood;
+    use core::api::Mood;
     use serde_json::from_str;
 
     #[test]

@@ -9,35 +9,35 @@
 
 extern crate hex;
 
-use api::{TimerHandle, WSHandle};
-use events::{AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
+use super::api::{TimerHandle, WSHandle};
+use super::events::{AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
 use serde_json;
-use server_messages::{
+use super::server_messages::{
     add, allocate, bind, claim, close, deserialize, list, open, release,
     InboundMessage, OutboundMessage,
 };
 // we process these
-use api::IOEvent;
-use events::RendezvousEvent;
+use super::api::IOEvent;
+use super::events::RendezvousEvent;
 // we emit these
-use api::IOAction;
-use events::AllocatorEvent::{
+use super::api::IOAction;
+use super::events::AllocatorEvent::{
     Connected as A_Connected, Lost as A_Lost, RxAllocated as A_RxAllocated,
 };
-use events::BossEvent::RxWelcome as B_RxWelcome;
-use events::ListerEvent::{
+use super::events::BossEvent::RxWelcome as B_RxWelcome;
+use super::events::ListerEvent::{
     Connected as L_Connected, Lost as L_Lost, RxNameplates as L_RxNamePlates,
 };
-use events::MailboxEvent::{
+use super::events::MailboxEvent::{
     Connected as M_Connected, Lost as M_Lost, RxClosed as M_RxClosed,
     RxMessage as M_RxMessage,
 };
-use events::NameplateEvent::{
+use super::events::NameplateEvent::{
     Connected as N_Connected, Lost as N_Lost, RxClaimed as N_RxClaimed,
     RxReleased as N_RxReleased,
 };
-use events::RendezvousEvent::TxBind as RC_TxBind; // loops around
-use events::TerminatorEvent::Stopped as T_Stopped;
+use super::events::RendezvousEvent::TxBind as RC_TxBind; // loops around
+use super::events::TerminatorEvent::Stopped as T_Stopped;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -85,7 +85,7 @@ impl RendezvousMachine {
     }
 
     pub fn process_io(&mut self, event: IOEvent) -> Events {
-        use api::IOEvent::*;
+        use super::api::IOEvent::*;
         match event {
             WebSocketConnectionMade(wsh) => self.connection_made(wsh),
             WebSocketMessageReceived(wsh, message) => {
@@ -97,7 +97,7 @@ impl RendezvousMachine {
     }
 
     pub fn process(&mut self, e: RendezvousEvent) -> Events {
-        use events::RendezvousEvent::*;
+        use super::events::RendezvousEvent::*;
         println!("rendezvous: {:?}", e);
         match e {
             Start => self.start(),
@@ -267,18 +267,18 @@ impl RendezvousMachine {
 
 #[cfg(test)]
 mod test {
-    use api::IOAction;
-    use api::IOEvent;
-    use api::{TimerHandle, WSHandle};
-    use events::AllocatorEvent::Lost as A_Lost;
-    use events::Event::{Nameplate, Rendezvous, Terminator, IO};
-    use events::ListerEvent::Lost as L_Lost;
-    use events::MailboxEvent::Lost as M_Lost;
-    use events::NameplateEvent::{Connected as N_Connected, Lost as N_Lost};
-    use events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
-    use events::TerminatorEvent::Stopped as T_Stopped;
-    use events::{AppID, MySide};
-    use server_messages::{deserialize_outbound, OutboundMessage};
+    use core::api::IOAction;
+    use core::api::IOEvent;
+    use core::api::{TimerHandle, WSHandle};
+    use core::events::AllocatorEvent::Lost as A_Lost;
+    use core::events::Event::{Nameplate, Rendezvous, Terminator, IO};
+    use core::events::ListerEvent::Lost as L_Lost;
+    use core::events::MailboxEvent::Lost as M_Lost;
+    use core::events::NameplateEvent::{Connected as N_Connected, Lost as N_Lost};
+    use core::events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
+    use core::events::TerminatorEvent::Stopped as T_Stopped;
+    use core::events::{AppID, MySide};
+    use core::server_messages::{deserialize_outbound, OutboundMessage};
 
     #[test]
     fn create() {
