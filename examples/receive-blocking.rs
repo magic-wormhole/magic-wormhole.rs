@@ -1,9 +1,8 @@
 extern crate hex;
-extern crate magic_wormhole_core;
-extern crate magic_wormhole_io_blocking;
+extern crate magic_wormhole;
 
-use magic_wormhole_core::{file_ack, message_ack, OfferType, PeerMessage};
-use magic_wormhole_io_blocking::Wormhole;
+use magic_wormhole::core::{file_ack, message_ack, OfferType, PeerMessage};
+use magic_wormhole::io::blocking::Wormhole;
 use std::str;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now

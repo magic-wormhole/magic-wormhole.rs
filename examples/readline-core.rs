@@ -1,4 +1,4 @@
-extern crate magic_wormhole_core;
+extern crate magic_wormhole;
 extern crate parking_lot;
 extern crate regex;
 extern crate rustyline;
@@ -6,7 +6,7 @@ extern crate serde_json;
 extern crate url;
 extern crate ws;
 
-use magic_wormhole_core::{
+use magic_wormhole::core::{
     APIAction, APIEvent, Action, IOAction, IOEvent, OfferType, PeerMessage,
     WSHandle, WormholeCore,
 };
