@@ -1,9 +1,9 @@
 use super::events::{Code, Key};
+use super::util::maybe_utf8;
 use hex;
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
-use super::util::maybe_utf8;
 
 #[derive(PartialEq)]
 pub enum APIEvent {

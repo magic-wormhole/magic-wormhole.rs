@@ -303,9 +303,9 @@ mod test {
         let plaintext =
             hex::decode("edc089a518219ec1cee184e89d2d37af").unwrap();
         assert_eq!(plaintext.len(), 16);
-        let nonce = hex::decode(
-            "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80",
-        ).unwrap();
+        let nonce =
+            hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80")
+                .unwrap();
         assert_eq!(nonce.len(), 24);
         let msg = encrypt_data_with_nonce(&k, &plaintext, &nonce);
         assert_eq!(hex::encode(msg), "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a");

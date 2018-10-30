@@ -118,8 +118,8 @@ impl InputMachine {
         &self,
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
-        use self::State::*;
         use self::InputHelperError::*;
+        use self::State::*;
         match self.state {
             Idle => Err(Inactive),
             WantNameplate => match self.nameplates {
@@ -144,8 +144,8 @@ impl InputMachine {
         &self,
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
-        use self::State::*;
         use self::InputHelperError::*;
+        use self::State::*;
         match self.state {
             Idle => Err(Inactive),
             WantNameplate => Err(MustChooseNameplateFirst),
@@ -202,8 +202,7 @@ mod test {
                 } else {
                     s.to_string()
                 }
-            })
-            .collect()
+            }).collect()
     }
 
     #[test]
@@ -225,8 +224,7 @@ mod test {
                 } else {
                     s.to_string()
                 }
-            })
-            .map(|s| Nameplate(s))
+            }).map(|s| Nameplate(s))
             .collect()
     }
 
