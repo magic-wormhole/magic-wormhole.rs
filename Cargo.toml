@@ -41,7 +41,7 @@ io_blocking = ["ws", "url"]
 io_tokio = ["websocket", "futures", "tokio-core"]
 
 [[bin]]
-name = "magic-wormhole"
+name = "wormhole"
 path = "src/bin/main.rs"
 required-features = ["io_blocking"]
 
