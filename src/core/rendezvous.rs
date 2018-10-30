@@ -10,12 +10,14 @@
 extern crate hex;
 
 use super::api::{TimerHandle, WSHandle};
-use super::events::{AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide};
-use serde_json;
+use super::events::{
+    AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide,
+};
 use super::server_messages::{
     add, allocate, bind, claim, close, deserialize, list, open, release,
     InboundMessage, OutboundMessage,
 };
+use serde_json;
 // we process these
 use super::api::IOEvent;
 use super::events::RendezvousEvent;
@@ -274,7 +276,9 @@ mod test {
     use core::events::Event::{Nameplate, Rendezvous, Terminator, IO};
     use core::events::ListerEvent::Lost as L_Lost;
     use core::events::MailboxEvent::Lost as M_Lost;
-    use core::events::NameplateEvent::{Connected as N_Connected, Lost as N_Lost};
+    use core::events::NameplateEvent::{
+        Connected as N_Connected, Lost as N_Lost,
+    };
     use core::events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
     use core::events::TerminatorEvent::Stopped as T_Stopped;
     use core::events::{AppID, MySide};

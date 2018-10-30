@@ -111,8 +111,7 @@ impl Completer for CodeCompleter {
                 self.tx_event
                     .send(APIEvent::InputHelperChooseNameplate(
                         nameplate.clone(),
-                    ))
-                    .unwrap();
+                    )).unwrap();
                 Ok((0, Vec::new()))
             }
         } else {

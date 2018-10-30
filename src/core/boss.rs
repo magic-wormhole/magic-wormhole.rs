@@ -1,8 +1,8 @@
 use super::api::Mood;
 use super::events::{Code, Events, Nameplate, Phase};
+use super::wordlist::default_wordlist;
 use std::str::FromStr;
 use std::sync::Arc;
-use super::wordlist::default_wordlist;
 
 use regex::Regex;
 use serde_json;

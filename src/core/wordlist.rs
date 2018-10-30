@@ -136,8 +136,7 @@ mod test {
                 } else {
                     s.to_string()
                 }
-            })
-            .collect()
+            }).collect()
     }
 
     #[test]
@@ -179,8 +178,8 @@ mod test {
             "purple-sausages-yellow",
             "yellow-sausages-yellow",
         ].iter()
-            .map(|s| s.to_string())
-            .collect();
+        .map(|s| s.to_string())
+        .collect();
 
         let w = Wordlist::new(2, more_words.clone());
         for _ in 0..20 {

@@ -1,6 +1,6 @@
 use super::events::{Events, Nameplate};
-use std::sync::Arc;
 use super::wordlist::default_wordlist;
+use std::sync::Arc;
 // we process these
 use super::events::NameplateEvent;
 // we emit these
