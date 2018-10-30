@@ -1,6 +1,0 @@
-[package]
-name = "magic-wormhole"
-version = "0.0.1"
-authors = ["Brian Warner <warner@lothar.com>"]
-
-[dependencies]
