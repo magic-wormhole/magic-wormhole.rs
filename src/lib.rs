@@ -17,14 +17,14 @@ extern crate spake2;
 pub mod core;
 pub mod io;
 
-#[cfg(feature = "io_blocking")]
+#[cfg(feature = "io-blocking")]
 extern crate url;
-#[cfg(feature = "io_blocking")]
+#[cfg(feature = "io-blocking")]
 extern crate ws;
 
-#[cfg(feature = "io_tokio")]
+#[cfg(feature = "io-tokio")]
 extern crate futures;
-#[cfg(feature = "io_tokio")]
+#[cfg(feature = "io-tokio")]
 extern crate tokio_core;
-#[cfg(feature = "io_tokio")]
+#[cfg(feature = "io-tokio")]
 extern crate websocket;

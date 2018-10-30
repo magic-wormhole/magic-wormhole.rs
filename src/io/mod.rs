@@ -1,5 +1,5 @@
-#[cfg(feature = "io_blocking")]
+#[cfg(feature = "io-blocking")]
 pub mod blocking;
 
-#[cfg(feature = "io_tokio")]
+#[cfg(feature = "io-tokio")]
 pub mod tokio;

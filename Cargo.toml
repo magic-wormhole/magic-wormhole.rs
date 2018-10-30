@@ -36,14 +36,14 @@ parking_lot = {version = "0.6", features = ["deadlock_detection"]}
 hex = "0.3"
 
 [features]
-default = ["io_blocking", "io_tokio"]
-io_blocking = ["ws", "url"]
-io_tokio = ["websocket", "futures", "tokio-core"]
+default = ["io-blocking", "io-tokio"]
+io-blocking = ["ws", "url"]
+io-tokio = ["websocket", "futures", "tokio-core"]
 
 [[bin]]
 name = "wormhole"
 path = "src/bin/main.rs"
-required-features = ["io_blocking"]
+required-features = ["io-blocking"]
 
 [profile.release]
 overflow-checks = true
