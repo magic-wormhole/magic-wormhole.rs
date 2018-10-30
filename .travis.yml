@@ -5,10 +5,6 @@ rust:
   - beta
   - nightly
 
-os:
-  - linux
-  - osx
-
 branches:
   except:
     - /^WIP-.*$/
