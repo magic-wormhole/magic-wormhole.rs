@@ -25,15 +25,15 @@ mod wordlist;
 use rustc_serialize::hex::ToHex;
 use std::collections::VecDeque;
 
-pub use events::{AppID, Code};
-use events::{Event, Events, MySide, Nameplate};
-use util::random_bytes;
+pub use self::events::{AppID, Code};
+use self::events::{Event, Events, MySide, Nameplate};
+use self::util::random_bytes;
 
-pub use api::{
+pub use self::api::{
     APIAction, APIEvent, Action, IOAction, IOEvent, InputHelperError, Mood,
     TimerHandle, WSHandle,
 };
-pub use transfer::{
+pub use self::transfer::{
     direct_type, error_message, file_ack, message, message_ack,
     offer_directory, offer_file, relay_type, transit, Abilities, AnswerType,
     DirectType, Hints, OfferType, PeerMessage, RelayType, TransitType,
@@ -149,7 +149,7 @@ impl WormholeCore {
 
         while let Some(e) = event_queue.pop_front() {
             println!("event: {:?}", e);
-            use events::Event::*; // machine names
+            use self::events::Event::*; // machine names
             let actions: Events = match e {
                 API(a) => {
                     action_queue.push(Action::API(a));

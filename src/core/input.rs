@@ -1,17 +1,17 @@
-use events::{Code, Events, Nameplate};
+use super::events::{Code, Events, Nameplate};
 use std::sync::Arc;
 // we process these
-use events::InputEvent::{
+use super::events::InputEvent::{
     self, ChooseNameplate, ChooseWords, GotNameplates, GotWordlist,
     RefreshNameplates, Start,
 };
 // we emit these
-use api::InputHelperError;
-use events::CodeEvent::{
+use super::api::InputHelperError;
+use super::events::CodeEvent::{
     FinishedInput as C_FinishedInput, GotNameplate as C_GotNameplate,
 };
-use events::ListerEvent::Refresh as L_Refresh;
-use events::Wordlist;
+use super::events::ListerEvent::Refresh as L_Refresh;
+use super::events::Wordlist;
 
 pub struct InputMachine {
     state: State,
@@ -119,7 +119,7 @@ impl InputMachine {
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
         use self::State::*;
-        use InputHelperError::*;
+        use self::InputHelperError::*;
         match self.state {
             Idle => Err(Inactive),
             WantNameplate => match self.nameplates {
@@ -145,7 +145,7 @@ impl InputMachine {
         prefix: &str,
     ) -> Result<Vec<String>, InputHelperError> {
         use self::State::*;
-        use InputHelperError::*;
+        use self::InputHelperError::*;
         match self.state {
             Idle => Err(Inactive),
             WantNameplate => Err(MustChooseNameplateFirst),

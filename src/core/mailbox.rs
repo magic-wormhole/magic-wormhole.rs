@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use api::Mood;
-use events::{Events, Mailbox, MySide, Phase};
+use super::api::Mood;
+use super::events::{Events, Mailbox, MySide, Phase};
 // we process these
-use events::MailboxEvent;
-use events::NameplateEvent::Release as N_Release;
-use events::OrderEvent::GotMessage as O_GotMessage;
-use events::RendezvousEvent::{
+use super::events::MailboxEvent;
+use super::events::NameplateEvent::Release as N_Release;
+use super::events::OrderEvent::GotMessage as O_GotMessage;
+use super::events::RendezvousEvent::{
     TxAdd as RC_TxAdd, TxClose as RC_TxClose, TxOpen as RC_TxOpen,
 };
-use events::TerminatorEvent::MailboxDone as T_MailboxDone;
+use super::events::TerminatorEvent::MailboxDone as T_MailboxDone;
 // we emit these
 
 #[derive(Debug, PartialEq)]
@@ -101,7 +101,7 @@ impl MailboxMachine {
         &mut self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => (Some(State::S0B), events![], QueueCtrl::NoAction),
@@ -128,7 +128,7 @@ impl MailboxMachine {
         &mut self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => panic!(),
@@ -165,7 +165,7 @@ impl MailboxMachine {
         mailbox: &Mailbox,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => {
@@ -205,7 +205,7 @@ impl MailboxMachine {
         mailbox: &Mailbox,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => {
@@ -241,7 +241,7 @@ impl MailboxMachine {
         mailbox: &Mailbox,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => panic!(),
@@ -307,7 +307,7 @@ impl MailboxMachine {
         mood: Mood,
         event: &MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match *event {
             Connected => (
@@ -330,7 +330,7 @@ impl MailboxMachine {
         mood: Mood,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => panic!(),
@@ -370,7 +370,7 @@ impl MailboxMachine {
         &self,
         event: &MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => (Some(State::S4B), events![], QueueCtrl::NoAction),
@@ -387,7 +387,7 @@ impl MailboxMachine {
         &self,
         event: MailboxEvent,
     ) -> (Option<State>, Events, QueueCtrl) {
-        use events::MailboxEvent::*;
+        use super::events::MailboxEvent::*;
 
         match event {
             Connected => panic!(),

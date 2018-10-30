@@ -1,12 +1,12 @@
-use events::{Events, Nameplate};
+use super::events::{Events, Nameplate};
 // we process these
-use events::CodeEvent;
+use super::events::CodeEvent;
 // we emit these
-use events::AllocatorEvent::Allocate as A_Allocate;
-use events::BossEvent::GotCode as B_GotCode;
-use events::InputEvent::Start as I_Start;
-use events::KeyEvent::GotCode as K_GotCode;
-use events::NameplateEvent::SetNameplate as N_SetNameplate;
+use super::events::AllocatorEvent::Allocate as A_Allocate;
+use super::events::BossEvent::GotCode as B_GotCode;
+use super::events::InputEvent::Start as I_Start;
+use super::events::KeyEvent::GotCode as K_GotCode;
+use super::events::NameplateEvent::SetNameplate as N_SetNameplate;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -44,7 +44,7 @@ impl CodeMachine {
     }
 
     fn in_idle(&mut self, event: CodeEvent) -> (Option<State>, Events) {
-        use events::CodeEvent::*;
+        use super::events::CodeEvent::*;
         match event {
             AllocateCode(wordlist) => {
                 (Some(State::Allocating), events![A_Allocate(wordlist)])
@@ -74,7 +74,7 @@ impl CodeMachine {
         &mut self,
         event: CodeEvent,
     ) -> (Option<State>, Events) {
-        use events::CodeEvent::*;
+        use super::events::CodeEvent::*;
         match event {
             AllocateCode(..) => panic!(),
             InputCode => panic!(),
@@ -92,7 +92,7 @@ impl CodeMachine {
         &mut self,
         event: CodeEvent,
     ) -> (Option<State>, Events) {
-        use events::CodeEvent::*;
+        use super::events::CodeEvent::*;
         match event {
             AllocateCode(..) => panic!(),
             InputCode => panic!(),
@@ -107,7 +107,7 @@ impl CodeMachine {
     }
 
     fn in_allocating(&mut self, event: CodeEvent) -> (Option<State>, Events) {
-        use events::CodeEvent::*;
+        use super::events::CodeEvent::*;
         match event {
             AllocateCode(..) => panic!(),
             InputCode => panic!(),
@@ -129,7 +129,7 @@ impl CodeMachine {
     }
 
     fn in_known(&mut self, event: &CodeEvent) -> (Option<State>, Events) {
-        use events::CodeEvent::*;
+        use super::events::CodeEvent::*;
         match *event {
             AllocateCode(..) => panic!(),
             InputCode => panic!(),
