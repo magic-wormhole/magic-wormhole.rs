@@ -121,7 +121,7 @@ pub fn deserialize(s: &str) -> InboundMessage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use core::api::Mood;
+    use crate::core::api::Mood;
     use serde_json::from_str;
 
     #[test]

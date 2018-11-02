@@ -292,8 +292,8 @@ impl BossMachine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use core::api::{APIEvent, Mood};
-    use core::events::{Key, RendezvousEvent, TerminatorEvent};
+    use crate::core::api::{APIEvent, Mood};
+    use crate::core::events::{Key, RendezvousEvent, TerminatorEvent};
 
     #[test]
     fn create() {

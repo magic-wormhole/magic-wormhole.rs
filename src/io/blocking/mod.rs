@@ -1,5 +1,5 @@
-use core::WormholeCore;
-use core::{
+use crate::core::WormholeCore;
+use crate::core::{
     APIAction, APIEvent, Action, Code, IOAction, IOEvent, Mood, TimerHandle,
     WSHandle,
 };

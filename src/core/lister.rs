@@ -86,7 +86,7 @@ impl ListerMachine {
 #[cfg(test)]
 mod test {
     use super::{ListerMachine, State};
-    use core::events::{
+    use crate::core::events::{
         InputEvent::GotNameplates, ListerEvent::*, Nameplate,
         RendezvousEvent::TxList,
     };

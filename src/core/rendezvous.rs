@@ -269,20 +269,22 @@ impl RendezvousMachine {
 
 #[cfg(test)]
 mod test {
-    use core::api::IOAction;
-    use core::api::IOEvent;
-    use core::api::{TimerHandle, WSHandle};
-    use core::events::AllocatorEvent::Lost as A_Lost;
-    use core::events::Event::{Nameplate, Rendezvous, Terminator, IO};
-    use core::events::ListerEvent::Lost as L_Lost;
-    use core::events::MailboxEvent::Lost as M_Lost;
-    use core::events::NameplateEvent::{
+    use crate::core::api::IOAction;
+    use crate::core::api::IOEvent;
+    use crate::core::api::{TimerHandle, WSHandle};
+    use crate::core::events::AllocatorEvent::Lost as A_Lost;
+    use crate::core::events::Event::{Nameplate, Rendezvous, Terminator, IO};
+    use crate::core::events::ListerEvent::Lost as L_Lost;
+    use crate::core::events::MailboxEvent::Lost as M_Lost;
+    use crate::core::events::NameplateEvent::{
         Connected as N_Connected, Lost as N_Lost,
     };
-    use core::events::RendezvousEvent::{Stop as RC_Stop, TxBind as RC_TxBind};
-    use core::events::TerminatorEvent::Stopped as T_Stopped;
-    use core::events::{AppID, MySide};
-    use core::server_messages::{deserialize_outbound, OutboundMessage};
+    use crate::core::events::RendezvousEvent::{
+        Stop as RC_Stop, TxBind as RC_TxBind,
+    };
+    use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
+    use crate::core::events::{AppID, MySide};
+    use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
 
     #[test]
     fn create() {
