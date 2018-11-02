@@ -125,11 +125,11 @@ impl TerminatorMachine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use core::api::Mood::*;
-    use core::events::BossEvent::Closed as B_Closed;
-    use core::events::MailboxEvent::Close as M_Close;
-    use core::events::NameplateEvent::Close as N_Close;
-    use core::events::RendezvousEvent::Stop as RC_Stop;
+    use crate::core::api::Mood::*;
+    use crate::core::events::BossEvent::Closed as B_Closed;
+    use crate::core::events::MailboxEvent::Close as M_Close;
+    use crate::core::events::NameplateEvent::Close as N_Close;
+    use crate::core::events::RendezvousEvent::Stop as RC_Stop;
 
     #[test]
     fn test_transitions1() {

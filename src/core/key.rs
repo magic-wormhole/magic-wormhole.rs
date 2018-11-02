@@ -212,7 +212,7 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
-    use core::events::{AppID, MySide};
+    use crate::core::events::{AppID, MySide};
     extern crate hex;
     use super::*;
 
