@@ -1,5 +1,5 @@
 use hex;
-use rand::{OsRng, RngCore};
+use rand::{rngs::OsRng, RngCore};
 use std;
 use std::str;
 

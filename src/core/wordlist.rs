@@ -1,4 +1,4 @@
-use rand::{OsRng, Rng};
+use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
 
@@ -62,7 +62,7 @@ impl Wordlist {
             .iter()
             .cycle()
             .take(self.num_words)
-            .map(|words| rng.choose(words).unwrap().to_string())
+            .map(|words| words.choose(&mut rng).unwrap().to_string())
             .collect();
         components.join("-")
     }
