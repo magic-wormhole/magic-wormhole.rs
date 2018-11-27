@@ -32,7 +32,7 @@ tokio-core = { version = "0.1", optional = true }
 ws = "0.7"
 url = "1.7"
 rustyline = "2.0"
-parking_lot = {version = "0.6", features = ["deadlock_detection"]}
+parking_lot = {version = "0.7", features = ["deadlock_detection"]}
 hex = "0.3"
 
 [features]
