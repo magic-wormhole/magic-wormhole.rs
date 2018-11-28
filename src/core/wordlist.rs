@@ -9,7 +9,7 @@ pub struct Wordlist {
 }
 
 impl fmt::Debug for Wordlist {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Wordlist ( {}, lots of words...)", self.num_words)
     }
 }

@@ -1,6 +1,3 @@
-extern crate magic_wormhole;
-extern crate url;
-extern crate ws;
 use magic_wormhole::core::{
     message, APIAction, APIEvent, Action, AnswerType, IOAction, IOEvent,
     PeerMessage, WSHandle, WormholeCore,
@@ -8,6 +5,7 @@ use magic_wormhole::core::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
+use ws;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
 const MAILBOX_SERVER: &'static str = "ws://127.0.0.1:4000/v1";
