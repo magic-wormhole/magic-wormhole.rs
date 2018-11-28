@@ -1,5 +1,4 @@
-extern crate hex;
-extern crate magic_wormhole;
+use hex;
 
 use magic_wormhole::core::message;
 use magic_wormhole::io::blocking::Wormhole;

@@ -1,4 +1,4 @@
-extern crate hex;
+use hex;
 
 use hkdf::Hkdf;
 use serde_json::{self, Value};
@@ -213,9 +213,9 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
-    use crate::core::events::{AppID, MySide};
-    extern crate hex;
     use super::*;
+    use crate::core::events::{AppID, MySide};
+    use hex;
 
     #[test]
     fn test_extract_pake_msg() {

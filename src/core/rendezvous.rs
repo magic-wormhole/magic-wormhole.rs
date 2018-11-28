@@ -7,7 +7,7 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-extern crate hex;
+use hex;
 
 use super::api::{TimerHandle, WSHandle};
 use super::events::{
