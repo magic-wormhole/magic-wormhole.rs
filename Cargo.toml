@@ -2,6 +2,9 @@
 name = "magic-wormhole"
 version = "0.0.1"
 authors = ["Brian Warner <warner@lothar.com>"]
+license = "MIT"
+homepage = "http://magic-wormhole.io/"
+repository = "https://github.com/warner/magic-wormhole.rs"
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }
