@@ -7,8 +7,6 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-extern crate hex;
-
 use super::api::{TimerHandle, WSHandle};
 use super::events::{
     AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide,
@@ -17,6 +15,7 @@ use super::server_messages::{
     add, allocate, bind, claim, close, deserialize, list, open, release,
     InboundMessage, OutboundMessage,
 };
+use hex;
 use serde_json;
 // we process these
 use super::api::IOEvent;
