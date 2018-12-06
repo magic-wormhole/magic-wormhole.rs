@@ -1,12 +1,14 @@
-use rustyline;
-
-use ws;
-
 use magic_wormhole::core::{
     APIAction, APIEvent, Action, IOAction, IOEvent, OfferType, PeerMessage,
     WSHandle, WormholeCore,
 };
-
+use parking_lot::{deadlock, Mutex};
+use regex::Regex;
+use rustyline;
+use rustyline::{
+    completion::Completer, error::ReadlineError, highlight::Highlighter,
+    hint::Hinter, Helper,
+};
 use std::error::Error;
 use std::io;
 use std::sync::{
@@ -15,14 +17,8 @@ use std::sync::{
 };
 use std::thread::{sleep, spawn};
 use std::time::Duration;
-
-use parking_lot::{deadlock, Mutex};
-use regex::Regex;
-use rustyline::{
-    completion::Completer, error::ReadlineError, highlight::Highlighter,
-    hint::Hinter, Helper,
-};
 use url::Url;
+use ws;
 
 const MAILBOX_SERVER: &'static str = "ws://localhost:4000/v1";
 const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
