@@ -19,7 +19,7 @@ impl Deref for AppID {
     }
 }
 impl fmt::Display for AppID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
     }
 }
@@ -40,7 +40,7 @@ impl Deref for Key {
 }
 
 impl fmt::Debug for Key {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Key(REDACTED)")
     }
 }
@@ -56,7 +56,7 @@ impl Deref for MySide {
 }
 
 impl fmt::Display for MySide {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
     }
 }
@@ -72,7 +72,7 @@ impl Deref for TheirSide {
 }
 
 impl fmt::Display for TheirSide {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
     }
 }
@@ -86,7 +86,7 @@ impl Deref for Phase {
     }
 }
 impl fmt::Display for Phase {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
     }
 }
@@ -100,7 +100,7 @@ impl Deref for Mailbox {
     }
 }
 impl fmt::Display for Mailbox {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Mailbox({})", &self.0)
     }
 }
@@ -115,7 +115,7 @@ impl Deref for Nameplate {
 }
 
 impl fmt::Display for Nameplate {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
     }
 }
@@ -130,7 +130,7 @@ impl Deref for Code {
 }
 
 impl fmt::Display for Code {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
     }
 }
@@ -161,7 +161,7 @@ pub enum BossEvent {
 }
 
 impl fmt::Debug for BossEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::BossEvent::*;
         let t = match *self {
             RxWelcome(ref v) => format!("RxWelcome({:?})", v),
@@ -208,7 +208,7 @@ pub enum KeyEvent {
 }
 
 impl fmt::Debug for KeyEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::KeyEvent::*;
         let t = match *self {
             GotCode(ref code) => format!("GotCode({:?})", code),
@@ -238,7 +238,7 @@ pub enum MailboxEvent {
 }
 
 impl fmt::Debug for MailboxEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::MailboxEvent::*;
         let t = match *self {
             Connected => "Connected".to_string(),
@@ -277,7 +277,7 @@ pub enum OrderEvent {
 }
 
 impl fmt::Debug for OrderEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::OrderEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
@@ -298,7 +298,7 @@ pub enum ReceiveEvent {
 }
 
 impl fmt::Debug for ReceiveEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::ReceiveEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
@@ -328,7 +328,7 @@ pub enum RendezvousEvent {
 }
 
 impl fmt::Debug for RendezvousEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::RendezvousEvent::*;
         let t = match *self {
             Start => "Start".to_string(),
@@ -359,7 +359,7 @@ pub enum SendEvent {
 }
 
 impl fmt::Debug for SendEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SendEvent::Send(ref phase, ref plaintext) => {
                 write!(f, "Send({}, {})", phase, maybe_utf8(plaintext))

@@ -1,8 +1,8 @@
-use serde_json::{self, Value};
-
 use super::api::Mood;
 use super::events::{AppID, Mailbox, MySide};
 use super::util;
+use serde_derive::{Deserialize, Serialize};
+use serde_json::{self, Value};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
@@ -123,6 +123,7 @@ mod test {
     use super::*;
     use crate::core::api::Mood;
     use serde_json::from_str;
+    use serde_json::json;
 
     #[test]
     fn test_bind() {

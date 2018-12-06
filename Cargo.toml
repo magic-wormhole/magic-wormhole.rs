@@ -5,6 +5,7 @@ authors = ["Brian Warner <warner@lothar.com>"]
 license = "MIT"
 homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/warner/magic-wormhole.rs"
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }

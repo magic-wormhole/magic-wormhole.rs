@@ -20,7 +20,7 @@ pub enum APIEvent {
 }
 
 impl fmt::Debug for APIEvent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::APIEvent::*;
         let t = match *self {
             Start => "Start".to_string(),
@@ -54,7 +54,7 @@ pub enum InputHelperError {
 }
 
 impl fmt::Display for InputHelperError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             InputHelperError::Inactive => write!(f, "Inactive"),
             InputHelperError::MustChooseNameplateFirst => {
@@ -110,7 +110,7 @@ impl Mood {
 }
 
 impl fmt::Display for Mood {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_protocol_string())
     }
 }
@@ -128,7 +128,7 @@ pub enum APIAction {
 }
 
 impl fmt::Debug for APIAction {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::APIAction::*;
         let t = match *self {
             GotWelcome(ref welcome) => format!("GotWelcome({:?})", welcome),
