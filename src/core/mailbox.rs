@@ -81,9 +81,11 @@ impl MailboxMachine {
         }
 
         match queue {
-            QueueCtrl::Enqueue(v) => for &(ref phase, ref body) in &v {
-                self.pending_outbound.insert(phase.clone(), body.to_vec());
-            },
+            QueueCtrl::Enqueue(v) => {
+                for &(ref phase, ref body) in &v {
+                    self.pending_outbound.insert(phase.clone(), body.to_vec());
+                }
+            }
             QueueCtrl::Drain => self.pending_outbound.clear(),
             QueueCtrl::NoAction => (),
             QueueCtrl::AddToProcessed(phase) => {

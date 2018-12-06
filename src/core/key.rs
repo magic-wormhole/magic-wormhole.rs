@@ -181,7 +181,8 @@ pub fn decrypt_data(key: &[u8], encrypted: &[u8]) -> Option<Vec<u8>> {
         &ciphertext,
         &secretbox::Nonce::from_slice(nonce).unwrap(),
         &secretbox::Key::from_slice(&key).unwrap(),
-    ).ok()
+    )
+    .ok()
 }
 
 fn sha256_digest(input: &[u8]) -> Vec<u8> {
@@ -232,7 +233,8 @@ mod test {
     fn test_derive_key() {
         let main = hex::decode(
             "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
-        ).unwrap();
+        )
+        .unwrap();
         let dk1 = derive_key(&main, b"purpose1", 32);
         assert_eq!(
             hex::encode(dk1),
@@ -247,7 +249,8 @@ mod test {
     fn test_derive_phase_key() {
         let main = Key(hex::decode(
             "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
-        ).unwrap());
+        )
+        .unwrap());
         let dk11 = derive_phase_key("side1", &main, "phase1");
         assert_eq!(
             hex::encode(dk11),
@@ -299,7 +302,8 @@ mod test {
     fn test_encrypt_data() {
         let k = hex::decode(
             "ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679",
-        ).unwrap();
+        )
+        .unwrap();
         let plaintext =
             hex::decode("edc089a518219ec1cee184e89d2d37af").unwrap();
         assert_eq!(plaintext.len(), 16);
@@ -315,7 +319,8 @@ mod test {
     fn test_decrypt_data() {
         let k = hex::decode(
             "ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679",
-        ).unwrap();
+        )
+        .unwrap();
         let encrypted = hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a").unwrap();
         match decrypt_data(&k, &encrypted) {
             Some(plaintext) => {
