@@ -136,7 +136,8 @@ mod test {
                 } else {
                     s.to_string()
                 }
-            }).collect()
+            })
+            .collect()
     }
 
     #[test]
@@ -177,7 +178,8 @@ mod test {
             "yellow-sausages-purple",
             "purple-sausages-yellow",
             "yellow-sausages-yellow",
-        ].iter()
+        ]
+        .iter()
         .map(|s| s.to_string())
         .collect();
 

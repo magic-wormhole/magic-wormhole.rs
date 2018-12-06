@@ -320,9 +320,10 @@ mod test {
         b.process(GotKey(Key(b"".to_vec()))); // not actually necessary
         b.process(Happy);
         let v = json!({"for_wormhole": 123,
-                       "app_versions": {
-                           "hello_app": 456,
-                       }}).to_string();
+        "app_versions": {
+            "hello_app": 456,
+        }})
+        .to_string();
         let actions = b.process(GotMessage(
             Phase("version".to_string()),
             v.as_bytes().to_vec(),

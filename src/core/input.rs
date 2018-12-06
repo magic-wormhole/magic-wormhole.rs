@@ -202,7 +202,8 @@ mod test {
                 } else {
                     s.to_string()
                 }
-            }).collect()
+            })
+            .collect()
     }
 
     #[test]
@@ -224,7 +225,8 @@ mod test {
                 } else {
                     s.to_string()
                 }
-            }).map(|s| Nameplate(s))
+            })
+            .map(|s| Nameplate(s))
             .collect()
     }
 
