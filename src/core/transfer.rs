@@ -1,4 +1,5 @@
-use serde_json;
+use serde_derive::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]

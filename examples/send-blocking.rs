@@ -1,5 +1,4 @@
 use hex;
-
 use magic_wormhole::core::message;
 use magic_wormhole::io::blocking::Wormhole;
 
