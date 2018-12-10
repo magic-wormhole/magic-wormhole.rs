@@ -22,3 +22,60 @@ fn test_mood() {
     assert_eq!(Mood::Scared.to_string(), "scary");
     assert_eq!(Mood::Unwelcome.to_string(), "unwelcome");
 }
+
+use super::{Action, IOAction, IOEvent, TimerHandle, WSHandle, WormholeCore};
+use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
+
+#[test]
+fn create() {
+    let url: &str = "url";
+    let mut w = WormholeCore::new("appid", url);
+
+    let wsh = WSHandle::new(1);
+    let th = TimerHandle::new(2);
+    let mut _got_side: &str;
+
+    let ios = w.start();
+    assert_eq!(ios.len(), 1);
+    assert_eq!(
+        ios,
+        vec![Action::IO(IOAction::WebSocketOpen(wsh, url.to_string()))]
+    );
+
+    let actions = w.do_io(IOEvent::WebSocketConnectionMade(wsh));
+    assert_eq!(actions.len(), 1);
+    match &actions[0] {
+        Action::IO(IOAction::WebSocketSendMessage(handle, m)) => {
+            assert_eq!(handle, &wsh);
+            if let OutboundMessage::Bind { appid, side } =
+                deserialize_outbound(&m)
+            {
+                assert_eq!(appid, "appid");
+                _got_side = &side; // random
+            } else {
+                panic!();
+            }
+        }
+        _ => panic!(),
+    }
+
+    let actions = w.do_io(IOEvent::WebSocketConnectionLost(wsh));
+    assert_eq!(actions.len(), 1);
+    match &actions[0] {
+        Action::IO(IOAction::StartTimer(handle, delay)) => {
+            assert_eq!(handle, &th);
+            assert_eq!(delay, &5.0);
+        }
+        _ => panic!(),
+    }
+
+    let actions = w.do_io(IOEvent::TimerExpired(th));
+    assert_eq!(actions.len(), 1);
+    assert_eq!(
+        actions,
+        vec![Action::IO(IOAction::WebSocketOpen(
+            WSHandle::new(2),
+            url.to_string()
+        ))]
+    );
+}
