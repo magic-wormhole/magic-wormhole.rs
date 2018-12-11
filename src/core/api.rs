@@ -199,3 +199,48 @@ pub enum Action {
     IO(IOAction),
     API(APIAction),
 }
+
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn test_display() {
+        // verify that APIActions have their key redacted
+        let w: Value = json!("howdy");
+        assert_eq!(
+            format!("{:?}", APIAction::GotWelcome(w)),
+            r#"APIAction::GotWelcome(String("howdy"))"#
+        );
+        assert_eq!(
+            format!("{:?}", APIAction::GotCode(Code("4-code".into()))),
+            r#"APIAction::GotCode(Code("4-code"))"#
+        );
+        assert_eq!(
+            format!(
+                "{:?}",
+                APIAction::GotUnverifiedKey(Key("secret_key".into()))
+            ),
+            r#"APIAction::GotUnverifiedKey(REDACTED)"#
+        );
+        assert_eq!(
+            format!("{:?}", APIAction::GotVerifier("verf".into())),
+            r#"APIAction::GotVerifier(76657266)"#
+        );
+        let v: Value = json!("v1");
+        assert_eq!(
+            format!("{:?}", APIAction::GotVersions(v)),
+            r#"APIAction::GotVersions(String("v1"))"#
+        );
+        assert_eq!(
+            format!("{:?}", APIAction::GotMessage("howdy".into())),
+            r#"APIAction::GotMessage((s=howdy))"#
+        );
+        assert_eq!(
+            format!("{:?}", APIAction::GotClosed(Mood::Happy)),
+            r#"APIAction::GotClosed(Happy)"#
+        );
+    }
+}
