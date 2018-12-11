@@ -1,5 +1,16 @@
 language: rust
 
+addons:
+  apt:
+    packages:
+      - libssl-dev
+
+#cache: cargo
+# cache less, per https://levans.fr/rust_travis_cache.html
+cache:
+  directories:
+    - /home/travis/.cargo
+
 rust:
   - stable
   - beta
@@ -14,29 +25,31 @@ matrix:
     - rust: 1.31.0 # lock down for consistent rustfmt behavior
       env: RUSTFMT
       install:
-        - rustup component add rustfmt-preview
+        - rustup component add rustfmt
       script:
         - cargo fmt -- --check
-    - rust: stable
+    - rust: 1.31.0
       env: CLIPPY
       install:
-        - rustup component add clippy-preview
+        - rustup component add clippy
       script:
         - cargo clippy
   allow_failures:
-    - rust: nightly # both compiles and clippy
+    - rust: nightly
+
+before_cache: |
+  if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
+    RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
+  fi
+  rm -rf /home/travis/.cargo/registry
 
 script:
   - cargo clean
   - cargo build --verbose --all
-#  - cargo run --verbose --example XYZ
-#  - cargo test --verbose --features "test" --all
   - cargo test --verbose --all
 
 after_success: |
-  if [[ "$TRAVIS_RUST_VERSION" == stable ]]; then
-    bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
-    # Uncomment the following two lines create and upload a report for codecov.io
+  if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
     cargo tarpaulin --out Xml
     bash <(curl -s https://codecov.io/bash)
   fi

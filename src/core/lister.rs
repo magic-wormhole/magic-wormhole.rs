@@ -83,6 +83,7 @@ impl ListerMachine {
     }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::{ListerMachine, State};

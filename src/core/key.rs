@@ -212,6 +212,7 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
     derive_key(&key.to_vec(), &purpose_vec, length)
 }
 
+#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::*;
