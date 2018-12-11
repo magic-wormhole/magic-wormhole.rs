@@ -170,6 +170,7 @@ impl InputMachine {
     }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::*;
