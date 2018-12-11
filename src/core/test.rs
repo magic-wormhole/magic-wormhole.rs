@@ -1,3 +1,5 @@
+#![cfg_attr(tarpaulin, skip)]
+
 use super::api::Mood;
 use super::events::Phase;
 

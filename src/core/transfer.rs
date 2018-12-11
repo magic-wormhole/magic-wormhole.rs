@@ -139,6 +139,7 @@ pub fn relay_type(h: Vec<DirectType>) -> RelayType {
     RelayType { hints: h }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::*;

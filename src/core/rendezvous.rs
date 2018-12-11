@@ -266,6 +266,7 @@ impl RendezvousMachine {
     }
 }
 
+#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use crate::core::api::IOAction;
