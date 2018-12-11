@@ -20,7 +20,7 @@ matrix:
     - rust: 1.31.0 # lock down for consistent rustfmt behavior
       env: RUSTFMT
       install:
-        - rustup component add rustfmt-preview
+        - rustup component add rustfmt
       script:
         - cargo fmt -- --check
     - rust: 1.31.0
