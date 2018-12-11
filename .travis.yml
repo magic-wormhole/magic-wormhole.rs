@@ -1,5 +1,11 @@
 language: rust
 
+addons:
+  apt:
+    packages:
+      - libssl-dev
+cache: cargo
+
 rust:
   - stable
   - beta
@@ -17,10 +23,10 @@ matrix:
         - rustup component add rustfmt-preview
       script:
         - cargo fmt -- --check
-    - rust: stable
+    - rust: 1.31.0
       env: CLIPPY
       install:
-        - rustup component add clippy-preview
+        - rustup component add clippy
       script:
         - cargo clippy
   allow_failures:
@@ -29,14 +35,11 @@ matrix:
 script:
   - cargo clean
   - cargo build --verbose --all
-#  - cargo run --verbose --example XYZ
-#  - cargo test --verbose --features "test" --all
   - cargo test --verbose --all
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == stable ]]; then
-    bash <(curl https://raw.githubusercontent.com/xd009642/tarpaulin/master/travis-install.sh)
-    # Uncomment the following two lines create and upload a report for codecov.io
-    cargo tarpaulin --out Xml
+    cargo install cargo-tarpaulin &&
+    cargo tarpaulin --no-count --skip-clean --out Xml &&
     bash <(curl -s https://codecov.io/bash)
   fi
