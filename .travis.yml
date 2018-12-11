@@ -4,7 +4,12 @@ addons:
   apt:
     packages:
       - libssl-dev
-cache: cargo
+
+#cache: cargo
+# cache less, per https://levans.fr/rust_travis_cache.html
+cache:
+  directories:
+    - /home/travis/.cargo
 
 rust:
   - stable
@@ -36,6 +41,7 @@ before_cache: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
     RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin
   fi
+  rm -rf /home/travis/.cargo/registry
 
 script:
   - cargo clean
