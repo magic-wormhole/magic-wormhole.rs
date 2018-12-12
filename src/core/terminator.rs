@@ -348,4 +348,59 @@ mod test {
         terminator.state = State::SStopped;
         terminator.process(MailboxDone);
     }
+
+    #[test]
+    #[should_panic]
+    fn panic15() {
+        let mut terminator = TerminatorMachine::new();
+
+        terminator.state = State::So;
+        terminator.process(MailboxDone);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic16() {
+        let mut terminator = TerminatorMachine::new();
+
+        terminator.state = State::So;
+        terminator.process(NameplateDone);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic17() {
+        let mut terminator = TerminatorMachine::new();
+
+        terminator.state = State::Snm;
+        terminator.process(Close(Happy));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic18() {
+        let mut terminator = TerminatorMachine::new();
+
+        terminator.state = State::Sn;
+        terminator.process(Close(Happy));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic19() {
+        let mut terminator = TerminatorMachine::new();
+
+        terminator.state = State::Sm;
+        terminator.process(Close(Happy));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic20() {
+        let mut terminator = TerminatorMachine::new();
+
+        terminator.state = State::SStopping;
+        terminator.process(Close(Happy));
+    }
+
 }
