@@ -9,12 +9,18 @@ use super::events::MailboxEvent::Close as M_Close;
 use super::events::NameplateEvent::Close as N_Close;
 use super::events::RendezvousEvent::Stop as RC_Stop;
 
+// we start in Snmo, each letter of m/n/o is dropped by an event:
+//  MailboxDone drops "m"
+//  NameplateDone drops "n"
+//  Close drops "o"
+// when all three are dropped, we move to SStopping until we get Stopped
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
     Snmo,
     Sno,
     Smo,
-    S0o,
+    So,
     Snm,
     Sn,
     Sm,
@@ -37,7 +43,7 @@ impl TerminatorMachine {
             Snmo => self.in_nameplate_mailbox_open(event),
             Sno => self.in_nameplate_open(event),
             Smo => self.in_mailbox_open(event),
-            S0o => self.in_open(event),
+            So => self.in_open(event),
             Snm => self.in_nameplate_mailbox_active(event),
             Sn => self.in_nameplate_active(event),
             Sm => self.in_mailbox_active(event),
@@ -65,7 +71,7 @@ impl TerminatorMachine {
 
     fn in_nameplate_open(&self, event: TerminatorEvent) -> (State, Events) {
         match event {
-            NameplateDone => (State::S0o, events![]),
+            NameplateDone => (State::So, events![]),
             Close(mood) => (State::Sn, events![N_Close, M_Close(mood)]),
             _ => panic!("Got too early, Nameplate still active"),
         }
@@ -73,7 +79,7 @@ impl TerminatorMachine {
 
     fn in_mailbox_open(&self, event: TerminatorEvent) -> (State, Events) {
         match event {
-            MailboxDone => (State::S0o, events![]),
+            MailboxDone => (State::So, events![]),
             Close(mood) => (State::Sm, events![N_Close, M_Close(mood)]),
             _ => panic!("Got too early, Mailbox still active"),
         }
@@ -206,7 +212,7 @@ mod test {
 
         assert_eq!(terminator.process(NameplateDone), events![]);
         assert_eq!(terminator.process(MailboxDone), events![]);
-        assert_eq!(terminator.state, State::S0o);
+        assert_eq!(terminator.state, State::So);
         assert_eq!(
             terminator.process(Close(Scared)),
             events![N_Close, M_Close(Scared), RC_Stop]
@@ -222,7 +228,7 @@ mod test {
 
         assert_eq!(terminator.process(MailboxDone), events![]);
         assert_eq!(terminator.process(NameplateDone), events![]);
-        assert_eq!(terminator.state, State::S0o);
+        assert_eq!(terminator.state, State::So);
 
         assert_eq!(
             terminator.process(Close(Error)),
@@ -275,7 +281,7 @@ mod test {
     #[should_panic]
     fn panic6() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::S0o;
+        terminator.state = State::So;
         terminator.process(Stopped);
     }
 
