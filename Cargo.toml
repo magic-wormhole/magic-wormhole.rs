@@ -32,6 +32,9 @@ websocket = { version = "0.22", optional = true }
 futures = { version = "0.1", optional = true }
 tokio-core = { version = "0.1", optional = true }
 
+# for "bin" feature
+clap = { version = "2.32", optional = true}
+
 [dev-dependencies]
 ws = "0.7"
 url = "1.7"
@@ -40,9 +43,10 @@ parking_lot = {version = "0.7", features = ["deadlock_detection"]}
 hex = "0.3"
 
 [features]
-default = ["io-blocking", "io-tokio"]
+default = ["io-blocking", "io-tokio", "bin"]
 io-blocking = ["ws", "url"]
 io-tokio = ["websocket", "futures", "tokio-core"]
+bin = ["clap"]
 
 [[bin]]
 name = "wormhole"
