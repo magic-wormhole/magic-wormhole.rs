@@ -6,6 +6,7 @@ license = "MIT"
 homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/warner/magic-wormhole.rs"
 edition = "2018"
+description = "Get things from one computer to another, safely"
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }
