@@ -1,6 +1,6 @@
 [package]
 name = "magic-wormhole"
-version = "0.0.1-alpha.0"
+version = "0.0.1"
 authors = ["Brian Warner <warner@lothar.com>"]
 license = "MIT"
 homepage = "http://magic-wormhole.io/"
