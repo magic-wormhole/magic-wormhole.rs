@@ -2,6 +2,7 @@
 
 use super::api::Mood;
 use super::events::Phase;
+use env_logger;
 
 #[test]
 fn test_phase() {
@@ -30,6 +31,7 @@ use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
 
 #[test]
 fn create() {
+    drop(env_logger::try_init());
     let url: &str = "url";
     let mut w = WormholeCore::new("appid", url);
 

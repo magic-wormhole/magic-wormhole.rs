@@ -43,6 +43,7 @@ url = "1.7"
 rustyline = "3.0"
 parking_lot = {version = "0.7", features = ["deadlock_detection"]}
 hex = "0.3"
+env_logger = "0.6"
 
 [features]
 default = ["io-blocking", "io-tokio", "bin"]
