@@ -4,6 +4,7 @@ use super::events::OrderEvent;
 // we emit these
 use super::events::KeyEvent::GotPake as K_GotPake;
 use super::events::ReceiveEvent::GotMessage as R_GotMessage;
+use log::trace;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -33,9 +34,10 @@ impl OrderMachine {
     pub fn process(&mut self, event: OrderEvent) -> Events {
         use self::State::*;
 
-        println!(
+        trace!(
             "order: current state = {:?}, got event = {:?}",
-            self.state, event
+            self.state,
+            event
         );
 
         let (newstate, actions, queue_status) = match self.state {

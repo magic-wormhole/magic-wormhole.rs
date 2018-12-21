@@ -16,6 +16,7 @@ use super::server_messages::{
     InboundMessage, OutboundMessage,
 };
 use hex;
+use log::trace;
 use serde_json;
 // we process these
 use super::api::IOEvent;
@@ -99,7 +100,7 @@ impl RendezvousMachine {
 
     pub fn process(&mut self, e: RendezvousEvent) -> Events {
         use super::events::RendezvousEvent::*;
-        println!("rendezvous: {:?}", e);
+        trace!("rendezvous: {:?}", e);
         match e {
             Start => self.start(),
             TxBind(appid, side) => self.send(&bind(&appid, &side)),
@@ -155,7 +156,7 @@ impl RendezvousMachine {
     }
 
     fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
-        println!("msg is {:?}", message);
+        trace!("msg is {:?}", message);
         // TODO: log+ignore unrecognized messages. They should flunk unit
         // tests, but not break normal operation
         let m = deserialize(message);
@@ -285,6 +286,7 @@ mod test {
     use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
     use crate::core::events::{AppID, MySide};
     use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
+    use log::trace;
 
     #[test]
     fn create() {
@@ -324,7 +326,7 @@ mod test {
         // L_Connected and A_Connected
         assert_eq!(actions.len(), 5);
         let e = actions.remove(0);
-        println!("e is {:?}", e);
+        trace!("e is {:?}", e);
         let b;
         match e {
             Rendezvous(b0) => {
@@ -353,7 +355,7 @@ mod test {
         actions = r.process(b).events;
         assert_eq!(actions.len(), 1);
         let e = actions.remove(0);
-        println!("e is {:?}", e);
+        trace!("e is {:?}", e);
         match e {
             IO(IOAction::WebSocketSendMessage(wsh0, m)) => {
                 assert_eq!(wsh0, wsh);

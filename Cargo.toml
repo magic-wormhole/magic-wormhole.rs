@@ -22,6 +22,7 @@ hex = "0.3"
 rand = "0.6"
 rustc-serialize = "0.3"
 regex = "1.0"
+log = "0.4"
 
 # for "io_blocking" feature
 ws = { version = "0.7.*", optional = true }

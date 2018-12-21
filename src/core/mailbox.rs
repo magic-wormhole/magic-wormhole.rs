@@ -1,3 +1,4 @@
+use log::trace;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -59,9 +60,10 @@ impl MailboxMachine {
     pub fn process(&mut self, event: MailboxEvent) -> Events {
         use self::State::*;
 
-        println!(
+        trace!(
             "mailbox: current state = {:?}, got event = {:?}",
-            self.state, event
+            self.state,
+            event
         );
 
         let (newstate, actions, queue) = match self.state {

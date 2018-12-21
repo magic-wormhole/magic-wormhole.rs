@@ -1,5 +1,6 @@
 use super::events::{Events, Key, Phase, TheirSide};
 use super::key;
+use log::trace;
 // we process these
 use super::events::ReceiveEvent;
 // we emit these
@@ -31,9 +32,10 @@ impl ReceiveMachine {
     pub fn process(&mut self, event: ReceiveEvent) -> Events {
         use self::State::*;
 
-        println!(
+        trace!(
             "receive: current state = {:?}, got event = {:?}",
-            self.state, event
+            self.state,
+            event
         );
 
         let (newstate, actions) = match self.state {

@@ -1,5 +1,6 @@
 use super::events::{Events, Key, MySide, Phase};
 use super::key;
+use log::trace;
 // we process these
 use super::events::SendEvent;
 // we emit these
@@ -33,9 +34,10 @@ impl SendMachine {
     }
 
     pub fn process(&mut self, event: SendEvent) -> Events {
-        println!(
+        trace!(
             "send: current state = {:?}, got event = {:?}",
-            self.state, event
+            self.state,
+            event
         );
         let (newstate, actions, queue_status) = match self.state {
             State::S0NoKey => self.do_s0(event),
