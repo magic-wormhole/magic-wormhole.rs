@@ -2,6 +2,16 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg,
     SubCommand,
 };
+use hex;
+use magic_wormhole::core::{
+    error_message, message, message_ack, OfferType, PeerMessage,
+};
+use magic_wormhole::io::blocking::Wormhole;
+use std::str;
+
+// Can ws do hostname lookup? Use ip addr, not localhost, for now
+const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
+const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
     let send = SubCommand::with_name("send")
@@ -17,6 +27,7 @@ fn main() {
                 .long("code-length")
                 .takes_value(true)
                 .value_name("NUMWORDS")
+                .default_value("2")
                 .help("length of code (in bytes/words)"),
         )
         .arg(
@@ -114,14 +125,83 @@ fn main() {
     }
 
     if let Some(sc) = matches.subcommand_matches("send") {
-        if let Some(text) = sc.value_of("text") {
-            println!("send text {}", text);
-        } else {
+        if sc.value_of("text") == None {
             println!("file transfer is not yet implemented, so --text=MSG is required");
             return;
         }
-    } else if let Some(_sc) = matches.subcommand_matches("receive") {
+        let text = sc.value_of("text").unwrap();
+        println!("send text {}", text);
+
+        let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
+        if sc.is_present("zero") {
+            w.set_code("0");
+        } else {
+            match sc.value_of("code") {
+                None => {
+                    let s = sc.value_of("code-length").unwrap();
+                    let numwords: usize = s.parse().unwrap();
+                    w.allocate_code(numwords);
+                }
+                Some(code) => {
+                    w.set_code(code);
+                }
+            }
+        }
+        let code = w.get_code();
+        println!("code is: {}", code);
+        w.send_message(message(text).serialize().as_bytes());
+        let _ack = w.get_message();
+        println!("done");
+    } else if let Some(sc) = matches.subcommand_matches("receive") {
         println!("receive");
+        let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
+
+        if !sc.is_present("code") {
+            println!("must provide CODE in argv: no interactive input yet");
+            return;
+        }
+        let code = sc.value_of("code").unwrap();
+        w.set_code(code);
+        let msg = w.get_message();
+        let actual_message =
+            PeerMessage::deserialize(str::from_utf8(&msg).unwrap());
+        match actual_message {
+            PeerMessage::Offer(offer) => match offer {
+                OfferType::Message(msg) => {
+                    println!("{}", msg);
+                    w.send_message(message_ack("ok").serialize().as_bytes());
+                }
+                OfferType::File { .. } => {
+                    println!("Received file offer {:?}", offer);
+                    w.send_message(
+                        error_message("cannot handle file yet")
+                            .serialize()
+                            .as_bytes(),
+                    );
+                }
+                OfferType::Directory { .. } => {
+                    println!("Received directory offer: {:?}", offer);
+                    w.send_message(
+                        error_message("cannot handle directories yet")
+                            .serialize()
+                            .as_bytes(),
+                    );
+                }
+            },
+            PeerMessage::Answer(_) => {
+                panic!("Should not receive answer type, I'm receiver")
+            }
+            PeerMessage::Error(err) => {
+                println!("Something went wrong: {}", err)
+            }
+            PeerMessage::Transit(transit) => {
+                // TODO: This should start transit server connection or direct file transfer
+                println!("Transit Message received: {:?}", transit)
+            }
+        };
+        println!("closing..");
+        w.close();
+        println!("closed");
     } else {
         panic!("shouldn't happen, unknown subcommand")
     }
