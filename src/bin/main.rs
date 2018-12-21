@@ -130,7 +130,7 @@ fn main() {
             return;
         }
         let text = sc.value_of("text").unwrap();
-        println!("send text {}", text);
+        println!("Sending text message ({} bytes)", text.len());
 
         let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
         if sc.is_present("zero") {
@@ -148,12 +148,15 @@ fn main() {
             }
         }
         let code = w.get_code();
-        println!("code is: {}", code);
+        println!("Wormhole code is: {}", code);
+        println!("On the other computer, please run:");
+        println!();
+        println!("wormhole receive {}", code);
+        println!();
         w.send_message(message(text).serialize().as_bytes());
         let _ack = w.get_message();
-        println!("done");
+        println!("text message sent");
     } else if let Some(sc) = matches.subcommand_matches("receive") {
-        println!("receive");
         let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
 
         if !sc.is_present("code") {
@@ -195,13 +198,12 @@ fn main() {
                 println!("Something went wrong: {}", err)
             }
             PeerMessage::Transit(transit) => {
-                // TODO: This should start transit server connection or direct file transfer
+                // TODO: This should start transit server connection or
+                // direct file transfer
                 println!("Transit Message received: {:?}", transit)
             }
         };
-        println!("closing..");
         w.close();
-        println!("closed");
     } else {
         panic!("shouldn't happen, unknown subcommand")
     }
