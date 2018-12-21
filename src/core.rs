@@ -27,6 +27,7 @@ use std::collections::VecDeque;
 pub use self::events::{AppID, Code};
 use self::events::{Event, Events, MySide, Nameplate};
 use self::util::random_bytes;
+use log::trace;
 
 pub use self::api::{
     APIAction, APIEvent, Action, IOAction, IOEvent, InputHelperError, Mood,
@@ -101,13 +102,13 @@ impl WormholeCore {
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
-        println!("api: {:?}", event);
+        trace!("api: {:?}", event);
         let events = self.boss.process_api(event);
         self._execute(events)
     }
 
     pub fn do_io(&mut self, event: IOEvent) -> Vec<Action> {
-        println!("io: {:?}", event);
+        trace!("io: {:?}", event);
         let events = self.rendezvous.process_io(event);
         self._execute(events)
     }
@@ -147,7 +148,7 @@ impl WormholeCore {
         event_queue.append(&mut VecDeque::from(events.events));
 
         while let Some(e) = event_queue.pop_front() {
-            println!("event: {:?}", e);
+            trace!("event: {:?}", e);
             use self::events::Event::*; // machine names
             let actions: Events = match e {
                 API(a) => {
@@ -176,7 +177,7 @@ impl WormholeCore {
             for a in actions.events {
                 // TODO use iter
                 // TODO: insert in front of queue: depth-first processing
-                println!("  out: {:?}", a);
+                trace!("  out: {:?}", a);
                 event_queue.push_back(a);
             }
         }

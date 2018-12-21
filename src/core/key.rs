@@ -49,7 +49,7 @@ impl KeyMachine {
     }
 
     pub fn process(&mut self, event: KeyEvent) -> Events {
-        /*println!(
+        /*trace!(
             "key: current state = {:?}, got event = {:?}",
             self.state, event
         );*/
