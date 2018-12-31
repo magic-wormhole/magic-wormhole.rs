@@ -158,12 +158,15 @@ impl RendezvousMachine {
 
     fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
         trace!("msg is {:?}", message);
+        let m = deserialize(message);
+
+        let mut t = new_timelog("ws_receive", None);
+        t.detail("_side", &self.side);
+        t.detail_json("message", &serde_json::to_value(&m).unwrap());
+
         // TODO: log+ignore unrecognized messages. They should flunk unit
         // tests, but not break normal operation
-        let m = deserialize(message);
-        let mut t =
-            new_timelog("ws_receive", None, Some(("_side", &self.side)));
-        t.detail("message", message); // TODO make these be json Value
+
         use self::InboundMessage::*;
         match m {
             Welcome { ref welcome } => events![t, B_RxWelcome(welcome.clone())],
@@ -266,10 +269,16 @@ impl RendezvousMachine {
     fn send(&mut self, m: &OutboundMessage) -> Events {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
-        let ms = serde_json::to_string(m).unwrap();
-        let t = new_timelog("ws_send", None, Some(("_side", &self.side)));
+        let mut t = new_timelog("ws_send", None);
+        t.detail("_side", &self.side);
         //t.detail("id", id);
         //t.detail("type",
+        // TODO: the Python version merges all the keys of 'm' at the top of
+        // the event dict, rather than putting them down in the ["message"]
+        // key
+        t.detail_json("message", &serde_json::to_value(m).unwrap());
+
+        let ms = serde_json::to_string(m).unwrap();
         let s = IOAction::WebSocketSendMessage(self.wsh, ms);
         events![t, s]
     }
