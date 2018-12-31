@@ -67,10 +67,10 @@ impl KeyMachine {
         let oldstate = mem::replace(&mut self.state, None);
         match oldstate.unwrap() {
             S0KnowNothing => {
-                let mut t1 =
-                    new_timelog("pake1", None, Some(("waiting", "crypto")));
+                let mut t1 = new_timelog("pake1", None);
+                t1.detail("waiting", "crypto");
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
-                t1.finish(None, None);
+                t1.finish(None);
                 self.state = Some(S1KnowCode(pake_state));
                 events![
                     t1,
@@ -79,14 +79,14 @@ impl KeyMachine {
             }
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
-                let mut t1 =
-                    new_timelog("pake1", None, Some(("waiting", "crypto")));
+                let mut t1 = new_timelog("pake1", None);
+                t1.detail("waiting", "crypto");
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
-                t1.finish(None, None);
-                let mut t2 =
-                    new_timelog("pake2", None, Some(("waiting", "crypto")));
+                t1.finish(None);
+                let mut t2 = new_timelog("pake2", None);
+                t2.detail("waiting", "crypto");
                 let key: Key = finish_pake(pake_state, &their_pake_msg);
-                t2.finish(None, None);
+                t2.finish(None);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
@@ -114,10 +114,10 @@ impl KeyMachine {
                 events![]
             }
             S1KnowCode(pake_state) => {
-                let mut t2 =
-                    new_timelog("pake2", None, Some(("waiting", "crypto")));
+                let mut t2 = new_timelog("pake2", None);
+                t2.detail("waiting", "crypto");
                 let key: Key = finish_pake(pake_state, &pake);
-                t2.finish(None, None);
+                t2.finish(None);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);

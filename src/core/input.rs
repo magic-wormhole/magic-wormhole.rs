@@ -84,12 +84,9 @@ impl InputMachine {
         let events = match self.state {
             Idle => panic!("too soon"),
             WantCode(ref nameplate) => {
-                let mut t = new_timelog(
-                    "input code",
-                    Some(self.start_time),
-                    Some(("waiting", "user")),
-                );
-                t.finish(None, None);
+                let mut t = new_timelog("input code", Some(self.start_time));
+                t.detail("waiting", "user");
+                t.finish(None);
                 let code = Code(format!("{}-{}", *nameplate, words));
                 newstate = Some(Done);
                 events![t, C_FinishedInput(code)]
