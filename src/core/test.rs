@@ -1,8 +1,17 @@
 #![cfg_attr(tarpaulin, skip)]
 
 use super::api::Mood;
-use super::events::Phase;
+use super::events::{Event, Events, Phase};
 use env_logger;
+
+pub fn filt(ev: Events) -> Events {
+    ev.into_iter()
+        .filter(|e| match e {
+            Event::Timing(_) => false,
+            _ => true,
+        })
+        .collect()
+}
 
 #[test]
 fn test_phase() {

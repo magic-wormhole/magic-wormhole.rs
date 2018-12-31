@@ -54,6 +54,7 @@ pub struct WormholeCore {
     rendezvous: rendezvous::RendezvousMachine,
     send: send::SendMachine,
     terminator: terminator::TerminatorMachine,
+    timing: timing::Timing,
 }
 
 // I don't know how to write this
@@ -93,6 +94,7 @@ impl WormholeCore {
             ),
             send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
+            timing: timing::Timing::new(),
         }
     }
 
@@ -173,13 +175,17 @@ impl WormholeCore {
                 Rendezvous(e) => self.rendezvous.process(e),
                 Send(e) => self.send.process(e),
                 Terminator(e) => self.terminator.process(e),
+                Timing(_) => panic!(),
             };
 
             for a in actions.events {
                 // TODO use iter
                 // TODO: insert in front of queue: depth-first processing
                 trace!("  out: {:?}", a);
-                event_queue.push_back(a);
+                match a {
+                    Timing(e) => self.timing.add(e),
+                    _ => event_queue.push_back(a),
+                }
             }
         }
         action_queue

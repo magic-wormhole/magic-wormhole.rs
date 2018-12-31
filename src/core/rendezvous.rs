@@ -40,6 +40,7 @@ use super::events::NameplateEvent::{
 };
 use super::events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 use super::events::TerminatorEvent::Stopped as T_Stopped;
+use super::timing::new_timelog;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -160,33 +161,39 @@ impl RendezvousMachine {
         // TODO: log+ignore unrecognized messages. They should flunk unit
         // tests, but not break normal operation
         let m = deserialize(message);
+        let mut t =
+            new_timelog("ws_receive", None, Some(("_side", &self.side)));
+        t.detail("message", message); // TODO make these be json Value
         use self::InboundMessage::*;
         match m {
-            Welcome { ref welcome } => events![B_RxWelcome(welcome.clone())],
-            Released { .. } => events![N_RxReleased],
-            Closed { .. } => events![M_RxClosed],
-            Pong { .. } => events![], // TODO
-            Ack { .. } => events![], // we ignore this, it's only for the timing log
-            Claimed { mailbox } => events![N_RxClaimed(Mailbox(mailbox))],
+            Welcome { ref welcome } => events![t, B_RxWelcome(welcome.clone())],
+            Released { .. } => events![t, N_RxReleased],
+            Closed { .. } => events![t, M_RxClosed],
+            Pong { .. } => events![t,], // TODO
+            Ack { .. } => events![t,], // we ignore this, it's only for the timing log
+            Claimed { mailbox } => events![t, N_RxClaimed(Mailbox(mailbox))],
             Message {
                 side,
                 phase,
                 body,
                 //id,
-            } => events![M_RxMessage(
-                TheirSide(side),
-                Phase(phase),
-                hex::decode(body).unwrap()
-            )],
+            } => events![
+                t,
+                M_RxMessage(
+                    TheirSide(side),
+                    Phase(phase),
+                    hex::decode(body).unwrap()
+                )
+            ],
             Allocated { nameplate } => {
-                events![A_RxAllocated(Nameplate(nameplate))]
+                events![t, A_RxAllocated(Nameplate(nameplate))]
             }
             Nameplates { nameplates } => {
                 let nids: Vec<Nameplate> = nameplates
                     .iter()
                     .map(|n| Nameplate(n.id.to_owned()))
                     .collect();
-                events![L_RxNamePlates(nids)]
+                events![t, L_RxNamePlates(nids)]
             }
         }
     }
@@ -259,11 +266,12 @@ impl RendezvousMachine {
     fn send(&mut self, m: &OutboundMessage) -> Events {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
-        let s = IOAction::WebSocketSendMessage(
-            self.wsh,
-            serde_json::to_string(m).unwrap(),
-        );
-        events![s]
+        let ms = serde_json::to_string(m).unwrap();
+        let t = new_timelog("ws_send", None, Some(("_side", &self.side)));
+        //t.detail("id", id);
+        //t.detail("type",
+        let s = IOAction::WebSocketSendMessage(self.wsh, ms);
+        events![t, s]
     }
 }
 
@@ -286,6 +294,7 @@ mod test {
     use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
     use crate::core::events::{AppID, MySide};
     use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
+    use crate::core::test::filt;
     use log::trace;
 
     #[test]
@@ -301,7 +310,7 @@ mod test {
         let wsh: WSHandle;
         let th: TimerHandle;
 
-        let mut actions = r.start().events;
+        let mut actions = filt(r.start()).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         // TODO: I want to:
@@ -320,7 +329,8 @@ mod test {
         }
 
         // now we tell it we're connected
-        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).events;
+        actions =
+            filt(r.process_io(IOEvent::WebSocketConnectionMade(wsh))).events;
         // it should tell itself to send a BIND then it should notify several
         // other machines at this point, we have BIND, N_Connected, M_Connected
         // L_Connected and A_Connected
@@ -352,7 +362,7 @@ mod test {
         }
 
         // we let the TxBind loop around
-        actions = r.process(b).events;
+        actions = filt(r.process(b)).events;
         assert_eq!(actions.len(), 1);
         let e = actions.remove(0);
         trace!("e is {:?}", e);
@@ -371,7 +381,8 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).events;
+        actions =
+            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh))).events;
         assert_eq!(actions.len(), 5);
         let e = actions.remove(0);
         match e {
@@ -383,7 +394,7 @@ mod test {
         }
         assert_eq!(actions, events![N_Lost, M_Lost, L_Lost, A_Lost].events);
 
-        actions = r.process_io(IOEvent::TimerExpired(th)).events;
+        actions = filt(r.process_io(IOEvent::TimerExpired(th))).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         let wsh2;
@@ -396,7 +407,7 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process(RC_Stop).events;
+        actions = filt(r.process(RC_Stop)).events;
         // we were Connecting, so we should see a close and then wait for
         // disconnect
         assert_eq!(actions.len(), 1);
@@ -408,7 +419,8 @@ mod test {
             _ => panic!(),
         }
 
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh2)).events;
+        actions =
+            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh2))).events;
         assert_eq!(actions, vec![Terminator(T_Stopped)]);
     }
 }
