@@ -12,11 +12,13 @@ use super::events::CodeEvent::{
 };
 use super::events::ListerEvent::Refresh as L_Refresh;
 use super::events::Wordlist;
+use super::timing::{new_timelog, now};
 
 pub struct InputMachine {
     state: State,
     wordlist: Option<Arc<Wordlist>>,
     nameplates: Option<Vec<Nameplate>>,
+    start_time: f64,
 }
 
 #[derive(Debug)]
@@ -33,6 +35,7 @@ impl InputMachine {
             state: State::Idle,
             wordlist: None,
             nameplates: None,
+            start_time: 0.0,
         }
     }
 
@@ -56,6 +59,7 @@ impl InputMachine {
         match self.state {
             Idle => {
                 self.state = WantNameplate;
+                self.start_time = now();
                 events![L_Refresh]
             }
             _ => panic!("already started"),
@@ -80,9 +84,15 @@ impl InputMachine {
         let events = match self.state {
             Idle => panic!("too soon"),
             WantCode(ref nameplate) => {
+                let mut t = new_timelog(
+                    "input code",
+                    Some(self.start_time),
+                    Some(("waiting", "user")),
+                );
+                t.finish(None, None);
                 let code = Code(format!("{}-{}", *nameplate, words));
                 newstate = Some(Done);
-                events![C_FinishedInput(code)]
+                events![t, C_FinishedInput(code)]
             }
             Done => events![], // REMOVE
             _ => panic!("already set nameplate"),
@@ -173,6 +183,7 @@ impl InputMachine {
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
+    use super::super::test::filt;
     use super::*;
 
     #[test]
@@ -181,14 +192,16 @@ mod test {
         // nameplates or wordlists ever arrive
         let mut i = InputMachine::new();
 
-        let actions = i.process(Start);
+        let actions = filt(i.process(Start));
         assert_eq!(actions, events![L_Refresh]);
-        let actions = i.process(ChooseNameplate(Nameplate("4".to_string())));
+        let actions =
+            filt(i.process(ChooseNameplate(Nameplate("4".to_string()))));
         assert_eq!(
             actions,
             events![C_GotNameplate(Nameplate("4".to_string()))]
         );
-        let actions = i.process(ChooseWords("purple-sausages".to_string()));
+        let actions =
+            filt(i.process(ChooseWords("purple-sausages".to_string())));
         assert_eq!(
             actions,
             events![C_FinishedInput(Code("4-purple-sausages".to_string()))]
@@ -241,7 +254,7 @@ mod test {
         );
         assert_eq!(i.get_word_completions(""), Err(InputHelperError::Inactive));
 
-        let actions = i.process(Start);
+        let actions = filt(i.process(Start));
         assert_eq!(actions, events![L_Refresh]);
         // we haven't received any nameplates yet, so completions are empty
         assert_eq!(i.get_nameplate_completions("").unwrap(), vecstrings(""));
@@ -252,7 +265,8 @@ mod test {
         );
 
         // now we pretend that we've received a set of active nameplates
-        let actions = i.process(GotNameplates(vecnameplates("4 48 5 49")));
+        let actions =
+            filt(i.process(GotNameplates(vecnameplates("4 48 5 49"))));
         assert_eq!(actions, events![]);
 
         // still too early to make word compltions
@@ -275,7 +289,8 @@ mod test {
         // will be empty until we get back the wordlist (for now this is
         // synchronous and fixed, but in the long run this will be informed
         // by server-side properties)
-        let actions = i.process(ChooseNameplate(Nameplate("4".to_string())));
+        let actions =
+            filt(i.process(ChooseNameplate(Nameplate("4".to_string()))));
         assert_eq!(
             actions,
             events![C_GotNameplate(Nameplate("4".to_string()))]
@@ -296,7 +311,7 @@ mod test {
             vecstrings("sausages seltzer snobol"),
         ];
         let wordlist = Arc::new(Wordlist::new(2, words));
-        let actions = i.process(GotWordlist(wordlist));
+        let actions = filt(i.process(GotWordlist(wordlist)));
         assert_eq!(actions, events![]);
 
         assert_eq!(
@@ -304,7 +319,8 @@ mod test {
             vecstrings("purple-")
         );
 
-        let actions = i.process(ChooseWords("purple-sausages".to_string()));
+        let actions =
+            filt(i.process(ChooseWords("purple-sausages".to_string())));
         assert_eq!(
             actions,
             events![C_FinishedInput(Code("4-purple-sausages".to_string()))]

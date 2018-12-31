@@ -17,6 +17,7 @@ use super::events::KeyEvent;
 use super::events::BossEvent::GotKey as B_GotKey;
 use super::events::MailboxEvent::AddMessage as M_AddMessage;
 use super::events::ReceiveEvent::GotKey as R_GotKey;
+use super::timing::new_timelog;
 
 #[derive(Debug, PartialEq, Eq)]
 enum State {
@@ -66,19 +67,33 @@ impl KeyMachine {
         let oldstate = mem::replace(&mut self.state, None);
         match oldstate.unwrap() {
             S0KnowNothing => {
+                let mut t1 =
+                    new_timelog("pake1", None, Some(("waiting", "crypto")));
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
+                t1.finish(None, None);
                 self.state = Some(S1KnowCode(pake_state));
-                events![M_AddMessage(Phase("pake".to_string()), pake_msg_ser)]
+                events![
+                    t1,
+                    M_AddMessage(Phase("pake".to_string()), pake_msg_ser)
+                ]
             }
             S1KnowCode(_) => panic!("already got code"),
             S2KnowPake(ref their_pake_msg) => {
+                let mut t1 =
+                    new_timelog("pake1", None, Some(("waiting", "crypto")));
                 let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
+                t1.finish(None, None);
+                let mut t2 =
+                    new_timelog("pake2", None, Some(("waiting", "crypto")));
                 let key: Key = finish_pake(pake_state, &their_pake_msg);
+                t2.finish(None, None);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
                 self.state = Some(S3KnowBoth(key.clone()));
                 events![
+                    t1,
+                    t2,
                     M_AddMessage(Phase("pake".to_string()), pake_msg_ser),
                     M_AddMessage(version_phase, version_msg),
                     B_GotKey(key.clone()),
@@ -99,12 +114,16 @@ impl KeyMachine {
                 events![]
             }
             S1KnowCode(pake_state) => {
+                let mut t2 =
+                    new_timelog("pake2", None, Some(("waiting", "crypto")));
                 let key: Key = finish_pake(pake_state, &pake);
+                t2.finish(None, None);
                 let versions = json!({"app_versions": {}}); // TODO: self.versions
                 let (version_phase, version_msg) =
                     build_version_msg(&self.side, &key, &versions);
                 self.state = Some(S3KnowBoth(key.clone()));
                 events![
+                    t2,
                     M_AddMessage(version_phase, version_msg),
                     B_GotKey(key.clone()),
                     R_GotKey(key.clone())

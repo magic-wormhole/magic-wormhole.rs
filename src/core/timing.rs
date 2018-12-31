@@ -1,33 +1,52 @@
-#![allow(warnings)]
-
 //use std::collections::HashMap;
 use serde_derive::Serialize;
 use std::time::SystemTime;
 
-#[derive(Serialize)]
-struct Event {
+#[derive(Debug, PartialEq, Serialize)]
+pub struct TimingLogEvent {
     name: String,
     start: Option<f64>,
     stop: Option<f64>,
     details: Vec<(String, String)>,
 }
 
-fn now() -> f64 {
+pub fn now() -> f64 {
     let dur =
         SystemTime::duration_since(&SystemTime::now(), SystemTime::UNIX_EPOCH)
             .unwrap();
     //dur.as_float_secs()
     let secs = dur.as_secs() as f64;
-    let nanos = (dur.subsec_nanos() as f64) * 0.000_000_001;
+    let nanos = f64::from(dur.subsec_nanos()) * 0.000_000_001;
     secs + nanos
 }
 
-impl Event {
-    fn detail(&mut self, name: &str, value: &str) {
+pub fn new_timelog(
+    name: &str,
+    when: Option<f64>,
+    detail: Option<(&str, &str)>,
+) -> TimingLogEvent {
+    let start = match when {
+        Some(_) => when,
+        None => Some(now()),
+    };
+    let mut e = TimingLogEvent {
+        name: name.to_string(),
+        start,
+        stop: None,
+        details: Vec::new(),
+    };
+    if let Some((name, value)) = detail {
+        e.details.push((name.to_string(), value.to_string()));
+    }
+    e
+}
+
+impl TimingLogEvent {
+    pub fn detail(&mut self, name: &str, value: &str) {
         self.details.push((name.to_string(), value.to_string()));
     }
 
-    fn finish(&mut self, when: Option<f64>, detail: Option<(&str, &str)>) {
+    pub fn finish(&mut self, when: Option<f64>, detail: Option<(&str, &str)>) {
         if let Some((name, value)) = detail {
             self.details.push((name.to_string(), value.to_string()));
         }
@@ -39,8 +58,8 @@ impl Event {
 }
 
 #[derive(Serialize)]
-struct Timing {
-    pub events: Vec<Event>,
+pub struct Timing {
+    pub events: Vec<TimingLogEvent>,
 }
 
 impl Timing {
@@ -48,25 +67,7 @@ impl Timing {
         Timing { events: Vec::new() }
     }
 
-    pub fn add(
-        &mut self,
-        name: &str,
-        when: Option<f64>,
-        detail: Option<(&str, &str)>,
-    ) {
-        let start = match when {
-            Some(_) => when,
-            None => Some(now()),
-        };
-        let mut e = Event {
-            name: name.to_string(),
-            start,
-            stop: None,
-            details: Vec::new(),
-        };
-        if let Some((name, value)) = detail {
-            e.details.push((name.to_string(), value.to_string()));
-        }
+    pub fn add(&mut self, e: TimingLogEvent) {
         self.events.push(e)
     }
 }
@@ -86,7 +87,8 @@ mod test {
         let mut t = Timing::new();
         assert_eq!(ser(&t), json!({"events": []}));
 
-        t.add("one", Some(2.0), None);
+        let e1 = new_timelog("one", Some(2.0), None);
+        t.add(e1);
         assert_eq!(
             ser(&t),
             json!({"events": [
@@ -94,13 +96,44 @@ mod test {
             ]})
         );
 
-        t.add("two", Some(3.0), Some(("key1", "value1")));
+        let e2 = new_timelog("two", Some(3.0), Some(("key1", "value1")));
+        t.add(e2);
         assert_eq!(
             ser(&t),
             json!({"events": [
             {"name": "one", "start": 2.0, "stop": null, "details": []},
             {"name": "two", "start": 3.0, "stop": null,
              "details": [ ["key1", "value1"] ]},
+            ]})
+        );
+
+        let mut e3 = new_timelog("three", Some(4.0), Some(("key2", "value2")));
+        e3.finish(Some(5.0), None);
+        t.add(e3);
+        assert_eq!(
+            ser(&t),
+            json!({"events": [
+            {"name": "one", "start": 2.0, "stop": null, "details": []},
+            {"name": "two", "start": 3.0, "stop": null,
+             "details": [ ["key1", "value1"] ]},
+            {"name": "three", "start": 4.0, "stop": 5.0,
+             "details": [ ["key2", "value2"] ]},
+            ]})
+        );
+
+        let mut e4 = new_timelog("four", Some(6.0), None);
+        e4.finish(Some(7.0), Some(("key3", "value3")));
+        t.add(e4);
+        assert_eq!(
+            ser(&t),
+            json!({"events": [
+            {"name": "one", "start": 2.0, "stop": null, "details": []},
+            {"name": "two", "start": 3.0, "stop": null,
+             "details": [ ["key1", "value1"] ]},
+            {"name": "three", "start": 4.0, "stop": 5.0,
+             "details": [ ["key2", "value2"] ]},
+            {"name": "four", "start": 6.0, "stop": 7.0,
+             "details": [ ["key3", "value3"] ]},
             ]})
         );
     }
