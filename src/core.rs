@@ -17,6 +17,7 @@ mod server_messages;
 mod terminator;
 #[cfg(test)]
 mod test;
+mod timing;
 mod transfer;
 mod util;
 mod wordlist;
