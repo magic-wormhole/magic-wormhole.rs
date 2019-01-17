@@ -262,7 +262,7 @@ mod test {
     // TODO: when "error_on_line_overflow=false" lands on rustfmt(stable),
     // let's replace this cfg_attr with a change to our .rustfmt.toml
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    #[rustfmt::skip]
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
         let m = deserialize(&s);
