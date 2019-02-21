@@ -28,7 +28,7 @@ regex = "1.0"
 log = "0.4"
 
 # for "io_blocking" feature
-ws = { version = "0.7.*", optional = true }
+ws = { version = "0.8.*", optional = true }
 url = { version = "1.7", optional = true }
 
 # for "io_tokio" feature
@@ -40,7 +40,7 @@ tokio-core = { version = "0.1", optional = true }
 clap = { version = "2.32", optional = true}
 
 [dev-dependencies]
-ws = "0.7"
+ws = "0.8"
 url = "1.7"
 rustyline = "3.0"
 parking_lot = {version = "0.7", features = ["deadlock_detection"]}
