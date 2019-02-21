@@ -22,13 +22,13 @@ branches:
 
 matrix:
   include:
-    - rust: 1.31.0 # lock down for consistent rustfmt behavior
+    - rust: 1.32.0 # lock down for consistent rustfmt behavior
       env: RUSTFMT
       install:
         - rustup component add rustfmt
       script:
         - cargo fmt -- --check
-    - rust: 1.31.0
+    - rust: 1.32.0
       env: CLIPPY
       install:
         - rustup component add clippy
