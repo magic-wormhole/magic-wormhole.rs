@@ -8,10 +8,13 @@ jobs:
       - restore_cache:
           key: project-cache
       - run:
-          name: build
+          name: Cargo Format
+          command: cargo fmt -- --check
+      - run:
+          name: Cargo Build
           command: cargo build
       - run:
-          name: test
+          name: Cargo Test
           command: cargo test
       - save_cache:
           key: project-cache
