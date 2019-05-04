@@ -43,7 +43,7 @@ clap = { version = "2.32", optional = true}
 ws = "0.8"
 url = "1.7"
 rustyline = "4.0"
-parking_lot = {version = "0.7", features = ["deadlock_detection"]}
+parking_lot = {version = "0.8", features = ["deadlock_detection"]}
 hex = "0.3"
 env_logger = "0.6"
 
