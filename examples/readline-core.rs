@@ -7,7 +7,7 @@ use regex::Regex;
 use rustyline;
 use rustyline::{
     completion::Completer, error::ReadlineError, highlight::Highlighter,
-    hint::Hinter, Helper,
+    hint::Hinter, Context, Helper,
 };
 use std::error::Error;
 use std::io;
@@ -57,6 +57,7 @@ impl Completer for CodeCompleter {
         &self,
         line: &str,
         _pos: usize,
+        _ctx: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<String>)> {
         let got_nameplate = line.find('-').is_some();
         let mwc = Arc::clone(&self.wcr);
@@ -124,7 +125,12 @@ impl Completer for CodeCompleter {
 }
 
 impl Hinter for CodeCompleter {
-    fn hint(&self, _line: &str, _pos: usize) -> Option<String> {
+    fn hint(
+        &self,
+        _line: &str,
+        _pos: usize,
+        _ctx: &Context<'_>,
+    ) -> Option<String> {
         None
     }
 }
