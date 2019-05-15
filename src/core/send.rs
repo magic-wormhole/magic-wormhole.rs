@@ -6,28 +6,22 @@ use super::events::SendEvent;
 // we emit these
 use super::events::MailboxEvent::AddMessage as M_AddMessage;
 
-pub struct SendMachine {
-    state: State,
-    side: MySide,
-    queue: Vec<(Phase, Vec<u8>)>,
-}
-
 #[derive(Debug, PartialEq)]
 enum State {
     S0NoKey,
     S1HaveVerifiedKey(Key),
 }
 
-enum QueueStatus {
-    Enqueue((Phase, Vec<u8>)),
-    Drain,
-    NoAction,
+pub struct SendMachine {
+    state: Option<State>,
+    side: MySide,
+    queue: Vec<(Phase, Vec<u8>)>,
 }
 
 impl SendMachine {
     pub fn new(side: &MySide) -> SendMachine {
         SendMachine {
-            state: State::S0NoKey,
+            state: Some(State::S0NoKey),
             side: side.clone(),
             queue: Vec::new(),
         }
@@ -39,75 +33,43 @@ impl SendMachine {
             self.state,
             event
         );
-        let (newstate, actions, queue_status) = match self.state {
-            State::S0NoKey => self.do_s0(event),
-            State::S1HaveVerifiedKey(ref key) => self.do_s1(&key, event),
-        };
-
-        // process the queue
-        match queue_status {
-            QueueStatus::Enqueue(tup) => self.queue.push(tup),
-            QueueStatus::Drain => {
-                self.queue = Vec::new();
+        use super::events::SendEvent::*;
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            State::S0NoKey => {
+                match event {
+                    GotVerifiedKey(ref key) => {
+                        for (phase, plaintext) in self.queue.drain(..) {
+                            let data_key =
+                                key::derive_phase_key(&self.side, &key, &phase);
+                            let (_nonce, encrypted) =
+                                key::encrypt_data(&data_key, &plaintext);
+                            actions.push(M_AddMessage(phase, encrypted));
+                        }
+                        State::S1HaveVerifiedKey(key.clone())
+                    }
+                    Send(phase, plaintext) => {
+                        // we don't have a verified key, yet we got messages to
+                        // send, so queue it up.
+                        self.queue.push((phase, plaintext));
+                        State::S0NoKey
+                    }
+                }
             }
-            QueueStatus::NoAction => (),
-        };
+            State::S1HaveVerifiedKey(ref key) => match event {
+                GotVerifiedKey(_) => panic!(),
+                Send(phase, plaintext) => {
+                    let data_key =
+                        key::derive_phase_key(&self.side, &key, &phase);
+                    let (_nonce, encrypted) =
+                        key::encrypt_data(&data_key, &plaintext);
+                    actions.push(M_AddMessage(phase, encrypted));
+                    State::S1HaveVerifiedKey(key.clone())
+                }
+            },
+        });
 
-        self.state = newstate;
         actions
-    }
-
-    fn drain(&self, key: &Key) -> Events {
-        let mut es = Events::new();
-
-        for &(ref phase, ref plaintext) in &self.queue {
-            let data_key = key::derive_phase_key(&self.side, &key, phase);
-            let (_nonce, encrypted) = key::encrypt_data(&data_key, plaintext);
-            es.push(M_AddMessage(phase.clone(), encrypted));
-        }
-
-        es
-    }
-
-    fn deliver(&self, key: &Key, phase: Phase, plaintext: &[u8]) -> Events {
-        let data_key = key::derive_phase_key(&self.side, &key, &phase);
-        let (_nonce, encrypted) = key::encrypt_data(&data_key, plaintext);
-        events![M_AddMessage(phase, encrypted)]
-    }
-
-    fn do_s0(&self, event: SendEvent) -> (State, Events, QueueStatus) {
-        use super::events::SendEvent::*;
-        match event {
-            GotVerifiedKey(ref key) => (
-                State::S1HaveVerifiedKey(key.clone()),
-                self.drain(key),
-                QueueStatus::Drain,
-            ),
-            // we don't have a verified key, yet we got messages to send, so queue it up.
-            Send(phase, plaintext) => (
-                State::S0NoKey,
-                events![],
-                QueueStatus::Enqueue((phase, plaintext)),
-            ),
-        }
-    }
-
-    fn do_s1(
-        &self,
-        key: &Key,
-        event: SendEvent,
-    ) -> (State, Events, QueueStatus) {
-        use super::events::SendEvent::*;
-        match event {
-            GotVerifiedKey(_) => panic!(),
-            Send(phase, plaintext) => {
-                let deliver_events = self.deliver(&key, phase, &plaintext);
-                (
-                    State::S1HaveVerifiedKey(key.clone()),
-                    deliver_events,
-                    QueueStatus::NoAction,
-                )
-            }
-        }
     }
 }
