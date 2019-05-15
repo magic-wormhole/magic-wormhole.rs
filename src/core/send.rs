@@ -73,3 +73,82 @@ impl SendMachine {
         actions
     }
 }
+
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::super::events::{Event, MailboxEvent};
+    use super::*;
+
+    #[test]
+    fn test_queue() {
+        let s = MySide("side1".to_string());
+        let mut m = SendMachine::new(&s);
+
+        // sending messages before we have a key: messages are queued
+        let p1 = Phase("phase1".to_string());
+        let plaintext1 = "plaintext1".as_bytes().to_vec();
+        let e1 = m.process(SendEvent::Send(p1.clone(), plaintext1));
+        assert_eq!(e1.events.len(), 0);
+
+        let p2 = Phase("phase2".to_string());
+        let plaintext2 = "plaintext2".as_bytes().to_vec();
+        let e2 = m.process(SendEvent::Send(p2.clone(), plaintext2));
+        assert_eq!(e2.events.len(), 0);
+
+        // now providing the key should release the encrypted messages to the
+        // Mailbox machine
+        let key = Key("key".as_bytes().to_vec());
+        let mut e3 = m.process(SendEvent::GotVerifiedKey(key));
+        assert_eq!(e3.events.len(), 2);
+
+        match e3.events.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
+                assert_eq!(p, p1);
+            }
+            _ => panic!(),
+        };
+        match e3.events.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
+                assert_eq!(p, p2);
+            }
+            _ => panic!(),
+        };
+
+        // and subsequent Sends should be encrypted immediately
+
+        let p3 = Phase("phase3".to_string());
+        let plaintext3 = "plaintext3".as_bytes().to_vec();
+        let mut e4 = m.process(SendEvent::Send(p3.clone(), plaintext3));
+        assert_eq!(e4.events.len(), 1);
+        match e4.events.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
+                assert_eq!(p, p3);
+            }
+            _ => panic!(),
+        };
+    }
+
+    #[test]
+    fn test_key_first() {
+        let s = MySide("side1".to_string());
+        let mut m = SendMachine::new(&s);
+
+        let key = Key("key".as_bytes().to_vec());
+        let e1 = m.process(SendEvent::GotVerifiedKey(key));
+        assert_eq!(e1.events.len(), 0);
+
+        // subsequent Sends should be encrypted immediately
+
+        let p1 = Phase("phase1".to_string());
+        let plaintext1 = "plaintext1".as_bytes().to_vec();
+        let mut e2 = m.process(SendEvent::Send(p1.clone(), plaintext1));
+        assert_eq!(e2.events.len(), 1);
+        match e2.events.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
+                assert_eq!(p, p1);
+            }
+            _ => panic!(),
+        };
+    }
+}
