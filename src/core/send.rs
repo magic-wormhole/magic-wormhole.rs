@@ -34,10 +34,11 @@ impl SendMachine {
             event
         );
         use super::events::SendEvent::*;
+        use State::*;
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            State::S0NoKey => {
+            S0NoKey => {
                 match event {
                     GotVerifiedKey(ref key) => {
                         for (phase, plaintext) in self.queue.drain(..) {
@@ -47,17 +48,17 @@ impl SendMachine {
                                 key::encrypt_data(&data_key, &plaintext);
                             actions.push(M_AddMessage(phase, encrypted));
                         }
-                        State::S1HaveVerifiedKey(key.clone())
+                        S1HaveVerifiedKey(key.clone())
                     }
                     Send(phase, plaintext) => {
                         // we don't have a verified key, yet we got messages to
                         // send, so queue it up.
                         self.queue.push((phase, plaintext));
-                        State::S0NoKey
+                        S0NoKey
                     }
                 }
             }
-            State::S1HaveVerifiedKey(ref key) => match event {
+            S1HaveVerifiedKey(ref key) => match event {
                 GotVerifiedKey(_) => panic!(),
                 Send(phase, plaintext) => {
                     let data_key =
@@ -65,7 +66,7 @@ impl SendMachine {
                     let (_nonce, encrypted) =
                         key::encrypt_data(&data_key, &plaintext);
                     actions.push(M_AddMessage(phase, encrypted));
-                    State::S1HaveVerifiedKey(key.clone())
+                    S1HaveVerifiedKey(key.clone())
                 }
             },
         });
