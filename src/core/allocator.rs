@@ -2,15 +2,14 @@ use super::events::{Code, Events, Wordlist};
 use std::sync::Arc;
 
 // we process these
-use super::events::AllocatorEvent::{
-    self, Allocate, Connected, Lost, RxAllocated,
-};
+use super::events::AllocatorEvent;
+
 // we emit these
 use super::events::CodeEvent::Allocated as C_Allocated;
 use super::events::RendezvousEvent::TxAllocate as RC_TxAllocate;
 
 pub struct AllocatorMachine {
-    state: State,
+    state: Option<State>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -25,93 +24,203 @@ enum State {
 impl AllocatorMachine {
     pub fn new() -> AllocatorMachine {
         AllocatorMachine {
-            state: State::S0AIdleDisconnected,
+            state: Some(State::S0AIdleDisconnected),
         }
     }
 
     pub fn process(&mut self, event: AllocatorEvent) -> Events {
-        use self::State::*;
-        let (newstate, actions) = match self.state {
-            S0AIdleDisconnected => self.do_idle_disconnected(event),
-            S0BIdleConnected => self.do_idle_connected(event),
-            S1AAllocatingDisconnected(ref wordlist) => {
-                self.do_allocating_disconnected(&event, wordlist.clone())
-            }
-            S1BAllocatingConnected(ref wordlist) => {
-                self.do_allocating_connected(event, wordlist.clone())
-            }
-            S2Done => (None, events![]),
-        };
-
-        if let Some(s) = newstate {
-            self.state = s;
-        }
+        use AllocatorEvent::*;
+        use State::*;
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            S0AIdleDisconnected => match event {
+                Connected => S0BIdleConnected,
+                Allocate(wordlist) => S1AAllocatingDisconnected(wordlist),
+                _ => panic!(),
+            },
+            S0BIdleConnected => match event {
+                Lost => S0AIdleDisconnected,
+                Allocate(wordlist) => {
+                    actions.push(RC_TxAllocate);
+                    S1BAllocatingConnected(wordlist)
+                }
+                _ => panic!(),
+            },
+            S1AAllocatingDisconnected(wordlist) => match event {
+                Connected => {
+                    actions.push(RC_TxAllocate);
+                    S1BAllocatingConnected(wordlist)
+                }
+                _ => panic!(),
+            },
+            S1BAllocatingConnected(wordlist) => match event {
+                Lost => S1AAllocatingDisconnected(wordlist),
+                RxAllocated(nameplate) => {
+                    let words = wordlist.choose_words();
+                    let code = Code(nameplate.to_string() + "-" + &words);
+                    actions.push(C_Allocated(nameplate, code));
+                    S2Done
+                }
+                _ => panic!(),
+            },
+            S2Done => old_state,
+        });
         actions
-    }
-
-    fn do_idle_disconnected(
-        &self,
-        event: AllocatorEvent,
-    ) -> (Option<State>, Events) {
-        match event {
-            Connected => (Some(State::S0BIdleConnected), events![]),
-            Allocate(wordlist) => {
-                (Some(State::S1AAllocatingDisconnected(wordlist)), events![])
-            }
-            _ => (None, events![]),
-        }
-    }
-
-    fn do_idle_connected(
-        &self,
-        event: AllocatorEvent,
-    ) -> (Option<State>, Events) {
-        match event {
-            Lost => (Some(State::S0AIdleDisconnected), events![]),
-            Allocate(wordlist) => (
-                Some(State::S1BAllocatingConnected(wordlist)),
-                events![RC_TxAllocate],
-            ),
-            _ => (None, events![]),
-        }
-    }
-
-    fn do_allocating_disconnected(
-        &self,
-        event: &AllocatorEvent,
-        wordlist: Arc<Wordlist>,
-    ) -> (Option<State>, Events) {
-        match *event {
-            Connected => (
-                Some(State::S1BAllocatingConnected(wordlist)),
-                events![RC_TxAllocate],
-            ),
-            _ => (None, events![]),
-        }
-    }
-
-    fn do_allocating_connected(
-        &self,
-        event: AllocatorEvent,
-        wordlist: Arc<Wordlist>,
-    ) -> (Option<State>, Events) {
-        match event {
-            Lost => {
-                (Some(State::S1AAllocatingDisconnected(wordlist)), events![])
-            }
-            RxAllocated(nameplate) => {
-                let words = wordlist.choose_words();
-                let code = Code(nameplate.to_string() + "-" + &words);
-                (Some(State::S2Done), events![C_Allocated(nameplate, code)])
-            }
-            _ => (None, events![]),
-        }
     }
 }
 
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
-    //use super::AllocatorMachine;
-    //use super::State::*;
+    use super::super::events::{CodeEvent, Event, Nameplate, RendezvousEvent};
+    use super::super::wordlist::default_wordlist;
+    use super::AllocatorEvent::*;
+    use super::AllocatorMachine;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_acr() {
+        // start Allocation, then Connect, then Rx the nameplate
+        let w = Arc::new(default_wordlist(2));
+        let mut a = AllocatorMachine::new();
+
+        assert_eq!(a.process(Allocate(w)).events.len(), 0);
+        let mut e = a.process(Connected);
+        match e.events.remove(0) {
+            Event::Rendezvous(RendezvousEvent::TxAllocate) => (),
+            _ => panic!(),
+        }
+        assert_eq!(e.events.len(), 0);
+        let n = Nameplate("123".to_string());
+        e = a.process(RxAllocated(n));
+        match e.events.remove(0) {
+            Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
+                assert_eq!(nameplate.to_string(), "123");
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_aclcr() {
+        // start Allocation, Connect, Lose the connection, re-Connect, Rx
+        // nameplate
+        let w = Arc::new(default_wordlist(2));
+        let mut a = AllocatorMachine::new();
+
+        assert_eq!(a.process(Allocate(w)).events.len(), 0);
+        let mut e = a.process(Connected);
+        match e.events.remove(0) {
+            Event::Rendezvous(RendezvousEvent::TxAllocate) => (),
+            _ => panic!(),
+        }
+        assert_eq!(e.events.len(), 0);
+
+        assert_eq!(a.process(Lost).events.len(), 0);
+        e = a.process(Connected);
+        match e.events.remove(0) {
+            Event::Rendezvous(RendezvousEvent::TxAllocate) => (),
+            _ => panic!(),
+        }
+        assert_eq!(e.events.len(), 0);
+
+        let n = Nameplate("123".to_string());
+        e = a.process(RxAllocated(n));
+        match e.events.remove(0) {
+            Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
+                assert_eq!(nameplate.to_string(), "123");
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_car() {
+        // Connect first, then start Allocation, then Rx the nameplate
+        let w = Arc::new(default_wordlist(2));
+        let mut a = AllocatorMachine::new();
+
+        assert_eq!(a.process(Connected).events.len(), 0);
+        let mut e = a.process(Allocate(w));
+        match e.events.remove(0) {
+            Event::Rendezvous(RendezvousEvent::TxAllocate) => (),
+            _ => panic!(),
+        }
+        assert_eq!(e.events.len(), 0);
+        let n = Nameplate("123".to_string());
+        e = a.process(RxAllocated(n));
+        match e.events.remove(0) {
+            Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
+                assert_eq!(nameplate.to_string(), "123");
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_clacr() {
+        // Connect, Lose connection, then start Allocation, re-Connect, then
+        // Rx the nameplate
+        let w = Arc::new(default_wordlist(2));
+        let mut a = AllocatorMachine::new();
+
+        assert_eq!(a.process(Connected).events.len(), 0);
+        assert_eq!(a.process(Lost).events.len(), 0);
+        assert_eq!(a.process(Allocate(w)).events.len(), 0);
+        let mut e = a.process(Connected);
+        match e.events.remove(0) {
+            Event::Rendezvous(RendezvousEvent::TxAllocate) => (),
+            _ => panic!(),
+        }
+        assert_eq!(e.events.len(), 0);
+        let n = Nameplate("123".to_string());
+        e = a.process(RxAllocated(n));
+        match e.events.remove(0) {
+            Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
+                assert_eq!(nameplate.to_string(), "123");
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_aa_panic() {
+        // duplicate allocation should panic
+        let w = Arc::new(default_wordlist(2));
+        let mut a = AllocatorMachine::new();
+        a.process(Allocate(w.clone()));
+        a.process(Allocate(w));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_cc_panic() {
+        let mut a = AllocatorMachine::new();
+        a.process(Connected);
+        a.process(Connected);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_l_panic() {
+        let mut a = AllocatorMachine::new();
+        a.process(Lost);
+    }
+
+    #[test]
+    fn test_acrr() {
+        // a duplicate receive is ignored
+        let w = Arc::new(default_wordlist(2));
+        let mut a = AllocatorMachine::new();
+
+        a.process(Allocate(w));
+        a.process(Connected);
+        let n1 = Nameplate("123".to_string());
+        a.process(RxAllocated(n1));
+        let n2 = Nameplate("123".to_string());
+        a.process(RxAllocated(n2));
+    }
+
 }
