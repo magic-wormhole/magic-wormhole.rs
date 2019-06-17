@@ -18,125 +18,176 @@ enum State {
 }
 
 pub struct CodeMachine {
-    state: State,
+    state: Option<State>,
 }
 
 impl CodeMachine {
     pub fn new() -> CodeMachine {
-        CodeMachine { state: State::Idle }
+        CodeMachine {
+            state: Some(State::Idle),
+        }
     }
 
     pub fn process(&mut self, event: CodeEvent) -> Events {
-        use self::State::*;
-        let (newstate, actions) = match self.state {
-            Idle => self.in_idle(event),
-            InputtingNameplate => self.in_inputting_nameplate(event),
-            InputtingWords => self.in_inputting_words(event),
-            Allocating => self.in_allocating(event),
-            Known => self.in_known(&event),
-        };
+        use CodeEvent::*;
+        use State::*;
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            Idle => match event {
+                AllocateCode(wordlist) => {
+                    actions.push(A_Allocate(wordlist));
+                    Allocating
+                }
+                InputCode => {
+                    actions.push(I_Start);
+                    // TODO: return Input object
+                    InputtingNameplate
+                }
+                SetCode(code) => {
+                    // TODO: try!(validate_code(code))
+                    let code_string = code.to_string();
+                    let nc: Vec<&str> = code_string.splitn(2, '-').collect();
+                    let nameplate = Nameplate(nc[0].to_string());
+                    actions.push(N_SetNameplate(nameplate.clone()));
+                    actions.push(B_GotCode(code.clone()));
+                    actions.push(K_GotCode(code.clone()));
+                    Known
+                }
+                _ => panic!(),
+            },
 
-        if let Some(s) = newstate {
-            self.state = s;
-        }
-
+            InputtingNameplate => match event {
+                GotNameplate(nameplate) => {
+                    actions.push(N_SetNameplate(nameplate));
+                    InputtingWords
+                }
+                _ => panic!(),
+            },
+            InputtingWords => match event {
+                FinishedInput(code) => {
+                    actions.push(B_GotCode(code.clone()));
+                    actions.push(K_GotCode(code.clone()));
+                    Known
+                }
+                _ => panic!(),
+            },
+            Allocating => match event {
+                Allocated(nameplate, code) => {
+                    // TODO: assert code.startswith(nameplate+"-")
+                    actions.push(N_SetNameplate(nameplate.clone()));
+                    // TODO: maybe tell Key before Boss?
+                    actions.push(B_GotCode(code.clone()));
+                    actions.push(K_GotCode(code.clone()));
+                    Known
+                }
+                _ => panic!(),
+            },
+            Known => panic!(),
+        });
         actions
     }
+}
 
-    fn in_idle(&mut self, event: CodeEvent) -> (Option<State>, Events) {
-        use super::events::CodeEvent::*;
-        match event {
-            AllocateCode(wordlist) => {
-                (Some(State::Allocating), events![A_Allocate(wordlist)])
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::super::events::{
+        BossEvent, Code, Event, KeyEvent, NameplateEvent,
+    };
+    use super::CodeEvent::*;
+    use super::CodeMachine;
+
+    fn assert_keyboss(mut e: Vec<Event>) {
+        // the last step of all successful CodeMachine paths is to notify
+        // both the Key and Boss about the new code
+        match e.remove(0) {
+            Event::Boss(BossEvent::GotCode(c2)) => {
+                assert_eq!(c2.to_string(), "4-purple-sausages");
             }
-            InputCode => (Some(State::InputtingNameplate), events![I_Start]), // TODO: return Input object
-            SetCode(code) => {
-                // TODO: try!(validate_code(code))
-                let code_string = code.to_string();
-                let nc: Vec<&str> = code_string.splitn(2, '-').collect();
-                let nameplate = Nameplate(nc[0].to_string());
-                (
-                    Some(State::Known),
-                    events![
-                        N_SetNameplate(nameplate.clone()),
-                        B_GotCode(code.clone()),
-                        K_GotCode(code.clone())
-                    ],
-                )
+            _ => panic!(),
+        }
+        match e.remove(0) {
+            Event::Key(KeyEvent::GotCode(c2)) => {
+                assert_eq!(c2.to_string(), "4-purple-sausages");
             }
-            Allocated(..) => panic!(),
-            GotNameplate(..) => panic!(),
-            FinishedInput(..) => panic!(),
+            _ => panic!(),
         }
+        assert_eq!(e.len(), 0);
     }
 
-    fn in_inputting_nameplate(
-        &mut self,
-        event: CodeEvent,
-    ) -> (Option<State>, Events) {
-        use super::events::CodeEvent::*;
-        match event {
-            AllocateCode(..) => panic!(),
-            InputCode => panic!(),
-            SetCode(..) => panic!(),
-            Allocated(..) => panic!(),
-            GotNameplate(nameplate) => (
-                Some(State::InputtingWords),
-                events![N_SetNameplate(nameplate)],
-            ),
-            FinishedInput(..) => panic!(),
-        }
-    }
+    #[test]
+    fn test_set_code() {
+        let mut c = CodeMachine::new();
+        let code = Code("4-purple-sausages".to_string());
+        let mut e = c.process(SetCode(code)).events;
 
-    fn in_inputting_words(
-        &mut self,
-        event: CodeEvent,
-    ) -> (Option<State>, Events) {
-        use super::events::CodeEvent::*;
-        match event {
-            AllocateCode(..) => panic!(),
-            InputCode => panic!(),
-            SetCode(..) => panic!(),
-            Allocated(..) => panic!(),
-            GotNameplate(..) => panic!(),
-            FinishedInput(code) => (
-                Some(State::Known),
-                events![B_GotCode(code.clone()), K_GotCode(code.clone())],
-            ),
-        }
-    }
-
-    fn in_allocating(&mut self, event: CodeEvent) -> (Option<State>, Events) {
-        use super::events::CodeEvent::*;
-        match event {
-            AllocateCode(..) => panic!(),
-            InputCode => panic!(),
-            SetCode(..) => panic!(),
-            Allocated(nameplate, code) => {
-                // TODO: assert code.startswith(nameplate+"-")
-                (
-                    Some(State::Known),
-                    events![
-                        N_SetNameplate(nameplate.clone()),
-                        B_GotCode(code.clone()),
-                        K_GotCode(code.clone())
-                    ],
-                )
+        match e.remove(0) {
+            Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
+                assert_eq!(n.to_string(), "4");
             }
-            GotNameplate(..) => panic!(),
-            FinishedInput(..) => panic!(),
+            _ => panic!(),
         }
+        assert_keyboss(e);
     }
 
-    fn in_known(&mut self, event: &CodeEvent) -> (Option<State>, Events) {
-        use super::events::CodeEvent::*;
-        match *event {
-            AllocateCode(..) => panic!(),
-            InputCode => panic!(),
-            SetCode(..) => panic!(),
-            Allocated(..) => panic!(),
-            GotNameplate(..) => panic!(),
-            FinishedInput(..) => panic!(),
+    #[test]
+    fn test_allocate_code() {
+        use super::super::events::{AllocatorEvent, Nameplate};
+        use super::super::wordlist::default_wordlist;
+        use std::sync::Arc;
+        let mut c = CodeMachine::new();
+        let w = Arc::new(default_wordlist(2));
+        let mut e = c.process(AllocateCode(w.clone())).events;
+
+        match e.remove(0) {
+            Event::Allocator(AllocatorEvent::Allocate(w2)) => {
+                assert_eq!(w2, w);
+            }
+            _ => panic!(),
         }
+        assert_eq!(e.len(), 0);
+
+        e = c
+            .process(Allocated(
+                Nameplate("4".to_string()),
+                Code("4-purple-sausages".to_string()),
+            ))
+            .events;
+        match e.remove(0) {
+            Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
+                assert_eq!(n.to_string(), "4");
+            }
+            _ => panic!(),
+        }
+        assert_keyboss(e);
     }
+
+    #[test]
+    fn test_input_code() {
+        use super::super::events::{InputEvent, Nameplate};
+        let mut c = CodeMachine::new();
+        let mut e = c.process(InputCode).events;
+
+        match e.remove(0) {
+            Event::Input(InputEvent::Start) => (),
+            _ => panic!(),
+        }
+        assert_eq!(e.len(), 0);
+
+        let n = Nameplate("4".to_string());
+        e = c.process(GotNameplate(n)).events;
+        match e.remove(0) {
+            Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
+                assert_eq!(n.to_string(), "4");
+            }
+            _ => panic!(),
+        }
+        assert_eq!(e.len(), 0);
+
+        let code = Code("4-purple-sausages".to_string());
+        e = c.process(FinishedInput(code)).events;
+        assert_keyboss(e);
+    }
+
 }
