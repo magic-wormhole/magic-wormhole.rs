@@ -1,8 +1,6 @@
 use super::events::Events;
 // we process these
-use super::events::TerminatorEvent::{
-    self, Close, MailboxDone, NameplateDone, Stopped,
-};
+use super::events::TerminatorEvent;
 // we emit these
 use super::events::BossEvent::Closed as B_Closed;
 use super::events::MailboxEvent::Close as M_Close;
@@ -29,108 +27,109 @@ enum State {
 }
 
 pub struct TerminatorMachine {
-    state: State,
+    state: Option<State>,
 }
 
 impl TerminatorMachine {
     pub fn new() -> TerminatorMachine {
-        TerminatorMachine { state: State::Snmo }
+        TerminatorMachine {
+            state: Some(State::Snmo),
+        }
     }
 
     pub fn process(&mut self, event: TerminatorEvent) -> Events {
-        use self::State::*;
-        let (newstate, actions) = match self.state {
-            Snmo => self.in_nameplate_mailbox_open(event),
-            Sno => self.in_nameplate_open(event),
-            Smo => self.in_mailbox_open(event),
-            So => self.in_open(event),
-            Snm => self.in_nameplate_mailbox_active(event),
-            Sn => self.in_nameplate_active(event),
-            Sm => self.in_mailbox_active(event),
-            SStopping => self.in_stopping(event),
-            SStopped => panic!("Already stopped"),
-        };
-
-        self.state = newstate;
-        actions
-    }
-
-    fn in_nameplate_mailbox_open(
-        &self,
-        event: TerminatorEvent,
-    ) -> (State, Events) {
-        match event {
-            MailboxDone => (State::Sno, events![]),
-            NameplateDone => (State::Smo, events![]),
-            Close(mood) => (State::Snm, events![N_Close, M_Close(mood)]),
-            Stopped => panic!(
-                "Got stopped to early. Nameplate and Mailbox are still active"
-            ),
-        }
-    }
-
-    fn in_nameplate_open(&self, event: TerminatorEvent) -> (State, Events) {
-        match event {
-            NameplateDone => (State::So, events![]),
-            Close(mood) => (State::Sn, events![N_Close, M_Close(mood)]),
-            _ => panic!("Got too early, Nameplate still active"),
-        }
-    }
-
-    fn in_mailbox_open(&self, event: TerminatorEvent) -> (State, Events) {
-        match event {
-            MailboxDone => (State::So, events![]),
-            Close(mood) => (State::Sm, events![N_Close, M_Close(mood)]),
-            _ => panic!("Got too early, Mailbox still active"),
-        }
-    }
-
-    fn in_open(&self, event: TerminatorEvent) -> (State, Events) {
-        match event {
-            Close(mood) => {
-                (State::SStopping, events![N_Close, M_Close(mood), RC_Stop])
+        use State::*;
+        use TerminatorEvent::*;
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            Snmo => match event {
+                // nameplate_mailbox_open
+                MailboxDone => Sno,
+                NameplateDone => Smo,
+                Close(mood) => {
+                    actions.push(N_Close);
+                    actions.push(M_Close(mood));
+                    Snm
+                },
+                Stopped => panic!(
+                    "Got stopped to early. Nameplate and Mailbox are still active"
+                ),
             }
-            MailboxDone | NameplateDone => panic!("Got {:?} too late", event),
-            _ => panic!("Too early to stop"),
-        }
-    }
-    fn in_nameplate_mailbox_active(
-        &self,
-        event: TerminatorEvent,
-    ) -> (State, Events) {
-        match event {
-            MailboxDone => (State::Sn, events![]),
-            NameplateDone => (State::Sm, events![]),
-            Close(_) => panic!("Too late already closing"),
-            Stopped => panic!("Still not stopping"),
-        }
-    }
+            Sno => match event {
+                // nameplate_open
+                NameplateDone => So,
+                Close(mood) => {
+                    actions.push(N_Close);
+                    actions.push(M_Close(mood));
+                    Sn
+                },
+                _ => panic!("Got too early, Nameplate still active"),
+            },
 
-    fn in_nameplate_active(&self, event: TerminatorEvent) -> (State, Events) {
-        match event {
-            NameplateDone => (State::SStopping, events![RC_Stop]),
-            _ => panic!("Too early/late"),
-        }
-    }
+            Smo => match event {
+                // mailbox_open
+                MailboxDone => So,
+                Close(mood) => {
+                    actions.push(N_Close);
+                    actions.push(M_Close(mood));
+                    Sm
+                },
+                _ => panic!("Got too early, Mailbox still active"),
+            },
+            So => match event {
+                // open
+                Close(mood) => {
+                    actions.push(N_Close);
+                    actions.push(M_Close(mood));
+                    actions.push(RC_Stop);
+                    SStopping
+                },
+                MailboxDone | NameplateDone => panic!("Got {:?} too late", event),
+                _ => panic!("Too early to stop"),
+            },
+            Snm => match event {
+                // nameplate_mailbox_active(event)
+                MailboxDone => Sn,
+                NameplateDone => Sm,
+                Close(_) => panic!("Too late already closing"),
+                Stopped => panic!("Still not stopping"),
+            },
 
-    fn in_mailbox_active(&self, event: TerminatorEvent) -> (State, Events) {
-        match event {
-            MailboxDone => (State::SStopping, events![RC_Stop]),
-            _ => panic!("Too early or late"),
-        }
-    }
-
-    fn in_stopping(&self, event: TerminatorEvent) -> (State, Events) {
-        match event {
-            Stopped => (State::SStopped, events![B_Closed]),
-            _ => panic!("Too late"),
-        }
+            Sn => match event {
+                // nameplate_active
+                NameplateDone => {
+                    actions.push(RC_Stop);
+                    SStopping
+                },
+                _ => panic!("Too early/late"),
+            },
+            Sm => match event {
+                // mailbox_active
+                MailboxDone => {
+                    actions.push(RC_Stop);
+                    SStopping
+                },
+                _ => panic!("Too early or late"),
+            },
+            SStopping => match event {
+                // stopping
+                Stopped => {
+                    actions.push(B_Closed);
+                    SStopped
+                },
+                _ => panic!("Too late"),
+            },
+            SStopped => panic!("Already stopped"),
+        });
+        actions
     }
 }
 
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
+    use super::TerminatorEvent::*;
     use super::*;
     use crate::core::api::Mood::*;
     use crate::core::events::BossEvent::Closed as B_Closed;
@@ -142,22 +141,22 @@ mod test {
     fn test_transitions1() {
         let mut terminator = TerminatorMachine::new();
 
-        assert_eq!(terminator.state, State::Snmo);
+        assert_eq!(terminator.state, Some(State::Snmo));
 
         assert_eq!(terminator.process(MailboxDone), events![]);
-        assert_eq!(terminator.state, State::Sno);
+        assert_eq!(terminator.state, Some(State::Sno));
 
         assert_eq!(
             terminator.process(Close(Happy)),
             events![N_Close, M_Close(Happy)]
         );
-        assert_eq!(terminator.state, State::Sn);
+        assert_eq!(terminator.state, Some(State::Sn));
 
         assert_eq!(terminator.process(NameplateDone), events![RC_Stop]);
-        assert_eq!(terminator.state, State::SStopping);
+        assert_eq!(terminator.state, Some(State::SStopping));
 
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
-        assert_eq!(terminator.state, State::SStopped);
+        assert_eq!(terminator.state, Some(State::SStopped));
     }
 
     #[test]
@@ -173,7 +172,7 @@ mod test {
         assert_eq!(terminator.process(MailboxDone), events![RC_Stop]);
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
 
-        assert_eq!(terminator.state, State::SStopped);
+        assert_eq!(terminator.state, Some(State::SStopped));
     }
 
     #[test]
@@ -187,7 +186,7 @@ mod test {
         );
         assert_eq!(terminator.process(MailboxDone), events![RC_Stop]);
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
-        assert_eq!(terminator.state, State::SStopped);
+        assert_eq!(terminator.state, Some(State::SStopped));
     }
 
     #[test]
@@ -201,9 +200,9 @@ mod test {
 
         assert_eq!(terminator.process(MailboxDone), events![]);
         assert_eq!(terminator.process(NameplateDone), events![RC_Stop]);
-        assert_eq!(terminator.state, State::SStopping);
+        assert_eq!(terminator.state, Some(State::SStopping));
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
-        assert_eq!(terminator.state, State::SStopped);
+        assert_eq!(terminator.state, Some(State::SStopped));
     }
 
     #[test]
@@ -212,14 +211,14 @@ mod test {
 
         assert_eq!(terminator.process(NameplateDone), events![]);
         assert_eq!(terminator.process(MailboxDone), events![]);
-        assert_eq!(terminator.state, State::So);
+        assert_eq!(terminator.state, Some(State::So));
         assert_eq!(
             terminator.process(Close(Scared)),
             events![N_Close, M_Close(Scared), RC_Stop]
         );
-        assert_eq!(terminator.state, State::SStopping);
+        assert_eq!(terminator.state, Some(State::SStopping));
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
-        assert_eq!(terminator.state, State::SStopped);
+        assert_eq!(terminator.state, Some(State::SStopped));
     }
 
     #[test]
@@ -228,14 +227,14 @@ mod test {
 
         assert_eq!(terminator.process(MailboxDone), events![]);
         assert_eq!(terminator.process(NameplateDone), events![]);
-        assert_eq!(terminator.state, State::So);
+        assert_eq!(terminator.state, Some(State::So));
 
         assert_eq!(
             terminator.process(Close(Error)),
             events![N_Close, M_Close(Error), RC_Stop]
         );
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
-        assert_eq!(terminator.state, State::SStopped);
+        assert_eq!(terminator.state, Some(State::SStopped));
     }
 
     #[test]
@@ -281,7 +280,7 @@ mod test {
     #[should_panic]
     fn panic6() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::So;
+        terminator.state = Some(State::So);
         terminator.process(Stopped);
     }
 
@@ -289,7 +288,7 @@ mod test {
     #[should_panic]
     fn panic7() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::Sn;
+        terminator.state = Some(State::Sn);
         terminator.process(MailboxDone);
     }
 
@@ -297,7 +296,7 @@ mod test {
     #[should_panic]
     fn panic8() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::Sn;
+        terminator.state = Some(State::Sn);
         terminator.process(Close(Happy));
     }
 
@@ -305,7 +304,7 @@ mod test {
     #[should_panic]
     fn panic9() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::Sn;
+        terminator.state = Some(State::Sn);
         terminator.process(Stopped);
     }
 
@@ -313,7 +312,7 @@ mod test {
     #[should_panic]
     fn panic10() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::Sm;
+        terminator.state = Some(State::Sm);
         terminator.process(NameplateDone);
     }
 
@@ -321,7 +320,7 @@ mod test {
     #[should_panic]
     fn panic11() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::Sm;
+        terminator.state = Some(State::Sm);
         terminator.process(Close(Happy));
     }
 
@@ -329,7 +328,7 @@ mod test {
     #[should_panic]
     fn panic12() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::Sm;
+        terminator.state = Some(State::Sm);
         terminator.process(Stopped);
     }
 
@@ -337,7 +336,7 @@ mod test {
     #[should_panic]
     fn panic13() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::SStopping;
+        terminator.state = Some(State::SStopping);
         terminator.process(NameplateDone);
     }
 
@@ -345,7 +344,7 @@ mod test {
     #[should_panic]
     fn panic14() {
         let mut terminator = TerminatorMachine::new();
-        terminator.state = State::SStopped;
+        terminator.state = Some(State::SStopped);
         terminator.process(MailboxDone);
     }
 
@@ -354,7 +353,7 @@ mod test {
     fn panic15() {
         let mut terminator = TerminatorMachine::new();
 
-        terminator.state = State::So;
+        terminator.state = Some(State::So);
         terminator.process(MailboxDone);
     }
 
@@ -363,7 +362,7 @@ mod test {
     fn panic16() {
         let mut terminator = TerminatorMachine::new();
 
-        terminator.state = State::So;
+        terminator.state = Some(State::So);
         terminator.process(NameplateDone);
     }
 
@@ -372,7 +371,7 @@ mod test {
     fn panic17() {
         let mut terminator = TerminatorMachine::new();
 
-        terminator.state = State::Snm;
+        terminator.state = Some(State::Snm);
         terminator.process(Close(Happy));
     }
 
@@ -381,7 +380,7 @@ mod test {
     fn panic18() {
         let mut terminator = TerminatorMachine::new();
 
-        terminator.state = State::Sn;
+        terminator.state = Some(State::Sn);
         terminator.process(Close(Happy));
     }
 
@@ -390,7 +389,7 @@ mod test {
     fn panic19() {
         let mut terminator = TerminatorMachine::new();
 
-        terminator.state = State::Sm;
+        terminator.state = Some(State::Sm);
         terminator.process(Close(Happy));
     }
 
@@ -399,7 +398,7 @@ mod test {
     fn panic20() {
         let mut terminator = TerminatorMachine::new();
 
-        terminator.state = State::SStopping;
+        terminator.state = Some(State::SStopping);
         terminator.process(Close(Happy));
     }
 
