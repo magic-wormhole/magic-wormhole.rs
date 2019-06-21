@@ -140,7 +140,7 @@ impl WormholeCore {
 
     // TODO: remove this, the helper should remember whether it's called
     // choose_nameplate yet or not instead of asking the core
-    pub fn input_helper_committed_nameplate(&self) -> Option<&Nameplate> {
+    pub fn input_helper_committed_nameplate(&self) -> Option<Nameplate> {
         self.input.committed_nameplate()
     }
 
