@@ -8,31 +8,26 @@ use log::trace;
 
 #[derive(Debug, PartialEq)]
 enum State {
-    S0, //no pake
-    S1, //yes pake
+    S0NoPake,
+    S1YesPake,
 }
 
 pub struct OrderMachine {
-    state: State,
+    state: Option<State>,
     queue: Vec<(TheirSide, Phase, Vec<u8>)>,
-}
-
-enum QueueStatus {
-    Enqueue((TheirSide, Phase, Vec<u8>)),
-    Drain,
-    NoAction,
 }
 
 impl OrderMachine {
     pub fn new() -> OrderMachine {
         OrderMachine {
-            state: State::S0,
+            state: Some(State::S0NoPake),
             queue: Vec::new(),
         }
     }
 
     pub fn process(&mut self, event: OrderEvent) -> Events {
         use self::State::*;
+        use OrderEvent::*;
 
         trace!(
             "order: current state = {:?}, got event = {:?}",
@@ -40,64 +35,124 @@ impl OrderMachine {
             event
         );
 
-        let (newstate, actions, queue_status) = match self.state {
-            S0 => self.do_s0(event),
-            S1 => self.do_s1(event),
-        };
-
-        self.state = newstate;
-
-        match queue_status {
-            QueueStatus::Enqueue(tup) => self.queue.push(tup),
-            QueueStatus::Drain => {
-                self.queue = Vec::new();
-            }
-            QueueStatus::NoAction => (),
-        };
-
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            S0NoPake => match event {
+                GotMessage(side, phase, body) => {
+                    if phase.to_string() == "pake" {
+                        // got a pake message
+                        actions.push(K_GotPake(body));
+                        for &(ref side, ref phase, ref body) in &self.queue {
+                            actions.push(R_GotMessage(
+                                side.clone(),
+                                phase.clone(),
+                                body.to_vec(),
+                            ));
+                        }
+                        self.queue = Vec::new(); // todo just empty it
+                        S1YesPake
+                    } else {
+                        // not a  pake message, queue it.
+                        self.queue.push((side.clone(), phase, body));
+                        S0NoPake
+                    }
+                }
+            },
+            S1YesPake => match event {
+                GotMessage(side, phase, body) => {
+                    actions.push(R_GotMessage(side.clone(), phase, body));
+                    State::S1YesPake
+                }
+            },
+        });
         actions
     }
+}
 
-    fn drain(&self) -> Events {
-        let mut es = Events::new();
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::core::events::{Phase, TheirSide};
 
-        for &(ref side, ref phase, ref body) in &self.queue {
-            es.push(R_GotMessage(side.clone(), phase.clone(), body.to_vec()));
-        }
+    #[test]
+    fn test_messages_then_pake() {
+        let mut m = super::OrderMachine::new();
+        let s1: TheirSide = TheirSide("side1".to_string());
+        let p1: Phase = Phase("phase1".to_string());
+        let p2: Phase = Phase("phase2".to_string());
+        let p3: Phase = Phase("phase3".to_string());
+        let ppake: Phase = Phase("pake".to_string());
 
-        es
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            p1.clone(),
+            b"body1".to_vec(),
+        ));
+        assert_eq!(out, events![]);
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            p2.clone(),
+            b"body2".to_vec(),
+        ));
+        assert_eq!(out, events![]);
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            ppake.clone(),
+            b"pake".to_vec(),
+        ));
+        assert_eq!(
+            out,
+            events![
+                K_GotPake(b"pake".to_vec()),
+                R_GotMessage(s1.clone(), p1.clone(), b"body1".to_vec()),
+                R_GotMessage(s1.clone(), p2.clone(), b"body2".to_vec()),
+            ]
+        );
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            p3.clone(),
+            b"body3".to_vec(),
+        ));
+        assert_eq!(
+            out,
+            events![R_GotMessage(s1.clone(), p3.clone(), b"body3".to_vec()),]
+        );
     }
 
-    fn do_s0(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
-        use super::events::OrderEvent::*;
-        match event {
-            GotMessage(side, phase, body) => {
-                if phase.to_string() == "pake" {
-                    // got a pake message
-                    let mut es = self.drain();
-                    let mut key_events = events![K_GotPake(body)];
-                    key_events.append(&mut es);
-                    (State::S1, key_events, QueueStatus::Drain)
-                } else {
-                    // not a  pake message, queue it.
-                    (
-                        State::S0,
-                        events![],
-                        QueueStatus::Enqueue((side.clone(), phase, body)),
-                    )
-                }
-            }
-        }
-    }
+    #[test]
+    fn test_pake_then_messages() {
+        let mut m = super::OrderMachine::new();
+        let s1: TheirSide = TheirSide("side1".to_string());
+        let p1: Phase = Phase("phase1".to_string());
+        let p2: Phase = Phase("phase2".to_string());
+        let _p3: Phase = Phase("phase3".to_string());
+        let ppake: Phase = Phase("pake".to_string());
 
-    fn do_s1(&self, event: OrderEvent) -> (State, Events, QueueStatus) {
-        use super::events::OrderEvent::*;
-        match event {
-            GotMessage(side, phase, body) => (
-                State::S1,
-                events![R_GotMessage(side.clone(), phase, body)],
-                QueueStatus::NoAction,
-            ),
-        }
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            ppake.clone(),
+            b"pake".to_vec(),
+        ));
+        assert_eq!(out, events![K_GotPake(b"pake".to_vec()),]);
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            p1.clone(),
+            b"body1".to_vec(),
+        ));
+        assert_eq!(
+            out,
+            events![R_GotMessage(s1.clone(), p1.clone(), b"body1".to_vec()),]
+        );
+        let out = m.process(OrderEvent::GotMessage(
+            s1.clone(),
+            p2.clone(),
+            b"body2".to_vec(),
+        ));
+        assert_eq!(
+            out,
+            events![R_GotMessage(s1.clone(), p2.clone(), b"body2".to_vec()),]
+        );
     }
 }
