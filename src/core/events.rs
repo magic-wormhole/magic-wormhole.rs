@@ -516,9 +516,9 @@ impl Events {
         self.events.push(Event::from(item));
     }
 
-    pub fn append(&mut self, other: &mut Events) {
-        self.events.append(&mut other.events);
-    }
+    //pub fn append(&mut self, other: &mut Events) {
+    //    self.events.append(&mut other.events);
+    //}
 }
 
 impl IntoIterator for Events {
