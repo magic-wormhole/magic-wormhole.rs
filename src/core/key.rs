@@ -7,7 +7,6 @@ use sha2::{Digest, Sha256};
 use sodiumoxide;
 use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
-use std::mem;
 
 use super::events::{AppID, Code, Events, Key, MySide, Phase};
 use super::util;
@@ -56,83 +55,78 @@ impl KeyMachine {
         );*/
 
         use self::KeyEvent::*;
-        match event {
-            GotCode(code) => self.got_code(&code),
-            GotPake(pake) => self.got_pake(pake),
-        }
-    }
-
-    fn got_code(&mut self, code: &Code) -> Events {
         use self::State::*;
-        let oldstate = mem::replace(&mut self.state, None);
-        match oldstate.unwrap() {
-            S0KnowNothing => {
-                let mut t1 = new_timelog("pake1", None);
-                t1.detail("waiting", "crypto");
-                let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
-                t1.finish(None);
-                self.state = Some(S1KnowCode(pake_state));
-                events![
-                    t1,
-                    M_AddMessage(Phase("pake".to_string()), pake_msg_ser)
-                ]
-            }
-            S1KnowCode(_) => panic!("already got code"),
-            S2KnowPake(ref their_pake_msg) => {
-                let mut t1 = new_timelog("pake1", None);
-                t1.detail("waiting", "crypto");
-                let (pake_state, pake_msg_ser) = start_pake(&code, &self.appid);
-                t1.finish(None);
-                let mut t2 = new_timelog("pake2", None);
-                t2.detail("waiting", "crypto");
-                let key: Key = finish_pake(pake_state, &their_pake_msg);
-                t2.finish(None);
-                let versions = json!({"app_versions": {}}); // TODO: self.versions
-                let (version_phase, version_msg) =
-                    build_version_msg(&self.side, &key, &versions);
-                self.state = Some(S3KnowBoth(key.clone()));
-                events![
-                    t1,
-                    t2,
-                    M_AddMessage(Phase("pake".to_string()), pake_msg_ser),
-                    M_AddMessage(version_phase, version_msg),
-                    B_GotKey(key.clone()),
-                    R_GotKey(key.clone())
-                ]
-            }
-            S3KnowBoth(_) => panic!("already got code"),
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            S0KnowNothing => match event {
+                GotCode(code) => {
+                    let mut t1 = new_timelog("pake1", None);
+                    t1.detail("waiting", "crypto");
+                    let (pake_state, pake_msg_ser) =
+                        start_pake(&code, &self.appid);
+                    t1.finish(None);
+                    actions.push(t1);
+                    actions.push(M_AddMessage(
+                        Phase("pake".to_string()),
+                        pake_msg_ser,
+                    ));
+                    S1KnowCode(pake_state)
+                }
+                GotPake(pake) => S2KnowPake(pake),
+            },
+            S1KnowCode(pake_state) => match event {
+                GotCode(_) => panic!("already got code"),
+                GotPake(pake) => {
+                    let mut t2 = new_timelog("pake2", None);
+                    t2.detail("waiting", "crypto");
+                    let key: Key = finish_pake(pake_state, &pake);
+                    t2.finish(None);
+                    let versions = json!({"app_versions": {}}); // TODO: self.versions
+                    let (version_phase, version_msg) =
+                        build_version_msg(&self.side, &key, &versions);
+                    actions.push(t2);
+                    actions.push(M_AddMessage(version_phase, version_msg));
+                    actions.push(B_GotKey(key.clone()));
+                    actions.push(R_GotKey(key.clone()));
+                    S3KnowBoth(key.clone())
+                }
+            },
+            S2KnowPake(ref their_pake_msg) => match event {
+                GotCode(code) => {
+                    let mut t1 = new_timelog("pake1", None);
+                    t1.detail("waiting", "crypto");
+                    let (pake_state, pake_msg_ser) =
+                        start_pake(&code, &self.appid);
+                    t1.finish(None);
+                    actions.push(t1);
+                    let mut t2 = new_timelog("pake2", None);
+                    t2.detail("waiting", "crypto");
+                    let key: Key = finish_pake(pake_state, &their_pake_msg);
+                    t2.finish(None);
+                    actions.push(t2);
+                    let versions = json!({"app_versions": {}}); // TODO: self.versions
+                    actions.push(M_AddMessage(
+                        Phase("pake".to_string()),
+                        pake_msg_ser,
+                    ));
+                    let (version_phase, version_msg) =
+                        build_version_msg(&self.side, &key, &versions);
+                    actions.push(M_AddMessage(version_phase, version_msg));
+                    actions.push(B_GotKey(key.clone()));
+                    actions.push(R_GotKey(key.clone()));
+                    S3KnowBoth(key.clone())
+                }
+                GotPake(_) => panic!("already got pake"),
+            },
+            S3KnowBoth(_) => match event {
+                GotCode(_) => panic!("already got code"),
+                GotPake(_) => panic!("already got pake"),
+            },
             S4Scared => panic!("already scared"),
-        }
-    }
+        });
 
-    fn got_pake(&mut self, pake: Vec<u8>) -> Events {
-        use self::State::*;
-        let oldstate = mem::replace(&mut self.state, None);
-        match oldstate.unwrap() {
-            S0KnowNothing => {
-                self.state = Some(S2KnowPake(pake));
-                events![]
-            }
-            S1KnowCode(pake_state) => {
-                let mut t2 = new_timelog("pake2", None);
-                t2.detail("waiting", "crypto");
-                let key: Key = finish_pake(pake_state, &pake);
-                t2.finish(None);
-                let versions = json!({"app_versions": {}}); // TODO: self.versions
-                let (version_phase, version_msg) =
-                    build_version_msg(&self.side, &key, &versions);
-                self.state = Some(S3KnowBoth(key.clone()));
-                events![
-                    t2,
-                    M_AddMessage(version_phase, version_msg),
-                    B_GotKey(key.clone()),
-                    R_GotKey(key.clone())
-                ]
-            }
-            S2KnowPake(_) => panic!("already got pake"),
-            S3KnowBoth(_) => panic!("already got pake"),
-            S4Scared => panic!("already scared"),
-        }
+        actions
     }
 }
 
