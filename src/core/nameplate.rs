@@ -54,7 +54,7 @@ impl NameplateMachine {
                 Connected => S0B,
                 SetNameplate(nameplate) => {
                     // TODO: validate_nameplate(nameplate)
-                    S1A(nameplate.clone())
+                    S1A(nameplate)
                 }
                 Close => {
                     actions.push(T_NameplateDone);
@@ -67,7 +67,7 @@ impl NameplateMachine {
                 SetNameplate(nameplate) => {
                     // TODO: validate_nameplate(nameplate)
                     actions.push(RC_TxClaim(nameplate.clone()));
-                    S2B(nameplate.clone())
+                    S2B(nameplate)
                 }
                 Close => {
                     actions.push(T_NameplateDone);
@@ -75,10 +75,10 @@ impl NameplateMachine {
                 }
                 _ => panic!(),
             },
-            S1A(ref nameplate) => match event {
+            S1A(nameplate) => match event {
                 Connected => {
                     actions.push(RC_TxClaim(nameplate.clone()));
-                    S2B(nameplate.clone())
+                    S2B(nameplate)
                 }
                 Close => {
                     actions.push(T_NameplateDone);
@@ -86,43 +86,43 @@ impl NameplateMachine {
                 }
                 _ => panic!(),
             },
-            S2A(ref nameplate) => match event {
+            S2A(nameplate) => match event {
                 Connected => {
                     actions.push(RC_TxClaim(nameplate.clone()));
-                    S2B(nameplate.clone())
+                    S2B(nameplate)
                 }
-                Close => S4A(nameplate.clone()),
+                Close => S4A(nameplate),
                 _ => panic!(),
             },
-            S2B(ref nameplate) => match event {
-                Lost => S2A(nameplate.clone()),
+            S2B(nameplate) => match event {
+                Lost => S2A(nameplate),
                 RxClaimed(mailbox) => {
                     // TODO: use nameplate attributes to pick which wordlist we use
                     let wordlist = Arc::new(default_wordlist(2)); // TODO: num_words
                     actions.push(I_GotWordlist(wordlist));
                     actions.push(M_GotMailbox(mailbox));
-                    S3B(nameplate.clone())
+                    S3B(nameplate)
                 }
                 Close => {
                     actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate.clone())
+                    S4B(nameplate)
                 }
                 _ => panic!(),
             },
-            S3A(ref nameplate) => match event {
-                Connected => S3B(nameplate.clone()),
-                Close => S4A(nameplate.clone()),
+            S3A(nameplate) => match event {
+                Connected => S3B(nameplate),
+                Close => S4A(nameplate),
                 _ => panic!(),
             },
-            S3B(ref nameplate) => match event {
-                Lost => S3A(nameplate.clone()),
+            S3B(nameplate) => match event {
+                Lost => S3A(nameplate),
                 Release => {
                     actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate.clone())
+                    S4B(nameplate)
                 }
                 Close => {
                     actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate.clone())
+                    S4B(nameplate)
                 }
                 _ => panic!(),
             },
