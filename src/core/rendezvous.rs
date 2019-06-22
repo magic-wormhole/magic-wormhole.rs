@@ -30,10 +30,10 @@ use super::timing::new_timelog;
 #[derive(Debug, PartialEq)]
 enum State {
     Idle,
-    Connecting,
-    Connected,
-    Waiting,
-    Disconnecting, // -> Stopped
+    Connecting(WSHandle),
+    Connected(WSHandle),
+    Disconnecting(WSHandle), // -> Stopped
+    Waiting(TimerHandle),
     Stopped,
 }
 
@@ -45,8 +45,6 @@ pub struct RendezvousMachine {
     retry_timer: f32,
     state: Option<State>,
     connected_at_least_once: bool,
-    wsh: WSHandle,
-    reconnect_timer: Option<TimerHandle>,
 }
 
 impl RendezvousMachine {
@@ -56,10 +54,6 @@ impl RendezvousMachine {
         side: &MySide,
         retry_timer: f32,
     ) -> RendezvousMachine {
-        // we use a handle here just in case we need to open multiple
-        // connections in the future. For now we ignore it, but the IO layer
-        // is supposed to pass this back in websocket_* messages
-        let wsh = WSHandle::new(1);
         RendezvousMachine {
             appid: appid.clone(),
             relay_url: relay_url.to_string(),
@@ -67,8 +61,6 @@ impl RendezvousMachine {
             retry_timer,
             state: Some(State::Idle),
             connected_at_least_once: false,
-            wsh,
-            reconnect_timer: None,
         }
     }
 
@@ -79,9 +71,9 @@ impl RendezvousMachine {
         let mut actions = Events::new();
         self.state = Some(match old_state {
             Idle => panic!(),
-            Connecting => match event {
-                WebSocketConnectionMade(_wsh) => {
-                    // TODO: assert wsh == self.handle
+            Connecting(wsh) => match event {
+                WebSocketConnectionMade(_h) => {
+                    // TODO: assert h == wsh
                     // TODO: does the order of this matter? if so, oh boy.
                     let txb = RC_TxBind(self.appid.clone(), self.side.clone());
                     actions.push(txb);
@@ -89,69 +81,63 @@ impl RendezvousMachine {
                     actions.push(MailboxEvent::Connected);
                     actions.push(ListerEvent::Connected);
                     actions.push(AllocatorEvent::Connected);
-                    Connected
+                    Connected(wsh)
                 }
                 WebSocketMessageReceived(..) => panic!(),
-                WebSocketConnectionLost(_wsh) => {
-                    // TODO: assert wsh == self.handle
-                    let new_handle = TimerHandle::new(2);
-                    self.reconnect_timer = Some(new_handle);
-                    actions.push(IOAction::StartTimer(
-                        new_handle,
-                        self.retry_timer,
-                    ));
-                    Waiting
+                WebSocketConnectionLost(_h) => {
+                    // TODO: assert h == wsh
+                    let new_th = TimerHandle::new(2);
+                    actions
+                        .push(IOAction::StartTimer(new_th, self.retry_timer));
+                    Waiting(new_th)
                 }
                 TimerExpired(..) => panic!(),
             },
-            Connected => match event {
+            Connected(_wsh) => match event {
                 WebSocketConnectionMade(..) => {
                     panic!("bad transition from {:?}", self)
                 }
-                WebSocketMessageReceived(wsh, message) => {
-                    self.receive(wsh, &message, &mut actions);
+                WebSocketMessageReceived(_h, message) => {
+                    // assert h == wsh
+                    self.receive(&message, &mut actions);
                     old_state
                 }
-                WebSocketConnectionLost(_wsh) => {
-                    // TODO: assert wsh == self.handle
-                    let new_handle = TimerHandle::new(2);
-                    self.reconnect_timer = Some(new_handle);
-                    actions.push(IOAction::StartTimer(
-                        new_handle,
-                        self.retry_timer,
-                    ));
+                WebSocketConnectionLost(_h) => {
+                    // TODO: assert h == wsh
+                    let new_th = TimerHandle::new(2);
+                    actions
+                        .push(IOAction::StartTimer(new_th, self.retry_timer));
                     actions.push(NameplateEvent::Lost);
                     actions.push(MailboxEvent::Lost);
                     actions.push(ListerEvent::Lost);
                     actions.push(AllocatorEvent::Lost);
-                    Waiting
+                    Waiting(new_th)
                 }
                 TimerExpired(..) => panic!(),
             },
-            Waiting => match event {
+            Waiting(_th) => match event {
                 WebSocketConnectionMade(..) => {
                     panic!("bad transition from {:?}", self)
                 }
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(..) => panic!(),
-                TimerExpired(_th) => {
-                    // TODO: assert th == something
-                    let new_handle = WSHandle::new(2);
+                TimerExpired(_h) => {
+                    // TODO: assert h == th
+                    let new_wsh = WSHandle::new(2);
                     actions.push(IOAction::WebSocketOpen(
-                        new_handle,
+                        new_wsh,
                         self.relay_url.clone(),
                     ));
-                    Connecting
+                    Connecting(new_wsh)
                 }
             },
-            Disconnecting => match event {
-                // -> Stopped
+            Disconnecting(_wsh) => match event {
                 WebSocketConnectionMade(..) => {
                     panic!("bad transition from {:?}", self)
                 }
                 WebSocketMessageReceived(..) => panic!(),
-                WebSocketConnectionLost(_wsh) => {
-                    // TODO: assert wsh == self.handle
+                WebSocketConnectionLost(_h) => {
+                    // TODO: assert h == wsh
                     actions.push(TerminatorEvent::Stopped);
                     Stopped
                 }
@@ -178,48 +164,49 @@ impl RendezvousMachine {
         self.state = Some(match old_state {
             Idle => match event {
                 Start => {
-                    // I want this to be stable, but that makes the lifetime weird
-                    //let wsh = self.wsh;
-                    //let wsh = WSHandle{};
+                    // we use a handle here just in case we need to open
+                    // multiple connections in the future. For now we ignore
+                    // it, but the IO layer is supposed to pass this back in
+                    // websocket_* messages
+                    let wsh = WSHandle::new(1);
                     actions.push(IOAction::WebSocketOpen(
-                        self.wsh,
+                        wsh,
                         self.relay_url.clone(),
                     ));
-                    //"url".to_string());
-                    Connecting
+                    Connecting(wsh)
                 }
                 Stop => Stopped,
                 _ => panic!(),
             },
-            Connecting => match event {
+            Connecting(wsh) => match event {
                 Stop => {
-                    actions.push(IOAction::WebSocketClose(self.wsh));
-                    Disconnecting
+                    actions.push(IOAction::WebSocketClose(wsh));
+                    Disconnecting(wsh)
                 }
                 _ => panic!(),
             },
-            Connected => match event {
+            Connected(wsh) => match event {
                 Start => panic!(),
                 TxBind(..) | TxOpen(..) | TxAdd(..) | TxClose(..)
                 | TxClaim(..) | TxRelease(..) | TxAllocate | TxList => {
-                    self.send(event, &mut actions);
+                    for a in self.send(event, wsh) {
+                        actions.push(a)
+                    }
                     old_state
                 }
                 Stop => {
-                    actions.push(IOAction::WebSocketClose(self.wsh));
-                    Disconnecting
+                    actions.push(IOAction::WebSocketClose(wsh));
+                    Disconnecting(wsh)
                 }
             },
-            Waiting => match event {
+            Waiting(th) => match event {
                 Stop => {
-                    actions.push(IOAction::CancelTimer(
-                        self.reconnect_timer.unwrap(),
-                    ));
+                    actions.push(IOAction::CancelTimer(th));
                     Stopped
                 }
                 _ => panic!(),
             },
-            Disconnecting => match event {
+            Disconnecting(_) => match event {
                 Stop => old_state,
                 _ => panic!(),
             },
@@ -231,12 +218,7 @@ impl RendezvousMachine {
         actions
     }
 
-    fn receive(
-        &mut self,
-        _handle: WSHandle,
-        message: &str,
-        actions: &mut Events,
-    ) {
+    fn receive(&mut self, message: &str, actions: &mut Events) {
         trace!("msg is {:?}", message);
         use super::server_messages::deserialize;
         let m = deserialize(message);
@@ -281,7 +263,7 @@ impl RendezvousMachine {
         };
     }
 
-    fn send(&mut self, e: RendezvousEvent, actions: &mut Events) {
+    fn send(&mut self, e: RendezvousEvent, wsh: WSHandle) -> Events {
         use super::events::RendezvousEvent::*;
         use super::server_messages::{
             add, allocate, bind, claim, close, list, open, release,
@@ -307,11 +289,10 @@ impl RendezvousMachine {
         // the event dict, rather than putting them down in the ["message"]
         // key
         t.detail_json("message", &serde_json::to_value(&m).unwrap());
-        actions.push(t);
 
         let ms = serde_json::to_string(&m).unwrap();
-        let s = IOAction::WebSocketSendMessage(self.wsh, ms);
-        actions.push(s);
+        let s = IOAction::WebSocketSendMessage(wsh, ms);
+        events![t, s]
     }
 }
 
