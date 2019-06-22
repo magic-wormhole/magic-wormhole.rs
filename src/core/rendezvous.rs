@@ -11,10 +11,6 @@ use super::api::{TimerHandle, WSHandle};
 use super::events::{
     AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide,
 };
-use super::server_messages::{
-    add, allocate, bind, claim, close, deserialize, list, open, release,
-    InboundMessage, OutboundMessage,
-};
 use hex;
 use log::trace;
 use serde_json;
@@ -23,24 +19,12 @@ use super::api::IOEvent;
 use super::events::RendezvousEvent;
 // we emit these
 use super::api::IOAction;
-use super::events::AllocatorEvent::{
-    Connected as A_Connected, Lost as A_Lost, RxAllocated as A_RxAllocated,
-};
-use super::events::BossEvent::RxWelcome as B_RxWelcome;
-use super::events::ListerEvent::{
-    Connected as L_Connected, Lost as L_Lost, RxNameplates as L_RxNamePlates,
-};
-use super::events::MailboxEvent::{
-    Connected as M_Connected, Lost as M_Lost, RxClosed as M_RxClosed,
-    RxMessage as M_RxMessage,
-};
-use super::events::NameplateEvent::{
-    Connected as N_Connected, Lost as N_Lost, RxClaimed as N_RxClaimed,
-    RxReleased as N_RxReleased,
+use super::events::{
+    AllocatorEvent, BossEvent, ListerEvent, MailboxEvent, NameplateEvent,
+    TerminatorEvent,
 };
 
 use super::events::RendezvousEvent::TxBind as RC_TxBind; // loops around
-use super::events::TerminatorEvent::Stopped as T_Stopped;
 use super::timing::new_timelog;
 
 #[derive(Debug, PartialEq)]
@@ -99,12 +83,12 @@ impl RendezvousMachine {
                 WebSocketConnectionMade(_wsh) => {
                     // TODO: assert wsh == self.handle
                     // TODO: does the order of this matter? if so, oh boy.
-                    actions
-                        .push(RC_TxBind(self.appid.clone(), self.side.clone()));
-                    actions.push(N_Connected);
-                    actions.push(M_Connected);
-                    actions.push(L_Connected);
-                    actions.push(A_Connected);
+                    let txb = RC_TxBind(self.appid.clone(), self.side.clone());
+                    actions.push(txb);
+                    actions.push(NameplateEvent::Connected);
+                    actions.push(MailboxEvent::Connected);
+                    actions.push(ListerEvent::Connected);
+                    actions.push(AllocatorEvent::Connected);
                     Connected
                 }
                 WebSocketMessageReceived(..) => panic!(),
@@ -136,10 +120,10 @@ impl RendezvousMachine {
                         new_handle,
                         self.retry_timer,
                     ));
-                    actions.push(N_Lost);
-                    actions.push(M_Lost);
-                    actions.push(L_Lost);
-                    actions.push(A_Lost);
+                    actions.push(NameplateEvent::Lost);
+                    actions.push(MailboxEvent::Lost);
+                    actions.push(ListerEvent::Lost);
+                    actions.push(AllocatorEvent::Lost);
                     Waiting
                 }
                 TimerExpired(..) => panic!(),
@@ -168,7 +152,7 @@ impl RendezvousMachine {
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(_wsh) => {
                     // TODO: assert wsh == self.handle
-                    actions.push(T_Stopped);
+                    actions.push(TerminatorEvent::Stopped);
                     Stopped
                 }
                 TimerExpired(..) => panic!(),
@@ -216,24 +200,11 @@ impl RendezvousMachine {
             },
             Connected => match event {
                 Start => panic!(),
-                TxBind(appid, side) => {
-                    self.send(&bind(&appid, &side), &mut actions)
+                TxBind(..) | TxOpen(..) | TxAdd(..) | TxClose(..)
+                | TxClaim(..) | TxRelease(..) | TxAllocate | TxList => {
+                    self.send(event, &mut actions);
+                    old_state
                 }
-                TxOpen(mailbox) => self.send(&open(&mailbox), &mut actions),
-                TxAdd(phase, body) => {
-                    self.send(&add(&phase, &body), &mut actions)
-                }
-                TxClose(mailbox, mood) => {
-                    self.send(&close(&mailbox, mood), &mut actions)
-                }
-                TxClaim(nameplate) => {
-                    self.send(&claim(&nameplate), &mut actions)
-                }
-                TxRelease(nameplate) => {
-                    self.send(&release(&nameplate), &mut actions)
-                }
-                TxAllocate => self.send(&allocate(), &mut actions),
-                TxList => self.send(&list(), &mut actions),
                 Stop => {
                     actions.push(IOAction::WebSocketClose(self.wsh));
                     Disconnecting
@@ -267,6 +238,7 @@ impl RendezvousMachine {
         actions: &mut Events,
     ) {
         trace!("msg is {:?}", message);
+        use super::server_messages::deserialize;
         let m = deserialize(message);
 
         let mut t = new_timelog("ws_receive", None);
@@ -277,40 +249,54 @@ impl RendezvousMachine {
         // TODO: log+ignore unrecognized messages. They should flunk unit
         // tests, but not break normal operation
 
-        use self::InboundMessage::*;
+        use super::server_messages::InboundMessage::*;
         match m {
             Welcome { ref welcome } => {
-                actions.push(B_RxWelcome(welcome.clone()))
+                actions.push(BossEvent::RxWelcome(welcome.clone()))
             }
-            Released { .. } => actions.push(N_RxReleased),
-            Closed { .. } => actions.push(M_RxClosed),
+            Released { .. } => actions.push(NameplateEvent::RxReleased),
+            Closed { .. } => actions.push(MailboxEvent::RxClosed),
             Pong { .. } => (), // TODO
             Ack { .. } => (),  // we ignore this, it's only for the timing log
-            Claimed { mailbox } => actions.push(N_RxClaimed(Mailbox(mailbox))),
-            Message {
-                side,
-                phase,
-                body,
-                //id,
-            } => actions.push(M_RxMessage(
-                TheirSide(side),
-                Phase(phase),
-                hex::decode(body).unwrap(),
-            )),
+            Claimed { mailbox } => {
+                actions.push(NameplateEvent::RxClaimed(Mailbox(mailbox)))
+            }
+            Message { side, phase, body } => {
+                actions.push(MailboxEvent::RxMessage(
+                    TheirSide(side),
+                    Phase(phase),
+                    hex::decode(body).unwrap(),
+                ))
+            }
             Allocated { nameplate } => {
-                actions.push(A_RxAllocated(Nameplate(nameplate)))
+                actions.push(AllocatorEvent::RxAllocated(Nameplate(nameplate)))
             }
             Nameplates { nameplates } => {
                 let nids: Vec<Nameplate> = nameplates
                     .iter()
                     .map(|n| Nameplate(n.id.to_owned()))
                     .collect();
-                actions.push(L_RxNamePlates(nids));
+                actions.push(ListerEvent::RxNameplates(nids));
             }
         };
     }
 
-    fn send(&mut self, m: &OutboundMessage, actions: &mut Events) -> State {
+    fn send(&mut self, e: RendezvousEvent, actions: &mut Events) {
+        use super::events::RendezvousEvent::*;
+        use super::server_messages::{
+            add, allocate, bind, claim, close, list, open, release,
+        };
+        let m = match e {
+            TxBind(appid, side) => bind(&appid, &side),
+            TxOpen(mailbox) => open(&mailbox),
+            TxAdd(phase, body) => add(&phase, &body),
+            TxClose(mailbox, mood) => close(&mailbox, mood),
+            TxClaim(nameplate) => claim(&nameplate),
+            TxRelease(nameplate) => release(&nameplate),
+            TxAllocate => allocate(),
+            TxList => list(),
+            Start | Stop => panic!(),
+        };
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
         let mut t = new_timelog("ws_send", None);
@@ -320,13 +306,12 @@ impl RendezvousMachine {
         // TODO: the Python version merges all the keys of 'm' at the top of
         // the event dict, rather than putting them down in the ["message"]
         // key
-        t.detail_json("message", &serde_json::to_value(m).unwrap());
+        t.detail_json("message", &serde_json::to_value(&m).unwrap());
         actions.push(t);
 
-        let ms = serde_json::to_string(m).unwrap();
+        let ms = serde_json::to_string(&m).unwrap();
         let s = IOAction::WebSocketSendMessage(self.wsh, ms);
         actions.push(s);
-        State::Connected
     }
 }
 
@@ -336,17 +321,14 @@ mod test {
     use crate::core::api::IOAction;
     use crate::core::api::IOEvent;
     use crate::core::api::{TimerHandle, WSHandle};
-    use crate::core::events::AllocatorEvent::Lost as A_Lost;
     use crate::core::events::Event::{Nameplate, Rendezvous, Terminator, IO};
-    use crate::core::events::ListerEvent::Lost as L_Lost;
-    use crate::core::events::MailboxEvent::Lost as M_Lost;
-    use crate::core::events::NameplateEvent::{
-        Connected as N_Connected, Lost as N_Lost,
-    };
     use crate::core::events::RendezvousEvent::{
         Start as RC_Start, Stop as RC_Stop, TxBind as RC_TxBind,
     };
     use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
+    use crate::core::events::{
+        AllocatorEvent, ListerEvent, MailboxEvent, NameplateEvent,
+    };
     use crate::core::events::{AppID, MySide};
     use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
     use crate::core::test::filt;
@@ -410,7 +392,7 @@ mod test {
         let e = actions.remove(0);
 
         match e {
-            Nameplate(N_Connected) => {
+            Nameplate(NameplateEvent::Connected) => {
                 // yay
             }
             _ => panic!(),
@@ -447,7 +429,16 @@ mod test {
             }
             _ => panic!(),
         }
-        assert_eq!(actions, events![N_Lost, M_Lost, L_Lost, A_Lost].events);
+        assert_eq!(
+            actions,
+            events![
+                NameplateEvent::Lost,
+                MailboxEvent::Lost,
+                ListerEvent::Lost,
+                AllocatorEvent::Lost
+            ]
+            .events
+        );
 
         actions = filt(r.process_io(IOEvent::TimerExpired(th))).events;
         assert_eq!(actions.len(), 1);
