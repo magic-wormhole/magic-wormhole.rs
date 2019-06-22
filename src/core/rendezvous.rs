@@ -38,6 +38,7 @@ use super::events::NameplateEvent::{
     Connected as N_Connected, Lost as N_Lost, RxClaimed as N_RxClaimed,
     RxReleased as N_RxReleased,
 };
+
 use super::events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 use super::events::TerminatorEvent::Stopped as T_Stopped;
 use super::timing::new_timelog;
@@ -58,7 +59,7 @@ pub struct RendezvousMachine {
     relay_url: String,
     side: MySide,
     retry_timer: f32,
-    state: State,
+    state: Option<State>,
     connected_at_least_once: bool,
     wsh: WSHandle,
     reconnect_timer: Option<TimerHandle>,
@@ -80,7 +81,7 @@ impl RendezvousMachine {
             relay_url: relay_url.to_string(),
             side: side.clone(),
             retry_timer,
-            state: State::Idle,
+            state: Some(State::Idle),
             connected_at_least_once: false,
             wsh,
             reconnect_timer: None,
@@ -89,184 +90,227 @@ impl RendezvousMachine {
 
     pub fn process_io(&mut self, event: IOEvent) -> Events {
         use super::api::IOEvent::*;
-        match event {
-            WebSocketConnectionMade(wsh) => self.connection_made(wsh),
-            WebSocketMessageReceived(wsh, message) => {
-                self.message_received(wsh, &message)
-            }
-            WebSocketConnectionLost(wsh) => self.connection_lost(wsh),
-            TimerExpired(th) => self.timer_expired(th),
-        }
+        use State::*;
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            Idle => panic!(),
+            Connecting => match event {
+                WebSocketConnectionMade(_wsh) => {
+                    // TODO: assert wsh == self.handle
+                    // TODO: does the order of this matter? if so, oh boy.
+                    actions
+                        .push(RC_TxBind(self.appid.clone(), self.side.clone()));
+                    actions.push(N_Connected);
+                    actions.push(M_Connected);
+                    actions.push(L_Connected);
+                    actions.push(A_Connected);
+                    Connected
+                }
+                WebSocketMessageReceived(..) => panic!(),
+                WebSocketConnectionLost(_wsh) => {
+                    // TODO: assert wsh == self.handle
+                    let new_handle = TimerHandle::new(2);
+                    self.reconnect_timer = Some(new_handle);
+                    actions.push(IOAction::StartTimer(
+                        new_handle,
+                        self.retry_timer,
+                    ));
+                    Waiting
+                }
+                TimerExpired(..) => panic!(),
+            },
+            Connected => match event {
+                WebSocketConnectionMade(..) => {
+                    panic!("bad transition from {:?}", self)
+                }
+                WebSocketMessageReceived(wsh, message) => {
+                    self.receive(wsh, &message, &mut actions);
+                    old_state
+                }
+                WebSocketConnectionLost(_wsh) => {
+                    // TODO: assert wsh == self.handle
+                    let new_handle = TimerHandle::new(2);
+                    self.reconnect_timer = Some(new_handle);
+                    actions.push(IOAction::StartTimer(
+                        new_handle,
+                        self.retry_timer,
+                    ));
+                    actions.push(N_Lost);
+                    actions.push(M_Lost);
+                    actions.push(L_Lost);
+                    actions.push(A_Lost);
+                    Waiting
+                }
+                TimerExpired(..) => panic!(),
+            },
+            Waiting => match event {
+                WebSocketConnectionMade(..) => {
+                    panic!("bad transition from {:?}", self)
+                }
+                WebSocketMessageReceived(..) => panic!(),
+                WebSocketConnectionLost(..) => panic!(),
+                TimerExpired(_th) => {
+                    // TODO: assert th == something
+                    let new_handle = WSHandle::new(2);
+                    actions.push(IOAction::WebSocketOpen(
+                        new_handle,
+                        self.relay_url.clone(),
+                    ));
+                    Connecting
+                }
+            },
+            Disconnecting => match event {
+                // -> Stopped
+                WebSocketConnectionMade(..) => {
+                    panic!("bad transition from {:?}", self)
+                }
+                WebSocketMessageReceived(..) => panic!(),
+                WebSocketConnectionLost(_wsh) => {
+                    // TODO: assert wsh == self.handle
+                    actions.push(T_Stopped);
+                    Stopped
+                }
+                TimerExpired(..) => panic!(),
+            },
+            Stopped => match event {
+                WebSocketConnectionMade(..) => {
+                    panic!("bad transition from {:?}", self)
+                }
+                WebSocketMessageReceived(..) => panic!(),
+                WebSocketConnectionLost(..) => panic!(),
+                TimerExpired(..) => panic!(),
+            },
+        });
+        actions
     }
 
-    pub fn process(&mut self, e: RendezvousEvent) -> Events {
+    pub fn process(&mut self, event: RendezvousEvent) -> Events {
         use super::events::RendezvousEvent::*;
-        trace!("rendezvous: {:?}", e);
-        match e {
-            Start => self.start(),
-            TxBind(appid, side) => self.send(&bind(&appid, &side)),
-            TxOpen(mailbox) => self.send(&open(&mailbox)),
-            TxAdd(phase, body) => self.send(&add(&phase, &body)),
-            TxClose(mailbox, mood) => self.send(&close(&mailbox, mood)),
-            Stop => self.stop(),
-            TxClaim(nameplate) => self.send(&claim(&nameplate)),
-            TxRelease(nameplate) => self.send(&release(&nameplate)),
-            TxAllocate => self.send(&allocate()),
-            TxList => self.send(&list()),
-        }
-    }
-
-    fn start(&mut self) -> Events {
-        // I want this to be stable, but that makes the lifetime weird
-        //let wsh = self.wsh;
-        //let wsh = WSHandle{};
-        let actions;
-        let newstate = match self.state {
-            State::Idle => {
-                actions = events![IOAction::WebSocketOpen(
-                    self.wsh,
-                    self.relay_url.clone()
-                )];
-                //"url".to_string());
-                State::Connecting
-            }
-            _ => panic!("bad transition from {:?}", self),
-        };
-        self.state = newstate;
+        use State::*;
+        trace!("rendezvous: {:?}", event);
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            Idle => match event {
+                Start => {
+                    // I want this to be stable, but that makes the lifetime weird
+                    //let wsh = self.wsh;
+                    //let wsh = WSHandle{};
+                    actions.push(IOAction::WebSocketOpen(
+                        self.wsh,
+                        self.relay_url.clone(),
+                    ));
+                    //"url".to_string());
+                    Connecting
+                }
+                Stop => Stopped,
+                _ => panic!(),
+            },
+            Connecting => match event {
+                Stop => {
+                    actions.push(IOAction::WebSocketClose(self.wsh));
+                    Disconnecting
+                }
+                _ => panic!(),
+            },
+            Connected => match event {
+                Start => panic!(),
+                TxBind(appid, side) => {
+                    self.send(&bind(&appid, &side), &mut actions)
+                }
+                TxOpen(mailbox) => self.send(&open(&mailbox), &mut actions),
+                TxAdd(phase, body) => {
+                    self.send(&add(&phase, &body), &mut actions)
+                }
+                TxClose(mailbox, mood) => {
+                    self.send(&close(&mailbox, mood), &mut actions)
+                }
+                TxClaim(nameplate) => {
+                    self.send(&claim(&nameplate), &mut actions)
+                }
+                TxRelease(nameplate) => {
+                    self.send(&release(&nameplate), &mut actions)
+                }
+                TxAllocate => self.send(&allocate(), &mut actions),
+                TxList => self.send(&list(), &mut actions),
+                Stop => {
+                    actions.push(IOAction::WebSocketClose(self.wsh));
+                    Disconnecting
+                }
+            },
+            Waiting => match event {
+                Stop => {
+                    actions.push(IOAction::CancelTimer(
+                        self.reconnect_timer.unwrap(),
+                    ));
+                    Stopped
+                }
+                _ => panic!(),
+            },
+            Disconnecting => match event {
+                Stop => old_state,
+                _ => panic!(),
+            },
+            Stopped => match event {
+                Stop => Stopped,
+                _ => panic!(),
+            },
+        });
         actions
     }
 
-    fn connection_made(&mut self, _handle: WSHandle) -> Events {
-        // TODO: assert handle == self.handle
-        let (actions, newstate) = match self.state {
-            State::Connecting => {
-                // TODO: does the order of this matter? if so, oh boy.
-                let a = events![
-                    RC_TxBind(self.appid.clone(), self.side.clone()),
-                    N_Connected,
-                    M_Connected,
-                    L_Connected,
-                    A_Connected
-                ];
-                (a, State::Connected)
-            }
-            _ => panic!("bad transition from {:?}", self),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn message_received(&mut self, _handle: WSHandle, message: &str) -> Events {
+    fn receive(
+        &mut self,
+        _handle: WSHandle,
+        message: &str,
+        actions: &mut Events,
+    ) {
         trace!("msg is {:?}", message);
         let m = deserialize(message);
 
         let mut t = new_timelog("ws_receive", None);
         t.detail("_side", &self.side);
         t.detail_json("message", &serde_json::to_value(&m).unwrap());
+        actions.push(t);
 
         // TODO: log+ignore unrecognized messages. They should flunk unit
         // tests, but not break normal operation
 
         use self::InboundMessage::*;
         match m {
-            Welcome { ref welcome } => events![t, B_RxWelcome(welcome.clone())],
-            Released { .. } => events![t, N_RxReleased],
-            Closed { .. } => events![t, M_RxClosed],
-            Pong { .. } => events![t,], // TODO
-            Ack { .. } => events![t,], // we ignore this, it's only for the timing log
-            Claimed { mailbox } => events![t, N_RxClaimed(Mailbox(mailbox))],
+            Welcome { ref welcome } => {
+                actions.push(B_RxWelcome(welcome.clone()))
+            }
+            Released { .. } => actions.push(N_RxReleased),
+            Closed { .. } => actions.push(M_RxClosed),
+            Pong { .. } => (), // TODO
+            Ack { .. } => (),  // we ignore this, it's only for the timing log
+            Claimed { mailbox } => actions.push(N_RxClaimed(Mailbox(mailbox))),
             Message {
                 side,
                 phase,
                 body,
                 //id,
-            } => events![
-                t,
-                M_RxMessage(
-                    TheirSide(side),
-                    Phase(phase),
-                    hex::decode(body).unwrap()
-                )
-            ],
+            } => actions.push(M_RxMessage(
+                TheirSide(side),
+                Phase(phase),
+                hex::decode(body).unwrap(),
+            )),
             Allocated { nameplate } => {
-                events![t, A_RxAllocated(Nameplate(nameplate))]
+                actions.push(A_RxAllocated(Nameplate(nameplate)))
             }
             Nameplates { nameplates } => {
                 let nids: Vec<Nameplate> = nameplates
                     .iter()
                     .map(|n| Nameplate(n.id.to_owned()))
                     .collect();
-                events![t, L_RxNamePlates(nids)]
+                actions.push(L_RxNamePlates(nids));
             }
-        }
-    }
-
-    fn connection_lost(&mut self, _handle: WSHandle) -> Events {
-        // TODO: assert handle == self.handle
-        let (actions, newstate) = match self.state {
-            State::Connecting => {
-                let new_handle = TimerHandle::new(2);
-                self.reconnect_timer = Some(new_handle);
-                (
-                    events![IOAction::StartTimer(new_handle, self.retry_timer)],
-                    State::Waiting,
-                )
-            }
-            State::Connected => {
-                let new_handle = TimerHandle::new(2);
-                self.reconnect_timer = Some(new_handle);
-                (
-                    events![
-                        IOAction::StartTimer(new_handle, self.retry_timer),
-                        N_Lost,
-                        M_Lost,
-                        L_Lost,
-                        A_Lost
-                    ],
-                    State::Waiting,
-                )
-            }
-            State::Disconnecting => (events![T_Stopped], State::Stopped),
-            _ => panic!("bad transition from {:?}", self),
         };
-        self.state = newstate;
-        actions
     }
 
-    fn timer_expired(&mut self, _handle: TimerHandle) -> Events {
-        // TODO: assert handle == self.handle
-        let (actions, newstate) = match self.state {
-            State::Waiting => {
-                let new_handle = WSHandle::new(2);
-                let open =
-                    IOAction::WebSocketOpen(new_handle, self.relay_url.clone());
-                (events![open], State::Connecting)
-            }
-            _ => panic!("bad transition from {:?}", self),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn stop(&mut self) -> Events {
-        let (actions, newstate) = match self.state {
-            State::Idle | State::Stopped => (events![], State::Stopped),
-            State::Connecting | State::Connected => {
-                let close = IOAction::WebSocketClose(self.wsh);
-                (events![close], State::Disconnecting)
-            }
-            State::Waiting => {
-                let cancel =
-                    IOAction::CancelTimer(self.reconnect_timer.unwrap());
-                (events![cancel], State::Stopped)
-            }
-            State::Disconnecting => (events![], State::Disconnecting),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn send(&mut self, m: &OutboundMessage) -> Events {
+    fn send(&mut self, m: &OutboundMessage, actions: &mut Events) -> State {
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
         // for timing-graph instrumentation)
         let mut t = new_timelog("ws_send", None);
@@ -277,10 +321,12 @@ impl RendezvousMachine {
         // the event dict, rather than putting them down in the ["message"]
         // key
         t.detail_json("message", &serde_json::to_value(m).unwrap());
+        actions.push(t);
 
         let ms = serde_json::to_string(m).unwrap();
         let s = IOAction::WebSocketSendMessage(self.wsh, ms);
-        events![t, s]
+        actions.push(s);
+        State::Connected
     }
 }
 
@@ -298,7 +344,7 @@ mod test {
         Connected as N_Connected, Lost as N_Lost,
     };
     use crate::core::events::RendezvousEvent::{
-        Stop as RC_Stop, TxBind as RC_TxBind,
+        Start as RC_Start, Stop as RC_Stop, TxBind as RC_TxBind,
     };
     use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
     use crate::core::events::{AppID, MySide};
@@ -319,7 +365,7 @@ mod test {
         let wsh: WSHandle;
         let th: TimerHandle;
 
-        let mut actions = filt(r.start()).events;
+        let mut actions = filt(r.process(RC_Start)).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         // TODO: I want to:
