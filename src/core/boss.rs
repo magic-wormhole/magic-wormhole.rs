@@ -1,5 +1,5 @@
 use super::api::Mood;
-use super::events::{Code, Events, Nameplate, Phase};
+use super::events::{Events, Nameplate, Phase};
 use super::wordlist::default_wordlist;
 use serde_json::json;
 use std::str::FromStr;
@@ -27,265 +27,229 @@ use super::events::TerminatorEvent::Close as T_Close;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
-    Unstarted(u32),
+    Unstarted,
     Empty(u32),
     Coding(u32),
+    Inputting(u32),
     Lonely(u32),
     Happy(u32),
-    Closing,
-    Closed,
+    Closing(Mood),
+    Closed(Mood),
 }
 
 pub struct BossMachine {
-    state: State,
-    mood: Mood,
-}
-
-impl State {
-    pub fn increment_phase(self) -> Self {
-        use self::State::*;
-        match self {
-            Unstarted(i) => Unstarted(i + 1),
-            Empty(i) => Empty(i + 1),
-            Coding(i) => Coding(i + 1),
-            Lonely(i) => Lonely(i + 1),
-            Happy(i) => Happy(i + 1),
-            Closing => Closing,
-            Closed => Closed,
-        }
-    }
+    state: Option<State>,
 }
 
 impl BossMachine {
     pub fn new() -> BossMachine {
         BossMachine {
-            state: State::Unstarted(0),
-            mood: Mood::Lonely,
+            state: Some(State::Unstarted),
         }
     }
 
     pub fn process_api(&mut self, event: APIEvent) -> Events {
         use super::api::APIEvent::*;
+        use State::*;
 
-        match event {
-            Start => self.start(),
-            AllocateCode(num_words) => self.allocate_code(num_words), // TODO: wordlist
-            InputCode => self.input_code(), // TODO: return Helper
-            InputHelperRefreshNameplates => {
-                self.input_helper_refresh_nameplates()
-            }
-            InputHelperChooseNameplate(nameplate) => {
-                self.input_helper_choose_nameplate(&nameplate)
-            }
-            InputHelperChooseWords(words) => {
-                self.input_helper_choose_words(&words)
-            }
-            SetCode(code) => self.set_code(&code),
-            Close => self.close(),
-            Send(plaintext) => self.send(plaintext),
-        }
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            Unstarted => match event {
+                Start => {
+                    actions.push(RC_Start);
+                    Empty(0)
+                }
+                _ => panic!("w.start() must be called first"),
+            },
+            Empty(i) => match event {
+                AllocateCode(num_words) => {
+                    // TODO: provide choice of wordlists
+                    let wordlist = Arc::new(default_wordlist(num_words));
+                    actions.push(C_AllocateCode(wordlist));
+                    Coding(i)
+                }
+                SetCode(code) => {
+                    // TODO: validate code, maybe signal KeyFormatError
+                    // We move to Coding instead of directly to Lonely
+                    // because Code::SetCode will signal us with Boss:GotCode
+                    // in just a moment, and by not special-casing set_code
+                    // we get to use the same flow for allocate_code and
+                    // input_code
+                    actions.push(C_SetCode(code));
+                    Coding(i)
+                }
+                InputCode => {
+                    // TODO: return Helper somehow
+                    actions.push(C_InputCode);
+                    Inputting(i)
+                }
+                Send(plaintext) => {
+                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
+                    Empty(i + 1)
+                }
+                Close => {
+                    actions.push(T_Close(Mood::Lonely));
+                    Closing(Mood::Lonely)
+                }
+                _ => panic!(),
+            },
+            Coding(i) => match event {
+                // TODO: allocate/input/set-code: signal AlreadyStartedCodeError
+                Send(plaintext) => {
+                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
+                    Coding(i + 1)
+                }
+                Close => {
+                    actions.push(T_Close(Mood::Lonely));
+                    Closing(Mood::Lonely)
+                }
+                _ => panic!(),
+            },
+            Inputting(i) => match event {
+                InputHelperRefreshNameplates => {
+                    actions.push(I_RefreshNameplates);
+                    Inputting(i)
+                }
+                InputHelperChooseNameplate(nameplate) => {
+                    actions.push(I_ChooseNameplate(Nameplate(
+                        nameplate.to_string(),
+                    )));
+                    Inputting(i)
+                }
+                InputHelperChooseWords(words) => {
+                    actions.push(I_ChooseWords(words.to_string()));
+                    Inputting(i)
+                }
+                Send(plaintext) => {
+                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
+                    Inputting(i + 1)
+                }
+                Close => {
+                    actions.push(T_Close(Mood::Lonely));
+                    Closing(Mood::Lonely)
+                }
+                _ => panic!(),
+            },
+            Lonely(i) => match event {
+                Send(plaintext) => {
+                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
+                    Lonely(i + 1)
+                }
+                Close => {
+                    actions.push(T_Close(Mood::Lonely));
+                    Closing(Mood::Lonely)
+                }
+                _ => panic!(),
+            },
+            Happy(i) => match event {
+                Send(plaintext) => {
+                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
+                    Happy(i + 1)
+                }
+                Close => {
+                    actions.push(T_Close(Mood::Happy));
+                    Closing(Mood::Happy)
+                }
+                _ => panic!(),
+            },
+            Closing(_) | Closed(_) => panic!("No API calls after close"),
+        });
+        actions
     }
 
     pub fn process(&mut self, event: BossEvent) -> Events {
         use super::events::BossEvent::*;
-        match event {
-            GotCode(code) => self.got_code(&code),
-            GotKey(key) => events![APIAction::GotUnverifiedKey(key.clone())],
-            Happy => self.happy(),
-            GotVerifier(verifier) => events![APIAction::GotVerifier(verifier)],
-            GotMessage(phase, plaintext) => self.got_message(&phase, plaintext),
-            Closed => self.closed(),
-            Error | RxError | Scared => events![], // TODO
-            RxWelcome(ref v) => events![APIAction::GotWelcome(v.clone())],
-        }
-    }
+        use State::*;
 
-    fn start(&mut self) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(i) => (events![RC_Start], Empty(i)),
-            _ => panic!("only start once"),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn allocate_code(&mut self, num_words: usize) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Empty(i) => {
-                // TODO: provide choice of wordlists
-                let wordlist = Arc::new(default_wordlist(num_words));
-                (events![C_AllocateCode(wordlist)], Coding(i))
-            }
-            _ => panic!(), // TODO: signal AlreadyStartedCodeError
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn set_code(&mut self, code: &Code) -> Events {
-        // TODO: validate code, maybe signal KeyFormatError
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            // we move to Coding instead of directly to Lonely because
-            // Code::SetCode will signal us with Boss:GotCode in just a
-            // moment, and by not special-casing set_code we get to use the
-            // same flow for allocate_code and input_code
-            Empty(i) => (events![C_SetCode(code.clone())], Coding(i)),
-            _ => panic!(), // TODO: signal AlreadyStartedCodeError
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn input_code(&mut self) -> Events {
-        // TODO: validate code, maybe signal KeyFormatError
-        // TODO: return Helper somehow
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Empty(i) => (events![C_InputCode], Coding(i)),
-            _ => panic!(), // TODO: signal AlreadyStartedCodeError
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn input_helper_refresh_nameplates(&mut self) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Coding(i) => (events![I_RefreshNameplates], Coding(i)),
-            _ => panic!(),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn input_helper_choose_nameplate(&mut self, nameplate: &str) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Coding(i) => (
-                events![I_ChooseNameplate(Nameplate(nameplate.to_string()))],
-                Coding(i),
-            ),
-            _ => panic!(),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn input_helper_choose_words(&mut self, word: &str) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Coding(i) => (events![I_ChooseWords(word.to_string())], Coding(i)),
-            _ => panic!(),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn got_code(&mut self, code: &Code) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Coding(i) => (events![APIAction::GotCode(code.clone())], Lonely(i)),
-            _ => panic!(), // TODO: signal AlreadyStartedCodeError
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn happy(&mut self) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Lonely(i) => (events![], Happy(i)),
-            Closing => (events![], Closing),
-            _ => panic!(),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn got_message(&mut self, phase: &Phase, plaintext: Vec<u8>) -> Events {
-        use self::State::*;
-        let phase_pattern = Regex::from_str("\\d+").unwrap();
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Closing | Closed | Empty(..) | Coding(..) | Lonely(..) => {
-                (events![], self.state)
-            }
-            Happy(i) => {
-                if phase.to_string() == "version" {
-                    // TODO handle error conditions
-                    use serde_json::Value;
-                    let version_str = String::from_utf8(plaintext).unwrap();
-                    let v: Value = serde_json::from_str(&version_str).unwrap();
-                    let app_versions = match v.get("app_versions") {
-                        Some(versions) => versions.clone(),
-                        None => json!({}),
-                    };
-
-                    (events![APIAction::GotVersions(app_versions)], Happy(i))
-                } else if phase_pattern.is_match(phase) {
-                    (events![APIAction::GotMessage(plaintext)], Happy(i))
-                } else {
-                    // TODO: log and ignore, for future expansion
-                    (events![], Happy(i))
+        let old_state = self.state.take().unwrap();
+        let mut actions = Events::new();
+        self.state = Some(match old_state {
+            Unstarted => panic!("w.start() must be called first"),
+            Empty(_) => match event {
+                RxWelcome(v) => {
+                    actions.push(APIAction::GotWelcome(v));
+                    old_state
                 }
-            }
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn send(&mut self, plaintext: Vec<u8>) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Closing | Closed => (events![], self.state),
-            Empty(i) | Coding(i) | Lonely(i) | Happy(i) => (
-                events![S_Send(Phase(format!("{}", i)), plaintext)],
-                self.state.increment_phase(),
-            ),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn close(&mut self) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Empty(..) | Coding(..) | Lonely(..) => {
-                self.mood = Mood::Lonely;
-                (events![T_Close(Mood::Lonely)], Closing)
-            }
-            Happy(..) => {
-                self.mood = Mood::Happy;
-                (events![T_Close(Mood::Happy)], Closing)
-            }
-            Closing => (events![], Closing),
-            Closed => (events![], Closed),
-        };
-        self.state = newstate;
-        actions
-    }
-
-    fn closed(&mut self) -> Events {
-        use self::State::*;
-        let (actions, newstate) = match self.state {
-            Unstarted(_) => panic!("w.start() must be called first"),
-            Closing => (events![APIAction::GotClosed(self.mood)], Closed),
-            _ => panic!(),
-        };
-        self.state = newstate;
+                _ => panic!(),
+            },
+            Coding(i) => match event {
+                RxWelcome(v) => {
+                    actions.push(APIAction::GotWelcome(v));
+                    old_state
+                }
+                GotCode(code) => {
+                    actions.push(APIAction::GotCode(code));
+                    Lonely(i)
+                }
+                _ => panic!(),
+            },
+            Inputting(i) => match event {
+                RxWelcome(v) => {
+                    actions.push(APIAction::GotWelcome(v));
+                    old_state
+                }
+                GotCode(code) => {
+                    actions.push(APIAction::GotCode(code));
+                    Lonely(i)
+                }
+                _ => panic!(),
+            },
+            Lonely(i) => match event {
+                RxWelcome(v) => {
+                    actions.push(APIAction::GotWelcome(v));
+                    old_state
+                }
+                GotKey(key) => {
+                    actions.push(APIAction::GotUnverifiedKey(key));
+                    old_state
+                }
+                BossEvent::Happy => State::Happy(i),
+                _ => panic!(),
+            },
+            State::Happy(_) => match event {
+                RxWelcome(v) => {
+                    actions.push(APIAction::GotWelcome(v));
+                    old_state
+                }
+                GotVerifier(verifier) => {
+                    actions.push(APIAction::GotVerifier(verifier));
+                    old_state
+                }
+                GotMessage(phase, plaintext) => {
+                    let phase_pattern = Regex::from_str("\\d+").unwrap();
+                    if phase.to_string() == "version" {
+                        // TODO handle error conditions
+                        use serde_json::Value;
+                        let version_str = String::from_utf8(plaintext).unwrap();
+                        let v: Value =
+                            serde_json::from_str(&version_str).unwrap();
+                        let app_versions = match v.get("app_versions") {
+                            Some(versions) => versions.clone(),
+                            None => json!({}),
+                        };
+                        actions.push(APIAction::GotVersions(app_versions));
+                    } else if phase_pattern.is_match(&phase) {
+                        actions.push(APIAction::GotMessage(plaintext));
+                    } else {
+                        // TODO: log and ignore, for future expansion
+                    }
+                    old_state
+                }
+                // Error | RxError | Scared: TODO
+                _ => panic!(),
+            },
+            Closing(mood) => match event {
+                RxWelcome(..) => old_state,
+                BossEvent::Happy => old_state,
+                BossEvent::Closed => {
+                    actions.push(APIAction::GotClosed(mood));
+                    State::Closed(mood)
+                }
+                _ => panic!(),
+            },
+            State::Closed(_) => panic!("No events after closed"),
+        });
         actions
     }
 }
@@ -295,7 +259,7 @@ impl BossMachine {
 mod test {
     use super::*;
     use crate::core::api::{APIEvent, Mood};
-    use crate::core::events::{Key, RendezvousEvent, TerminatorEvent};
+    use crate::core::events::{Code, Key, RendezvousEvent, TerminatorEvent};
 
     #[test]
     fn create() {
