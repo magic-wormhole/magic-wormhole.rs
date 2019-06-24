@@ -42,9 +42,11 @@ pub struct RendezvousMachine {
     appid: AppID,
     relay_url: String,
     side: MySide,
-    retry_timer: f32,
+    retry_delay: f32,
     state: Option<State>,
     connected_at_least_once: bool,
+    next_timer_id: u32,
+    next_wsh_id: u32,
 }
 
 impl RendezvousMachine {
@@ -52,16 +54,30 @@ impl RendezvousMachine {
         appid: &AppID,
         relay_url: &str,
         side: &MySide,
-        retry_timer: f32,
+        retry_delay: f32,
     ) -> RendezvousMachine {
         RendezvousMachine {
             appid: appid.clone(),
             relay_url: relay_url.to_string(),
             side: side.clone(),
-            retry_timer,
+            retry_delay,
             state: Some(State::Idle),
             connected_at_least_once: false,
+            next_timer_id: 1,
+            next_wsh_id: 1,
         }
+    }
+
+    fn new_timer_handle(&mut self) -> TimerHandle {
+        let th = TimerHandle::new(self.next_timer_id);
+        self.next_timer_id += 1;
+        th
+    }
+
+    fn new_ws_handle(&mut self) -> WSHandle {
+        let wsh = WSHandle::new(self.next_wsh_id);
+        self.next_wsh_id += 1;
+        wsh
     }
 
     pub fn process_io(&mut self, event: IOEvent) -> Events {
@@ -72,8 +88,8 @@ impl RendezvousMachine {
         self.state = Some(match old_state {
             Idle => panic!(),
             Connecting(wsh) => match event {
-                WebSocketConnectionMade(_h) => {
-                    // TODO: assert h == wsh
+                WebSocketConnectionMade(h) => {
+                    assert!(wsh == h);
                     // TODO: does the order of this matter? if so, oh boy.
                     let txb = RC_TxBind(self.appid.clone(), self.side.clone());
                     actions.push(txb);
@@ -84,60 +100,58 @@ impl RendezvousMachine {
                     Connected(wsh)
                 }
                 WebSocketMessageReceived(..) => panic!(),
-                WebSocketConnectionLost(_h) => {
-                    // TODO: assert h == wsh
-                    let new_th = TimerHandle::new(2);
-                    actions
-                        .push(IOAction::StartTimer(new_th, self.retry_timer));
-                    Waiting(new_th)
+                WebSocketConnectionLost(h) => {
+                    assert!(wsh == h);
+                    let th = self.new_timer_handle();
+                    actions.push(IOAction::StartTimer(th, self.retry_delay));
+                    Waiting(th)
                 }
                 TimerExpired(..) => panic!(),
             },
-            Connected(_wsh) => match event {
+            Connected(wsh) => match event {
                 WebSocketConnectionMade(..) => {
                     panic!("bad transition from {:?}", self)
                 }
-                WebSocketMessageReceived(_h, message) => {
-                    // assert h == wsh
+                WebSocketMessageReceived(h, message) => {
+                    assert!(wsh == h);
                     self.receive(&message, &mut actions);
                     old_state
                 }
-                WebSocketConnectionLost(_h) => {
-                    // TODO: assert h == wsh
-                    let new_th = TimerHandle::new(2);
-                    actions
-                        .push(IOAction::StartTimer(new_th, self.retry_timer));
+                WebSocketConnectionLost(h) => {
+                    assert!(wsh == h);
+                    let th = self.new_timer_handle();
+                    actions.push(IOAction::StartTimer(th, self.retry_delay));
                     actions.push(NameplateEvent::Lost);
                     actions.push(MailboxEvent::Lost);
                     actions.push(ListerEvent::Lost);
                     actions.push(AllocatorEvent::Lost);
-                    Waiting(new_th)
+                    Waiting(th)
                 }
                 TimerExpired(..) => panic!(),
             },
-            Waiting(_th) => match event {
+            Waiting(th) => match event {
                 WebSocketConnectionMade(..) => {
                     panic!("bad transition from {:?}", self)
                 }
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(..) => panic!(),
-                TimerExpired(_h) => {
-                    // TODO: assert h == th
-                    let new_wsh = WSHandle::new(2);
+                TimerExpired(h) => {
+                    assert!(th == h);
+                    let wsh = self.new_ws_handle();
                     actions.push(IOAction::WebSocketOpen(
-                        new_wsh,
+                        wsh,
                         self.relay_url.clone(),
                     ));
-                    Connecting(new_wsh)
+                    Connecting(wsh)
                 }
             },
-            Disconnecting(_wsh) => match event {
+            Disconnecting(wsh) => match event {
                 WebSocketConnectionMade(..) => {
                     panic!("bad transition from {:?}", self)
                 }
                 WebSocketMessageReceived(..) => panic!(),
-                WebSocketConnectionLost(_h) => {
-                    // TODO: assert h == wsh
+                WebSocketConnectionLost(h) => {
+                    assert!(wsh == h);
                     actions.push(TerminatorEvent::Stopped);
                     Stopped
                 }
@@ -164,11 +178,10 @@ impl RendezvousMachine {
         self.state = Some(match old_state {
             Idle => match event {
                 Start => {
-                    // we use a handle here just in case we need to open
-                    // multiple connections in the future. For now we ignore
-                    // it, but the IO layer is supposed to pass this back in
-                    // websocket_* messages
-                    let wsh = WSHandle::new(1);
+                    // We use a handle here just in case we need to open
+                    // multiple connections in the future. The IO layer is
+                    // supposed to pass this back in websocket_* messages.
+                    let wsh = self.new_ws_handle();
                     actions.push(IOAction::WebSocketOpen(
                         wsh,
                         self.relay_url.clone(),

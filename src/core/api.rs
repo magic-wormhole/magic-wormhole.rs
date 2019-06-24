@@ -145,23 +145,37 @@ impl fmt::Debug for APIAction {
     }
 }
 
+// This Private structure prevents external code from forging TimerHandle and
+// WSHandle objects (by creating new ones), and the fact that 'id' is not
+// public means they can't modify existing ones.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct Private {}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct TimerHandle {
     id: u32,
+    private: Private,
 }
 impl TimerHandle {
-    pub fn new(id: u32) -> TimerHandle {
-        TimerHandle { id }
+    pub(crate) fn new(id: u32) -> TimerHandle {
+        TimerHandle {
+            id,
+            private: Private {},
+        }
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WSHandle {
     id: u32,
+    private: Private,
 }
 impl WSHandle {
-    pub fn new(id: u32) -> WSHandle {
-        WSHandle { id }
+    pub(crate) fn new(id: u32) -> WSHandle {
+        WSHandle {
+            id,
+            private: Private {},
+        }
     }
 }
 

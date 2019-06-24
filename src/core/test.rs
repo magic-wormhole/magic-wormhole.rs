@@ -45,7 +45,7 @@ fn create() {
     let mut w = WormholeCore::new("appid", url);
 
     let wsh = WSHandle::new(1);
-    let th = TimerHandle::new(2);
+    let th = TimerHandle::new(1);
     let mut _got_side: &str;
 
     let ios = w.start();
