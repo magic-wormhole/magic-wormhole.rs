@@ -16,6 +16,7 @@ without the `--text=` argument). These will come eventually.
 
 
 [![Build Status][build-status-image]][build-status-url]
+[![CircleCI Status][circleci-status-image]][circleci-status-url]
 [![Deps][deps-status-image]][deps-status-url]
 [![Codecov][codecov-image]][codecov-url]
 [![Is-It-Maintained-Resolution-Time][iim-resolution-image]][iim-resolution-url]
@@ -26,6 +27,8 @@ without the `--text=` argument). These will come eventually.
 
 [build-status-image]: https://travis-ci.org/warner/magic-wormhole.rs.svg?branch=master
 [build-status-url]: https://travis-ci.org/warner/magic-wormhole.rs
+[circleci-status-image]: https://circleci.com/gh/warner/magic-wormhole.rs.svg?style=svg
+[circleci-status-url]: https://circleci.com/gh/warner/magic-wormhole.rs
 [deps-status-image]: https://deps.rs/repo/github/warner/magic-wormhole.rs/status.svg
 [deps-status-url]: https://deps.rs/repo/github/warner/magic-wormhole.rs
 [codecov-image]: https://codecov.io/gh/warner/magic-wormhole.rs/branch/master/graph/badge.svg
