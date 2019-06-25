@@ -8,11 +8,22 @@ jobs:
       - restore_cache:
           key: project-cache
       - run:
-          name: Cargo Build
+          name: install rustfmt and clippy
+          command: |
+            rustup component add rustfmt
+            rustup component add clippy
+      - run:
+          name: cargo fmt
+          command: cargo fmt -- --check
+      - run:
+          name: cargo build
           command: cargo build
       - run:
-          name: Cargo Test
+          name: cargo test
           command: cargo test
+      - run:
+          name: clippy
+          command: cargo clippy
       - save_cache:
           key: project-cache
           paths:
