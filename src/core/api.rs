@@ -145,37 +145,23 @@ impl fmt::Debug for APIAction {
     }
 }
 
-// This Private structure prevents external code from forging TimerHandle and
-// WSHandle objects (by creating new ones), and the fact that 'id' is not
-// public means they can't modify existing ones.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-struct Private {}
+// Handles should be unforgeable: the struct is pub so they can be referenced
+// by application code, but the 'id' field is private, so they cannot be
+// constructed externally, nor can existing ones be modified.
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct TimerHandle {
-    id: u32,
-    private: Private,
-}
+pub struct TimerHandle(u32);
 impl TimerHandle {
     pub(crate) fn new(id: u32) -> TimerHandle {
-        TimerHandle {
-            id,
-            private: Private {},
-        }
+        TimerHandle(id)
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct WSHandle {
-    id: u32,
-    private: Private,
-}
+pub struct WSHandle(u32);
 impl WSHandle {
     pub(crate) fn new(id: u32) -> WSHandle {
-        WSHandle {
-            id,
-            private: Private {},
-        }
+        WSHandle(id)
     }
 }
 
