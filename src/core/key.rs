@@ -48,6 +48,43 @@ impl KeyMachine {
         }
     }
 
+    fn start(&self, code: Code, actions: &mut Events) -> SPAKE2<Ed25519Group> {
+        let mut t1 = new_timelog("pake1", None);
+        t1.detail("waiting", "crypto");
+        let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
+            &Password::new(code.as_bytes()),
+            &Identity::new(self.appid.as_bytes()),
+        );
+        let payload = util::bytes_to_hexstr(&msg1);
+        let pake_msg = PhaseMessage { pake_v1: payload };
+        let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
+        t1.finish(None);
+        actions.push(t1);
+        actions.push(M_AddMessage(Phase("pake".to_string()), pake_msg_ser));
+        pake_state
+    }
+
+    fn finish(
+        &self,
+        pake_state: SPAKE2<Ed25519Group>,
+        their_pake_msg: &[u8],
+        actions: &mut Events,
+    ) -> Key {
+        let mut t2 = new_timelog("pake2", None);
+        t2.detail("waiting", "crypto");
+        let msg2 = extract_pake_msg(&their_pake_msg).unwrap();
+        let key = Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap());
+        t2.finish(None);
+        actions.push(t2);
+        let versions = json!({"app_versions": {}}); // TODO: self.versions
+        let (version_phase, version_msg) =
+            build_version_msg(&self.side, &key, &versions);
+        actions.push(M_AddMessage(version_phase, version_msg));
+        actions.push(B_GotKey(key.clone()));
+        actions.push(R_GotKey(key.clone()));
+        key
+    }
+
     pub fn process(&mut self, event: KeyEvent) -> Events {
         /*trace!(
             "key: current state = {:?}, got event = {:?}",
@@ -61,61 +98,25 @@ impl KeyMachine {
         self.state = Some(match old_state {
             S0KnowNothing => match event {
                 GotCode(code) => {
-                    let mut t1 = new_timelog("pake1", None);
-                    t1.detail("waiting", "crypto");
-                    let (pake_state, pake_msg_ser) =
-                        start_pake(&code, &self.appid);
-                    t1.finish(None);
-                    actions.push(t1);
-                    actions.push(M_AddMessage(
-                        Phase("pake".to_string()),
-                        pake_msg_ser,
-                    ));
+                    let pake_state = self.start(code, &mut actions);
                     S1KnowCode(pake_state)
                 }
                 GotPake(pake) => S2KnowPake(pake),
             },
             S1KnowCode(pake_state) => match event {
                 GotCode(_) => panic!("already got code"),
-                GotPake(pake) => {
-                    let mut t2 = new_timelog("pake2", None);
-                    t2.detail("waiting", "crypto");
-                    let key: Key = finish_pake(pake_state, &pake);
-                    t2.finish(None);
-                    let versions = json!({"app_versions": {}}); // TODO: self.versions
-                    let (version_phase, version_msg) =
-                        build_version_msg(&self.side, &key, &versions);
-                    actions.push(t2);
-                    actions.push(M_AddMessage(version_phase, version_msg));
-                    actions.push(B_GotKey(key.clone()));
-                    actions.push(R_GotKey(key.clone()));
-                    S3KnowBoth(key.clone())
+                GotPake(their_pake_msg) => {
+                    let key =
+                        self.finish(pake_state, &their_pake_msg, &mut actions);
+                    S3KnowBoth(key)
                 }
             },
             S2KnowPake(ref their_pake_msg) => match event {
                 GotCode(code) => {
-                    let mut t1 = new_timelog("pake1", None);
-                    t1.detail("waiting", "crypto");
-                    let (pake_state, pake_msg_ser) =
-                        start_pake(&code, &self.appid);
-                    t1.finish(None);
-                    actions.push(t1);
-                    let mut t2 = new_timelog("pake2", None);
-                    t2.detail("waiting", "crypto");
-                    let key: Key = finish_pake(pake_state, &their_pake_msg);
-                    t2.finish(None);
-                    actions.push(t2);
-                    let versions = json!({"app_versions": {}}); // TODO: self.versions
-                    actions.push(M_AddMessage(
-                        Phase("pake".to_string()),
-                        pake_msg_ser,
-                    ));
-                    let (version_phase, version_msg) =
-                        build_version_msg(&self.side, &key, &versions);
-                    actions.push(M_AddMessage(version_phase, version_msg));
-                    actions.push(B_GotKey(key.clone()));
-                    actions.push(R_GotKey(key.clone()));
-                    S3KnowBoth(key.clone())
+                    let pake_state = self.start(code, &mut actions);
+                    let key =
+                        self.finish(pake_state, &their_pake_msg, &mut actions);
+                    S3KnowBoth(key)
                 }
                 GotPake(_) => panic!("already got pake"),
             },
@@ -130,28 +131,12 @@ impl KeyMachine {
     }
 }
 
-fn start_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
-    let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
-        &Password::new(code.as_bytes()),
-        &Identity::new(appid.as_bytes()),
-    );
-    let payload = util::bytes_to_hexstr(&msg1);
-    let pake_msg = PhaseMessage { pake_v1: payload };
-    let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
-    (pake_state, pake_msg_ser)
-}
-
-fn finish_pake(pake_state: SPAKE2<Ed25519Group>, peer_msg: &[u8]) -> Key {
-    let msg2 = extract_pake_msg(&peer_msg).unwrap();
-    Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap())
-}
-
 fn build_version_msg(
     side: &MySide,
     key: &Key,
     versions: &Value,
 ) -> (Phase, Vec<u8>) {
-    let phase = "version";
+    let phase = Phase("version".to_string());
     let data_key = derive_phase_key(&side.to_string(), &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
@@ -212,7 +197,7 @@ pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
     v
 }
 
-pub fn derive_phase_key(side: &str, key: &Key, phase: &str) -> Vec<u8> {
+pub fn derive_phase_key(side: &str, key: &Key, phase: &Phase) -> Vec<u8> {
     let side_bytes = side.as_bytes();
     let phase_bytes = phase.as_bytes();
     let side_digest: Vec<u8> = sha256_digest(side_bytes);
@@ -266,22 +251,26 @@ mod test {
             "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
         )
         .unwrap());
-        let dk11 = derive_phase_key("side1", &main, "phase1");
+        let dk11 =
+            derive_phase_key("side1", &main, &Phase("phase1".to_string()));
         assert_eq!(
             hex::encode(dk11),
             "3af6a61d1a111225cc8968c6ca6265efe892065c3ab46de79dda21306b062990"
         );
-        let dk12 = derive_phase_key("side1", &main, "phase2");
+        let dk12 =
+            derive_phase_key("side1", &main, &Phase("phase2".to_string()));
         assert_eq!(
             hex::encode(dk12),
             "88a1dd12182d989ff498022a9656d1e2806f17328d8bf5d8d0c9753e4381a752"
         );
-        let dk21 = derive_phase_key("side2", &main, "phase1");
+        let dk21 =
+            derive_phase_key("side2", &main, &Phase("phase1".to_string()));
         assert_eq!(
             hex::encode(dk21),
             "a306627b436ec23bdae3af8fa90c9ac927780d86be1831003e7f617c518ea689"
         );
-        let dk22 = derive_phase_key("side2", &main, "phase2");
+        let dk22 =
+            derive_phase_key("side2", &main, &Phase("phase2".to_string()));
         assert_eq!(
             hex::encode(dk22),
             "bf99e3e16420f2dad33f9b1ccb0be1462b253d639dacdb50ed9496fa528d8758"
@@ -304,8 +293,8 @@ mod test {
 
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
-        let phase = "phase1";
-        let phase1_key = derive_phase_key(side, &key, phase);
+        let phase = Phase("phase1".to_string());
+        let phase1_key = derive_phase_key(side, &key, &phase);
 
         assert_eq!(
             hex::encode(phase1_key),
@@ -354,8 +343,8 @@ mod test {
     fn test_encrypt_data_decrypt_data_roundtrip() {
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
-        let phase = "phase";
-        let data_key = derive_phase_key(side, &key, phase);
+        let phase = Phase("phase".to_string());
+        let data_key = derive_phase_key(side, &key, &phase);
         let plaintext = "hello world";
 
         let (_nonce, encrypted) =
