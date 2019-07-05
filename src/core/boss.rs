@@ -171,6 +171,21 @@ impl BossMachine {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
                 }
+                Error(_s) => {
+                    // e.g. Rendezvous cannot make the initial websocket
+                    // connection
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    // TODO: APIAction::GotClosed(Result<Mood,String>) this
+                    // doesn't really use Mood::Errory very well, but we need
+                    // to deliver the e.g. connection failure reason up to
+                    // the application
+                    State::Closed(Mood::Errory)
+                }
+                RxError(_s) => {
+                    // e.g. the server didn't like us
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    State::Closed(Mood::Errory)
+                }
                 _ => panic!(),
             },
             Coding(i) => match event {
@@ -182,6 +197,10 @@ impl BossMachine {
                     actions.push(APIAction::GotCode(code));
                     Lonely(i)
                 }
+                Error(_s) | RxError(_s) => {
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    State::Closed(Mood::Errory)
+                }
                 _ => panic!(),
             },
             Inputting(i) => match event {
@@ -192,6 +211,10 @@ impl BossMachine {
                 GotCode(code) => {
                     actions.push(APIAction::GotCode(code));
                     Lonely(i)
+                }
+                Error(_s) | RxError(_s) => {
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    State::Closed(Mood::Errory)
                 }
                 _ => panic!(),
             },
@@ -205,6 +228,10 @@ impl BossMachine {
                     old_state
                 }
                 BossEvent::Happy => State::Happy(i),
+                Error(_s) | RxError(_s) => {
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    State::Closed(Mood::Errory)
+                }
                 _ => panic!(),
             },
             State::Happy(_) => match event {
@@ -236,7 +263,11 @@ impl BossMachine {
                     }
                     old_state
                 }
-                // Error | RxError | Scared: TODO
+                Error(_s) | RxError(_s) => {
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    State::Closed(Mood::Errory)
+                }
+                // Scared: TODO
                 _ => panic!(),
             },
             Closing(mood) => match event {
@@ -245,6 +276,10 @@ impl BossMachine {
                 BossEvent::Closed => {
                     actions.push(APIAction::GotClosed(mood));
                     State::Closed(mood)
+                }
+                Error(_s) | RxError(_s) => {
+                    actions.push(APIAction::GotClosed(Mood::Errory));
+                    State::Closed(Mood::Errory)
                 }
                 _ => panic!(),
             },
