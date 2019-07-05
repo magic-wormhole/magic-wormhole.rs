@@ -201,3 +201,135 @@ impl MailboxMachine {
         actions
     }
 }
+
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::core::api::Mood;
+    use crate::core::events::{
+        MailboxEvent::*, MySide, RendezvousEvent, TerminatorEvent,
+    };
+
+    #[test]
+    fn test_mgc() {
+        // add_M_essage, _G_otmailbox, then _C_onnected
+        let s = MySide("side1".to_string());
+        let phase1 = Phase("p1".to_string());
+        let body1 = b"body1".to_vec();
+        let mbox1 = Mailbox("mbox1".to_string());
+        let mut m = MailboxMachine::new(&s);
+
+        let mut e = m.process(AddMessage(phase1.clone(), body1.clone()));
+        assert_eq!(e, events![]);
+        e = m.process(GotMailbox(mbox1.clone()));
+        assert_eq!(e, events![]);
+
+        e = m.process(Connected);
+        assert_eq!(
+            e,
+            events![
+                RendezvousEvent::TxOpen(mbox1.clone()),
+                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+            ]
+        );
+
+        e = m.process(Lost);
+        assert_eq!(e, events![]);
+        e = m.process(Connected);
+        assert_eq!(
+            e,
+            events![
+                RendezvousEvent::TxOpen(mbox1.clone()),
+                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+            ]
+        );
+
+        e = m.process(Close(Mood::Happy));
+        assert_eq!(
+            e,
+            events![RendezvousEvent::TxClose(mbox1.clone(), Mood::Happy)]
+        );
+
+        e = m.process(RxClosed);
+        assert_eq!(e, events![TerminatorEvent::MailboxDone]);
+    }
+
+    #[test]
+    fn test_gmc() {
+        // _G_otmailbox, add_M_essage, then _C_onnected
+        let s = MySide("side1".to_string());
+        let phase1 = Phase("p1".to_string());
+        let body1 = b"body1".to_vec();
+        let mbox1 = Mailbox("mbox1".to_string());
+        let mut m = MailboxMachine::new(&s);
+
+        let mut e = m.process(GotMailbox(mbox1.clone()));
+        assert_eq!(e, events![]);
+        e = m.process(AddMessage(phase1.clone(), body1.clone()));
+        assert_eq!(e, events![]);
+
+        e = m.process(Connected);
+        assert_eq!(
+            e,
+            events![
+                RendezvousEvent::TxOpen(mbox1.clone()),
+                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+            ]
+        );
+
+        e = m.process(Lost);
+        assert_eq!(e, events![]);
+        e = m.process(Connected);
+        assert_eq!(
+            e,
+            events![
+                RendezvousEvent::TxOpen(mbox1.clone()),
+                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+            ]
+        );
+
+        e = m.process(Close(Mood::Happy));
+        assert_eq!(
+            e,
+            events![RendezvousEvent::TxClose(mbox1.clone(), Mood::Happy)]
+        );
+
+        e = m.process(RxClosed);
+        assert_eq!(e, events![TerminatorEvent::MailboxDone]);
+    }
+
+    #[test]
+    fn test_cmg() {
+        // _C_onnected, add_M_essage, then _G_otmailbox
+        let s = MySide("side1".to_string());
+        let phase1 = Phase("p1".to_string());
+        let body1 = b"body1".to_vec();
+        let mbox1 = Mailbox("mbox1".to_string());
+        let mut m = MailboxMachine::new(&s);
+
+        let mut e = m.process(Connected);
+        assert_eq!(e, events![]);
+        e = m.process(AddMessage(phase1.clone(), body1.clone()));
+        assert_eq!(e, events![]);
+
+        e = m.process(GotMailbox(mbox1.clone()));
+        assert_eq!(
+            e,
+            events![
+                RendezvousEvent::TxOpen(mbox1.clone()),
+                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+            ]
+        );
+
+        e = m.process(Close(Mood::Happy));
+        assert_eq!(
+            e,
+            events![RendezvousEvent::TxClose(mbox1.clone(), Mood::Happy)]
+        );
+
+        e = m.process(RxClosed);
+        assert_eq!(e, events![TerminatorEvent::MailboxDone]);
+    }
+
+}
