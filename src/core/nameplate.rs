@@ -161,3 +161,213 @@ impl NameplateMachine {
         actions
     }
 }
+
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::core::events::{
+        Event, InputEvent, Mailbox, MailboxEvent, NameplateEvent::*,
+        RendezvousEvent, TerminatorEvent,
+    };
+
+    #[test]
+    fn test_nc() {
+        // set_N_ameplate, then _C_onnected
+        let name1 = Nameplate("n1".to_string());
+        let mbox1 = Mailbox("mbox1".to_string());
+        let mut n = NameplateMachine::new();
+
+        let mut e = n.process(SetNameplate(name1.clone()));
+        assert_eq!(e, events![]);
+
+        e = n.process(Connected);
+        assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
+
+        e = n.process(RxClaimed(mbox1.clone()));
+        let e0 = e.events.remove(0);
+        match e0 {
+            Event::Input(InputEvent::GotWordlist(w)) => {
+                // TODO: for now, we use a hard-coded wordlist, but it (or a
+                // short identifier) will eventually be included in the
+                // RxClaimed response, supplied by the server
+                dbg!(w);
+                //assert_eq!(w.num_words, 2);
+            }
+            _ => panic!(e0),
+        };
+        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1.clone())]);
+
+        e = n.process(Release);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+
+        e = n.process(RxReleased);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+
+        e = n.process(Lost);
+        assert_eq!(e, events![]);
+    }
+
+    #[test]
+    fn test_cn() {
+        // connect, then SetNameplate. Also test a bunch of lost+reconnect
+        // paths.
+        let name1 = Nameplate("n1".to_string());
+        let mbox1 = Mailbox("mbox1".to_string());
+        let mut n = NameplateMachine::new();
+
+        let mut e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(Lost);
+        assert_eq!(e, events![]);
+
+        e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(SetNameplate(name1.clone()));
+        assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
+
+        e = n.process(Lost);
+        assert_eq!(e, events![]);
+
+        e = n.process(Connected);
+        assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
+
+        e = n.process(RxClaimed(mbox1.clone()));
+        let e0 = e.events.remove(0);
+        match e0 {
+            Event::Input(InputEvent::GotWordlist(w)) => {
+                // TODO: for now, we use a hard-coded wordlist, but it (or a
+                // short identifier) will eventually be included in the
+                // RxClaimed response, supplied by the server
+                dbg!(w);
+                //assert_eq!(w.num_words, 2);
+            }
+            _ => panic!(e0),
+        };
+        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1.clone())]);
+
+        e = n.process(Lost);
+        assert_eq!(e, events![]);
+
+        e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(Release);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+
+        e = n.process(Lost);
+        assert_eq!(e, events![]);
+
+        e = n.process(Connected);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+    }
+
+    #[test]
+    fn test_close1() {
+        let mut n = NameplateMachine::new();
+
+        let e = n.process(Close);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+    }
+
+    #[test]
+    fn test_close2() {
+        let mut n = NameplateMachine::new();
+        let name1 = Nameplate("n1".to_string());
+
+        let mut e = n.process(SetNameplate(name1));
+        assert_eq!(e, events![]);
+
+        e = n.process(Close);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+    }
+
+    #[test]
+    fn test_close3() {
+        let mut n = NameplateMachine::new();
+        let name1 = Nameplate("n1".to_string());
+
+        let mut e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(SetNameplate(name1.clone()));
+        assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
+
+        e = n.process(Lost);
+        assert_eq!(e, events![]);
+
+        e = n.process(Close);
+        assert_eq!(e, events![]);
+        // we're now in S4A "maybe released". We can't signal Terminator
+        // until we get an ack, which require a connection
+
+        e = n.process(Close); // duplicate close is ok in S4A
+        assert_eq!(e, events![]);
+
+        e = n.process(Connected);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+
+        e = n.process(Close); // duplicate close is ok in S4B too
+        assert_eq!(e, events![]);
+
+        e = n.process(RxReleased);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+    }
+
+    #[test]
+    fn test_close4() {
+        let mut n = NameplateMachine::new();
+
+        let mut e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(Close);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+    }
+
+    #[test]
+    fn test_close5() {
+        let mut n = NameplateMachine::new();
+        let name1 = Nameplate("n1".to_string());
+
+        let mut e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(SetNameplate(name1.clone()));
+        assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
+
+        e = n.process(Close);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone()),]);
+        e = n.process(RxReleased);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+    }
+
+    #[test]
+    fn test_close6() {
+        let mut n = NameplateMachine::new();
+        let name1 = Nameplate("n1".to_string());
+        let mbox1 = Mailbox("mbox1".to_string());
+
+        let mut e = n.process(Connected);
+        assert_eq!(e, events![]);
+
+        e = n.process(SetNameplate(name1.clone()));
+        assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
+
+        e = n.process(RxClaimed(mbox1.clone()));
+        let e0 = e.events.remove(0);
+        match e0 {
+            Event::Input(InputEvent::GotWordlist(_w)) => (),
+            _ => panic!(e0),
+        };
+        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1.clone())]);
+
+        e = n.process(Close);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone()),]);
+        e = n.process(RxReleased);
+        assert_eq!(e, events![TerminatorEvent::NameplateDone]);
+    }
+
+}
