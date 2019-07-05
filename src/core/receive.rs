@@ -55,9 +55,7 @@ impl ReceiveMachine {
                     ) {
                         Some(plaintext) => {
                             // got_message_good
-                            let msg =
-                                key::derive_key(&key, b"wormhole:verifier", 32);
-                            // TODO: replace 32 with KEY_SIZE const
+                            let msg = key::derive_verifier(&key);
                             actions.push(S_GotVerifiedKey(key.clone()));
                             actions.push(B_Happy);
                             actions.push(B_GotVerifier(msg));
@@ -109,4 +107,145 @@ impl ReceiveMachine {
         let data_key = key::derive_phase_key(&side, &key, &phase);
         key::decrypt_data(&data_key, body)
     }
+}
+
+#[cfg_attr(tarpaulin, skip)]
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::core::events::{
+        BossEvent, ReceiveEvent::*, SendEvent, TheirSide,
+    };
+    use crate::core::key::{derive_phase_key, derive_verifier, encrypt_data};
+
+    #[test]
+    fn test_happy_then_scared() {
+        use super::State::*;
+
+        let masterkey = Key(b"0123456789abcdef0123456789abcdef".to_vec());
+        let verifier = derive_verifier(&masterkey);
+        let side1 = "side1".to_string();
+        let t1 = TheirSide(side1.clone());
+        let phase1 = Phase("phase1".to_string());
+        let phasekey1 = derive_phase_key(&side1, &masterkey, &phase1);
+        let plaintext1 = b"plaintext1";
+        let (_, nonce_and_ciphertext1) = encrypt_data(&phasekey1, plaintext1);
+
+        let mut r = ReceiveMachine::new();
+
+        let mut e = r.process(GotKey(masterkey.clone()));
+        assert_eq!(e, events![]);
+
+        if let Some(S1UnverifiedKey(ref key)) = r.state {
+            assert_eq!(key.0, masterkey.0);
+        } else {
+            panic!();
+        }
+
+        e = r.process(GotMessage(
+            t1.clone(),
+            phase1.clone(),
+            nonce_and_ciphertext1,
+        ));
+        assert_eq!(
+            e,
+            events![
+                SendEvent::GotVerifiedKey(masterkey.clone()),
+                BossEvent::Happy,
+                BossEvent::GotVerifier(verifier.to_vec()),
+                BossEvent::GotMessage(phase1.clone(), plaintext1.to_vec()),
+            ]
+        );
+
+        // second message should only provoke GotMessage
+        let phase2 = Phase("phase2".to_string());
+        let phasekey2 = derive_phase_key(&side1, &masterkey, &phase2);
+        let plaintext2 = b"plaintext2";
+        let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
+
+        e = r.process(GotMessage(
+            t1.clone(),
+            phase2.clone(),
+            nonce_and_ciphertext2,
+        ));
+        assert_eq!(
+            e,
+            events![BossEvent::GotMessage(phase2.clone(), plaintext2.to_vec()),]
+        );
+
+        // bad message makes us Scared
+        let phase3 = Phase("phase3".to_string());
+        let bad_phasekey3 = b"00112233445566778899aabbccddeeff".to_vec();
+        let plaintext3 = b"plaintext3";
+        let (_, nonce_and_ciphertext3) =
+            encrypt_data(&bad_phasekey3, plaintext3);
+
+        e = r.process(GotMessage(
+            t1.clone(),
+            phase3.clone(),
+            nonce_and_ciphertext3,
+        ));
+        assert_eq!(e, events![BossEvent::Scared]);
+
+        // all messages are ignored once we're Scared
+        let phase4 = Phase("phase4".to_string());
+        let phasekey4 = derive_phase_key(&side1, &masterkey, &phase4);
+        let plaintext4 = b"plaintext4";
+        let (_, nonce_and_ciphertext4) = encrypt_data(&phasekey4, plaintext4);
+
+        e = r.process(GotMessage(
+            t1.clone(),
+            phase4.clone(),
+            nonce_and_ciphertext4,
+        ));
+        assert_eq!(e, events![]);
+    }
+
+    #[test]
+    fn test_scared() {
+        use super::State::*;
+
+        let masterkey = Key(b"0123456789abcdef0123456789abcdef".to_vec());
+        let side1 = "side1".to_string();
+        let t1 = TheirSide(side1.clone());
+
+        let mut r = ReceiveMachine::new();
+
+        let mut e = r.process(GotKey(masterkey.clone()));
+        assert_eq!(e, events![]);
+
+        if let Some(S1UnverifiedKey(ref key)) = r.state {
+            assert_eq!(key.0, masterkey.0);
+        } else {
+            panic!();
+        }
+
+        // bad message makes us Scared
+        let phase1 = Phase("phase1".to_string());
+        let bad_phasekey1 = b"00112233445566778899aabbccddeeff".to_vec();
+        let plaintext1 = b"plaintext1";
+        let (_, nonce_and_ciphertext1) =
+            encrypt_data(&bad_phasekey1, plaintext1);
+
+        e = r.process(GotMessage(
+            t1.clone(),
+            phase1.clone(),
+            nonce_and_ciphertext1,
+        ));
+        assert_eq!(e, events![BossEvent::Scared]);
+
+        // all messages are ignored once we're Scared
+        let phase2 = Phase("phase2".to_string());
+        let phasekey2 = derive_phase_key(&side1, &masterkey, &phase2);
+        let plaintext2 = b"plaintext2";
+        let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
+
+        e = r.process(GotMessage(
+            t1.clone(),
+            phase2.clone(),
+            nonce_and_ciphertext2,
+        ));
+        assert_eq!(e, events![]);
+    }
+
 }
