@@ -208,7 +208,8 @@ mod test {
     use super::*;
     use crate::core::api::Mood;
     use crate::core::events::{
-        MailboxEvent::*, MySide, RendezvousEvent, TerminatorEvent,
+        MailboxEvent::*, MySide, NameplateEvent, OrderEvent, RendezvousEvent,
+        TerminatorEvent, TheirSide,
     };
 
     #[test]
@@ -330,6 +331,60 @@ mod test {
 
         e = m.process(RxClosed);
         assert_eq!(e, events![TerminatorEvent::MailboxDone]);
+    }
+
+    #[test]
+    fn test_messages() {
+        let s = MySide("side1".to_string());
+        let phase1 = Phase("p1".to_string());
+        let body1 = b"body1".to_vec();
+        let mbox1 = Mailbox("mbox1".to_string());
+        let mut m = MailboxMachine::new(&s);
+
+        let mut e = m.process(Connected);
+        assert_eq!(e, events![]);
+        e = m.process(AddMessage(phase1.clone(), body1.clone()));
+        assert_eq!(e, events![]);
+
+        e = m.process(GotMailbox(mbox1.clone()));
+        assert_eq!(
+            e,
+            events![
+                RendezvousEvent::TxOpen(mbox1.clone()),
+                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+            ]
+        );
+
+        // receiving an echo of our own message is an ack, so we don't need
+        // to re-send it after a Lost/Connected cycle. We do re-open the
+        // mailbox though.
+        let t1 = TheirSide("side1".to_string());
+        e = m.process(RxMessage(t1.clone(), phase1.clone(), body1.clone()));
+        assert_eq!(e, events![]);
+        e = m.process(Lost);
+        assert_eq!(e, events![]);
+        e = m.process(Connected);
+        assert_eq!(e, events![RendezvousEvent::TxOpen(mbox1.clone())]);
+
+        // now a message from the other side means we don't need the
+        // Nameplate anymore
+        let t2 = TheirSide("side2".to_string());
+        e = m.process(RxMessage(t2.clone(), phase1.clone(), body1.clone()));
+        assert_eq!(
+            e,
+            events![
+                NameplateEvent::Release,
+                OrderEvent::GotMessage(
+                    t2.clone(),
+                    phase1.clone(),
+                    body1.clone()
+                ),
+            ]
+        );
+
+        // receiving a duplicate message should not be forwarded to Order
+        e = m.process(RxMessage(t2.clone(), phase1.clone(), body1.clone()));
+        assert_eq!(e, events![NameplateEvent::Release]);
     }
 
 }
