@@ -150,8 +150,8 @@ pub enum AllocatorEvent {
 #[derive(PartialEq)]
 pub enum BossEvent {
     RxWelcome(Value),
-    RxError,
-    Error,
+    RxError(String),
+    Error(String),
     Closed,
     GotCode(Code),
     GotKey(Key), // TODO: fixed length?
@@ -166,8 +166,8 @@ impl fmt::Debug for BossEvent {
         use self::BossEvent::*;
         let t = match *self {
             RxWelcome(ref v) => format!("RxWelcome({:?})", v),
-            RxError => "RxError".to_string(),
-            Error => "Error".to_string(),
+            RxError(ref s) => format!("RxError({})", s),
+            Error(ref s) => format!("Error({})", s),
             Closed => "Closed".to_string(),
             GotCode(ref code) => format!("GotCode({:?})", code),
             GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
