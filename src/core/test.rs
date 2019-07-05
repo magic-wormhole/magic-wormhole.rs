@@ -30,7 +30,7 @@ fn test_mood() {
     // self._T.close()
     assert_eq!(Mood::Happy.to_string(), "happy");
     assert_eq!(Mood::Lonely.to_string(), "lonely");
-    assert_eq!(Mood::Error.to_string(), "errory");
+    assert_eq!(Mood::Errory.to_string(), "errory");
     assert_eq!(Mood::Scared.to_string(), "scary");
     assert_eq!(Mood::Unwelcome.to_string(), "unwelcome");
 }

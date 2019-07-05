@@ -91,7 +91,7 @@ impl Error for InputHelperError {
 pub enum Mood {
     Happy,
     Lonely,
-    Error,
+    Errory,
     Scared,
     Unwelcome,
 }
@@ -102,7 +102,7 @@ impl Mood {
         match self {
             Mood::Happy => "happy".to_string(),
             Mood::Lonely => "lonely".to_string(),
-            Mood::Error => "errory".to_string(),
+            Mood::Errory => "errory".to_string(),
             Mood::Scared => "scary".to_string(),
             Mood::Unwelcome => "unwelcome".to_string(),
         }

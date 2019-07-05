@@ -230,8 +230,8 @@ mod test {
         assert_eq!(terminator.state, Some(State::So));
 
         assert_eq!(
-            terminator.process(Close(Error)),
-            events![N_Close, M_Close(Error), RC_Stop]
+            terminator.process(Close(Errory)),
+            events![N_Close, M_Close(Errory), RC_Stop]
         );
         assert_eq!(terminator.process(Stopped), events![B_Closed]);
         assert_eq!(terminator.state, Some(State::SStopped));
