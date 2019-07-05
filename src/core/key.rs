@@ -210,6 +210,11 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &Phase) -> Vec<u8> {
     derive_key(&key.to_vec(), &purpose_vec, length)
 }
 
+pub fn derive_verifier(key: &Key) -> Vec<u8> {
+    // TODO: replace 32 with KEY_SIZE const
+    derive_key(key, b"wormhole:verifier", 32)
+}
+
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
