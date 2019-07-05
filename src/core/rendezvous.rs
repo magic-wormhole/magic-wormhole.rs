@@ -102,9 +102,19 @@ impl RendezvousMachine {
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(h) => {
                     assert!(wsh == h);
-                    let th = self.new_timer_handle();
-                    actions.push(IOAction::StartTimer(th, self.retry_delay));
-                    Waiting(th)
+                    if !self.connected_at_least_once {
+                        // TODO: WebSocketConnectionLost(wsh, reason)
+                        let e = BossEvent::Error(
+                            "initial WebSocket connection lost".to_string(),
+                        );
+                        actions.push(e);
+                        Stopped
+                    } else {
+                        let th = self.new_timer_handle();
+                        actions
+                            .push(IOAction::StartTimer(th, self.retry_delay));
+                        Waiting(th)
+                    }
                 }
                 TimerExpired(..) => panic!(),
             },
@@ -321,7 +331,7 @@ mod test {
     };
     use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
     use crate::core::events::{
-        AllocatorEvent, ListerEvent, MailboxEvent, NameplateEvent,
+        AllocatorEvent, BossEvent, ListerEvent, MailboxEvent, NameplateEvent,
     };
     use crate::core::events::{AppID, MySide};
     use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
@@ -412,6 +422,8 @@ mod test {
             _ => panic!(),
         }
 
+        // once connected, we react to connection loss by starting the
+        // reconnection timer
         actions =
             filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh))).events;
         assert_eq!(actions.len(), 5);
@@ -462,5 +474,32 @@ mod test {
         actions =
             filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh2))).events;
         assert_eq!(actions, vec![Terminator(T_Stopped)]);
+    }
+
+    #[test]
+    fn first_connect_fails() {
+        let side = MySide("side1".to_string());
+        let mut r = super::RendezvousMachine::new(
+            &AppID("appid".to_string()),
+            "url",
+            &side,
+            5.0,
+        );
+        let wsh: WSHandle;
+        let mut actions = filt(r.process(RC_Start)).events;
+        if let IO(IOAction::WebSocketOpen(wsh0, ..)) = actions.remove(0) {
+            wsh = wsh0;
+        } else {
+            panic!();
+        }
+        assert!(actions.is_empty());
+
+        let actions = filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)));
+        assert_eq!(
+            actions,
+            events![BossEvent::Error(
+                "initial WebSocket connection lost".to_string()
+            )]
+        );
     }
 }
