@@ -205,7 +205,7 @@ mod test {
 
     #[test]
     fn test_close_errory() {
-        let m1 = close(&Mailbox("mailbox1".to_string()), Mood::Error);
+        let m1 = close(&Mailbox("mailbox1".to_string()), Mood::Errory);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
