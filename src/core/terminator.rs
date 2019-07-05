@@ -53,7 +53,7 @@ impl TerminatorMachine {
                     Snm
                 },
                 Stopped => panic!(
-                    "Got stopped to early. Nameplate and Mailbox are still active"
+                    "Got stopped too early. Nameplate and Mailbox are still active"
                 ),
             }
             Sno => match event {
@@ -238,7 +238,9 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(
+        expected = "Got stopped too early. Nameplate and Mailbox are still active"
+    )]
     fn panic1() {
         let mut terminator = TerminatorMachine::new();
         terminator.process(Stopped);
