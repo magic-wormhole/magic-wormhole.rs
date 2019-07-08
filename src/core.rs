@@ -121,7 +121,7 @@ impl WormholeCore {
         // synchronously. Maybe the Core should expose the conversion
         // function (which requires the key as input) and let the IO glue
         // layer decide how to manage the synchronization?
-        Vec::new()
+        panic!("not implemented");
     }
 
     pub fn input_helper_get_nameplate_completions(
