@@ -32,7 +32,7 @@ ws = { version = "0.8.*", optional = true }
 url = { version = "1.7", optional = true }
 
 # for "io_tokio" feature
-websocket = { version = "0.22", optional = true }
+websocket = { version = "0.23", optional = true }
 futures = { version = "0.1", optional = true }
 tokio-core = { version = "0.1", optional = true }
 
@@ -43,7 +43,7 @@ clap = { version = "2.32", optional = true}
 ws = "0.8"
 url = "1.7"
 rustyline = "5.0"
-parking_lot = {version = "0.8", features = ["deadlock_detection"]}
+parking_lot = {version = "0.9", features = ["deadlock_detection"]}
 hex = "0.3"
 env_logger = "0.6"
 
