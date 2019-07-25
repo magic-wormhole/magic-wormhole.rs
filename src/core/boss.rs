@@ -316,8 +316,8 @@ mod test {
         let mut b = BossMachine::new();
         use self::BossEvent::*;
         b.process_api(APIEvent::Start); // -> Started
-        b.process_api(APIEvent::SetCode(Code("4-foo".to_string()))); // -> Coding
-        b.process(GotCode(Code("4-foo".to_string()))); // -> Lonely
+        b.process_api(APIEvent::SetCode(Code(String::from("4-foo")))); // -> Coding
+        b.process(GotCode(Code(String::from("4-foo")))); // -> Lonely
         b.process(GotKey(Key(b"".to_vec()))); // not actually necessary
         b.process(Happy);
         let v = json!({"for_wormhole": 123,
@@ -326,7 +326,7 @@ mod test {
         }})
         .to_string();
         let actions = b.process(GotMessage(
-            Phase("version".to_string()),
+            Phase(String::from("version")),
             v.as_bytes().to_vec(),
         ));
         assert_eq!(

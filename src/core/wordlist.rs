@@ -73,9 +73,9 @@ fn load_pgpwords() -> Vec<Vec<String>> {
         serde_json::from_str(include_str!("pgpwords.json")).unwrap();
     let raw_words = raw_words_value.as_object().unwrap();
     let mut even_words: Vec<String> = Vec::with_capacity(256);
-    even_words.resize(256, "".to_string());
+    even_words.resize(256, String::from(""));
     let mut odd_words: Vec<String> = Vec::with_capacity(256);
-    odd_words.resize(256, "".to_string());
+    odd_words.resize(256, String::from(""));
     for (index_str, values) in raw_words.iter() {
         let index = u8::from_str_radix(index_str, 16).unwrap() as usize;
         even_words[index] = values
@@ -133,7 +133,7 @@ mod test {
         all.split_whitespace()
             .map(|s| {
                 if s == "." {
-                    "".to_string()
+                    String::from("")
                 } else {
                     s.to_string()
                 }

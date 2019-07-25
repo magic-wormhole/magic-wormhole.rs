@@ -219,16 +219,16 @@ mod test {
         let actions = filt(i.process(Start));
         assert_eq!(actions, events![L_Refresh]);
         let actions =
-            filt(i.process(ChooseNameplate(Nameplate("4".to_string()))));
+            filt(i.process(ChooseNameplate(Nameplate(String::from("4")))));
         assert_eq!(
             actions,
-            events![C_GotNameplate(Nameplate("4".to_string()))]
+            events![C_GotNameplate(Nameplate(String::from("4")))]
         );
         let actions =
-            filt(i.process(ChooseWords("purple-sausages".to_string())));
+            filt(i.process(ChooseWords(String::from("purple-sausages"))));
         assert_eq!(
             actions,
-            events![C_FinishedInput(Code("4-purple-sausages".to_string()))]
+            events![C_FinishedInput(Code(String::from("4-purple-sausages")))]
         );
     }
 
@@ -236,7 +236,7 @@ mod test {
         all.split_whitespace()
             .map(|s| {
                 if s == "." {
-                    "".to_string()
+                    String::from("")
                 } else {
                     s.to_string()
                 }
@@ -249,9 +249,9 @@ mod test {
         let mut expected: Vec<String>;
         expected = vec![];
         assert_eq!(vecstrings(""), expected);
-        expected = vec!["4".to_string(), "5".to_string()];
+        expected = vec![String::from("4"), String::from("5")];
         assert_eq!(vecstrings("4 5"), expected);
-        expected = vec!["4".to_string(), "".to_string()];
+        expected = vec![String::from("4"), String::from("")];
         assert_eq!(vecstrings("4 ."), expected);
     }
 
@@ -259,7 +259,7 @@ mod test {
         all.split_whitespace()
             .map(|s| {
                 if s == "." {
-                    "".to_string()
+                    String::from("")
                 } else {
                     s.to_string()
                 }
@@ -314,10 +314,10 @@ mod test {
         // synchronous and fixed, but in the long run this will be informed
         // by server-side properties)
         let actions =
-            filt(i.process(ChooseNameplate(Nameplate("4".to_string()))));
+            filt(i.process(ChooseNameplate(Nameplate(String::from("4")))));
         assert_eq!(
             actions,
-            events![C_GotNameplate(Nameplate("4".to_string()))]
+            events![C_GotNameplate(Nameplate(String::from("4")))]
         );
 
         // now it's too late to complete the nameplate
@@ -344,10 +344,10 @@ mod test {
         );
 
         let actions =
-            filt(i.process(ChooseWords("purple-sausages".to_string())));
+            filt(i.process(ChooseWords(String::from("purple-sausages"))));
         assert_eq!(
             actions,
-            events![C_FinishedInput(Code("4-purple-sausages".to_string()))]
+            events![C_FinishedInput(Code(String::from("4-purple-sausages")))]
         );
     }
 }

@@ -187,10 +187,10 @@ mod test {
     fn test_transit() {
         let abilities = vec![
             Abilities {
-                ttype: "direct-tcp-v1".to_string(),
+                ttype: String::from("direct-tcp-v1"),
             },
             Abilities {
-                ttype: "relay-v1".to_string(),
+                ttype: String::from("relay-v1"),
             },
         ];
         let hints = vec![

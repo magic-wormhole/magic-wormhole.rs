@@ -124,9 +124,9 @@ mod test {
 
         let masterkey = Key(b"0123456789abcdef0123456789abcdef".to_vec());
         let verifier = derive_verifier(&masterkey);
-        let side1 = "side1".to_string();
+        let side1 = String::from("side1");
         let t1 = TheirSide(side1.clone());
-        let phase1 = Phase("phase1".to_string());
+        let phase1 = Phase(String::from("phase1"));
         let phasekey1 = derive_phase_key(&side1, &masterkey, &phase1);
         let plaintext1 = b"plaintext1";
         let (_, nonce_and_ciphertext1) = encrypt_data(&phasekey1, plaintext1);
@@ -158,7 +158,7 @@ mod test {
         );
 
         // second message should only provoke GotMessage
-        let phase2 = Phase("phase2".to_string());
+        let phase2 = Phase(String::from("phase2"));
         let phasekey2 = derive_phase_key(&side1, &masterkey, &phase2);
         let plaintext2 = b"plaintext2";
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
@@ -174,7 +174,7 @@ mod test {
         );
 
         // bad message makes us Scared
-        let phase3 = Phase("phase3".to_string());
+        let phase3 = Phase(String::from("phase3"));
         let bad_phasekey3 = b"00112233445566778899aabbccddeeff".to_vec();
         let plaintext3 = b"plaintext3";
         let (_, nonce_and_ciphertext3) =
@@ -188,7 +188,7 @@ mod test {
         assert_eq!(e, events![BossEvent::Scared]);
 
         // all messages are ignored once we're Scared
-        let phase4 = Phase("phase4".to_string());
+        let phase4 = Phase(String::from("phase4"));
         let phasekey4 = derive_phase_key(&side1, &masterkey, &phase4);
         let plaintext4 = b"plaintext4";
         let (_, nonce_and_ciphertext4) = encrypt_data(&phasekey4, plaintext4);
@@ -206,7 +206,7 @@ mod test {
         use super::State::*;
 
         let masterkey = Key(b"0123456789abcdef0123456789abcdef".to_vec());
-        let side1 = "side1".to_string();
+        let side1 = String::from("side1");
         let t1 = TheirSide(side1.clone());
 
         let mut r = ReceiveMachine::new();
@@ -221,7 +221,7 @@ mod test {
         }
 
         // bad message makes us Scared
-        let phase1 = Phase("phase1".to_string());
+        let phase1 = Phase(String::from("phase1"));
         let bad_phasekey1 = b"00112233445566778899aabbccddeeff".to_vec();
         let plaintext1 = b"plaintext1";
         let (_, nonce_and_ciphertext1) =
@@ -235,7 +235,7 @@ mod test {
         assert_eq!(e, events![BossEvent::Scared]);
 
         // all messages are ignored once we're Scared
-        let phase2 = Phase("phase2".to_string());
+        let phase2 = Phase(String::from("phase2"));
         let phasekey2 = derive_phase_key(&side1, &masterkey, &phase2);
         let plaintext2 = b"plaintext2";
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
