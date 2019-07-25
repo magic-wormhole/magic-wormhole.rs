@@ -83,16 +83,16 @@ mod test {
 
     #[test]
     fn test_queue() {
-        let s = MySide("side1".to_string());
+        let s = MySide(String::from("side1"));
         let mut m = SendMachine::new(&s);
 
         // sending messages before we have a key: messages are queued
-        let p1 = Phase("phase1".to_string());
+        let p1 = Phase(String::from("phase1"));
         let plaintext1 = "plaintext1".as_bytes().to_vec();
         let e1 = m.process(SendEvent::Send(p1.clone(), plaintext1));
         assert_eq!(e1.events.len(), 0);
 
-        let p2 = Phase("phase2".to_string());
+        let p2 = Phase(String::from("phase2"));
         let plaintext2 = "plaintext2".as_bytes().to_vec();
         let e2 = m.process(SendEvent::Send(p2.clone(), plaintext2));
         assert_eq!(e2.events.len(), 0);
@@ -118,7 +118,7 @@ mod test {
 
         // and subsequent Sends should be encrypted immediately
 
-        let p3 = Phase("phase3".to_string());
+        let p3 = Phase(String::from("phase3"));
         let plaintext3 = "plaintext3".as_bytes().to_vec();
         let mut e4 = m.process(SendEvent::Send(p3.clone(), plaintext3));
         assert_eq!(e4.events.len(), 1);
@@ -132,7 +132,7 @@ mod test {
 
     #[test]
     fn test_key_first() {
-        let s = MySide("side1".to_string());
+        let s = MySide(String::from("side1"));
         let mut m = SendMachine::new(&s);
 
         let key = Key("key".as_bytes().to_vec());
@@ -141,7 +141,7 @@ mod test {
 
         // subsequent Sends should be encrypted immediately
 
-        let p1 = Phase("phase1".to_string());
+        let p1 = Phase(String::from("phase1"));
         let plaintext1 = "plaintext1".as_bytes().to_vec();
         let mut e2 = m.process(SendEvent::Send(p1.clone(), plaintext1));
         assert_eq!(e2.events.len(), 1);

@@ -119,7 +119,7 @@ mod test {
     #[test]
     fn test_set_code() {
         let mut c = CodeMachine::new();
-        let code = Code("4-purple-sausages".to_string());
+        let code = Code(String::from("4-purple-sausages"));
         let mut e = c.process(SetCode(code)).events;
 
         match e.remove(0) {
@@ -150,8 +150,8 @@ mod test {
 
         e = c
             .process(Allocated(
-                Nameplate("4".to_string()),
-                Code("4-purple-sausages".to_string()),
+                Nameplate(String::from("4")),
+                Code(String::from("4-purple-sausages")),
             ))
             .events;
         match e.remove(0) {
@@ -175,7 +175,7 @@ mod test {
         }
         assert_eq!(e.len(), 0);
 
-        let n = Nameplate("4".to_string());
+        let n = Nameplate(String::from("4"));
         e = c.process(GotNameplate(n)).events;
         match e.remove(0) {
             Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
@@ -185,7 +185,7 @@ mod test {
         }
         assert_eq!(e.len(), 0);
 
-        let code = Code("4-purple-sausages".to_string());
+        let code = Code(String::from("4-purple-sausages"));
         e = c.process(FinishedInput(code)).events;
         assert_keyboss(e);
     }

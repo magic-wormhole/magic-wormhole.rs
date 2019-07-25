@@ -60,7 +60,7 @@ impl KeyMachine {
         let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
         t1.finish(None);
         actions.push(t1);
-        actions.push(M_AddMessage(Phase("pake".to_string()), pake_msg_ser));
+        actions.push(M_AddMessage(Phase(String::from("pake")), pake_msg_ser));
         pake_state
     }
 
@@ -136,7 +136,7 @@ fn build_version_msg(
     key: &Key,
     versions: &Value,
 ) -> (Phase, Vec<u8>) {
-    let phase = Phase("version".to_string());
+    let phase = Phase(String::from("version"));
     let data_key = derive_phase_key(&side.to_string(), &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
@@ -225,13 +225,13 @@ mod test {
     #[test]
     fn test_extract_pake_msg() {
         let _key = super::KeyMachine::new(
-            &AppID("appid".to_string()),
-            &MySide("side1".to_string()),
+            &AppID(String::from("appid")),
+            &MySide(String::from("side1")),
         );
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = super::extract_pake_msg(&hex::decode(s1).unwrap());
-        assert_eq!(pake_msg, Some("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e".to_string()));
+        assert_eq!(pake_msg, Some(String::from("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e")));
     }
 
     #[test]
@@ -257,25 +257,25 @@ mod test {
         )
         .unwrap());
         let dk11 =
-            derive_phase_key("side1", &main, &Phase("phase1".to_string()));
+            derive_phase_key("side1", &main, &Phase(String::from("phase1")));
         assert_eq!(
             hex::encode(dk11),
             "3af6a61d1a111225cc8968c6ca6265efe892065c3ab46de79dda21306b062990"
         );
         let dk12 =
-            derive_phase_key("side1", &main, &Phase("phase2".to_string()));
+            derive_phase_key("side1", &main, &Phase(String::from("phase2")));
         assert_eq!(
             hex::encode(dk12),
             "88a1dd12182d989ff498022a9656d1e2806f17328d8bf5d8d0c9753e4381a752"
         );
         let dk21 =
-            derive_phase_key("side2", &main, &Phase("phase1".to_string()));
+            derive_phase_key("side2", &main, &Phase(String::from("phase1")));
         assert_eq!(
             hex::encode(dk21),
             "a306627b436ec23bdae3af8fa90c9ac927780d86be1831003e7f617c518ea689"
         );
         let dk22 =
-            derive_phase_key("side2", &main, &Phase("phase2".to_string()));
+            derive_phase_key("side2", &main, &Phase(String::from("phase2")));
         assert_eq!(
             hex::encode(dk22),
             "bf99e3e16420f2dad33f9b1ccb0be1462b253d639dacdb50ed9496fa528d8758"
@@ -292,13 +292,13 @@ mod test {
         // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
         let _k = KeyMachine::new(
-            &AppID("appid1".to_string()),
-            &MySide("side".to_string()),
+            &AppID(String::from("appid1")),
+            &MySide(String::from("side")),
         );
 
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
-        let phase = Phase("phase1".to_string());
+        let phase = Phase(String::from("phase1"));
         let phase1_key = derive_phase_key(side, &key, &phase);
 
         assert_eq!(
@@ -348,7 +348,7 @@ mod test {
     fn test_encrypt_data_decrypt_data_roundtrip() {
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
-        let phase = Phase("phase".to_string());
+        let phase = Phase(String::from("phase"));
         let data_key = derive_phase_key(side, &key, &phase);
         let plaintext = "hello world";
 

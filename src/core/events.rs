@@ -168,11 +168,11 @@ impl fmt::Debug for BossEvent {
             RxWelcome(ref v) => format!("RxWelcome({:?})", v),
             RxError(ref s) => format!("RxError({})", s),
             Error(ref s) => format!("Error({})", s),
-            Closed => "Closed".to_string(),
+            Closed => String::from("Closed"),
             GotCode(ref code) => format!("GotCode({:?})", code),
-            GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
-            Scared => "Scared".to_string(),
-            Happy => "Happy".to_string(),
+            GotKey(ref _key) => String::from("GotKey(REDACTED)"),
+            Scared => String::from("Scared"),
+            Happy => String::from("Happy"),
             GotVerifier(ref v) => format!("GotVerifier({})", maybe_utf8(v)),
             GotMessage(ref phase, ref msg) => {
                 format!("GotMessage({:?}, {})", phase, maybe_utf8(msg))
@@ -242,15 +242,15 @@ impl fmt::Debug for MailboxEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::MailboxEvent::*;
         let t = match *self {
-            Connected => "Connected".to_string(),
-            Lost => "Lost".to_string(),
+            Connected => String::from("Connected"),
+            Lost => String::from("Lost"),
             RxMessage(ref side, ref phase, ref body) => format!(
                 "RxMessage(side={:?}, phase={}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
             ),
-            RxClosed => "RxClosed".to_string(),
+            RxClosed => String::from("RxClosed"),
             Close(ref mood) => format!("Close({:?})", mood),
             GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
             AddMessage(ref phase, ref body) => {
@@ -308,7 +308,7 @@ impl fmt::Debug for ReceiveEvent {
                 phase,
                 maybe_utf8(body)
             ),
-            GotKey(ref _key) => "GotKey(REDACTED)".to_string(),
+            GotKey(ref _key) => String::from("GotKey(REDACTED)"),
         };
         write!(f, "ReceiveEvent::{}", t)
     }
@@ -332,7 +332,7 @@ impl fmt::Debug for RendezvousEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::RendezvousEvent::*;
         let t = match *self {
-            Start => "Start".to_string(),
+            Start => String::from("Start"),
             TxBind(ref appid, ref side) => {
                 format!("TxBind(appid={}, side={:?})", appid, side)
             }
@@ -343,11 +343,11 @@ impl fmt::Debug for RendezvousEvent {
             TxClose(ref mailbox, ref mood) => {
                 format!("TxClose({}, {:?})", mailbox, mood)
             }
-            Stop => "Stop".to_string(),
+            Stop => String::from("Stop"),
             TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
             TxRelease(ref nameplate) => format!("TxRelease({:?})", nameplate),
-            TxAllocate => "TxAllocate".to_string(),
-            TxList => "TxList".to_string(),
+            TxAllocate => String::from("TxAllocate"),
+            TxList => String::from("TxList"),
         };
         write!(f, "RendezvousEvent::{}", t)
     }

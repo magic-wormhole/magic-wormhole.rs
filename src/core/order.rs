@@ -79,11 +79,11 @@ mod test {
     #[test]
     fn test_messages_then_pake() {
         let mut m = super::OrderMachine::new();
-        let s1: TheirSide = TheirSide("side1".to_string());
-        let p1: Phase = Phase("phase1".to_string());
-        let p2: Phase = Phase("phase2".to_string());
-        let p3: Phase = Phase("phase3".to_string());
-        let ppake: Phase = Phase("pake".to_string());
+        let s1: TheirSide = TheirSide(String::from("side1"));
+        let p1: Phase = Phase(String::from("phase1"));
+        let p2: Phase = Phase(String::from("phase2"));
+        let p3: Phase = Phase(String::from("phase3"));
+        let ppake: Phase = Phase(String::from("pake"));
 
         let out = m.process(OrderEvent::GotMessage(
             s1.clone(),
@@ -124,11 +124,11 @@ mod test {
     #[test]
     fn test_pake_then_messages() {
         let mut m = super::OrderMachine::new();
-        let s1: TheirSide = TheirSide("side1".to_string());
-        let p1: Phase = Phase("phase1".to_string());
-        let p2: Phase = Phase("phase2".to_string());
-        let _p3: Phase = Phase("phase3".to_string());
-        let ppake: Phase = Phase("pake".to_string());
+        let s1: TheirSide = TheirSide(String::from("side1"));
+        let p1: Phase = Phase(String::from("phase1"));
+        let p2: Phase = Phase(String::from("phase2"));
+        let _p3: Phase = Phase(String::from("phase3"));
+        let ppake: Phase = Phase(String::from("pake"));
 
         let out = m.process(OrderEvent::GotMessage(
             s1.clone(),

@@ -23,13 +23,13 @@ impl fmt::Debug for APIEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::APIEvent::*;
         let t = match *self {
-            Start => "Start".to_string(),
+            Start => String::from("Start"),
             AllocateCode(ref num_words) => {
                 format!("AllocateCode({})", num_words)
             }
-            InputCode => "InputCode".to_string(),
+            InputCode => String::from("InputCode"),
             InputHelperRefreshNameplates => {
-                "InputHelperRefreshNameplates".to_string()
+                String::from("InputHelperRefreshNameplates")
             }
             InputHelperChooseNameplate(ref nameplate) => {
                 format!("InputHelperChooseNameplate({})", nameplate)
@@ -38,7 +38,7 @@ impl fmt::Debug for APIEvent {
                 format!("InputHelperChooseWords({})", words)
             }
             SetCode(ref code) => format!("SetCode({:?})", code),
-            Close => "Close".to_string(),
+            Close => String::from("Close"),
             Send(ref msg) => format!("Send({})", maybe_utf8(msg)),
         };
         write!(f, "APIEvent::{}", t)
@@ -100,11 +100,11 @@ impl Mood {
     fn to_protocol_string(self) -> String {
         // this is used for protocol messages as well as debug output
         match self {
-            Mood::Happy => "happy".to_string(),
-            Mood::Lonely => "lonely".to_string(),
-            Mood::Errory => "errory".to_string(),
-            Mood::Scared => "scary".to_string(),
-            Mood::Unwelcome => "unwelcome".to_string(),
+            Mood::Happy => String::from("happy"),
+            Mood::Lonely => String::from("lonely"),
+            Mood::Errory => String::from("errory"),
+            Mood::Scared => String::from("scary"),
+            Mood::Unwelcome => String::from("unwelcome"),
         }
     }
 }
@@ -134,7 +134,7 @@ impl fmt::Debug for APIAction {
             GotWelcome(ref welcome) => format!("GotWelcome({:?})", welcome),
             GotCode(ref code) => format!("GotCode({:?})", code),
             GotUnverifiedKey(ref _key) => {
-                "GotUnverifiedKey(REDACTED)".to_string()
+                String::from("GotUnverifiedKey(REDACTED)")
             }
             GotVerifier(ref v) => format!("GotVerifier({})", hex::encode(v)),
             GotVersions(ref versions) => format!("GotVersions({:?})", versions),

@@ -104,9 +104,9 @@ impl RendezvousMachine {
                     assert!(wsh == h);
                     if !self.connected_at_least_once {
                         // TODO: WebSocketConnectionLost(wsh, reason)
-                        let e = BossEvent::Error(
-                            "initial WebSocket connection lost".to_string(),
-                        );
+                        let e = BossEvent::Error(String::from(
+                            "initial WebSocket connection lost",
+                        ));
                         actions.push(e);
                         Stopped
                     } else {
@@ -340,9 +340,9 @@ mod test {
 
     #[test]
     fn create() {
-        let side = MySide("side1".to_string());
+        let side = MySide(String::from("side1"));
         let mut r = super::RendezvousMachine::new(
-            &AppID("appid".to_string()),
+            &AppID(String::from("appid")),
             "url",
             &side,
             5.0,
@@ -385,7 +385,7 @@ mod test {
                 match &b {
                     &RC_TxBind(ref appid0, ref side0) => {
                         assert_eq!(appid0.to_string(), "appid");
-                        assert_eq!(side0, &MySide("side1".to_string()));
+                        assert_eq!(side0, &MySide(String::from("side1")));
                     }
                     _ => panic!(),
                 }
@@ -478,9 +478,9 @@ mod test {
 
     #[test]
     fn first_connect_fails() {
-        let side = MySide("side1".to_string());
+        let side = MySide(String::from("side1"));
         let mut r = super::RendezvousMachine::new(
-            &AppID("appid".to_string()),
+            &AppID(String::from("appid")),
             "url",
             &side,
             5.0,
@@ -497,9 +497,9 @@ mod test {
         let actions = filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)));
         assert_eq!(
             actions,
-            events![BossEvent::Error(
-                "initial WebSocket connection lost".to_string()
-            )]
+            events![BossEvent::Error(String::from(
+                "initial WebSocket connection lost"
+            ))]
         );
     }
 }
