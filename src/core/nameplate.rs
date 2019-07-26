@@ -174,7 +174,7 @@ mod test {
     #[test]
     fn test_nc() {
         // set_N_ameplate, then _C_onnected
-        let name1 = Nameplate(String::from("n1"));
+        let name1 = Nameplate::new("n1");
         let mbox1 = Mailbox(String::from("mbox1"));
         let mut n = NameplateMachine::new();
 
@@ -212,7 +212,7 @@ mod test {
     fn test_cn() {
         // connect, then SetNameplate. Also test a bunch of lost+reconnect
         // paths.
-        let name1 = Nameplate(String::from("n1"));
+        let name1 = Nameplate::new("n1");
         let mbox1 = Mailbox(String::from("mbox1"));
         let mut n = NameplateMachine::new();
 
@@ -275,7 +275,7 @@ mod test {
     #[test]
     fn test_close2() {
         let mut n = NameplateMachine::new();
-        let name1 = Nameplate(String::from("n1"));
+        let name1 = Nameplate::new("n1");
 
         let mut e = n.process(SetNameplate(name1));
         assert_eq!(e, events![]);
@@ -287,7 +287,7 @@ mod test {
     #[test]
     fn test_close3() {
         let mut n = NameplateMachine::new();
-        let name1 = Nameplate(String::from("n1"));
+        let name1 = Nameplate::new("n1");
 
         let mut e = n.process(Connected);
         assert_eq!(e, events![]);
@@ -330,7 +330,7 @@ mod test {
     #[test]
     fn test_close5() {
         let mut n = NameplateMachine::new();
-        let name1 = Nameplate(String::from("n1"));
+        let name1 = Nameplate::new("n1");
 
         let mut e = n.process(Connected);
         assert_eq!(e, events![]);
@@ -347,7 +347,7 @@ mod test {
     #[test]
     fn test_close6() {
         let mut n = NameplateMachine::new();
-        let name1 = Nameplate(String::from("n1"));
+        let name1 = Nameplate::new("n1");
         let mbox1 = Mailbox(String::from("mbox1"));
 
         let mut e = n.process(Connected);

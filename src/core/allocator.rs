@@ -92,7 +92,7 @@ mod test {
             _ => panic!(),
         }
         assert_eq!(e.events.len(), 0);
-        let n = Nameplate(String::from("123"));
+        let n = Nameplate::new("123");
         e = a.process(RxAllocated(n));
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
@@ -125,7 +125,7 @@ mod test {
         }
         assert_eq!(e.events.len(), 0);
 
-        let n = Nameplate(String::from("123"));
+        let n = Nameplate::new("123");
         e = a.process(RxAllocated(n));
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
@@ -148,7 +148,7 @@ mod test {
             _ => panic!(),
         }
         assert_eq!(e.events.len(), 0);
-        let n = Nameplate(String::from("123"));
+        let n = Nameplate::new("123");
         e = a.process(RxAllocated(n));
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
@@ -174,7 +174,7 @@ mod test {
             _ => panic!(),
         }
         assert_eq!(e.events.len(), 0);
-        let n = Nameplate(String::from("123"));
+        let n = Nameplate::new("123");
         e = a.process(RxAllocated(n));
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
@@ -217,9 +217,9 @@ mod test {
 
         a.process(Allocate(w));
         a.process(Connected);
-        let n1 = Nameplate(String::from("123"));
+        let n1 = Nameplate::new("123");
         a.process(RxAllocated(n1));
-        let n2 = Nameplate(String::from("123"));
+        let n2 = Nameplate::new("123");
         a.process(RxAllocated(n2));
     }
 

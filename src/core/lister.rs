@@ -108,10 +108,8 @@ mod test {
         assert_eq!(lister.state, Some(State::S0A));
 
         lister.state = Some(State::S0B);
-        let nameplates: Vec<Nameplate> = vec!["3"]
-            .into_iter()
-            .map(|s| Nameplate(s.to_string()))
-            .collect();
+        let nameplates: Vec<Nameplate> =
+            vec!["3"].into_iter().map(|s| Nameplate::new(s)).collect();
         assert_eq!(
             lister.process(RxNameplates(nameplates.clone())),
             events![GotNameplates(nameplates)]

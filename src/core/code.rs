@@ -48,7 +48,7 @@ impl CodeMachine {
                     // TODO: try!(validate_code(code))
                     let code_string = code.to_string();
                     let nc: Vec<&str> = code_string.splitn(2, '-').collect();
-                    let nameplate = Nameplate(nc[0].to_string());
+                    let nameplate = Nameplate::new(nc[0]);
                     actions.push(N_SetNameplate(nameplate.clone()));
                     actions.push(B_GotCode(code.clone()));
                     actions.push(K_GotCode(code.clone()));
@@ -150,7 +150,7 @@ mod test {
 
         e = c
             .process(Allocated(
-                Nameplate(String::from("4")),
+                Nameplate::new("4"),
                 Code(String::from("4-purple-sausages")),
             ))
             .events;
@@ -175,7 +175,7 @@ mod test {
         }
         assert_eq!(e.len(), 0);
 
-        let n = Nameplate(String::from("4"));
+        let n = Nameplate::new("4");
         e = c.process(GotNameplate(n)).events;
         match e.remove(0) {
             Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
