@@ -108,6 +108,11 @@ impl fmt::Display for Mailbox {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Nameplate(pub String);
+impl Nameplate {
+    pub fn new(n: &str) -> Self {
+        Nameplate(String::from(n))
+    }
+}
 impl Deref for Nameplate {
     type Target = String;
     fn deref(&self) -> &String {
