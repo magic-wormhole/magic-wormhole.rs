@@ -14,6 +14,7 @@ cache:
 rust:
   - stable
   - beta
+  - 1.33.0
   - nightly
 
 branches:
