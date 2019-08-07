@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/rust:1.35
+      - image: circleci/rust:1.36
     steps:
       - checkout
       - restore_cache:
