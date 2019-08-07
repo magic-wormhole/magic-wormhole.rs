@@ -4,8 +4,7 @@ use std;
 use std::str;
 
 pub fn random_bytes(bytes: &mut [u8]) {
-    let mut rng = OsRng::new().unwrap();
-    rng.fill_bytes(bytes);
+    OsRng.fill_bytes(bytes);
 }
 
 // bytestring to hex representation of each byte as two characters.
