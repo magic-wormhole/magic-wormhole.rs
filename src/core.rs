@@ -1,3 +1,7 @@
+use std::collections::VecDeque;
+
+use hex;
+
 #[macro_use]
 mod events;
 mod allocator;
@@ -21,9 +25,6 @@ mod timing;
 mod transfer;
 mod util;
 mod wordlist;
-
-use rustc_serialize::hex::ToHex;
-use std::collections::VecDeque;
 
 pub use self::events::{AppID, Code};
 use self::events::{Event, Events, MySide, Nameplate};
@@ -65,7 +66,7 @@ pub struct WormholeCore {
 fn generate_side() -> String {
     let mut bytes: [u8; 5] = [0; 5];
     random_bytes(&mut bytes);
-    bytes.to_hex()
+    hex::encode(bytes)
 }
 
 impl WormholeCore {
