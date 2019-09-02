@@ -19,7 +19,7 @@ travis-ci = { repository = "warner/magic-wormhole.rs" }
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
-sodiumoxide = "0.2"
+xsalsa20poly1305 = "0.2"
 spake2 = "0.2.0"
 sha2 = "0.8"
 hkdf = "0.8.0"
