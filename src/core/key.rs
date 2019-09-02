@@ -4,9 +4,14 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::{self, Value};
 use sha2::{Digest, Sha256};
-use sodiumoxide;
-use sodiumoxide::crypto::secretbox;
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
+use xsalsa20poly1305::{
+    aead::{
+        generic_array::{typenum::Unsigned, GenericArray},
+        Aead, NewAead,
+    },
+    XSalsa20Poly1305,
+};
 
 use super::events::{AppID, Code, Events, Key, MySide, Phase};
 use super::util;
@@ -154,34 +159,34 @@ fn encrypt_data_with_nonce(
     plaintext: &[u8],
     noncebuf: &[u8],
 ) -> Vec<u8> {
-    let nonce = secretbox::Nonce::from_slice(&noncebuf).unwrap();
-    let sodium_key = secretbox::Key::from_slice(&key).unwrap();
-    let ciphertext = secretbox::seal(&plaintext, &nonce, &sodium_key);
-    let mut nonce_and_ciphertext = Vec::new();
-    nonce_and_ciphertext.extend(nonce.as_ref().to_vec());
-    nonce_and_ciphertext.extend(ciphertext);
+    let cipher = XSalsa20Poly1305::new(*GenericArray::from_slice(&key));
+    let mut ciphertext = cipher
+        .encrypt(GenericArray::from_slice(&noncebuf), plaintext)
+        .unwrap();
+    let mut nonce_and_ciphertext = vec![];
+    nonce_and_ciphertext.append(&mut Vec::from(noncebuf));
+    nonce_and_ciphertext.append(&mut ciphertext);
     nonce_and_ciphertext
 }
 
 pub fn encrypt_data(key: &[u8], plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let noncebuf = secretbox::gen_nonce().as_ref().to_vec();
+    let mut noncebuf: GenericArray<u8, <XSalsa20Poly1305 as Aead>::NonceSize> =
+        GenericArray::default();
+    util::random_bytes(&mut noncebuf);
     let nonce_and_ciphertext =
         encrypt_data_with_nonce(key, plaintext, &noncebuf);
-    (noncebuf, nonce_and_ciphertext)
+    (noncebuf.to_vec(), nonce_and_ciphertext)
 }
 
-// TODO: return an Result with a proper error type
-// secretbox::open() returns Result<Vec<u8>, ()> which is not helpful.
+// TODO: return a Result with a proper error type
 pub fn decrypt_data(key: &[u8], encrypted: &[u8]) -> Option<Vec<u8>> {
-    let (nonce, ciphertext) =
-        encrypted.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
-    assert_eq!(nonce.len(), sodiumoxide::crypto::secretbox::NONCEBYTES);
-    secretbox::open(
-        &ciphertext,
-        &secretbox::Nonce::from_slice(nonce).unwrap(),
-        &secretbox::Key::from_slice(&key).unwrap(),
-    )
-    .ok()
+    let nonce_size = <XSalsa20Poly1305 as Aead>::NonceSize::to_usize();
+    let (nonce, ciphertext) = encrypted.split_at(nonce_size);
+    assert_eq!(nonce.len(), nonce_size);
+    let cipher = XSalsa20Poly1305::new(*GenericArray::from_slice(key));
+    cipher
+        .decrypt(GenericArray::from_slice(nonce), ciphertext)
+        .ok()
 }
 
 fn sha256_digest(input: &[u8]) -> Vec<u8> {
@@ -206,7 +211,7 @@ pub fn derive_phase_key(side: &str, key: &Key, phase: &Phase) -> Vec<u8> {
     purpose_vec.extend(side_digest);
     purpose_vec.extend(phase_digest);
 
-    let length = sodiumoxide::crypto::secretbox::KEYBYTES;
+    let length = <XSalsa20Poly1305 as NewAead>::KeySize::to_usize();
     derive_key(&key.to_vec(), &purpose_vec, length)
 }
 
