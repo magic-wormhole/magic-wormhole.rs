@@ -150,17 +150,17 @@ impl fmt::Debug for APIAction {
 // constructed externally, nor can existing ones be modified.
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct TimerHandle(u32);
+pub struct TimerHandle(u64);
 impl TimerHandle {
-    pub(crate) fn new(id: u32) -> TimerHandle {
+    pub(crate) fn new(id: u64) -> TimerHandle {
         TimerHandle(id)
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct WSHandle(u32);
+pub struct WSHandle(u64);
 impl WSHandle {
-    pub(crate) fn new(id: u32) -> WSHandle {
+    pub(crate) fn new(id: u64) -> WSHandle {
         WSHandle(id)
     }
 }

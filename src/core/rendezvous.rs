@@ -45,8 +45,8 @@ pub struct RendezvousMachine {
     retry_delay: f32,
     state: Option<State>,
     connected_at_least_once: bool,
-    next_timer_id: u32,
-    next_wsh_id: u32,
+    next_timer_id: u64,
+    next_wsh_id: u64,
 }
 
 impl RendezvousMachine {

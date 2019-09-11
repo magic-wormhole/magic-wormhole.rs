@@ -28,11 +28,11 @@ use super::events::TerminatorEvent::Close as T_Close;
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
     Unstarted,
-    Empty(u32),
-    Coding(u32),
-    Inputting(u32),
-    Lonely(u32),
-    Happy(u32),
+    Empty(u64),
+    Coding(u64),
+    Inputting(u64),
+    Lonely(u64),
+    Happy(u64),
     Closing(Mood),
     Closed(Mood),
 }
