@@ -9,8 +9,8 @@ edition = "2018"
 description = "Get things from one computer to another, safely"
 readme = "README.md"
 
-# the MSRV is rust-1.33.0, due to (at least) percent-encoding-2.1.0 using
-# local variables in a const fn, which was unstable in rust-1.32.0
+# the MSRV is rust-1.36.0, due to (at least) sodiumoxide-0.2.4 using
+# mem::MaybeUninit
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }
