@@ -22,7 +22,7 @@ pub enum OutboundMessage {
     Open { mailbox: String },
     Add { phase: String, body: String },
     Close { mailbox: String, mood: String },
-    Ping { ping: u32 },
+    Ping { ping: u64 },
 }
 
 pub fn bind(appid: &AppID, side: &MySide) -> OutboundMessage {
@@ -78,7 +78,7 @@ pub fn deserialize_outbound(s: &str) -> OutboundMessage {
 }
 
 #[allow(dead_code)]
-pub fn ping(ping: u32) -> OutboundMessage {
+pub fn ping(ping: u64) -> OutboundMessage {
     OutboundMessage::Ping { ping }
 }
 
@@ -109,7 +109,7 @@ pub enum InboundMessage {
     Closed {},
     Ack {},
     Pong {
-        pong: u32,
+        pong: u64,
     },
     //Error { error: String, orig: Message },
 }
