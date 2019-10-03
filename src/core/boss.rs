@@ -334,5 +334,4 @@ mod test {
             events![APIAction::GotVersions(json!({"hello_app": 456})),]
         );
     }
-
 }

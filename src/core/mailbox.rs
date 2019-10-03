@@ -386,5 +386,4 @@ mod test {
         e = m.process(RxMessage(t2.clone(), phase1.clone(), body1.clone()));
         assert_eq!(e, events![NameplateEvent::Release]);
     }
-
 }

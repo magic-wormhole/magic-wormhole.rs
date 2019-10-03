@@ -369,5 +369,4 @@ mod test {
         e = n.process(RxReleased);
         assert_eq!(e, events![TerminatorEvent::NameplateDone]);
     }
-
 }
