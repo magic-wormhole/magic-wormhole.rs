@@ -1,17 +1,41 @@
 version: 2
 jobs:
-  build:
+  build_msrv:
     docker:
       - image: circleci/rust:1.36
     steps:
       - checkout
       - restore_cache:
-          key: project-cache
+          key: project-cache-1.36
+      - run:
+          name: cargo version
+          command: cargo version
+      - run:
+          name: cargo build
+          command: cargo build
+      - run:
+          name: cargo test
+          command: cargo test
+      - save_cache:
+          key: project-cache-1.36
+          paths:
+            - "~/.cargo"
+            - "./target"
+  build_current:
+    docker:
+      - image: circleci/rust:latest
+    steps:
+      - checkout
+      - restore_cache:
+          key: project-cache-latest
       - run:
           name: install rustfmt and clippy
           command: |
             rustup component add rustfmt
             rustup component add clippy
+      - run:
+          name: cargo version
+          command: cargo version
       - run:
           name: cargo fmt
           command: cargo fmt -- --check
@@ -25,7 +49,14 @@ jobs:
           name: clippy
           command: cargo clippy
       - save_cache:
-          key: project-cache
+          key: project-cache-latest
           paths:
             - "~/.cargo"
             - "./target"
+
+workflows:
+  version: 2
+  Build:
+    jobs:
+      - build_msrv
+      - build_current

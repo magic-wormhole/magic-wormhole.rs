@@ -14,7 +14,7 @@ cache:
 rust:
   - stable
   - beta
-  - 1.36.0
+  - 1.36.0 # MSRV
   - nightly
 
 branches:
@@ -23,13 +23,13 @@ branches:
 
 matrix:
   include:
-    - rust: 1.36.0 # lock down for consistent rustfmt behavior
+    - rust: 1.38.0 # lock down for consistent rustfmt behavior
       env: RUSTFMT
       install:
         - rustup component add rustfmt
       script:
         - cargo fmt -- --check
-    - rust: 1.36.0
+    - rust: 1.38.0
       env: CLIPPY
       install:
         - rustup component add clippy

@@ -222,5 +222,4 @@ mod test {
         let n2 = Nameplate::new("123");
         a.process(RxAllocated(n2));
     }
-
 }
