@@ -403,5 +403,4 @@ mod test {
         terminator.state = Some(State::SStopping);
         terminator.process(Close(Happy));
     }
-
 }

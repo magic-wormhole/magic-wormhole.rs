@@ -247,5 +247,4 @@ mod test {
         ));
         assert_eq!(e, events![]);
     }
-
 }

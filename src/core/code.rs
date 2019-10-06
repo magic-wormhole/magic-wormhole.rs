@@ -189,5 +189,4 @@ mod test {
         e = c.process(FinishedInput(code)).events;
         assert_keyboss(e);
     }
-
 }
