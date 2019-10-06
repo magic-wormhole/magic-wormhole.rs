@@ -1,8 +1,26 @@
 version: 2
 jobs:
-  build:
+  build_msrv:
     docker:
       - image: circleci/rust:1.36
+    steps:
+      - checkout
+      - restore_cache:
+          key: project-cache
+      - run:
+          name: cargo build
+          command: cargo build
+      - run:
+          name: cargo test
+          command: cargo test
+      - save_cache:
+          key: project-cache
+          paths:
+            - "~/.cargo"
+            - "./target"
+  build_current:
+    docker:
+      - image: circleci/rust
     steps:
       - checkout
       - restore_cache:
