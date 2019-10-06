@@ -47,3 +47,10 @@ jobs:
           paths:
             - "~/.cargo"
             - "./target"
+
+workflows:
+  version: 2
+  Build:
+    jobs:
+      - build_msrv
+      - build_current
