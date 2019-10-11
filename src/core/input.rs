@@ -58,6 +58,7 @@ impl InputMachine {
                     actions.push(L_Refresh);
                     WantNameplateNoNameplates
                 }
+                GotWordlist(_) => old_state,
                 _ => panic!(),
             },
             WantNameplateNoNameplates => match event {
