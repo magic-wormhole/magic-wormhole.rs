@@ -176,7 +176,7 @@ impl WormholeCore {
                 Rendezvous(e) => self.rendezvous.process(e),
                 Send(e) => self.send.process(e),
                 Terminator(e) => self.terminator.process(e),
-                Timing(_) => panic!(),
+                Timing(_) => events![], // todo: unimplemented
             };
 
             for a in actions.events {
