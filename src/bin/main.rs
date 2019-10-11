@@ -2,6 +2,7 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg,
     SubCommand,
 };
+use env_logger;
 use magic_wormhole::core::{
     error_message, message, message_ack, OfferType, PeerMessage,
 };
@@ -13,6 +14,7 @@ const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
+    drop(env_logger::try_init());
     let send = SubCommand::with_name("send")
         .aliases(&["tx"])
         .arg(
