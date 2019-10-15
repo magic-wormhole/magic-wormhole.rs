@@ -106,6 +106,7 @@ impl WormholeCore {
     }
 
     pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
+        // run with RUST_LOG=magic_wormhole=trace to see these
         trace!("api: {:?}", event);
         let events = self.boss.process_api(event);
         self._execute(events)
