@@ -33,8 +33,8 @@ ws = { version = "0.9", optional = true }
 url = { version = "2.1", optional = true }
 
 # for "io_tokio" feature
-websocket = { version = "0.23", optional = true }
-futures = { version = "0.1", optional = true }
+websocket = { version = "0.24", optional = true }
+futures = { version = "0.3", optional = true }
 tokio-core = { version = "0.1", optional = true }
 
 # for "bin" feature
