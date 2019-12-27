@@ -110,19 +110,9 @@ impl fmt::Display for Phase {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct Mailbox(pub String);
-impl Deref for Mailbox {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
-    }
-}
-impl fmt::Display for Mailbox {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Mailbox({})", &self.0)
-    }
-}
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Nameplate(pub String);
@@ -275,7 +265,7 @@ impl fmt::Debug for MailboxEvent {
             ),
             RxClosed => String::from("RxClosed"),
             Close(ref mood) => format!("Close({:?})", mood),
-            GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
+            GotMailbox(ref mailbox) => format!("GotMailbox({:?})", mailbox),
             AddMessage(ref phase, ref body) => {
                 format!("AddMessage({}, {})", phase, maybe_utf8(body))
             }
@@ -359,12 +349,12 @@ impl fmt::Debug for RendezvousEvent {
             TxBind(ref appid, ref side) => {
                 format!("TxBind(appid={:?}, side={:?})", appid, side)
             }
-            TxOpen(ref mailbox) => format!("TxOpen({})", mailbox),
+            TxOpen(ref mailbox) => format!("TxOpen({:?})", mailbox),
             TxAdd(ref phase, ref body) => {
                 format!("TxAdd({}, {})", phase, maybe_utf8(body))
             }
             TxClose(ref mailbox, ref mood) => {
-                format!("TxClose({}, {:?})", mailbox, mood)
+                format!("TxClose({:?}, {:?})", mailbox, mood)
             }
             Stop => String::from("Stop"),
             TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
