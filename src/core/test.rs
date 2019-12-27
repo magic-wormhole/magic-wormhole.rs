@@ -21,18 +21,28 @@ fn test_phase() {
 
 #[test]
 fn test_mood() {
-    // these strings are part of the wire protocol, so .to_string() must
-    // return exactly these values, even if i18n or other human-facing
-    // concerns want it otherwise. If we must change our implementation of
-    // the Display trait, then we need to add a different trait specifically
-    // for serialization onto the wire. They must match the strings used in
-    // the Python version in src/wormhole/_boss.py , in calls to
-    // self._T.close()
-    assert_eq!(Mood::Happy.to_string(), "happy");
-    assert_eq!(Mood::Lonely.to_string(), "lonely");
-    assert_eq!(Mood::Errory.to_string(), "errory");
-    assert_eq!(Mood::Scared.to_string(), "scary");
-    assert_eq!(Mood::Unwelcome.to_string(), "unwelcome");
+    // These must match the strings used in the Python version in
+    // src/wormhole/_boss.py , in calls to self._T.close()
+    assert_eq!(
+        String::from(r#""happy""#),
+        serde_json::to_string(&Mood::Happy).unwrap()
+    );
+    assert_eq!(
+        String::from(r#""lonely""#),
+        serde_json::to_string(&Mood::Lonely).unwrap()
+    );
+    assert_eq!(
+        String::from(r#""errory""#),
+        serde_json::to_string(&Mood::Errory).unwrap()
+    );
+    assert_eq!(
+        String::from(r#""scary""#),
+        serde_json::to_string(&Mood::Scared).unwrap()
+    );
+    assert_eq!(
+        String::from(r#""unwelcome""#),
+        serde_json::to_string(&Mood::Unwelcome).unwrap()
+    );
 }
 
 use super::{Action, IOAction, IOEvent, TimerHandle, WSHandle, WormholeCore};
