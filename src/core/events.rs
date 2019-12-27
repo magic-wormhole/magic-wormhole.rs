@@ -9,6 +9,7 @@ use std::sync::Arc;
 use super::api::{APIAction, IOAction, Mood};
 use super::timing::TimingLogEvent;
 use super::util::maybe_utf8;
+use crate::core::util::random_bytes;
 
 pub use super::wordlist::Wordlist;
 
@@ -37,35 +38,61 @@ impl fmt::Debug for Key {
     }
 }
 
+fn generate_side() -> String {
+    let mut bytes: [u8; 5] = [0; 5];
+    random_bytes(&mut bytes);
+    hex::encode(bytes)
+}
+
 // MySide is used for the String that we send in all our outbound messages
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct MySide(pub String);
-impl Deref for MySide {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct MySide(EitherSide);
+
+impl MySide {
+    pub fn generate() -> MySide {
+        MySide(EitherSide(generate_side()))
+    }
+    // It's a minor type system feature that converting an arbitrary string into MySide is hard.
+    // This prevents it from getting swapped around with TheirSide.
+    #[cfg(test)]
+    pub fn unchecked_from_string(s: String) -> MySide {
+        MySide(EitherSide(s))
     }
 }
 
-impl fmt::Display for MySide {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
+impl Deref for MySide {
+    type Target = EitherSide;
+    fn deref(&self) -> &EitherSide {
+        &self.0
     }
 }
 
 // TheirSide is used for the String that arrives inside inbound messages
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct TheirSide(pub String);
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct TheirSide(EitherSide);
+
+impl<S: Into<String>> From<S> for TheirSide {
+    fn from(s: S) -> TheirSide {
+        TheirSide(EitherSide(s.into()))
+    }
+}
+
 impl Deref for TheirSide {
-    type Target = String;
-    fn deref(&self) -> &String {
+    type Target = EitherSide;
+    fn deref(&self) -> &EitherSide {
         &self.0
     }
 }
 
-impl fmt::Display for TheirSide {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct EitherSide(pub String);
+
+impl<S: Into<String>> From<S> for EitherSide {
+    fn from(s: S) -> EitherSide {
+        EitherSide(s.into())
     }
 }
 

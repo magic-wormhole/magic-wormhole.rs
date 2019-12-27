@@ -114,7 +114,7 @@ impl ReceiveMachine {
 mod test {
     use super::*;
     use crate::core::events::{
-        BossEvent, ReceiveEvent::*, SendEvent, TheirSide,
+        BossEvent, EitherSide, ReceiveEvent::*, SendEvent, TheirSide,
     };
     use crate::core::key::{derive_phase_key, derive_verifier, encrypt_data};
 
@@ -125,9 +125,13 @@ mod test {
         let masterkey = Key(b"0123456789abcdef0123456789abcdef".to_vec());
         let verifier = derive_verifier(&masterkey);
         let side1 = String::from("side1");
-        let t1 = TheirSide(side1.clone());
+        let t1 = TheirSide::from(side1.clone());
         let phase1 = Phase(String::from("phase1"));
-        let phasekey1 = derive_phase_key(&side1, &masterkey, &phase1);
+        let phasekey1 = derive_phase_key(
+            &EitherSide::from(&side1[..]),
+            &masterkey,
+            &phase1,
+        );
         let plaintext1 = b"plaintext1";
         let (_, nonce_and_ciphertext1) = encrypt_data(&phasekey1, plaintext1);
 
@@ -159,7 +163,11 @@ mod test {
 
         // second message should only provoke GotMessage
         let phase2 = Phase(String::from("phase2"));
-        let phasekey2 = derive_phase_key(&side1, &masterkey, &phase2);
+        let phasekey2 = derive_phase_key(
+            &EitherSide::from(&side1[..]),
+            &masterkey,
+            &phase2,
+        );
         let plaintext2 = b"plaintext2";
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
 
@@ -189,7 +197,8 @@ mod test {
 
         // all messages are ignored once we're Scared
         let phase4 = Phase(String::from("phase4"));
-        let phasekey4 = derive_phase_key(&side1, &masterkey, &phase4);
+        let phasekey4 =
+            derive_phase_key(&EitherSide::from(side1), &masterkey, &phase4);
         let plaintext4 = b"plaintext4";
         let (_, nonce_and_ciphertext4) = encrypt_data(&phasekey4, plaintext4);
 
@@ -207,7 +216,7 @@ mod test {
 
         let masterkey = Key(b"0123456789abcdef0123456789abcdef".to_vec());
         let side1 = String::from("side1");
-        let t1 = TheirSide(side1.clone());
+        let t1 = TheirSide::from(side1.clone());
 
         let mut r = ReceiveMachine::new();
 
@@ -236,7 +245,8 @@ mod test {
 
         // all messages are ignored once we're Scared
         let phase2 = Phase(String::from("phase2"));
-        let phasekey2 = derive_phase_key(&side1, &masterkey, &phase2);
+        let phasekey2 =
+            derive_phase_key(&EitherSide::from(side1), &masterkey, &phase2);
         let plaintext2 = b"plaintext2";
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
 

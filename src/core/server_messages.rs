@@ -14,7 +14,7 @@ pub struct Nameplate {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum OutboundMessage {
-    Bind { appid: AppID, side: String },
+    Bind { appid: AppID, side: MySide },
     List {},
     Allocate {},
     Claim { nameplate: String },
@@ -25,11 +25,8 @@ pub enum OutboundMessage {
     Ping { ping: u64 },
 }
 
-pub fn bind(appid: AppID, side: &MySide) -> OutboundMessage {
-    OutboundMessage::Bind {
-        side: side.to_string(),
-        appid,
-    }
+pub fn bind(appid: AppID, side: MySide) -> OutboundMessage {
+    OutboundMessage::Bind { appid, side }
 }
 pub fn list() -> OutboundMessage {
     OutboundMessage::List {}
@@ -129,8 +126,8 @@ mod test {
     #[test]
     fn test_bind() {
         let m1 = bind(
-            &AppID(String::from("appid")),
-            &MySide(String::from("side1")),
+            AppID(String::from("appid")),
+            MySide::unchecked_from_string(String::from("side1")),
         );
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();

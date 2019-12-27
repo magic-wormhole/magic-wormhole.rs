@@ -215,7 +215,7 @@ mod test {
     #[test]
     fn test_mgc() {
         // add_M_essage, _G_otmailbox, then _C_onnected
-        let s = MySide(String::from("side1"));
+        let s = MySide::unchecked_from_string(String::from("side1"));
         let phase1 = Phase(String::from("p1"));
         let body1 = b"body1".to_vec();
         let mbox1 = Mailbox(String::from("mbox1"));
@@ -259,7 +259,7 @@ mod test {
     #[test]
     fn test_gmc() {
         // _G_otmailbox, add_M_essage, then _C_onnected
-        let s = MySide(String::from("side1"));
+        let s = MySide::unchecked_from_string(String::from("side1"));
         let phase1 = Phase(String::from("p1"));
         let body1 = b"body1".to_vec();
         let mbox1 = Mailbox(String::from("mbox1"));
@@ -303,7 +303,7 @@ mod test {
     #[test]
     fn test_cmg() {
         // _C_onnected, add_M_essage, then _G_otmailbox
-        let s = MySide(String::from("side1"));
+        let s = MySide::unchecked_from_string(String::from("side1"));
         let phase1 = Phase(String::from("p1"));
         let body1 = b"body1".to_vec();
         let mbox1 = Mailbox(String::from("mbox1"));
@@ -335,7 +335,7 @@ mod test {
 
     #[test]
     fn test_messages() {
-        let s = MySide(String::from("side1"));
+        let s = MySide::unchecked_from_string(String::from("side1"));
         let phase1 = Phase(String::from("p1"));
         let body1 = b"body1".to_vec();
         let mbox1 = Mailbox(String::from("mbox1"));
@@ -358,7 +358,7 @@ mod test {
         // receiving an echo of our own message is an ack, so we don't need
         // to re-send it after a Lost/Connected cycle. We do re-open the
         // mailbox though.
-        let t1 = TheirSide(String::from("side1"));
+        let t1 = TheirSide::from(String::from("side1"));
         e = m.process(RxMessage(t1.clone(), phase1.clone(), body1.clone()));
         assert_eq!(e, events![]);
         e = m.process(Lost);
@@ -368,7 +368,7 @@ mod test {
 
         // now a message from the other side means we don't need the
         // Nameplate anymore
-        let t2 = TheirSide(String::from("side2"));
+        let t2 = TheirSide::from(String::from("side2"));
         e = m.process(RxMessage(t2.clone(), phase1.clone(), body1.clone()));
         assert_eq!(
             e,

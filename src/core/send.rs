@@ -83,7 +83,7 @@ mod test {
 
     #[test]
     fn test_queue() {
-        let s = MySide(String::from("side1"));
+        let s = MySide::unchecked_from_string(String::from("side1"));
         let mut m = SendMachine::new(&s);
 
         // sending messages before we have a key: messages are queued
@@ -132,7 +132,7 @@ mod test {
 
     #[test]
     fn test_key_first() {
-        let s = MySide(String::from("side1"));
+        let s = MySide::unchecked_from_string(String::from("side1"));
         let mut m = SendMachine::new(&s);
 
         let key = Key("key".as_bytes().to_vec());
