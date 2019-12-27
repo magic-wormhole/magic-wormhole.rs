@@ -21,7 +21,7 @@ pub enum OutboundMessage {
     Release { nameplate: String }, // TODO: nominally optional
     Open { mailbox: String },
     Add { phase: String, body: String },
-    Close { mailbox: String, mood: String },
+    Close { mailbox: String, mood: Mood },
     Ping { ping: u64 },
 }
 
@@ -67,7 +67,7 @@ pub fn add(phase: &str, body: &[u8]) -> OutboundMessage {
 pub fn close(mailbox: &Mailbox, mood: Mood) -> OutboundMessage {
     OutboundMessage::Close {
         mailbox: mailbox.0.to_string(),
-        mood: mood.to_string(),
+        mood,
     }
 }
 
