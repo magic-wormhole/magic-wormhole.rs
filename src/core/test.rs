@@ -16,7 +16,7 @@ pub fn filt(ev: Events) -> Events {
 #[test]
 fn test_phase() {
     let p = Phase(String::from("pake"));
-    assert_eq!(p.to_string(), "pake"); // Order looks for "pake"
+    assert!(p.is_pake()); // Order looks for "pake"
 }
 
 #[test]

@@ -1,5 +1,5 @@
 use super::api::Mood;
-use super::events::{AppID, Mailbox, MySide, TheirSide};
+use super::events::{AppID, Mailbox, MySide, Phase, TheirSide};
 use super::util;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{self, Value};
@@ -20,7 +20,7 @@ pub enum OutboundMessage {
     Claim { nameplate: String },
     Release { nameplate: String }, // TODO: nominally optional
     Open { mailbox: Mailbox },
-    Add { phase: String, body: String },
+    Add { phase: Phase, body: String },
     Close { mailbox: Mailbox, mood: Mood },
     Ping { ping: u64 },
 }
@@ -49,13 +49,13 @@ pub fn open(mailbox: Mailbox) -> OutboundMessage {
     OutboundMessage::Open { mailbox }
 }
 
-pub fn add(phase: &str, body: &[u8]) -> OutboundMessage {
+pub fn add(phase: Phase, body: &[u8]) -> OutboundMessage {
     // TODO: make this take Vec<u8>, do the hex-encoding internally
     let hexstr = util::bytes_to_hexstr(body);
 
     OutboundMessage::Add {
-        phase: phase.to_string(),
         body: hexstr,
+        phase,
     }
 }
 
@@ -175,7 +175,7 @@ mod test {
 
     #[test]
     fn test_add() {
-        let m1 = add("phase1", b"body");
+        let m1 = add(Phase(String::from("phase1")), b"body");
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(

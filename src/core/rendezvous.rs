@@ -292,7 +292,7 @@ impl RendezvousMachine {
         let m = match e {
             TxBind(appid, side) => bind(appid, side),
             TxOpen(mailbox) => open(mailbox),
-            TxAdd(phase, body) => add(&phase, &body),
+            TxAdd(phase, body) => add(phase, &body),
             TxClose(mailbox, mood) => close(mailbox, mood),
             TxClaim(nameplate) => claim(&nameplate),
             TxRelease(nameplate) => release(&nameplate),

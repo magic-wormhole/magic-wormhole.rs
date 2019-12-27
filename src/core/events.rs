@@ -96,17 +96,19 @@ impl<S: Into<String>> From<S> for EitherSide {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct Phase(pub String);
-impl Deref for Phase {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
+
+impl Phase {
+    pub fn is_version(&self) -> bool {
+        &self.0[..] == "version"
     }
-}
-impl fmt::Display for Phase {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
+    pub fn is_pake(&self) -> bool {
+        &self.0[..] == "pake"
+    }
+    pub fn to_num(&self) -> Option<u64> {
+        self.0.parse().ok()
     }
 }
 
@@ -258,7 +260,7 @@ impl fmt::Debug for MailboxEvent {
             Connected => String::from("Connected"),
             Lost => String::from("Lost"),
             RxMessage(ref side, ref phase, ref body) => format!(
-                "RxMessage(side={:?}, phase={}, body={})",
+                "RxMessage(side={:?}, phase={:?}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -267,7 +269,7 @@ impl fmt::Debug for MailboxEvent {
             Close(ref mood) => format!("Close({:?})", mood),
             GotMailbox(ref mailbox) => format!("GotMailbox({:?})", mailbox),
             AddMessage(ref phase, ref body) => {
-                format!("AddMessage({}, {})", phase, maybe_utf8(body))
+                format!("AddMessage({:?}, {})", phase, maybe_utf8(body))
             }
         };
         write!(f, "MailboxEvent::{}", t)
@@ -295,7 +297,7 @@ impl fmt::Debug for OrderEvent {
         use self::OrderEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={:?}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -316,7 +318,7 @@ impl fmt::Debug for ReceiveEvent {
         use self::ReceiveEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={:?}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -351,7 +353,7 @@ impl fmt::Debug for RendezvousEvent {
             }
             TxOpen(ref mailbox) => format!("TxOpen({:?})", mailbox),
             TxAdd(ref phase, ref body) => {
-                format!("TxAdd({}, {})", phase, maybe_utf8(body))
+                format!("TxAdd({:?}, {})", phase, maybe_utf8(body))
             }
             TxClose(ref mailbox, ref mood) => {
                 format!("TxClose({:?}, {:?})", mailbox, mood)
@@ -376,7 +378,7 @@ impl fmt::Debug for SendEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SendEvent::Send(ref phase, ref plaintext) => {
-                write!(f, "Send({}, {})", phase, maybe_utf8(plaintext))
+                write!(f, "Send({:?}, {})", phase, maybe_utf8(plaintext))
             }
             SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
         }

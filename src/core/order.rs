@@ -40,7 +40,7 @@ impl OrderMachine {
         self.state = Some(match old_state {
             S0NoPake => match event {
                 GotMessage(side, phase, body) => {
-                    if phase.to_string() == "pake" {
+                    if phase.is_pake() {
                         // got a pake message
                         actions.push(K_GotPake(body));
                         for &(ref side, ref phase, ref body) in &self.queue {

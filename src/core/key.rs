@@ -145,7 +145,7 @@ fn build_version_msg(
     let data_key = derive_phase_key(&side, &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
-    (Phase(phase.to_string()), encrypted)
+    (phase, encrypted)
 }
 
 fn extract_pake_msg(body: &[u8]) -> Option<String> {
@@ -208,7 +208,7 @@ pub fn derive_phase_key(
     phase: &Phase,
 ) -> Vec<u8> {
     let side_bytes = side.0.as_bytes();
-    let phase_bytes = phase.as_bytes();
+    let phase_bytes = phase.0.as_bytes();
     let side_digest: Vec<u8> = sha256_digest(side_bytes);
     let phase_digest: Vec<u8> = sha256_digest(phase_bytes);
     let mut purpose_vec: Vec<u8> = b"wormhole:phase:".to_vec();
