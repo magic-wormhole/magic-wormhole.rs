@@ -73,8 +73,8 @@ fn create() {
             if let OutboundMessage::Bind { appid, side } =
                 deserialize_outbound(&m)
             {
-                assert_eq!(appid, "appid");
-                _got_side = &side; // random
+                assert_eq!(&appid.0, "appid");
+                _got_side = &side.0; // random
             } else {
                 panic!();
             }
