@@ -14,7 +14,7 @@ pub struct Nameplate {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum OutboundMessage {
-    Bind { appid: String, side: String },
+    Bind { appid: AppID, side: String },
     List {},
     Allocate {},
     Claim { nameplate: String },
@@ -25,10 +25,10 @@ pub enum OutboundMessage {
     Ping { ping: u64 },
 }
 
-pub fn bind(appid: &AppID, side: &MySide) -> OutboundMessage {
+pub fn bind(appid: AppID, side: &MySide) -> OutboundMessage {
     OutboundMessage::Bind {
-        appid: appid.to_string(),
         side: side.to_string(),
+        appid,
     }
 }
 pub fn list() -> OutboundMessage {
