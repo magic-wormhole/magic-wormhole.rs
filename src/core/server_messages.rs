@@ -1,5 +1,5 @@
 use super::api::Mood;
-use super::events::{AppID, Mailbox, MySide};
+use super::events::{AppID, Mailbox, MySide, TheirSide};
 use super::util;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{self, Value};
@@ -19,9 +19,9 @@ pub enum OutboundMessage {
     Allocate {},
     Claim { nameplate: String },
     Release { nameplate: String }, // TODO: nominally optional
-    Open { mailbox: String },
+    Open { mailbox: Mailbox },
     Add { phase: String, body: String },
-    Close { mailbox: String, mood: Mood },
+    Close { mailbox: Mailbox, mood: Mood },
     Ping { ping: u64 },
 }
 
@@ -45,10 +45,8 @@ pub fn release(nameplate: &str) -> OutboundMessage {
         nameplate: nameplate.to_string(),
     }
 }
-pub fn open(mailbox: &Mailbox) -> OutboundMessage {
-    OutboundMessage::Open {
-        mailbox: mailbox.0.to_string(),
-    }
+pub fn open(mailbox: Mailbox) -> OutboundMessage {
+    OutboundMessage::Open { mailbox }
 }
 
 pub fn add(phase: &str, body: &[u8]) -> OutboundMessage {
@@ -61,11 +59,8 @@ pub fn add(phase: &str, body: &[u8]) -> OutboundMessage {
     }
 }
 
-pub fn close(mailbox: &Mailbox, mood: Mood) -> OutboundMessage {
-    OutboundMessage::Close {
-        mailbox: mailbox.0.to_string(),
-        mood,
-    }
+pub fn close(mailbox: Mailbox, mood: Mood) -> OutboundMessage {
+    OutboundMessage::Close { mailbox, mood }
 }
 
 // we only parse our own outbound messages in unit tests
@@ -94,11 +89,11 @@ pub enum InboundMessage {
         nameplate: String,
     },
     Claimed {
-        mailbox: String,
+        mailbox: Mailbox,
     },
     Released {},
     Message {
-        side: String,
+        side: TheirSide,
         phase: String,
         body: String,
         //id: String,
@@ -172,7 +167,7 @@ mod test {
 
     #[test]
     fn test_open() {
-        let m1 = open(&Mailbox(String::from("mailbox1")));
+        let m1 = open(Mailbox(String::from("mailbox1")));
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(m2, json!({"type": "open", "mailbox": "mailbox1"}));
@@ -192,7 +187,7 @@ mod test {
 
     #[test]
     fn test_close() {
-        let m1 = close(&Mailbox(String::from("mailbox1")), Mood::Happy);
+        let m1 = close(Mailbox(String::from("mailbox1")), Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -204,7 +199,7 @@ mod test {
 
     #[test]
     fn test_close_errory() {
-        let m1 = close(&Mailbox(String::from("mailbox1")), Mood::Errory);
+        let m1 = close(Mailbox(String::from("mailbox1")), Mood::Errory);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -216,7 +211,7 @@ mod test {
 
     #[test]
     fn test_close_scared() {
-        let m1 = close(&Mailbox(String::from("mailbox1")), Mood::Scared);
+        let m1 = close(Mailbox(String::from("mailbox1")), Mood::Scared);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(

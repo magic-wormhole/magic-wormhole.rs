@@ -8,9 +8,7 @@
 // more code and more states here
 
 use super::api::{TimerHandle, WSHandle};
-use super::events::{
-    AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide,
-};
+use super::events::{AppID, Events, MySide, Nameplate, Phase};
 use hex;
 use log::trace;
 use serde_json;
@@ -264,11 +262,11 @@ impl RendezvousMachine {
             Pong { .. } => (), // TODO
             Ack { .. } => (),  // we ignore this, it's only for the timing log
             Claimed { mailbox } => {
-                actions.push(NameplateEvent::RxClaimed(Mailbox(mailbox)))
+                actions.push(NameplateEvent::RxClaimed(mailbox))
             }
             Message { side, phase, body } => {
                 actions.push(MailboxEvent::RxMessage(
-                    TheirSide::from(side),
+                    side,
                     Phase(phase),
                     hex::decode(body).unwrap(),
                 ))
@@ -293,9 +291,9 @@ impl RendezvousMachine {
         };
         let m = match e {
             TxBind(appid, side) => bind(appid, side),
-            TxOpen(mailbox) => open(&mailbox),
+            TxOpen(mailbox) => open(mailbox),
             TxAdd(phase, body) => add(&phase, &body),
-            TxClose(mailbox, mood) => close(&mailbox, mood),
+            TxClose(mailbox, mood) => close(mailbox, mood),
             TxClaim(nameplate) => claim(&nameplate),
             TxRelease(nameplate) => release(&nameplate),
             TxAllocate => allocate(),
