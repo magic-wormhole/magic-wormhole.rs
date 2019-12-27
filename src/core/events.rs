@@ -1,4 +1,5 @@
 use hex;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 use std::iter::FromIterator;
@@ -11,19 +12,9 @@ use super::util::maybe_utf8;
 
 pub use super::wordlist::Wordlist;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct AppID(pub String);
-impl Deref for AppID {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
-    }
-}
-impl fmt::Display for AppID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
-    }
-}
 
 impl<'a> From<&'a str> for AppID {
     fn from(s: &'a str) -> AppID {
@@ -339,7 +330,7 @@ impl fmt::Debug for RendezvousEvent {
         let t = match *self {
             Start => String::from("Start"),
             TxBind(ref appid, ref side) => {
-                format!("TxBind(appid={}, side={:?})", appid, side)
+                format!("TxBind(appid={:?}, side={:?})", appid, side)
             }
             TxOpen(ref mailbox) => format!("TxOpen({})", mailbox),
             TxAdd(ref phase, ref body) => {

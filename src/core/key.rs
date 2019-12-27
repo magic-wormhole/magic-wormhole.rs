@@ -58,7 +58,7 @@ impl KeyMachine {
         t1.detail("waiting", "crypto");
         let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
             &Password::new(code.as_bytes()),
-            &Identity::new(self.appid.as_bytes()),
+            &Identity::new(self.appid.0.as_bytes()),
         );
         let payload = util::bytes_to_hexstr(&msg1);
         let pake_msg = PhaseMessage { pake_v1: payload };
