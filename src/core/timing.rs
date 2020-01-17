@@ -1,3 +1,4 @@
+use serde::Serialize;
 use serde_derive::Serialize;
 use serde_json::{json, Value};
 use std::time::SystemTime;
@@ -33,7 +34,7 @@ pub fn new_timelog(name: &str, when: Option<f64>) -> TimingLogEvent {
 }
 
 impl TimingLogEvent {
-    pub fn detail(&mut self, name: &str, value: &str) {
+    pub fn detail<S: Serialize + ?Sized>(&mut self, name: &str, value: &S) {
         self.details[name] = json!(value);
     }
 

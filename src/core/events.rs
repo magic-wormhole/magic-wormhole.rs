@@ -1,4 +1,5 @@
 use hex;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 use std::iter::FromIterator;
@@ -8,22 +9,13 @@ use std::sync::Arc;
 use super::api::{APIAction, IOAction, Mood};
 use super::timing::TimingLogEvent;
 use super::util::maybe_utf8;
+use crate::core::util::random_bytes;
 
 pub use super::wordlist::Wordlist;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct AppID(pub String);
-impl Deref for AppID {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
-    }
-}
-impl fmt::Display for AppID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
-    }
-}
 
 impl<'a> From<&'a str> for AppID {
     fn from(s: &'a str) -> AppID {
@@ -46,65 +38,83 @@ impl fmt::Debug for Key {
     }
 }
 
+fn generate_side() -> String {
+    let mut bytes: [u8; 5] = [0; 5];
+    random_bytes(&mut bytes);
+    hex::encode(bytes)
+}
+
 // MySide is used for the String that we send in all our outbound messages
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct MySide(pub String);
-impl Deref for MySide {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct MySide(EitherSide);
+
+impl MySide {
+    pub fn generate() -> MySide {
+        MySide(EitherSide(generate_side()))
+    }
+    // It's a minor type system feature that converting an arbitrary string into MySide is hard.
+    // This prevents it from getting swapped around with TheirSide.
+    #[cfg(test)]
+    pub fn unchecked_from_string(s: String) -> MySide {
+        MySide(EitherSide(s))
     }
 }
 
-impl fmt::Display for MySide {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
+impl Deref for MySide {
+    type Target = EitherSide;
+    fn deref(&self) -> &EitherSide {
+        &self.0
     }
 }
 
 // TheirSide is used for the String that arrives inside inbound messages
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct TheirSide(pub String);
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct TheirSide(EitherSide);
+
+impl<S: Into<String>> From<S> for TheirSide {
+    fn from(s: S) -> TheirSide {
+        TheirSide(EitherSide(s.into()))
+    }
+}
+
 impl Deref for TheirSide {
-    type Target = String;
-    fn deref(&self) -> &String {
+    type Target = EitherSide;
+    fn deref(&self) -> &EitherSide {
         &self.0
     }
 }
 
-impl fmt::Display for TheirSide {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct EitherSide(pub String);
+
+impl<S: Into<String>> From<S> for EitherSide {
+    fn from(s: S) -> EitherSide {
+        EitherSide(s.into())
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct Phase(pub String);
-impl Deref for Phase {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
+
+impl Phase {
+    pub fn is_version(&self) -> bool {
+        &self.0[..] == "version"
     }
-}
-impl fmt::Display for Phase {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self.0)
+    pub fn is_pake(&self) -> bool {
+        &self.0[..] == "pake"
+    }
+    pub fn to_num(&self) -> Option<u64> {
+        self.0.parse().ok()
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct Mailbox(pub String);
-impl Deref for Mailbox {
-    type Target = String;
-    fn deref(&self) -> &String {
-        &self.0
-    }
-}
-impl fmt::Display for Mailbox {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Mailbox({})", &self.0)
-    }
-}
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Nameplate(pub String);
@@ -250,16 +260,16 @@ impl fmt::Debug for MailboxEvent {
             Connected => String::from("Connected"),
             Lost => String::from("Lost"),
             RxMessage(ref side, ref phase, ref body) => format!(
-                "RxMessage(side={:?}, phase={}, body={})",
+                "RxMessage(side={:?}, phase={:?}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
             ),
             RxClosed => String::from("RxClosed"),
             Close(ref mood) => format!("Close({:?})", mood),
-            GotMailbox(ref mailbox) => format!("GotMailbox({})", mailbox),
+            GotMailbox(ref mailbox) => format!("GotMailbox({:?})", mailbox),
             AddMessage(ref phase, ref body) => {
-                format!("AddMessage({}, {})", phase, maybe_utf8(body))
+                format!("AddMessage({:?}, {})", phase, maybe_utf8(body))
             }
         };
         write!(f, "MailboxEvent::{}", t)
@@ -287,7 +297,7 @@ impl fmt::Debug for OrderEvent {
         use self::OrderEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={:?}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -308,7 +318,7 @@ impl fmt::Debug for ReceiveEvent {
         use self::ReceiveEvent::*;
         let t = match *self {
             GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={}, body={})",
+                "GotMessage(side={:?}, phase={:?}, body={})",
                 side,
                 phase,
                 maybe_utf8(body)
@@ -339,14 +349,14 @@ impl fmt::Debug for RendezvousEvent {
         let t = match *self {
             Start => String::from("Start"),
             TxBind(ref appid, ref side) => {
-                format!("TxBind(appid={}, side={:?})", appid, side)
+                format!("TxBind(appid={:?}, side={:?})", appid, side)
             }
-            TxOpen(ref mailbox) => format!("TxOpen({})", mailbox),
+            TxOpen(ref mailbox) => format!("TxOpen({:?})", mailbox),
             TxAdd(ref phase, ref body) => {
-                format!("TxAdd({}, {})", phase, maybe_utf8(body))
+                format!("TxAdd({:?}, {})", phase, maybe_utf8(body))
             }
             TxClose(ref mailbox, ref mood) => {
-                format!("TxClose({}, {:?})", mailbox, mood)
+                format!("TxClose({:?}, {:?})", mailbox, mood)
             }
             Stop => String::from("Stop"),
             TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
@@ -368,7 +378,7 @@ impl fmt::Debug for SendEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SendEvent::Send(ref phase, ref plaintext) => {
-                write!(f, "Send({}, {})", phase, maybe_utf8(plaintext))
+                write!(f, "Send({:?}, {})", phase, maybe_utf8(plaintext))
             }
             SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
         }

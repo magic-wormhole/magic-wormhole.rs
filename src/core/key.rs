@@ -13,7 +13,7 @@ use xsalsa20poly1305::{
     XSalsa20Poly1305,
 };
 
-use super::events::{AppID, Code, Events, Key, MySide, Phase};
+use super::events::{AppID, Code, EitherSide, Events, Key, MySide, Phase};
 use super::util;
 // we process these
 use super::events::KeyEvent;
@@ -58,7 +58,7 @@ impl KeyMachine {
         t1.detail("waiting", "crypto");
         let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
             &Password::new(code.as_bytes()),
-            &Identity::new(self.appid.as_bytes()),
+            &Identity::new(self.appid.0.as_bytes()),
         );
         let payload = util::bytes_to_hexstr(&msg1);
         let pake_msg = PhaseMessage { pake_v1: payload };
@@ -142,10 +142,10 @@ fn build_version_msg(
     versions: &Value,
 ) -> (Phase, Vec<u8>) {
     let phase = Phase(String::from("version"));
-    let data_key = derive_phase_key(&side.to_string(), &key, &phase);
+    let data_key = derive_phase_key(&side, &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
-    (Phase(phase.to_string()), encrypted)
+    (phase, encrypted)
 }
 
 fn extract_pake_msg(body: &[u8]) -> Option<String> {
@@ -202,9 +202,13 @@ pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
     v
 }
 
-pub fn derive_phase_key(side: &str, key: &Key, phase: &Phase) -> Vec<u8> {
-    let side_bytes = side.as_bytes();
-    let phase_bytes = phase.as_bytes();
+pub fn derive_phase_key(
+    side: &EitherSide,
+    key: &Key,
+    phase: &Phase,
+) -> Vec<u8> {
+    let side_bytes = side.0.as_bytes();
+    let phase_bytes = phase.0.as_bytes();
     let side_digest: Vec<u8> = sha256_digest(side_bytes);
     let phase_digest: Vec<u8> = sha256_digest(phase_bytes);
     let mut purpose_vec: Vec<u8> = b"wormhole:phase:".to_vec();
@@ -224,14 +228,14 @@ pub fn derive_verifier(key: &Key) -> Vec<u8> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::events::{AppID, MySide};
+    use crate::core::events::{AppID, EitherSide};
     use hex;
 
     #[test]
     fn test_extract_pake_msg() {
         let _key = super::KeyMachine::new(
             &AppID(String::from("appid")),
-            &MySide(String::from("side1")),
+            &MySide::unchecked_from_string(String::from("side1")),
         );
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
@@ -261,26 +265,38 @@ mod test {
             "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
         )
         .unwrap());
-        let dk11 =
-            derive_phase_key("side1", &main, &Phase(String::from("phase1")));
+        let dk11 = derive_phase_key(
+            &EitherSide::from("side1"),
+            &main,
+            &Phase(String::from("phase1")),
+        );
         assert_eq!(
             hex::encode(dk11),
             "3af6a61d1a111225cc8968c6ca6265efe892065c3ab46de79dda21306b062990"
         );
-        let dk12 =
-            derive_phase_key("side1", &main, &Phase(String::from("phase2")));
+        let dk12 = derive_phase_key(
+            &EitherSide::from("side1"),
+            &main,
+            &Phase(String::from("phase2")),
+        );
         assert_eq!(
             hex::encode(dk12),
             "88a1dd12182d989ff498022a9656d1e2806f17328d8bf5d8d0c9753e4381a752"
         );
-        let dk21 =
-            derive_phase_key("side2", &main, &Phase(String::from("phase1")));
+        let dk21 = derive_phase_key(
+            &EitherSide::from("side2"),
+            &main,
+            &Phase(String::from("phase1")),
+        );
         assert_eq!(
             hex::encode(dk21),
             "a306627b436ec23bdae3af8fa90c9ac927780d86be1831003e7f617c518ea689"
         );
-        let dk22 =
-            derive_phase_key("side2", &main, &Phase(String::from("phase2")));
+        let dk22 = derive_phase_key(
+            &EitherSide::from("side2"),
+            &main,
+            &Phase(String::from("phase2")),
+        );
         assert_eq!(
             hex::encode(dk22),
             "bf99e3e16420f2dad33f9b1ccb0be1462b253d639dacdb50ed9496fa528d8758"
@@ -298,13 +314,14 @@ mod test {
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
         let _k = KeyMachine::new(
             &AppID(String::from("appid1")),
-            &MySide(String::from("side")),
+            &MySide::unchecked_from_string(String::from("side")),
         );
 
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
         let phase = Phase(String::from("phase1"));
-        let phase1_key = derive_phase_key(side, &key, &phase);
+        let phase1_key =
+            derive_phase_key(&EitherSide::from(side), &key, &phase);
 
         assert_eq!(
             hex::encode(phase1_key),
@@ -354,7 +371,7 @@ mod test {
         let key = Key("key".as_bytes().to_vec());
         let side = "side";
         let phase = Phase(String::from("phase"));
-        let data_key = derive_phase_key(side, &key, &phase);
+        let data_key = derive_phase_key(&EitherSide::from(side), &key, &phase);
         let plaintext = "hello world";
 
         let (_nonce, encrypted) =

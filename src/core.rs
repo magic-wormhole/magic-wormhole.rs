@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
 
-use hex;
-
 #[macro_use]
 mod events;
 mod allocator;
@@ -28,7 +26,6 @@ mod wordlist;
 
 pub use self::events::{AppID, Code};
 use self::events::{Event, Events, MySide, Nameplate};
-use self::util::random_bytes;
 use log::trace;
 
 pub use self::api::{
@@ -63,19 +60,13 @@ pub struct WormholeCore {
     from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
 }*/
 
-fn generate_side() -> String {
-    let mut bytes: [u8; 5] = [0; 5];
-    random_bytes(&mut bytes);
-    hex::encode(bytes)
-}
-
 impl WormholeCore {
     pub fn new<T>(appid: T, relay_url: &str) -> WormholeCore
     where
         T: Into<AppID>,
     {
         let appid: AppID = appid.into();
-        let side = MySide(generate_side());
+        let side = MySide::generate();
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),

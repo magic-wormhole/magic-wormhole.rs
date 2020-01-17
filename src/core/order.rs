@@ -40,7 +40,7 @@ impl OrderMachine {
         self.state = Some(match old_state {
             S0NoPake => match event {
                 GotMessage(side, phase, body) => {
-                    if phase.to_string() == "pake" {
+                    if phase.is_pake() {
                         // got a pake message
                         actions.push(K_GotPake(body));
                         for &(ref side, ref phase, ref body) in &self.queue {
@@ -79,7 +79,7 @@ mod test {
     #[test]
     fn test_messages_then_pake() {
         let mut m = super::OrderMachine::new();
-        let s1: TheirSide = TheirSide(String::from("side1"));
+        let s1: TheirSide = TheirSide::from(String::from("side1"));
         let p1: Phase = Phase(String::from("phase1"));
         let p2: Phase = Phase(String::from("phase2"));
         let p3: Phase = Phase(String::from("phase3"));
@@ -124,7 +124,7 @@ mod test {
     #[test]
     fn test_pake_then_messages() {
         let mut m = super::OrderMachine::new();
-        let s1: TheirSide = TheirSide(String::from("side1"));
+        let s1: TheirSide = TheirSide::from(String::from("side1"));
         let p1: Phase = Phase(String::from("phase1"));
         let p2: Phase = Phase(String::from("phase2"));
         let _p3: Phase = Phase(String::from("phase3"));
