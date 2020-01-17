@@ -21,8 +21,10 @@ fn test_phase() {
 
 #[test]
 fn test_mood() {
-    // These must match the strings used in the Python version in
-    // src/wormhole/_boss.py , in calls to self._T.close()
+    // The serialized forms of these variants are part of the wire protocol,
+    // so they must be spelled exactly as shown (they must match the strings
+    // used in the Python version in src/wormhole/_boss.py , in calls to
+    // self._T.close())
     assert_eq!(
         String::from(r#""happy""#),
         serde_json::to_string(&Mood::Happy).unwrap()
