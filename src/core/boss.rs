@@ -2,10 +2,8 @@ use super::api::Mood;
 use super::events::{Events, Nameplate, Phase};
 use super::wordlist::default_wordlist;
 use serde_json::json;
-use std::str::FromStr;
 use std::sync::Arc;
 
-use regex::Regex;
 use serde_json;
 
 // we process these
@@ -244,8 +242,7 @@ impl BossMachine {
                     old_state
                 }
                 GotMessage(phase, plaintext) => {
-                    let phase_pattern = Regex::from_str("\\d+").unwrap();
-                    if phase.to_string() == "version" {
+                    if phase.is_version() {
                         // TODO handle error conditions
                         use serde_json::Value;
                         let version_str = String::from_utf8(plaintext).unwrap();
@@ -256,7 +253,7 @@ impl BossMachine {
                             None => json!({}),
                         };
                         actions.push(APIAction::GotVersions(app_versions));
-                    } else if phase_pattern.is_match(&phase) {
+                    } else if phase.to_num().is_some() {
                         actions.push(APIAction::GotMessage(plaintext));
                     } else {
                         // TODO: log and ignore, for future expansion

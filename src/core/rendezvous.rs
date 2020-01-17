@@ -8,9 +8,7 @@
 // more code and more states here
 
 use super::api::{TimerHandle, WSHandle};
-use super::events::{
-    AppID, Events, Mailbox, MySide, Nameplate, Phase, TheirSide,
-};
+use super::events::{AppID, Events, MySide, Nameplate, Phase};
 use hex;
 use log::trace;
 use serde_json;
@@ -264,11 +262,11 @@ impl RendezvousMachine {
             Pong { .. } => (), // TODO
             Ack { .. } => (),  // we ignore this, it's only for the timing log
             Claimed { mailbox } => {
-                actions.push(NameplateEvent::RxClaimed(Mailbox(mailbox)))
+                actions.push(NameplateEvent::RxClaimed(mailbox))
             }
             Message { side, phase, body } => {
                 actions.push(MailboxEvent::RxMessage(
-                    TheirSide(side),
+                    side,
                     Phase(phase),
                     hex::decode(body).unwrap(),
                 ))
@@ -292,10 +290,10 @@ impl RendezvousMachine {
             add, allocate, bind, claim, close, list, open, release,
         };
         let m = match e {
-            TxBind(appid, side) => bind(&appid, &side),
-            TxOpen(mailbox) => open(&mailbox),
-            TxAdd(phase, body) => add(&phase, &body),
-            TxClose(mailbox, mood) => close(&mailbox, mood),
+            TxBind(appid, side) => bind(appid, side),
+            TxOpen(mailbox) => open(mailbox),
+            TxAdd(phase, body) => add(phase, &body),
+            TxClose(mailbox, mood) => close(mailbox, mood),
             TxClaim(nameplate) => claim(&nameplate),
             TxRelease(nameplate) => release(&nameplate),
             TxAllocate => allocate(),
@@ -340,7 +338,7 @@ mod test {
 
     #[test]
     fn create() {
-        let side = MySide(String::from("side1"));
+        let side = MySide::unchecked_from_string(String::from("side1"));
         let mut r = super::RendezvousMachine::new(
             &AppID(String::from("appid")),
             "url",
@@ -384,8 +382,13 @@ mod test {
                 b = b0;
                 match &b {
                     &RC_TxBind(ref appid0, ref side0) => {
-                        assert_eq!(appid0.to_string(), "appid");
-                        assert_eq!(side0, &MySide(String::from("side1")));
+                        assert_eq!(&appid0.0, "appid");
+                        assert_eq!(
+                            side0,
+                            &MySide::unchecked_from_string(String::from(
+                                "side1"
+                            ))
+                        );
                     }
                     _ => panic!(),
                 }
@@ -413,8 +416,8 @@ mod test {
                 if let OutboundMessage::Bind { appid, side } =
                     deserialize_outbound(&m)
                 {
-                    assert_eq!(appid, "appid");
-                    assert_eq!(side, "side1");
+                    assert_eq!(&appid.0, "appid");
+                    assert_eq!(&side.0, "side1");
                 } else {
                     panic!();
                 }
@@ -478,7 +481,7 @@ mod test {
 
     #[test]
     fn first_connect_fails() {
-        let side = MySide(String::from("side1"));
+        let side = MySide::unchecked_from_string(String::from("side1"));
         let mut r = super::RendezvousMachine::new(
             &AppID(String::from("appid")),
             "url",

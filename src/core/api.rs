@@ -1,6 +1,7 @@
 use super::events::{Code, Key};
 use super::util::maybe_utf8;
 use hex;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
@@ -87,32 +88,20 @@ impl Error for InputHelperError {
     }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+// the serialized forms of these variants are part of the wire protocol, so
+// they must be spelled exactly as shown
+#[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize)]
 pub enum Mood {
+    #[serde(rename = "happy")]
     Happy,
+    #[serde(rename = "lonely")]
     Lonely,
+    #[serde(rename = "errory")]
     Errory,
+    #[serde(rename = "scary")]
     Scared,
+    #[serde(rename = "unwelcome")]
     Unwelcome,
-}
-
-impl Mood {
-    fn to_protocol_string(self) -> String {
-        // this is used for protocol messages as well as debug output
-        match self {
-            Mood::Happy => String::from("happy"),
-            Mood::Lonely => String::from("lonely"),
-            Mood::Errory => String::from("errory"),
-            Mood::Scared => String::from("scary"),
-            Mood::Unwelcome => String::from("unwelcome"),
-        }
-    }
-}
-
-impl fmt::Display for Mood {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_protocol_string())
-    }
 }
 
 #[derive(PartialEq)]
