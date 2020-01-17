@@ -88,6 +88,8 @@ impl Error for InputHelperError {
     }
 }
 
+// the serialized forms of these variants are part of the wire protocol, so
+// they must be spelled exactly as shown
 #[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize)]
 pub enum Mood {
     #[serde(rename = "happy")]
