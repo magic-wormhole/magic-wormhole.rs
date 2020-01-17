@@ -129,7 +129,7 @@ mod test {
         assert_eq!(
             m2,
             json!({"type": "bind", "appid": "appid",
-                              "side": "side1"})
+                   "side": "side1"})
         );
     }
 
@@ -181,7 +181,7 @@ mod test {
         assert_eq!(
             m2,
             json!({"type": "add", "phase": "phase1",
-                              "body": "626f6479"})
+                   "body": "626f6479"})
         ); // body is hex-encoded
     }
 
@@ -193,7 +193,7 @@ mod test {
         assert_eq!(
             m2,
             json!({"type": "close", "mailbox": "mailbox1",
-                              "mood": "happy"})
+                   "mood": "happy"})
         );
     }
 
@@ -205,7 +205,7 @@ mod test {
         assert_eq!(
             m2,
             json!({"type": "close", "mailbox": "mailbox1",
-                              "mood": "errory"})
+                   "mood": "errory"})
         );
     }
 
@@ -217,7 +217,7 @@ mod test {
         assert_eq!(
             m2,
             json!({"type": "close", "mailbox": "mailbox1",
-                              "mood": "scary"})
+                   "mood": "scary"})
         );
     }
 
