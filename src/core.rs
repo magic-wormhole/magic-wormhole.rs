@@ -79,10 +79,7 @@ impl WormholeCore {
             order: order::OrderMachine::new(),
             receive: receive::ReceiveMachine::new(),
             rendezvous: rendezvous::RendezvousMachine::new(
-                &appid.clone(),
-                relay_url,
-                &side,
-                5.0,
+                &appid, relay_url, &side, 5.0,
             ),
             send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
