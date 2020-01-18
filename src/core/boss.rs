@@ -110,13 +110,11 @@ impl BossMachine {
                     Inputting(i)
                 }
                 InputHelperChooseNameplate(nameplate) => {
-                    actions.push(I_ChooseNameplate(Nameplate(
-                        nameplate.to_string(),
-                    )));
+                    actions.push(I_ChooseNameplate(Nameplate(nameplate)));
                     Inputting(i)
                 }
                 InputHelperChooseWords(words) => {
-                    actions.push(I_ChooseWords(words.to_string()));
+                    actions.push(I_ChooseWords(words));
                     Inputting(i)
                 }
                 Send(plaintext) => {

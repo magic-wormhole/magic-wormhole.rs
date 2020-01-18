@@ -49,9 +49,9 @@ impl CodeMachine {
                     let code_string = code.to_string();
                     let nc: Vec<&str> = code_string.splitn(2, '-').collect();
                     let nameplate = Nameplate::new(nc[0]);
-                    actions.push(N_SetNameplate(nameplate.clone()));
+                    actions.push(N_SetNameplate(nameplate));
                     actions.push(B_GotCode(code.clone()));
-                    actions.push(K_GotCode(code.clone()));
+                    actions.push(K_GotCode(code));
                     Known
                 }
                 _ => panic!(),
@@ -67,7 +67,7 @@ impl CodeMachine {
             InputtingWords => match event {
                 FinishedInput(code) => {
                     actions.push(B_GotCode(code.clone()));
-                    actions.push(K_GotCode(code.clone()));
+                    actions.push(K_GotCode(code));
                     Known
                 }
                 _ => panic!(),
@@ -75,10 +75,10 @@ impl CodeMachine {
             Allocating => match event {
                 Allocated(nameplate, code) => {
                     // TODO: assert code.startswith(nameplate+"-")
-                    actions.push(N_SetNameplate(nameplate.clone()));
+                    actions.push(N_SetNameplate(nameplate));
                     // TODO: maybe tell Key before Boss?
                     actions.push(B_GotCode(code.clone()));
-                    actions.push(K_GotCode(code.clone()));
+                    actions.push(K_GotCode(code));
                     Known
                 }
                 _ => panic!(),

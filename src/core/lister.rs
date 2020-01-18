@@ -53,7 +53,7 @@ impl ListerMachine {
                     // We didn't explicitly need the nameplates, but we got
                     // them anyway for some reason. Give them to Input so
                     // they'll be ready in case user wants completion.
-                    actions.push(I_GotNameplates(nids.clone()));
+                    actions.push(I_GotNameplates(nids));
                     old_state
                 }
                 Connected => old_state,
@@ -76,7 +76,7 @@ impl ListerMachine {
                     old_state
                 }
                 RxNameplates(nids) => {
-                    actions.push(I_GotNameplates(nids.clone()));
+                    actions.push(I_GotNameplates(nids));
                     S0B
                 }
                 Connected => old_state,

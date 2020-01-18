@@ -45,7 +45,7 @@ impl ReceiveMachine {
         self.state = Some(match old_state {
             S0UnknownKey => match event {
                 GotMessage(..) => panic!(),
-                GotKey(key) => S1UnverifiedKey(key.clone()),
+                GotKey(key) => S1UnverifiedKey(key),
             },
             S1UnverifiedKey(ref key) => match event {
                 GotKey(_) => panic!(),

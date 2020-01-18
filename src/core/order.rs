@@ -54,14 +54,14 @@ impl OrderMachine {
                         S1YesPake
                     } else {
                         // not a  pake message, queue it.
-                        self.queue.push((side.clone(), phase, body));
+                        self.queue.push((side, phase, body));
                         S0NoPake
                     }
                 }
             },
             S1YesPake => match event {
                 GotMessage(side, phase, body) => {
-                    actions.push(R_GotMessage(side.clone(), phase, body));
+                    actions.push(R_GotMessage(side, phase, body));
                     State::S1YesPake
                 }
             },
