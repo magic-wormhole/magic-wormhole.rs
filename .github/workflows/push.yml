@@ -3,6 +3,21 @@ name: Rust
 on: [push]
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Format
+      run: cargo fmt -- --check
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - run: rustup component add clippy
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -43,21 +58,6 @@ jobs:
       with:
         command: test
         args: --verbose
-  format:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - name: Format
-      run: cargo fmt -- --check
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - run: rustup component add clippy
-    - uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features
   coverage:
     runs-on: ubuntu-latest
     steps:
