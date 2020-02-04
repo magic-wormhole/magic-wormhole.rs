@@ -18,7 +18,7 @@ jobs:
         profile: minimal
         toolchain: ${{ matrix.rust }}
         override: true
-    - name: build
+    - name: build --all-targets
       uses: actions-rs/cargo@v1
       with:
         command: build
