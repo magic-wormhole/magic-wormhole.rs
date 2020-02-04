@@ -38,7 +38,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.37.0 # MSRV
+          - 1.40.0 # MSRV
           - stable
           - nightly
     steps:

@@ -9,8 +9,9 @@ edition = "2018"
 description = "Get things from one computer to another, safely"
 readme = "README.md"
 
-# the MSRV is rust-1.37.0, due to (at least) xsalsa20poly1305-0.3.1 using
-# copy_within
+# the MSRV is: rust-1.40.0
+# * rustyline-6.0 needs 1.40: #[non_exhaustive]
+# * xsalsa20poly1305-0.3.1 needs 1.37: copy_within
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }
