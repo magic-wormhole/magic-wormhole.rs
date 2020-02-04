@@ -35,7 +35,7 @@ jobs:
         toolchain: nightly
         override: true
     - name: install Tarpaulin
-      RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo +nightly install cargo-tarpaulin
+      run: RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo +nightly install cargo-tarpaulin
     - name: test with coverage
       run: cargo tarpaulin --out Xml
     - name: upload coverage
