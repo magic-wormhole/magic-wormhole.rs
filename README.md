@@ -15,7 +15,7 @@ code argument) does not work, nor does sending files (i.e. `wormhole send`
 without the `--text=` argument). These will come eventually.
 
 
-[![Build Status][build-status-image]][build-status-url]
+![Build Status][build-status-image]
 [![CircleCI Status][circleci-status-image]][circleci-status-url]
 [![Deps][deps-status-image]][deps-status-url]
 [![Codecov][codecov-image]][codecov-url]
@@ -25,8 +25,7 @@ without the `--text=` argument). These will come eventually.
 [![Docs.rs][docs-image]][docs-url]
 [![License][license-image]][license-url]
 
-[build-status-image]: https://travis-ci.org/warner/magic-wormhole.rs.svg?branch=master
-[build-status-url]: https://travis-ci.org/warner/magic-wormhole.rs
+[build-status-image]: https://github.com/warner/magic-wormhole.rs/workflows/Rust/badge.svg
 [circleci-status-image]: https://circleci.com/gh/warner/magic-wormhole.rs.svg?style=svg
 [circleci-status-url]: https://circleci.com/gh/warner/magic-wormhole.rs
 [deps-status-image]: https://deps.rs/repo/github/warner/magic-wormhole.rs/status.svg
