@@ -7,8 +7,9 @@ use regex::Regex;
 use rustyline;
 use rustyline::{
     completion::Completer, error::ReadlineError, highlight::Highlighter,
-    hint::Hinter, Context, Helper,
+    hint::Hinter, Context,
 };
+use rustyline_derive::{Helper, Validator};
 use std::io;
 use std::sync::{
     mpsc::{channel, Sender},
@@ -44,6 +45,7 @@ impl ws::Factory for Factory {
     }
 }
 
+#[derive(Helper, Validator)]
 struct CodeCompleter {
     wcr: Arc<Mutex<WormholeCore>>,
     tx_event: Sender<APIEvent>,
@@ -135,8 +137,6 @@ impl Hinter for CodeCompleter {
 }
 
 impl Highlighter for CodeCompleter {}
-
-impl Helper for CodeCompleter {}
 
 impl ws::Handler for WSHandler {
     fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
