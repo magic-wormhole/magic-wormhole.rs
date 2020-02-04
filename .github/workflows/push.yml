@@ -3,6 +3,36 @@ name: Rust
 on: [push]
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Format
+      run: cargo fmt -- --check
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - run: rustup component add clippy
+    - name: Cache cargo registry
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-clippy-cargo-registry-${{ matrix.rust }}
+    - name: Cache cargo index
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-clippy-cargo-index-${{ matrix.rust }}
+    - name: Cache cargo build
+      uses: actions/cache@v1
+      with:
+        path: target
+        key: ${{ runner.os }}-clippy-cargo-build-target-${{ matrix.rust }}
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -18,6 +48,21 @@ jobs:
         profile: minimal
         toolchain: ${{ matrix.rust }}
         override: true
+    - name: Cache cargo registry
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ matrix.rust }}
+    - name: Cache cargo index
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ matrix.rust }}
+    - name: Cache cargo build
+      uses: actions/cache@v1
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ matrix.rust }}
     - name: build --all-targets
       uses: actions-rs/cargo@v1
       with:
@@ -28,21 +73,6 @@ jobs:
       with:
         command: test
         args: --verbose
-  format:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - name: Format
-      run: cargo fmt -- --check
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - run: rustup component add clippy
-    - uses: actions-rs/clippy-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        args: --all-features
   coverage:
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +81,21 @@ jobs:
       with:
         toolchain: nightly
         override: true
+    - name: Cache cargo registry
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-coverage-cargo-registry-${{ matrix.rust }}
+    - name: Cache cargo index
+      uses: actions/cache@v1
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-coverage-cargo-index-${{ matrix.rust }}
+    - name: Cache cargo build
+      uses: actions/cache@v1
+      with:
+        path: target
+        key: ${{ runner.os }}-coverage-cargo-build-target-${{ matrix.rust }}
     - uses: actions-rs/tarpaulin@v0.1
     - name: upload coverage
       uses: codecov/codecov-action@v1
