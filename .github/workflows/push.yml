@@ -34,12 +34,9 @@ jobs:
       with:
         toolchain: nightly
         override: true
-    - name: install Tarpaulin
-      run: RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo +nightly install cargo-tarpaulin
-    - name: test with coverage
-      run: cargo tarpaulin --out Xml
+    - uses: actions-rs/tarpaulin@v0.1
     - name: upload coverage
       uses: codecov/codecov-action@v1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./cobertura.xml
+
