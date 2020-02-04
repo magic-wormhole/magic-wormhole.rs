@@ -9,7 +9,6 @@ use rustyline::{
     completion::Completer, error::ReadlineError, highlight::Highlighter,
     hint::Hinter, Context, Helper,
 };
-use std::error::Error;
 use std::io;
 use std::sync::{
     mpsc::{channel, Sender},
@@ -97,7 +96,7 @@ impl Completer for CodeCompleter {
                     )),
                     Err(err) => Err(ReadlineError::from(io::Error::new(
                         io::ErrorKind::Other,
-                        err.description(),
+                        err.to_string(),
                     ))),
                 }
             } else {
@@ -117,7 +116,7 @@ impl Completer for CodeCompleter {
                 Ok(completions) => Ok((0, completions)),
                 Err(err) => Err(ReadlineError::from(io::Error::new(
                     io::ErrorKind::Other,
-                    err.description(),
+                    err.to_string(),
                 ))),
             }
         }
