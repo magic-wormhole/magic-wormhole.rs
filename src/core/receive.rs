@@ -1,6 +1,8 @@
 use super::events::{Events, Key, Phase, TheirSide};
 use super::key;
 use log::trace;
+use zeroize::Zeroize;
+
 // we process these
 use super::events::ReceiveEvent;
 // we emit these
@@ -104,8 +106,10 @@ impl ReceiveMachine {
         phase: &Phase,
         body: &[u8],
     ) -> Option<Vec<u8>> {
-        let data_key = key::derive_phase_key(&side, &key, &phase);
-        key::decrypt_data(&data_key, body)
+        let mut data_key = key::derive_phase_key(&side, &key, &phase);
+        let data = key::decrypt_data(&data_key, body);
+        data_key.zeroize();
+        data
     }
 }
 
