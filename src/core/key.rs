@@ -510,4 +510,57 @@ mod test {
             _ => panic!(),
         }
     }
+
+    #[test]
+    #[should_panic]
+    fn test_pake_pake() {
+        let code = Code(String::from("4-purple-sausages"));
+        let appid = AppID(String::from("appid1"));
+        let side = MySide::unchecked_from_string(String::from("side"));
+        let mut k = KeyMachine::new(&appid, &side);
+
+        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
+        k.process(KeyEvent::GotPake(pake_msg_ser.clone()));
+        k.process(KeyEvent::GotPake(pake_msg_ser));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_code_code() {
+        let code = Code(String::from("4-purple-sausages"));
+        let appid = AppID(String::from("appid1"));
+        let side = MySide::unchecked_from_string(String::from("side"));
+        let mut k = KeyMachine::new(&appid, &side);
+
+        k.process(KeyEvent::GotCode(code.clone()));
+        k.process(KeyEvent::GotCode(code));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_code_pake_code() {
+        let code = Code(String::from("4-purple-sausages"));
+        let appid = AppID(String::from("appid1"));
+        let side = MySide::unchecked_from_string(String::from("side"));
+        let mut k = KeyMachine::new(&appid, &side);
+        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
+
+        k.process(KeyEvent::GotCode(code.clone()));
+        k.process(KeyEvent::GotPake(pake_msg_ser));
+        k.process(KeyEvent::GotCode(code));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_pake_code_pake() {
+        let code = Code(String::from("4-purple-sausages"));
+        let appid = AppID(String::from("appid1"));
+        let side = MySide::unchecked_from_string(String::from("side"));
+        let mut k = KeyMachine::new(&appid, &side);
+        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
+
+        k.process(KeyEvent::GotPake(pake_msg_ser.clone()));
+        k.process(KeyEvent::GotCode(code));
+        k.process(KeyEvent::GotPake(pake_msg_ser));
+    }
 }
