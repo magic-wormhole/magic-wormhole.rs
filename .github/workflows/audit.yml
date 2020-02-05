@@ -14,21 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - name: Cache cargo registry
+    - name: Cache ~/.cargo
       uses: actions/cache@v1
       with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-audit-cargo-registry
-    - name: Cache cargo index
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-audit-cargo-index
-    - name: Cache cargo build
-      uses: actions/cache@v1
-      with:
-        path: target
-        key: ${{ runner.os }}-audit-cargo-build-target
+        # we specifically want ~/.cargo/bin/cargo-audit
+        # and ~/.cargo/.crates.toml and .crates2.json
+        # which cargo-install uses to remember that it's
+        # already installed
+        path: ~/.cargo
+        key: ${{ runner.os }}-audit-dotcargo
     - uses: actions-rs/audit-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
