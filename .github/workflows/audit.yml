@@ -2,9 +2,10 @@ name: Security Audit
 
 on:
   push:
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
+#    paths:
+#      - '**/Cargo.toml'
+#      - '**/Cargo.lock'
+#the 'push' trigger doesn't include paths
   schedule:
     - cron: '32 10 * * *'
 
