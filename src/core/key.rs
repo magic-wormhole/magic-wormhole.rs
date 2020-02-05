@@ -44,6 +44,17 @@ struct PhaseMessage {
     pake_v1: String,
 }
 
+fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
+    let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
+        &Password::new(code.as_bytes()),
+        &Identity::new(appid.0.as_bytes()),
+    );
+    let payload = util::bytes_to_hexstr(&msg1);
+    let pake_msg = PhaseMessage { pake_v1: payload };
+    let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
+    (pake_state, pake_msg_ser)
+}
+
 impl KeyMachine {
     pub fn new(appid: &AppID, side: &MySide) -> KeyMachine {
         KeyMachine {
@@ -56,13 +67,7 @@ impl KeyMachine {
     fn start(&self, code: Code, actions: &mut Events) -> SPAKE2<Ed25519Group> {
         let mut t1 = new_timelog("pake1", None);
         t1.detail("waiting", "crypto");
-        let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
-            &Password::new(code.as_bytes()),
-            &Identity::new(self.appid.0.as_bytes()),
-        );
-        let payload = util::bytes_to_hexstr(&msg1);
-        let pake_msg = PhaseMessage { pake_v1: payload };
-        let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
+        let (pake_state, pake_msg_ser) = make_pake(&code, &self.appid);
         t1.finish(None);
         actions.push(t1);
         actions.push(M_AddMessage(Phase(String::from("pake")), pake_msg_ser));
@@ -228,7 +233,7 @@ pub fn derive_verifier(key: &Key) -> Vec<u8> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::events::{AppID, EitherSide};
+    use crate::core::events::{AppID, EitherSide, Event, KeyEvent};
     use hex;
 
     #[test]
@@ -382,6 +387,127 @@ mod test {
                 assert_eq!(plaintext.as_bytes().to_vec(), plaintext_decrypted);
             }
             None => panic!(),
+        }
+    }
+
+    fn strip_timing(events: Events) -> Vec<Event> {
+        events
+            .into_iter()
+            .filter(|e| match e {
+                Event::Timing(_) => false,
+                _ => true,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_code_first() {
+        use super::super::events::{
+            BossEvent, MailboxEvent, Phase, ReceiveEvent,
+        };
+
+        let code = Code(String::from("4-purple-sausages"));
+        let appid = AppID(String::from("appid1"));
+        let side = MySide::unchecked_from_string(String::from("side"));
+        let mut k = KeyMachine::new(&appid, &side);
+
+        // we set our own code first, which generates+sends a PAKE message
+        let mut e = strip_timing(k.process(KeyEvent::GotCode(code.clone())));
+
+        match e.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
+                assert_eq!(phase, Phase(String::from("pake")));
+                assert!(String::from_utf8(body)
+                    .unwrap()
+                    .contains("{\"pake_v1\":"));
+            }
+            _ => panic!(),
+        }
+        assert_eq!(e.len(), 0);
+
+        // build a PAKE message to simulate our peer
+        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
+
+        // deliver it, which should finish the key-agreement process
+        let mut e = strip_timing(k.process(KeyEvent::GotPake(pake_msg_ser)));
+        match e.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
+                assert_eq!(phase, Phase(String::from("version")));
+                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+            }
+            _ => panic!(),
+        }
+        let shared_key = match e.remove(0) {
+            Event::Boss(BossEvent::GotKey(key)) => {
+                //assert_eq!(phase, Phase(String::from("version")));
+                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+                key
+            }
+            _ => panic!(),
+        };
+        match e.remove(0) {
+            Event::Receive(ReceiveEvent::GotKey(rkey)) => {
+                assert_eq!(shared_key, rkey);
+                //assert_eq!(phase, Phase(String::from("version")));
+                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn test_pake_first() {
+        use super::super::events::{
+            BossEvent, MailboxEvent, Phase, ReceiveEvent,
+        };
+
+        let code = Code(String::from("4-purple-sausages"));
+        let appid = AppID(String::from("appid1"));
+        let side = MySide::unchecked_from_string(String::from("side"));
+        let mut k = KeyMachine::new(&appid, &side);
+
+        // build a PAKE message to simulate our peer
+        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
+
+        // we receive the PAKE from our peer before the user finishes
+        // providing our code, so we emit no messages
+        let e = strip_timing(k.process(KeyEvent::GotPake(pake_msg_ser)));
+        assert_eq!(e.len(), 0);
+
+        // setting our own code should both start and finish the process
+        let mut e = strip_timing(k.process(KeyEvent::GotCode(code.clone())));
+
+        match e.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
+                assert_eq!(phase, Phase(String::from("pake")));
+                assert!(String::from_utf8(body)
+                    .unwrap()
+                    .contains("{\"pake_v1\":"));
+            }
+            _ => panic!(),
+        }
+        match e.remove(0) {
+            Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
+                assert_eq!(phase, Phase(String::from("version")));
+                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+            }
+            _ => panic!(),
+        }
+        let shared_key = match e.remove(0) {
+            Event::Boss(BossEvent::GotKey(key)) => {
+                //assert_eq!(phase, Phase(String::from("version")));
+                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+                key
+            }
+            _ => panic!(),
+        };
+        match e.remove(0) {
+            Event::Receive(ReceiveEvent::GotKey(rkey)) => {
+                assert_eq!(shared_key, rkey);
+                //assert_eq!(phase, Phase(String::from("version")));
+                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+            }
+            _ => panic!(),
         }
     }
 }
