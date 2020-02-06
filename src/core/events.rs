@@ -10,6 +10,7 @@ use super::api::{APIAction, IOAction, Mood};
 use super::timing::TimingLogEvent;
 use super::util::maybe_utf8;
 use crate::core::util::random_bytes;
+use zeroize::Zeroize;
 
 pub use super::wordlist::Wordlist;
 
@@ -23,7 +24,8 @@ impl<'a> From<&'a str> for AppID {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Zeroize)]
+#[zeroize(drop)]
 pub struct Key(pub Vec<u8>);
 impl Deref for Key {
     type Target = Vec<u8>;

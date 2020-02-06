@@ -12,6 +12,7 @@ use xsalsa20poly1305::{
     },
     XSalsa20Poly1305,
 };
+use zeroize::Zeroizing;
 
 use super::events::{AppID, Code, EitherSide, Events, Key, MySide, Phase};
 use super::util;
@@ -200,7 +201,7 @@ fn sha256_digest(input: &[u8]) -> Vec<u8> {
     hasher.result().to_vec()
 }
 
-pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
+fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
     let hk = Hkdf::<Sha256>::new(None, key);
     let mut v = vec![0; length];
     hk.expand(purpose, &mut v).unwrap();
@@ -211,7 +212,7 @@ pub fn derive_phase_key(
     side: &EitherSide,
     key: &Key,
     phase: &Phase,
-) -> Vec<u8> {
+) -> Zeroizing<Vec<u8>> {
     let side_bytes = side.0.as_bytes();
     let phase_bytes = phase.0.as_bytes();
     let side_digest: Vec<u8> = sha256_digest(side_bytes);
@@ -221,7 +222,7 @@ pub fn derive_phase_key(
     purpose_vec.extend(phase_digest);
 
     let length = <XSalsa20Poly1305 as NewAead>::KeySize::to_usize();
-    derive_key(&key.to_vec(), &purpose_vec, length)
+    Zeroizing::new(derive_key(&key.to_vec(), &purpose_vec, length))
 }
 
 pub fn derive_verifier(key: &Key) -> Vec<u8> {
@@ -276,7 +277,7 @@ mod test {
             &Phase(String::from("phase1")),
         );
         assert_eq!(
-            hex::encode(dk11),
+            hex::encode(&*dk11),
             "3af6a61d1a111225cc8968c6ca6265efe892065c3ab46de79dda21306b062990"
         );
         let dk12 = derive_phase_key(
@@ -285,7 +286,7 @@ mod test {
             &Phase(String::from("phase2")),
         );
         assert_eq!(
-            hex::encode(dk12),
+            hex::encode(&*dk12),
             "88a1dd12182d989ff498022a9656d1e2806f17328d8bf5d8d0c9753e4381a752"
         );
         let dk21 = derive_phase_key(
@@ -294,7 +295,7 @@ mod test {
             &Phase(String::from("phase1")),
         );
         assert_eq!(
-            hex::encode(dk21),
+            hex::encode(&*dk21),
             "a306627b436ec23bdae3af8fa90c9ac927780d86be1831003e7f617c518ea689"
         );
         let dk22 = derive_phase_key(
@@ -303,7 +304,7 @@ mod test {
             &Phase(String::from("phase2")),
         );
         assert_eq!(
-            hex::encode(dk22),
+            hex::encode(&*dk22),
             "bf99e3e16420f2dad33f9b1ccb0be1462b253d639dacdb50ed9496fa528d8758"
         );
     }
@@ -329,7 +330,7 @@ mod test {
             derive_phase_key(&EitherSide::from(side), &key, &phase);
 
         assert_eq!(
-            hex::encode(phase1_key),
+            hex::encode(&*phase1_key),
             "fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96"
         );
     }

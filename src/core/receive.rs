@@ -1,6 +1,7 @@
 use super::events::{Events, Key, Phase, TheirSide};
 use super::key;
 use log::trace;
+
 // we process these
 use super::events::ReceiveEvent;
 // we emit these
