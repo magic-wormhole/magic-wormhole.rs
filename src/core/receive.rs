@@ -106,8 +106,7 @@ impl ReceiveMachine {
         body: &[u8],
     ) -> Option<Vec<u8>> {
         let data_key = key::derive_phase_key(&side, &key, &phase);
-        let data = key::decrypt_data(&data_key, body);
-        data
+        key::decrypt_data(&data_key, body)
     }
 }
 
