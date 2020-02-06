@@ -13,26 +13,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - run: rustup component add clippy
-    - name: Cache cargo registry
+    - name: Cache ~/.cargo
       uses: actions/cache@v1
       with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-clippy-cargo-registry-${{ matrix.rust }}
-    - name: Cache cargo index
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-clippy-cargo-index-${{ matrix.rust }}
+        path: ~/.cargo
+        key: ${{ runner.os }}-clippy-dotcargo
     - name: Cache cargo build
       uses: actions/cache@v1
       with:
         path: target
-        key: ${{ runner.os }}-clippy-cargo-build-target-${{ matrix.rust }}
+        key: ${{ runner.os }}-clippy-cargo-build-target
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: clippy
+        override: true
     - uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         args: --all-features
+        name: clippy results
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -48,21 +48,16 @@ jobs:
         profile: minimal
         toolchain: ${{ matrix.rust }}
         override: true
-    - name: Cache cargo registry
+    - name: Cache ~/.cargo
       uses: actions/cache@v1
       with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-cargo-registry-${{ matrix.rust }}
-    - name: Cache cargo index
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-cargo-index-${{ matrix.rust }}
+        path: ~/.cargo
+        key: ${{ runner.os }}-test-dotcargo-${{ matrix.rust }}
     - name: Cache cargo build
       uses: actions/cache@v1
       with:
         path: target
-        key: ${{ runner.os }}-cargo-build-target-${{ matrix.rust }}
+        key: ${{ runner.os }}-test-build-target-${{ matrix.rust }}
     - name: build --all-targets
       uses: actions-rs/cargo@v1
       with:
@@ -81,21 +76,16 @@ jobs:
       with:
         toolchain: nightly
         override: true
-    - name: Cache cargo registry
+    - name: Cache ~/.cargo
       uses: actions/cache@v1
       with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-coverage-cargo-registry-${{ matrix.rust }}
-    - name: Cache cargo index
-      uses: actions/cache@v1
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-coverage-cargo-index-${{ matrix.rust }}
+        path: ~/.cargo
+        key: ${{ runner.os }}-coverage-dotcargo
     - name: Cache cargo build
       uses: actions/cache@v1
       with:
         path: target
-        key: ${{ runner.os }}-coverage-cargo-build-target-${{ matrix.rust }}
+        key: ${{ runner.os }}-coverage-cargo-build-target
     - uses: actions-rs/tarpaulin@v0.1
     - name: upload coverage
       uses: codecov/codecov-action@v1
