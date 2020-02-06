@@ -1,7 +1,6 @@
 use super::events::{Events, Key, MySide, Phase};
 use super::key;
 use log::trace;
-use zeroize::Zeroize;
 // we process these
 use super::events::SendEvent;
 // we emit these
@@ -43,11 +42,10 @@ impl SendMachine {
                 match event {
                     GotVerifiedKey(ref key) => {
                         for (phase, plaintext) in self.queue.drain(..) {
-                            let mut data_key =
+                            let data_key =
                                 key::derive_phase_key(&self.side, &key, &phase);
                             let (_nonce, encrypted) =
                                 key::encrypt_data(&data_key, &plaintext);
-                            data_key.zeroize();
                             actions.push(M_AddMessage(phase, encrypted));
                         }
                         S1HaveVerifiedKey(key.clone())
@@ -63,11 +61,10 @@ impl SendMachine {
             S1HaveVerifiedKey(ref key) => match event {
                 GotVerifiedKey(_) => panic!(),
                 Send(phase, plaintext) => {
-                    let mut data_key =
+                    let data_key =
                         key::derive_phase_key(&self.side, &key, &phase);
                     let (_nonce, encrypted) =
                         key::encrypt_data(&data_key, &plaintext);
-                    data_key.zeroize();
                     actions.push(M_AddMessage(phase, encrypted));
                     S1HaveVerifiedKey(key.clone())
                 }
