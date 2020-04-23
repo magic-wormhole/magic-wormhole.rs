@@ -9,7 +9,8 @@ edition = "2018"
 description = "Get things from one computer to another, safely"
 readme = "README.md"
 
-# the MSRV is: rust-1.40.0
+# the MSRV is: rust-1.42.0
+# * rustyline-derive-0.3.1 needs 1.42: 'use proc_macro' without 'extern crate proc_macro'
 # * rustyline-6.0 needs 1.40: #[non_exhaustive]
 # * xsalsa20poly1305-0.3.1 needs 1.37: copy_within
 # * sodiumoxide-0.2.4 needs 1.36: mem::MaybeUninit
