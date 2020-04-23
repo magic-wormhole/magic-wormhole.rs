@@ -4,12 +4,18 @@ on: [push]
 
 jobs:
   format:
+    name: cargo fmt (stable)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
     - name: Format
       run: cargo fmt -- --check
   clippy:
+    name: clippy (stable)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
