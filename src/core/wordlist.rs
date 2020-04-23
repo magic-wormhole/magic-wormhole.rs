@@ -39,7 +39,7 @@ impl Wordlist {
                     suffix.push_str(&word);
                 } else {
                     let p = prefix.len() - lp;
-                    suffix.split_off(p as usize);
+                    suffix.truncate(p as usize);
                     suffix.push_str(&word);
                 }
 
