@@ -9,7 +9,6 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time;
 use url::Url;
-use ws;
 
 enum ToCore {
     API(APIEvent),

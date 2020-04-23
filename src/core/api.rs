@@ -1,6 +1,5 @@
 use super::events::{Code, Key};
 use super::util::maybe_utf8;
-use hex;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::error::Error;

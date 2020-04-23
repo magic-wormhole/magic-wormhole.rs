@@ -2,7 +2,6 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg,
     SubCommand,
 };
-use env_logger;
 use magic_wormhole::core::{
     error_message, message, message_ack, OfferType, PeerMessage,
 };

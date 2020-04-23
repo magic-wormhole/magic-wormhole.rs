@@ -9,9 +9,7 @@
 
 use super::api::{TimerHandle, WSHandle};
 use super::events::{AppID, Events, MySide, Nameplate, Phase};
-use hex;
 use log::trace;
-use serde_json;
 // we process these
 use super::api::IOEvent;
 use super::events::RendezvousEvent;

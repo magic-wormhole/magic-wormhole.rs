@@ -1,6 +1,4 @@
-use hex;
 use rand::{rngs::OsRng, RngCore};
-use std;
 use std::str;
 
 pub fn random_bytes(bytes: &mut [u8]) {
