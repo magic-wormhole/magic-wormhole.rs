@@ -4,8 +4,6 @@ use super::wordlist::default_wordlist;
 use serde_json::json;
 use std::sync::Arc;
 
-use serde_json;
-
 // we process these
 use super::api::APIEvent;
 use super::events::BossEvent;

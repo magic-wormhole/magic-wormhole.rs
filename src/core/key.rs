@@ -1,4 +1,3 @@
-use hex;
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
