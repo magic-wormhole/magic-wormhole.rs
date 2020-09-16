@@ -36,6 +36,26 @@ pub enum AnswerType {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
+pub struct TransitAck {
+    pub ack: String,
+    pub sha256: String,
+}
+
+
+impl TransitAck {
+    pub fn serialize(&self) -> String {
+        json!(self).to_string()
+    }
+
+    // TODO: This can error out so we should actually have error returning
+    // capability here
+    pub fn deserialize(msg: &str) -> Self {
+        serde_json::from_str(msg).unwrap()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub struct TransitType {
     pub abilities_v1: Vec<Abilities>,
     pub hints_v1: Vec<Hints>,
@@ -56,17 +76,17 @@ pub enum Hints {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", tag = "type", rename = "direct-tcp-v1")]
 pub struct DirectType {
-    priority: f32,
-    hostname: String,
-    port: u16,
+    pub priority: f32,
+    pub hostname: String,
+    pub port: u16,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", tag = "type", rename = "relay-v1")]
 pub struct RelayType {
-    hints: Vec<DirectType>,
+    pub hints: Vec<DirectType>,
 }
 
 impl PeerMessage {
@@ -98,6 +118,13 @@ pub fn message_ack(msg: &str) -> PeerMessage {
 
 pub fn file_ack(msg: &str) -> PeerMessage {
     PeerMessage::Answer(AnswerType::FileAck(msg.to_string()))
+}
+
+pub fn transit_ack(msg: &str, sha256: &str) -> TransitAck {
+    TransitAck {
+        ack: msg.to_string(),
+        sha256: sha256.to_string()
+    }
 }
 
 pub fn error_message(msg: &str) -> PeerMessage {
@@ -184,6 +211,12 @@ mod test {
     }
 
     #[test]
+    fn test_transit_ack() {
+        let f1 = transit_ack("ok", "deadbeaf");
+        assert_eq!(f1.serialize(), "{\"ack\":\"ok\",\"sha256\":\"deadbeaf\"}");
+    }
+
+    #[test]
     fn test_transit() {
         let abilities = vec![
             Abilities {
@@ -202,6 +235,6 @@ mod test {
             )])),
         ];
         let t = transit(abilities, hints);
-        assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"priority\":0.0,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001,\"priority\":2.0}],\"type\":\"relay-v1\"}]}}")
+        assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"priority\":0.0,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001,\"priority\":2.0,\"type\":\"direct-tcp-v1\"}],\"type\":\"relay-v1\"}]}}")
     }
 }

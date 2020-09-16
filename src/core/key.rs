@@ -200,7 +200,7 @@ fn sha256_digest(input: &[u8]) -> Vec<u8> {
     hasher.result().to_vec()
 }
 
-fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
+pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
     let hk = Hkdf::<Sha256>::new(None, key);
     let mut v = vec![0; length];
     hk.expand(purpose, &mut v).unwrap();
