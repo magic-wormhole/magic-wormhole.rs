@@ -2,11 +2,11 @@ use magic_wormhole::core::{file_ack, message_ack, OfferType, PeerMessage};
 use magic_wormhole::io::blocking::Wormhole;
 use std::str;
 
-// Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
+const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
+    env_logger::try_init().unwrap();
     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
     println!("connecting..");
     w.set_code("4-purple-sausages");
