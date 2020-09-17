@@ -5,11 +5,10 @@ use magic_wormhole::core::{
 use std::cell::RefCell;
 use std::rc::Rc;
 use url::Url;
-use ws;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &'static str = "ws://127.0.0.1:4000/v1";
-const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
+const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
+const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 struct MyFactory {
     wsh: WSHandle,
@@ -42,7 +41,7 @@ fn main() {
     }
 
     let f = MyFactory {
-        wsh: wsh,
+        wsh,
         wcr: Rc::new(RefCell::new(wc)),
     };
 
@@ -62,7 +61,7 @@ impl ws::Factory for MyFactory {
         MyHandler {
             wsh: self.wsh,
             wcr: Rc::clone(&self.wcr),
-            out: out,
+            out,
         }
     }
 }
@@ -79,7 +78,7 @@ impl ws::Handler for MyHandler {
         let offer = message("hello from rust!").serialize();
         // let offer = json!({"offer": {"message": "hello from rust"}});
         // then expect {"answer": {"message_ack": "ok"}}
-        let actions = wc.do_api(APIEvent::Send(offer.to_string().into_bytes()));
+        let actions = wc.do_api(APIEvent::Send(offer.into_bytes()));
         process_actions(&self.out, actions);
 
         Ok(())

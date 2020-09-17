@@ -1,10 +1,9 @@
-use hex;
 use magic_wormhole::core::message;
 use magic_wormhole::io::blocking::Wormhole;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &'static str = "ws://127.0.0.1:4000/v1";
-const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
+const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
+const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);

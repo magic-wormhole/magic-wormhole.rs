@@ -164,7 +164,7 @@ mod test {
         assert_eq!(w.choose_words(), "purple-sausages");
         let w = Wordlist::new(3, few_words.clone());
         assert_eq!(w.choose_words(), "purple-sausages-purple");
-        let w = Wordlist::new(4, few_words.clone());
+        let w = Wordlist::new(4, few_words);
         assert_eq!(w.choose_words(), "purple-sausages-purple-sausages");
     }
 
@@ -189,7 +189,7 @@ mod test {
             assert!(expected2.contains(&w.choose_words()));
         }
 
-        let w = Wordlist::new(3, more_words.clone());
+        let w = Wordlist::new(3, more_words);
         for _ in 0..20 {
             assert!(expected3.contains(&w.choose_words()));
         }

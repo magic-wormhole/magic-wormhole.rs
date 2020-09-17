@@ -379,7 +379,7 @@ mod test {
             Rendezvous(b0) => {
                 b = b0;
                 match &b {
-                    &RC_TxBind(ref appid0, ref side0) => {
+                    RC_TxBind(ref appid0, ref side0) => {
                         assert_eq!(&appid0.0, "appid");
                         assert_eq!(
                             side0,

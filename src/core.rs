@@ -73,7 +73,7 @@ impl WormholeCore {
             boss: boss::BossMachine::new(),
             code: code::CodeMachine::new(),
             input: input::InputMachine::new(),
-            key: key::KeyMachine::new(&appid.clone(), &side),
+            key: key::KeyMachine::new(&appid, &side),
             lister: lister::ListerMachine::new(),
             mailbox: mailbox::MailboxMachine::new(&side),
             nameplate: nameplate::NameplateMachine::new(),

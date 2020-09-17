@@ -521,9 +521,11 @@ pub struct Events {
 }
 use std::convert::From;
 impl Events {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Events {
         Events { events: vec![] }
     }
+
     //fn add<T>(&mut self, item: T) where T: Into<Event> {
     pub fn push<T>(&mut self, item: T)
     where

@@ -2,7 +2,6 @@
 
 use super::api::Mood;
 use super::events::{Event, Events, Phase};
-use env_logger;
 
 pub fn filt(ev: Events) -> Events {
     ev.into_iter()
@@ -52,7 +51,7 @@ use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
 
 #[test]
 fn create() {
-    drop(env_logger::try_init());
+    env_logger::try_init().unwrap();
     let url: &str = "url";
     let mut w = WormholeCore::new("appid", url);
 

@@ -158,7 +158,7 @@ mod test {
                 SendEvent::GotVerifiedKey(masterkey.clone()),
                 BossEvent::Happy,
                 BossEvent::GotVerifier(verifier.to_vec()),
-                BossEvent::GotMessage(phase1.clone(), plaintext1.to_vec()),
+                BossEvent::GotMessage(phase1, plaintext1.to_vec()),
             ]
         );
 
@@ -179,7 +179,7 @@ mod test {
         ));
         assert_eq!(
             e,
-            events![BossEvent::GotMessage(phase2.clone(), plaintext2.to_vec()),]
+            events![BossEvent::GotMessage(phase2, plaintext2.to_vec()),]
         );
 
         // bad message makes us Scared
@@ -191,7 +191,7 @@ mod test {
 
         e = r.process(GotMessage(
             t1.clone(),
-            phase3.clone(),
+            phase3,
             nonce_and_ciphertext3,
         ));
         assert_eq!(e, events![BossEvent::Scared]);
@@ -204,8 +204,8 @@ mod test {
         let (_, nonce_and_ciphertext4) = encrypt_data(&phasekey4, plaintext4);
 
         e = r.process(GotMessage(
-            t1.clone(),
-            phase4.clone(),
+            t1,
+            phase4,
             nonce_and_ciphertext4,
         ));
         assert_eq!(e, events![]);
@@ -239,7 +239,7 @@ mod test {
 
         e = r.process(GotMessage(
             t1.clone(),
-            phase1.clone(),
+            phase1,
             nonce_and_ciphertext1,
         ));
         assert_eq!(e, events![BossEvent::Scared]);
@@ -252,8 +252,8 @@ mod test {
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
 
         e = r.process(GotMessage(
-            t1.clone(),
-            phase2.clone(),
+            t1,
+            phase2,
             nonce_and_ciphertext2,
         ));
         assert_eq!(e, events![]);

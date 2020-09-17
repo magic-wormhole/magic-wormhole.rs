@@ -7,7 +7,6 @@ use crate::core::{
     TransitType,
     Hints,
     DirectType,
-    RelayType,
     direct_type,
     relay_type,
     Abilities,
@@ -43,7 +42,6 @@ use sodiumoxide::crypto::secretbox;
 use std::time::Duration;
 use std::path::Path;
 use std::fs::File;
-use std::error::Error;
 
 pub struct RelayUrl {
     pub host: String,
@@ -68,7 +66,7 @@ pub fn get_code(w: &mut Wormhole) -> String {
     w.get_code()
 }
 
-pub fn send(w: &mut Wormhole, app_id: String, code: String, msg: MessageType, relay_url: &RelayUrl) {
+pub fn send(w: &mut Wormhole, app_id: String, _code: String, msg: MessageType, relay_url: &RelayUrl) {
     match msg {
         MessageType::Message(text) => {
             w.send_message(message(&text).serialize().as_bytes());
@@ -104,7 +102,7 @@ pub fn receive(mailbox_server: String, app_id: String, code: String, relay_url: 
             OfferType::Message(msg) => {
                 trace!("{}", msg);
                 w.send_message(message_ack("ok").serialize().as_bytes());
-                msg.to_string()
+                msg
             }
             OfferType::File { .. } => {
                 trace!("Received file offer {:?}", offer);
@@ -148,7 +146,7 @@ pub fn parse_relay_url(url: &str) -> RelayUrl {
     if v.len() == 3 && v[0] == "tcp" {
         let maybe_port = v[2].parse();
         match maybe_port {
-            Ok(port) => RelayUrl{ host: v[1].to_string(), port: port},
+            Ok(port) => RelayUrl{ host: v[1].to_string(), port},
             _ => panic!("cannot parse relay url port"),
         }
     }
@@ -540,11 +538,11 @@ impl Wormhole {
         }
     }
 
-    pub fn send_file(&mut self, filename: &str, filesize: u64, key: &Vec<u8>, relay_url: &RelayUrl) {
+    pub fn send_file(&mut self, filename: &str, filesize: u64, key: &[u8], relay_url: &RelayUrl) {
         // 1. start a tcp server on a random port
         let listener = TcpListener::bind("0.0.0.0:0").unwrap();
         let listen_socket = listener.local_addr().unwrap();
-        let sockaddrs_iter = listen_socket.to_socket_addrs().unwrap();
+        let _sockaddrs_iter = listen_socket.to_socket_addrs().unwrap();
         let port = listen_socket.port();
 
         // 2. send transit message to peer
@@ -591,10 +589,7 @@ impl Wormhole {
 
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
-                if msg == "ok" {
-                    ()
-                }
-                else {
+                if msg != "ok" {
                     panic!("file ack failed");
                 }
             },
@@ -620,10 +615,10 @@ impl Wormhole {
             let direct_host = direct_host_iter.next().unwrap();
 
             println!("peer host: {}", direct_host);
-            let mut val = connect_or_accept(direct_host);
+            let val = connect_or_accept(direct_host);
 
             match val {
-                Ok((mut socket, addr)) => {
+                Ok((socket, _addr)) => {
                     println!("connected to {:?}", direct_host);
                     let result = tcp_file_send(socket, host.0, key, filename);
                     match result {
@@ -639,11 +634,11 @@ impl Wormhole {
         }
     }
 
-    pub fn receive_file(&mut self, key: &Vec<u8>, ttype: TransitType, relay_url: &RelayUrl) {
+    pub fn receive_file(&mut self, key: &[u8], ttype: TransitType, relay_url: &RelayUrl) {
         // 1. start a tcp server on a random port
         let listener = TcpListener::bind("0.0.0.0:0").unwrap();
         let listen_socket = listener.local_addr().unwrap();
-        let sockaddrs_iter = listen_socket.to_socket_addrs().unwrap();
+        let _sockaddrs_iter = listen_socket.to_socket_addrs().unwrap();
         let port = listen_socket.port();
 
         // 2. send transit message to peer
@@ -706,12 +701,12 @@ impl Wormhole {
             let direct_host = direct_host_iter.next().unwrap();
 
             println!("peer host: {}", direct_host);
-            let mut val = connect_or_accept(direct_host);
+            let val = connect_or_accept(direct_host);
 
             println!("returned from connect_or_accept");
 
             match val {
-                Ok((mut socket, addr)) => {
+                Ok((mut socket, _addr)) => {
                     println!("connected to {:?}", direct_host);
 
                     // create record keys
@@ -742,7 +737,7 @@ impl Wormhole {
 
                             // 6. verify sha256 sum by sending an ack message to peer along with checksum.
                             let ack_msg = make_transit_ack_msg(&sha256sum, &rkey);
-                            send_record(&mut socket, &ack_msg);
+                            send_record(&mut socket, &ack_msg).unwrap();
 
                             // 7. close socket.
                             // well, no need, it gets dropped when it goes out of scope.
@@ -761,7 +756,7 @@ impl Wormhole {
     }
 }
 
-fn make_transit_ack_msg(sha256: &str, key: &Vec<u8>) -> Vec<u8> {
+fn make_transit_ack_msg(sha256: &str, key: &[u8]) -> Vec<u8> {
     let plaintext = transit_ack("ok", sha256).serialize();
 
     let nonce_slice: [u8; sodiumoxide::crypto::secretbox::NONCEBYTES]
@@ -793,7 +788,7 @@ fn connect_or_accept(addr: SocketAddr) -> Result<(TcpStream, SocketAddr), std::i
     connect_socket.join().unwrap()
 }
 
-fn encrypt_record(plaintext: &Vec<u8>, nonce: secretbox::Nonce, key: &Vec<u8>) -> Vec<u8> {
+fn encrypt_record(plaintext: &[u8], nonce: secretbox::Nonce, key: &[u8]) -> Vec<u8> {
     let sodium_key = secretbox::Key::from_slice(&key).unwrap();
     // nonce in little endian (to interop with python client)
     let mut nonce_vec = nonce.as_ref().to_vec();
@@ -807,12 +802,12 @@ fn encrypt_record(plaintext: &Vec<u8>, nonce: secretbox::Nonce, key: &Vec<u8>) -
     let mut ciphertext_and_nonce = Vec::new();
     println!("nonce: {:?}", nonce_vec);
     ciphertext_and_nonce.extend(nonce_vec);
-    ciphertext_and_nonce.extend(ciphertext.clone());
+    ciphertext_and_nonce.extend(ciphertext);
 
     ciphertext_and_nonce
 }
 
-fn decrypt_record(enc_packet: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
+fn decrypt_record(enc_packet: &[u8], key: &[u8]) -> Vec<u8> {
     // 3. decrypt the vector 'enc_packet' with the key.
     let (nonce, ciphertext) =
         enc_packet.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
@@ -832,7 +827,7 @@ fn decrypt_record(enc_packet: &Vec<u8>, key: &Vec<u8>) -> Vec<u8> {
 fn receive_record<T: Read>(stream: &mut BufReader<T>) -> Vec<u8> {
     // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
     let mut length_arr: [u8; 4] = [0; 4];
-    stream.read(&mut length_arr[..]);
+    stream.read_exact(&mut length_arr[..]).unwrap();
     let mut length = u32::from_be_bytes(length_arr);
     println!("encrypted packet length: {}", length);
 
@@ -842,7 +837,7 @@ fn receive_record<T: Read>(stream: &mut BufReader<T>) -> Vec<u8> {
     let mut buf = [0u8; 1024];
     while length > 0 {
         let to_read = length.min(buf.len() as u32) as usize;
-        if let Err(_) = stream.read_exact(&mut buf[..to_read]) {
+        if stream.read_exact(&mut buf[..to_read]).is_err() {
             panic!("cannot read from the tcp connection");
         }
         enc_packet.append(&mut buf.to_vec());
@@ -855,7 +850,7 @@ fn receive_record<T: Read>(stream: &mut BufReader<T>) -> Vec<u8> {
     enc_packet
 }
 
-fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey: &Vec<u8>) -> Vec<u8> {
+fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Vec<u8> {
     let mut stream = BufReader::new(tcp_conn);
     let mut hasher = Sha256::default();
     let mut f = File::create(filepath).unwrap();
@@ -873,7 +868,7 @@ fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey
         let plaintext = decrypt_record(&enc_packet, &skey);
 
         println!("decryption succeeded");
-        f.write_all(&plaintext);
+        f.write_all(&plaintext).unwrap();
 
         // 4. calculate a rolling sha256 sum of the decrypted output.
         hasher.input(&plaintext);
@@ -886,12 +881,12 @@ fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey
     hasher.result().to_vec()
 }
 
-fn derive_key_from_purpose(key: &Vec<u8>, purpose: &str) -> Vec<u8> {
+fn derive_key_from_purpose(key: &[u8], purpose: &str) -> Vec<u8> {
     let length = sodiumoxide::crypto::secretbox::KEYBYTES;
     derive_key(key, &purpose.as_bytes().to_vec(), length)
 }
 
-fn make_record_keys(key: &Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+fn make_record_keys(key: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let s_purpose = "transit_record_sender_key";
     let r_purpose = "transit_record_receiver_key";
 
@@ -909,7 +904,7 @@ fn send_record(stream: &mut TcpStream, buf: &[u8]) -> io::Result<usize> {
     let buf_length: u32 = buf.len() as u32;
     println!("record size: {:?}", buf_length);
     let buf_length_array: [u8; 4] = buf_length.to_be_bytes();
-    stream.write_all(&buf_length_array[..]);
+    stream.write_all(&buf_length_array[..]).unwrap();
     stream.write(buf)
 }
     
@@ -917,7 +912,7 @@ fn recv_buffer(stream: &mut TcpStream, buf: &mut [u8]) -> io::Result<()> {
     stream.read_exact(buf)
 }
 
-fn make_receive_handshake(key: &Vec<u8>) -> String {
+fn make_receive_handshake(key: &[u8]) -> String {
     let purpose = "transit_receiver";
     let sub_key = derive_key_from_purpose(key, purpose);
 
@@ -925,7 +920,7 @@ fn make_receive_handshake(key: &Vec<u8>) -> String {
     msg
 }
 
-fn make_send_handshake(key: &Vec<u8>) -> String {
+fn make_send_handshake(key: &[u8]) -> String {
     let purpose = "transit_sender";
     let sub_key = derive_key_from_purpose(key, purpose);
 
@@ -933,7 +928,7 @@ fn make_send_handshake(key: &Vec<u8>) -> String {
     msg
 }
 
-fn make_relay_handshake(key: &Vec<u8>, tside: &str) -> String {
+fn make_relay_handshake(key: &[u8], tside: &str) -> String {
     let purpose = "transit_relay_token";
     let sub_key = derive_key_from_purpose(key, purpose);
     let msg = format!("please relay {} for side {}\n", hex::encode(sub_key), tside);
@@ -941,7 +936,7 @@ fn make_relay_handshake(key: &Vec<u8>, tside: &str) -> String {
     msg
 }
 
-fn tx_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &[u8]) -> Result<(), String>{
+fn tx_handshake_exchange(sock: &mut TcpStream, key: &[u8], _tside: &[u8]) -> Result<(), String>{
     // send handshake and receive handshake
     let tx_handshake = make_send_handshake(key);
     let rx_handshake = make_receive_handshake(key);
@@ -954,12 +949,12 @@ fn tx_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &[u8]) -> R
     send_buffer(sock, tx_handshake_msg).unwrap();
 
     let mut rx: [u8; 89] = [0; 89];
-    recv_buffer(sock, &mut rx);
+    recv_buffer(sock, &mut rx).unwrap();
 
     println!("{:?}", rx_handshake_msg.to_vec().len());
 
-    let mut r_handshake = rx_handshake_msg.to_vec();
-    let go_msg = "go\n".as_bytes();
+    let r_handshake = rx_handshake_msg.to_vec();
+    let go_msg = b"go\n";
     if r_handshake == rx.to_vec() {
         // send the "go/n" message
         send_buffer(sock, go_msg).unwrap();
@@ -970,7 +965,7 @@ fn tx_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &[u8]) -> R
     }
 }
 
-fn rx_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &[u8]) -> Result<(), String>{
+fn rx_handshake_exchange(sock: &mut TcpStream, key: &[u8], _tside: &[u8]) -> Result<(), String>{
     // send handshake and receive handshake
     let send_handshake_msg = make_send_handshake(key);
     let rx_handshake = make_receive_handshake(key);
@@ -981,10 +976,10 @@ fn rx_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &[u8]) -> R
     send_buffer(sock, receive_handshake_msg).unwrap();
 
     let mut rx: [u8; 90] = [0; 90];
-    recv_buffer(sock, &mut rx);
+    recv_buffer(sock, &mut rx).unwrap();
 
     let mut s_handshake = send_handshake_msg.as_bytes().to_vec();
-    let go_msg = "go\n".as_bytes();
+    let go_msg = b"go\n";
     s_handshake.append(&mut go_msg.to_vec());
     if s_handshake == rx.to_vec() {
         Ok(())
@@ -996,7 +991,7 @@ fn rx_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &[u8]) -> R
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-fn send_records(filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u8> {
+fn send_records(filepath: &str, stream: &mut TcpStream, skey: &[u8]) -> Vec<u8> {
     // rough plan:
     // 1. Open the file
     // 2. read a block of N bytes
@@ -1009,7 +1004,7 @@ fn send_records(filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u
     let path = Path::new(filepath);
 
     let mut file = match File::open(&path) {
-        Err(why) => panic!("Could not open {}: {}", path.display(), why.description()),
+        Err(why) => panic!("Could not open {}: {}", path.display(), why.to_string()),
         Ok(f) => f
     };
 
@@ -1025,7 +1020,7 @@ fn send_records(filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u
         let mut plaintext = [0u8; 4096];
         let n = match file.read(&mut plaintext[..]) {
             Ok(usize) => usize,
-            Err(why) => panic!("failed to read from file: {}", why.description())
+            Err(why) => panic!("failed to read from file: {}", why.to_string())
         };
 
         let mut plaintext_vec = plaintext.to_vec();
@@ -1034,7 +1029,7 @@ fn send_records(filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u
         let ciphertext = encrypt_record(&plaintext_vec, nonce, &skey);
 
         // send the encrypted record
-        send_record(stream, &ciphertext);
+        send_record(stream, &ciphertext).unwrap();
 
         // increment nonce
         nonce.increment_le_inplace();
@@ -1053,7 +1048,7 @@ fn send_records(filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u
 }
 
 fn build_direct_hints(port: u16) -> Vec<Hints> {
-    let localhost = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+    let _localhost = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let ifaces = datalink::interfaces();
 
     let non_local_ifaces: Vec<&datalink::NetworkInterface> = ifaces.iter().filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
@@ -1069,7 +1064,7 @@ fn build_direct_hints(port: u16) -> Vec<Hints> {
     // create abilities and hints
     // TODO: enumerate for all ips, not just ips[0]
     let mut hints = Vec::new();
-    hints.push(Hints::DirectTcpV1(DirectType{ priority: 0.0, hostname: ips[0].ip().to_string(), port: port}));
+    hints.push(Hints::DirectTcpV1(DirectType{ priority: 0.0, hostname: ips[0].ip().to_string(), port}));
 
     hints
 }
@@ -1083,16 +1078,16 @@ fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hints> {
     hints
 }
 
-fn relay_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &str) -> Result<(), String> {
+fn relay_handshake_exchange(sock: &mut TcpStream, key: &[u8], tside: &str) -> Result<(), String> {
     let relay_handshake = make_relay_handshake(key, tside);
     let relay_handshake_msg = relay_handshake.as_bytes();
 
     send_buffer(sock, relay_handshake_msg).unwrap();
 
     let mut rx = [0u8; 3];
-    recv_buffer(sock, &mut rx);
+    recv_buffer(sock, &mut rx).unwrap();
 
-    let ok_msg = "ok\n".as_bytes();
+    let ok_msg: [u8; 3] = *b"ok\n";
     if ok_msg == rx {
         println!("relay handshake succeeded");
         Ok(())
@@ -1103,7 +1098,7 @@ fn relay_handshake_exchange(sock: &mut TcpStream, key: &Vec<u8>, tside: &str) ->
     }
 }
 
-fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &Vec<u8>, filename: &str) -> Result<(), String> {
+fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &[u8], filename: &str) -> Result<(), String> {
 
     // 9. create record keys
     let (skey, rkey) = make_record_keys(key);
@@ -1131,29 +1126,24 @@ fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &Vec<u8>, file
             let enc_transit_ack = receive_record(&mut BufReader::new(socket));
             let transit_ack = decrypt_record(&enc_transit_ack, &rkey);
 
-            let transit_ack_msg = TransitAck::deserialize(str::from_utf8(&transit_ack).unwrap());
-            match transit_ack_msg {
-                TransitAck{ack, sha256} => {
-                    if sha256 == hex::encode(checksum) {
-                        println!("transfer complete!");
-                        Ok(())
-                    }
-                    else {
-                        panic!("receive checksum error");
-                    }
-                },
-                _ => panic!("could not parse the message"),
+            let transit_ack_msg = TransitAck::deserialize(str::from_utf8(&transit_ack).expect("could not parse the message"));
+            if transit_ack_msg.sha256 == hex::encode(checksum) {
+                println!("transfer complete!");
+                Ok(())
+            } else {
+                panic!("receive checksum error");
             }
         },
         Err(s) => panic!("Relay handshake failed: {}", s),
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn get_direct_relay_hosts(ttype: &TransitType) -> (Vec<(HostType, &DirectType)>, Vec<(HostType, &DirectType)>) {
-    let mut direct_hosts: Vec<(HostType, &DirectType)> = ttype.hints_v1.iter()
+    let direct_hosts: Vec<(HostType, &DirectType)> = ttype.hints_v1.iter()
         .filter(|hint|
                 match hint {
-                    Hints::DirectTcpV1(dt) => true,
+                    Hints::DirectTcpV1(_) => true,
                     _ => false,
                 })
         .map(|hint|
@@ -1162,10 +1152,10 @@ fn get_direct_relay_hosts(ttype: &TransitType) -> (Vec<(HostType, &DirectType)>,
                  _ => panic!("should not come here"),
              })
         .collect();
-    let mut relay_hosts_list: Vec<&Vec<DirectType>> = ttype.hints_v1.iter()
+    let relay_hosts_list: Vec<&Vec<DirectType>> = ttype.hints_v1.iter()
         .filter(|hint|
                 match hint {
-                    Hints::RelayV1(rt) => true,
+                    Hints::RelayV1(_) => true,
                     _ => false,
                 })
         .map(|hint|
@@ -1175,9 +1165,9 @@ fn get_direct_relay_hosts(ttype: &TransitType) -> (Vec<(HostType, &DirectType)>,
              })
         .collect();
 
-    let mut hosts: Vec<(HostType, &DirectType)> = Vec::new();
-    let mut maybe_relay_hosts = relay_hosts_list.first();
-    let mut relay_hosts: Vec<(HostType, &DirectType)> = match maybe_relay_hosts {
+    let _hosts: Vec<(HostType, &DirectType)> = Vec::new();
+    let maybe_relay_hosts = relay_hosts_list.first();
+    let relay_hosts: Vec<(HostType, &DirectType)> = match maybe_relay_hosts {
         Some(relay_host_vec) => relay_host_vec.iter()
             .map(|host| (HostType::Relay, host))
             .collect(),

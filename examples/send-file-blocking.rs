@@ -1,12 +1,10 @@
-use magic_wormhole::core::message;
-use magic_wormhole::io::blocking::Wormhole;
 use magic_wormhole::io::blocking::MessageType;
 use magic_wormhole::io::blocking;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &'static str = "ws://relay.magic-wormhole.io:4000/v1";
-const RELAY_SERVER: &'static str = "tcp:transit.magic-wormhole.io:4001";
-const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
+const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
+const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
+const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
     let mailbox_server = String::from(MAILBOX_SERVER);

@@ -242,14 +242,14 @@ mod test {
             e,
             events![
                 RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+                RendezvousEvent::TxAdd(phase1, body1),
             ]
         );
 
         e = m.process(Close(Mood::Happy));
         assert_eq!(
             e,
-            events![RendezvousEvent::TxClose(mbox1.clone(), Mood::Happy)]
+            events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]
         );
 
         e = m.process(RxClosed);
@@ -286,14 +286,14 @@ mod test {
             e,
             events![
                 RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+                RendezvousEvent::TxAdd(phase1, body1),
             ]
         );
 
         e = m.process(Close(Mood::Happy));
         assert_eq!(
             e,
-            events![RendezvousEvent::TxClose(mbox1.clone(), Mood::Happy)]
+            events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]
         );
 
         e = m.process(RxClosed);
@@ -319,14 +319,14 @@ mod test {
             e,
             events![
                 RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
+                RendezvousEvent::TxAdd(phase1, body1),
             ]
         );
 
         e = m.process(Close(Mood::Happy));
         assert_eq!(
             e,
-            events![RendezvousEvent::TxClose(mbox1.clone(), Mood::Happy)]
+            events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]
         );
 
         e = m.process(RxClosed);
@@ -359,12 +359,12 @@ mod test {
         // to re-send it after a Lost/Connected cycle. We do re-open the
         // mailbox though.
         let t1 = TheirSide::from(String::from("side1"));
-        e = m.process(RxMessage(t1.clone(), phase1.clone(), body1.clone()));
+        e = m.process(RxMessage(t1, phase1.clone(), body1.clone()));
         assert_eq!(e, events![]);
         e = m.process(Lost);
         assert_eq!(e, events![]);
         e = m.process(Connected);
-        assert_eq!(e, events![RendezvousEvent::TxOpen(mbox1.clone())]);
+        assert_eq!(e, events![RendezvousEvent::TxOpen(mbox1)]);
 
         // now a message from the other side means we don't need the
         // Nameplate anymore
@@ -383,7 +383,7 @@ mod test {
         );
 
         // receiving a duplicate message should not be forwarded to Order
-        e = m.process(RxMessage(t2.clone(), phase1.clone(), body1.clone()));
+        e = m.process(RxMessage(t2, phase1, body1));
         assert_eq!(e, events![NameplateEvent::Release]);
     }
 }
