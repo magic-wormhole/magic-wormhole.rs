@@ -7,6 +7,7 @@ const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
+    env_logger::try_init().unwrap();
     let mailbox_server = String::from(MAILBOX_SERVER);
     let app_id = String::from(APPID);
 
