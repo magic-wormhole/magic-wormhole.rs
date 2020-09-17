@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use crate::core::WormholeCore;
 use crate::core::{
     APIAction, APIEvent, Action, Code, IOAction, IOEvent, Mood, TimerHandle,
@@ -48,110 +49,28 @@ pub struct RelayUrl {
     pub port: u16
 }
 
+impl FromStr for RelayUrl {
+    type Err = &'static str;
+
+    fn from_str(url: &str) -> Result<Self, &'static str> {
+        // TODO use proper URL parsing
+        let v: Vec<&str> = url.split(':').collect();
+        if v.len() == 3 && v[0] == "tcp" {
+            v[2].parse()
+                .map(|port| RelayUrl{ host: v[1].to_string(), port})
+                .map_err(|_| "Cannot parse relay url port")
+        } else {
+            Err("Incorrect relay server url format")
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum MessageType {
     Message(String),
     File {
         filename: String,
         filesize: u64,
-    }
-}
-
-pub fn connect(app_id: String, mailbox_server: String) -> Wormhole {
-    Wormhole::new(&app_id.as_str(), &mailbox_server.as_str())
-}
-
-pub fn get_code(w: &mut Wormhole) -> String {
-    w.allocate_code(2);
-    w.get_code()
-}
-
-pub fn send(w: &mut Wormhole, app_id: String, _code: String, msg: MessageType, relay_url: &RelayUrl) {
-    match msg {
-        MessageType::Message(text) => {
-            w.send_message(message(&text).serialize().as_bytes());
-            println!("sent..");
-            // if we close right away, we won't actually send anything. Wait for at
-            // least the verifier to be printed, that ought to give our outbound
-            // message a chance to be delivered.
-            let verifier = w.get_verifier();
-            println!("verifier: {}", hex::encode(verifier));
-            println!("got verifier, closing..");
-            w.close();
-            println!("closed");
-        },
-        MessageType::File{filename, filesize} => {
-            let k = w.derive_transit_key(&app_id);
-            w.send_file(&filename, filesize, &k, relay_url);
-        }
-    }
-}
-
-pub fn receive(mailbox_server: String, app_id: String, code: String, relay_url: &RelayUrl) -> String {
-    trace!("connecting..");
-    let mut w = connect(app_id.clone(), mailbox_server);
-    w.set_code(&code);
-    let verifier = w.get_verifier();
-    trace!("verifier: {}", hex::encode(verifier));
-    trace!("receiving..");
-    let msg = w.get_message();
-    let actual_message =
-        PeerMessage::deserialize(str::from_utf8(&msg).unwrap());
-    let remote_msg = match actual_message {
-        PeerMessage::Offer(offer) => match offer {
-            OfferType::Message(msg) => {
-                trace!("{}", msg);
-                w.send_message(message_ack("ok").serialize().as_bytes());
-                msg
-            }
-            OfferType::File { .. } => {
-                trace!("Received file offer {:?}", offer);
-                w.send_message(file_ack("ok").serialize().as_bytes());
-                "".to_string()
-            }
-            OfferType::Directory { .. } => {
-                trace!("Received directory offer: {:?}", offer);
-                // TODO: We are doing file_ack without asking user
-                w.send_message(file_ack("ok").serialize().as_bytes());
-                "".to_string()
-            }
-        },
-        PeerMessage::Answer(_) => {
-            panic!("Should not receive answer type, I'm receiver")
-        },
-        PeerMessage::Error(err) => {
-            trace!("Something went wrong: {}", err);
-            "".to_string()
-        },
-        PeerMessage::Transit(transit) => {
-            // TODO: This should start transit server connection or direct file transfer
-            // first derive a transit key.
-            let k = w.derive_transit_key(&app_id);
-            println!("Transit Message received: {:?}", transit);
-            w.receive_file(&k, transit, relay_url);
-            "".to_string()
-        }
-    };
-    trace!("closing..");
-    w.close();
-    trace!("closed");
-
-    //let remote_msg = "foobar".to_string();
-    remote_msg
-}
-
-// return the host and port of the relay server, given the url
-pub fn parse_relay_url(url: &str) -> RelayUrl {
-    let v: Vec<&str> = url.split(':').collect();
-    if v.len() == 3 && v[0] == "tcp" {
-        let maybe_port = v[2].parse();
-        match maybe_port {
-            Ok(port) => RelayUrl{ host: v[1].to_string(), port},
-            _ => panic!("cannot parse relay url port"),
-        }
-    }
-    else {
-        panic!("Incorrect relay server url format");
     }
 }
 
@@ -753,6 +672,81 @@ impl Wormhole {
                 },
             }
         }
+    }
+    
+    pub fn send(&mut self, app_id: String, _code: String, msg: MessageType, relay_url: &RelayUrl) {
+        match msg {
+            MessageType::Message(text) => {
+                self.send_message(message(&text).serialize().as_bytes());
+                println!("sent..");
+                // if we close right away, we won't actually send anything. Wait for at
+                // least the verifier to be printed, that ought to give our outbound
+                // message a chance to be delivered.
+                let verifier = self.get_verifier();
+                println!("verifier: {}", hex::encode(verifier));
+                println!("got verifier, closing..");
+                self.close();
+                println!("closed");
+            },
+            MessageType::File{filename, filesize} => {
+                let k = self.derive_transit_key(&app_id);
+                self.send_file(&filename, filesize, &k, relay_url);
+            }
+        }
+    }
+    
+    // TODO this method should not be static
+    pub fn receive(mailbox_server: String, app_id: String, code: String, relay_url: &RelayUrl) -> String {
+        trace!("connecting..");
+        let mut w = Wormhole::new(&app_id, &mailbox_server);
+        w.set_code(&code);
+        let verifier = w.get_verifier();
+        trace!("verifier: {}", hex::encode(verifier));
+        trace!("receiving..");
+        let msg = w.get_message();
+        let actual_message =
+            PeerMessage::deserialize(str::from_utf8(&msg).unwrap());
+        let remote_msg = match actual_message {
+            PeerMessage::Offer(offer) => match offer {
+                OfferType::Message(msg) => {
+                    trace!("{}", msg);
+                    w.send_message(message_ack("ok").serialize().as_bytes());
+                    msg
+                }
+                OfferType::File { .. } => {
+                    trace!("Received file offer {:?}", offer);
+                    w.send_message(file_ack("ok").serialize().as_bytes());
+                    "".to_string()
+                }
+                OfferType::Directory { .. } => {
+                    trace!("Received directory offer: {:?}", offer);
+                    // TODO: We are doing file_ack without asking user
+                    w.send_message(file_ack("ok").serialize().as_bytes());
+                    "".to_string()
+                }
+            },
+            PeerMessage::Answer(_) => {
+                panic!("Should not receive answer type, I'm receiver")
+            },
+            PeerMessage::Error(err) => {
+                trace!("Something went wrong: {}", err);
+                "".to_string()
+            },
+            PeerMessage::Transit(transit) => {
+                // TODO: This should start transit server connection or direct file transfer
+                // first derive a transit key.
+                let k = w.derive_transit_key(&app_id);
+                println!("Transit Message received: {:?}", transit);
+                w.receive_file(&k, transit, relay_url);
+                "".to_string()
+            }
+        };
+        trace!("closing..");
+        w.close();
+        trace!("closed");
+    
+        //let remote_msg = "foobar".to_string();
+        remote_msg
     }
 }
 
