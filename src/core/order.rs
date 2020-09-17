@@ -99,15 +99,15 @@ mod test {
         assert_eq!(out, events![]);
         let out = m.process(OrderEvent::GotMessage(
             s1.clone(),
-            ppake.clone(),
+            ppake,
             b"pake".to_vec(),
         ));
         assert_eq!(
             out,
             events![
                 K_GotPake(b"pake".to_vec()),
-                R_GotMessage(s1.clone(), p1.clone(), b"body1".to_vec()),
-                R_GotMessage(s1.clone(), p2.clone(), b"body2".to_vec()),
+                R_GotMessage(s1.clone(), p1, b"body1".to_vec()),
+                R_GotMessage(s1.clone(), p2, b"body2".to_vec()),
             ]
         );
         let out = m.process(OrderEvent::GotMessage(
@@ -117,7 +117,7 @@ mod test {
         ));
         assert_eq!(
             out,
-            events![R_GotMessage(s1.clone(), p3.clone(), b"body3".to_vec()),]
+            events![R_GotMessage(s1, p3, b"body3".to_vec()),]
         );
     }
 
@@ -132,7 +132,7 @@ mod test {
 
         let out = m.process(OrderEvent::GotMessage(
             s1.clone(),
-            ppake.clone(),
+            ppake,
             b"pake".to_vec(),
         ));
         assert_eq!(out, events![K_GotPake(b"pake".to_vec()),]);
@@ -143,7 +143,7 @@ mod test {
         ));
         assert_eq!(
             out,
-            events![R_GotMessage(s1.clone(), p1.clone(), b"body1".to_vec()),]
+            events![R_GotMessage(s1.clone(), p1, b"body1".to_vec()),]
         );
         let out = m.process(OrderEvent::GotMessage(
             s1.clone(),
@@ -152,7 +152,7 @@ mod test {
         ));
         assert_eq!(
             out,
-            events![R_GotMessage(s1.clone(), p2.clone(), b"body2".to_vec()),]
+            events![R_GotMessage(s1, p2, b"body2".to_vec()),]
         );
     }
 }

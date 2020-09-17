@@ -13,7 +13,7 @@ const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
-    drop(env_logger::try_init());
+    env_logger::try_init().unwrap();
     let send = SubCommand::with_name("send")
         .aliases(&["tx"])
         .arg(

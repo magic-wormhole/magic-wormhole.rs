@@ -260,12 +260,11 @@ mod test {
         all.split_whitespace()
             .map(|s| {
                 if s == "." {
-                    String::from("")
+                    Nameplate::new("")
                 } else {
-                    s.to_string()
+                    Nameplate::new(s)
                 }
             })
-            .map(|s| Nameplate(s))
             .collect()
     }
 

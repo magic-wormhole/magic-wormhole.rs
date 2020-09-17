@@ -4,7 +4,6 @@ use magic_wormhole::core::{
 };
 use parking_lot::{deadlock, Mutex};
 use regex::Regex;
-use rustyline;
 use rustyline::{
     completion::Completer, error::ReadlineError, highlight::Highlighter,
     hint::Hinter, Context,
@@ -18,10 +17,9 @@ use std::sync::{
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 use url::Url;
-use ws;
 
-const MAILBOX_SERVER: &'static str = "ws://localhost:4000/v1";
-const APPID: &'static str = "lothar.com/wormhole/text-or-file-xfer";
+const MAILBOX_SERVER: &str = "ws://localhost:4000/v1";
+const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 struct Factory {
     wsh: WSHandle,
@@ -40,7 +38,7 @@ impl ws::Factory for Factory {
         WSHandler {
             wsh: self.wsh,
             wcr: Arc::clone(&self.wcr),
-            out: out,
+            out,
         }
     }
 }
@@ -76,8 +74,8 @@ impl Completer for CodeCompleter {
                     .map(|s| s.to_string());
             }
 
-            if committed_nameplate.is_some() {
-                if committed_nameplate.unwrap() != nameplate {
+            if let Some(committed_nameplate) = committed_nameplate {
+                if committed_nameplate != nameplate {
                     return Err(ReadlineError::from(io::Error::new(
                         io::ErrorKind::Other,
                         "Nameplate already chosen can't go back",
@@ -86,7 +84,7 @@ impl Completer for CodeCompleter {
 
                 let mut wc = mwc.lock();
                 let completions = wc.input_helper_get_word_completions(&word);
-                drop(&wc);
+                drop(wc);
 
                 match completions {
                     Ok(completions) => Ok((
@@ -104,7 +102,7 @@ impl Completer for CodeCompleter {
             } else {
                 self.tx_event
                     .send(APIEvent::InputHelperChooseNameplate(
-                        nameplate.clone(),
+                        nameplate,
                     ))
                     .unwrap();
                 Ok((0, Vec::new()))
@@ -281,7 +279,7 @@ fn main() {
     }
 
     let f = Factory {
-        wsh: wsh,
+        wsh,
         wcr: Arc::new(Mutex::new(wc)),
     };
 

@@ -196,10 +196,10 @@ mod test {
             }
             _ => panic!(e0),
         };
-        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1.clone())]);
+        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1)]);
 
         e = n.process(Release);
-        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1)]);
 
         e = n.process(RxReleased);
         assert_eq!(e, events![TerminatorEvent::NameplateDone]);
@@ -246,7 +246,7 @@ mod test {
             }
             _ => panic!(e0),
         };
-        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1.clone())]);
+        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1)]);
 
         e = n.process(Lost);
         assert_eq!(e, events![]);
@@ -261,7 +261,7 @@ mod test {
         assert_eq!(e, events![]);
 
         e = n.process(Connected);
-        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1)]);
     }
 
     #[test]
@@ -307,7 +307,7 @@ mod test {
         assert_eq!(e, events![]);
 
         e = n.process(Connected);
-        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone())]);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1)]);
 
         e = n.process(Close); // duplicate close is ok in S4B too
         assert_eq!(e, events![]);
@@ -339,7 +339,7 @@ mod test {
         assert_eq!(e, events![RendezvousEvent::TxClaim(name1.clone()),]);
 
         e = n.process(Close);
-        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone()),]);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1),]);
         e = n.process(RxReleased);
         assert_eq!(e, events![TerminatorEvent::NameplateDone]);
     }
@@ -362,10 +362,10 @@ mod test {
             Event::Input(InputEvent::GotWordlist(_w)) => (),
             _ => panic!(e0),
         };
-        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1.clone())]);
+        assert_eq!(e, events![MailboxEvent::GotMailbox(mbox1)]);
 
         e = n.process(Close);
-        assert_eq!(e, events![RendezvousEvent::TxRelease(name1.clone()),]);
+        assert_eq!(e, events![RendezvousEvent::TxRelease(name1),]);
         e = n.process(RxReleased);
         assert_eq!(e, events![TerminatorEvent::NameplateDone]);
     }

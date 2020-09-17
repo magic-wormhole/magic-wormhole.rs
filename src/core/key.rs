@@ -234,7 +234,6 @@ pub fn derive_verifier(key: &Key) -> Vec<u8> {
 mod test {
     use super::*;
     use crate::core::events::{AppID, EitherSide, Event, KeyEvent};
-    use hex;
 
     #[test]
     fn test_extract_pake_msg() {
@@ -322,7 +321,7 @@ mod test {
             &MySide::unchecked_from_string(String::from("side")),
         );
 
-        let key = Key("key".as_bytes().to_vec());
+        let key = Key(b"key".to_vec());
         let side = "side";
         let phase = Phase(String::from("phase1"));
         let phase1_key =
@@ -373,7 +372,7 @@ mod test {
 
     #[test]
     fn test_encrypt_data_decrypt_data_roundtrip() {
-        let key = Key("key".as_bytes().to_vec());
+        let key = Key(b"key".to_vec());
         let side = "side";
         let phase = Phase(String::from("phase"));
         let data_key = derive_phase_key(&EitherSide::from(side), &key, &phase);
@@ -475,7 +474,7 @@ mod test {
         assert_eq!(e.len(), 0);
 
         // setting our own code should both start and finish the process
-        let mut e = strip_timing(k.process(KeyEvent::GotCode(code.clone())));
+        let mut e = strip_timing(k.process(KeyEvent::GotCode(code)));
 
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
