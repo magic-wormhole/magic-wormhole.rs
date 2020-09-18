@@ -7,13 +7,17 @@ const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
-    env_logger::builder().filter_level(LevelFilter::Trace).init();
+    env_logger::builder()
+        .filter_level(LevelFilter::Trace)
+        .filter_module("mio", LevelFilter::Debug)
+        .filter_module("ws", LevelFilter::Info)
+        .init();
     let mailbox_server = String::from(MAILBOX_SERVER);
 
     info!("connecting..");
     let mut w = Wormhole::new(&APPID, &mailbox_server);
     // Hard-code this in every time you test with a new value
-    let code = "12-dakota-cement";
+    let code = "TODO-insert-code-here";
     w.set_code(code);
     debug!("using the code: {}", code);
     let verifier = w.get_verifier();

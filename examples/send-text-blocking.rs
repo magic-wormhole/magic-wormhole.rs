@@ -7,7 +7,11 @@ const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
-    env_logger::builder().filter_level(LevelFilter::Trace).init();
+    env_logger::builder()
+        .filter_level(LevelFilter::Trace)
+        .filter_module("mio", LevelFilter::Debug)
+        .filter_module("ws", LevelFilter::Info)
+        .init();
     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
     trace!("connecting..");
     // w.set_code("4-purple-sausages");

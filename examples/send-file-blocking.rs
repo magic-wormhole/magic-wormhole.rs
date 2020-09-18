@@ -8,7 +8,11 @@ const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
-    env_logger::builder().filter_level(LevelFilter::Trace).init();
+    env_logger::builder()
+        .filter_level(LevelFilter::Trace)
+        .filter_module("mio", LevelFilter::Debug)
+        .filter_module("ws", LevelFilter::Info)
+        .init();
     let mailbox_server = String::from(MAILBOX_SERVER);
 
     let mut w = Wormhole::new(&APPID, &mailbox_server);
