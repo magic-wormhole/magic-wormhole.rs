@@ -1,4 +1,3 @@
-use magic_wormhole::io::blocking::MessageType;
 use magic_wormhole::io::blocking::Wormhole;
 use log::*;
 
@@ -11,12 +10,15 @@ fn main() {
     env_logger::builder().filter_level(LevelFilter::Trace).init();
     let mailbox_server = String::from(MAILBOX_SERVER);
 
+    info!("connecting..");
     let mut w = Wormhole::new(&APPID, &mailbox_server);
-    w.allocate_code(2);
-    let code = w.get_code();
-    info!("got the code: {}", code);
+    // Hard-code this in every time you test with a new value
+    let code = "12-dakota-cement";
+    w.set_code(code);
+    debug!("using the code: {}", code);
+    let verifier = w.get_verifier();
+    debug!("verifier: {}", hex::encode(verifier));
+    info!("receiving..");
 
-    // send a file
-    let msg = MessageType::File{ filename: "example-file.bin".to_string(), filesize: 40960 };
-    w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap());
+    Wormhole::receive(MAILBOX_SERVER, APPID, code, &RELAY_SERVER.parse().unwrap()).unwrap();
 }
