@@ -34,6 +34,7 @@ zeroize = { version = "1.1", features = ["zeroize_derive"] }
 sodiumoxide = "0.0.16"
 pnet = "0.26.0"
 byteorder = "1.2.1"
+anyhow = "1.0.32"
 
 # for "io_blocking" feature
 ws = { version = "0.9", optional = true }

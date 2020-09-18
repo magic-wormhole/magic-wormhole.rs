@@ -1,33 +1,34 @@
 use magic_wormhole::core::{file_ack, message_ack, OfferType, PeerMessage};
 use magic_wormhole::io::blocking::Wormhole;
 use std::str;
+use log::*;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
-    env_logger::try_init().unwrap();
+    env_logger::builder().filter_level(LevelFilter::Trace).init();
     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
-    println!("connecting..");
-    w.set_code("4-purple-sausages");
+    trace!("connecting..");
+    w.set_code("8-cumbersome-guidance");// Hard-code this in every time you test with a new value
     let verifier = w.get_verifier();
-    println!("verifier: {}", hex::encode(verifier));
-    println!("receiving..");
+    trace!("verifier: {}", hex::encode(verifier));
+    trace!("receiving..");
     let msg = w.get_message();
     let actual_message =
         PeerMessage::deserialize(str::from_utf8(&msg).unwrap());
     match actual_message {
         PeerMessage::Offer(offer) => match offer {
             OfferType::Message(msg) => {
-                println!("{}", msg);
+                trace!("{}", msg);
                 w.send_message(message_ack("ok").serialize().as_bytes());
             }
             OfferType::File { .. } => {
-                println!("Received file offer {:?}", offer);
+                trace!("Received file offer {:?}", offer);
                 w.send_message(file_ack("ok").serialize().as_bytes());
             }
             OfferType::Directory { .. } => {
-                println!("Received directory offer: {:?}", offer);
+                trace!("Received directory offer: {:?}", offer);
                 // TODO: We are doing file_ack without asking user
                 w.send_message(file_ack("ok").serialize().as_bytes());
             }
@@ -35,13 +36,13 @@ fn main() {
         PeerMessage::Answer(_) => {
             panic!("Should not receive answer type, I'm receiver")
         }
-        PeerMessage::Error(err) => println!("Something went wrong: {}", err),
+        PeerMessage::Error(err) => trace!("Something went wrong: {}", err),
         PeerMessage::Transit(transit) => {
             // TODO: This should start transit server connection or direct file transfer
-            println!("Transit Message received: {:?}", transit)
+            trace!("Transit Message received: {:?}", transit)
         }
     };
-    println!("closing..");
+    trace!("closing..");
     w.close();
-    println!("closed");
+    trace!("closed");
 }
