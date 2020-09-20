@@ -483,7 +483,7 @@ impl Wormhole {
         }
 
         let transit_msg = transit(abilities, our_hints).serialize();
-        trace!("transit_msg: {:?}", transit_msg);
+        debug!("transit_msg: {:?}", transit_msg);
 
         // send the transit message
         self.send_message(transit_msg.as_bytes());
@@ -491,7 +491,7 @@ impl Wormhole {
         // 5. receive transit message from peer.
         let msg = self.get_message();
         let maybe_transit = PeerMessage::deserialize(str::from_utf8(&msg)?);
-        trace!("received transit message: {:?}", maybe_transit);
+        debug!("received transit message: {:?}", maybe_transit);
 
         let ttype = match maybe_transit {
             PeerMessage::Transit(tmsg) => tmsg,
@@ -505,11 +505,11 @@ impl Wormhole {
         // 7. wait for file_ack
         let maybe_fileack = self.get_message();
         let fileack_msg = PeerMessage::deserialize(str::from_utf8(&maybe_fileack)?);
-        trace!("received file ack message: {:?}", fileack_msg);
+        debug!("received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
-                ensure!(msg != "ok", "file ack failed");
+                ensure!(msg == "ok", "file ack failed");
             },
             _ => bail!("did not receive file ack")
         }
@@ -530,15 +530,15 @@ impl Wormhole {
 
         // TODO if no handshake succeeds, return an error
         for host in hosts {
-            trace!("host: {:?}", host);
+            debug!("host: {:?}", host);
             let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs()?;
             let direct_host = direct_host_iter.next().unwrap();
 
-            trace!("peer host: {}", direct_host);
+            debug!("peer host: {}", direct_host);
 
             match connect_or_accept(direct_host) {
                 Ok((socket, _addr)) => {
-                    trace!("connected to {:?}", direct_host);
+                    debug!("connected to {:?}", direct_host);
                     let result = tcp_file_send(socket, host.0, key, filename);
                     match result {
                         Ok(()) => break,
@@ -579,14 +579,14 @@ impl Wormhole {
         }
 
         let transit_msg = transit(abilities, our_hints).serialize();
-        trace!("Sending '{}'", &transit_msg);
+        debug!("Sending '{}'", &transit_msg);
         // send the transit message
         self.send_message(transit_msg.as_bytes());
 
         // 3. receive file offer message from peer
         let msg = self.get_message();
         let maybe_offer = PeerMessage::deserialize(str::from_utf8(&msg)?);
-        trace!("Received offer message '{:?}'", &maybe_offer);
+        debug!("Received offer message '{:?}'", &maybe_offer);
 
         let (filename, filesize) = match maybe_offer {
             PeerMessage::Offer(offer_type) => {
@@ -618,27 +618,28 @@ impl Wormhole {
 
         // TODO if no handshake succeeds, return an error
         for host in hosts {
-            trace!("host: {:?}", host);
+            debug!("host: {:?}", host);
             let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs()?;
             let direct_host = direct_host_iter.next().unwrap();
 
-            trace!("peer host: {}", direct_host);
+            debug!("peer host: {}", direct_host);
             let val = connect_or_accept(direct_host);
 
-            trace!("returned from connect_or_accept");
+            debug!("returned from connect_or_accept");
 
             match val {
                 Ok((mut socket, _addr)) => {
-                    trace!("connected to {:?}", direct_host);
+                    debug!("connected to {:?}", direct_host);
 
                     // create record keys
                     let (skey, rkey) = make_record_keys(key);
         
                     // exchange handshake
                     let tside = generate_transit_side();
-                    trace!("{:?}", tside);
+                    debug!("{:?}", tside);
 
                     if host.0 == HostType::Relay {
+                        debug!("Yes");
                         relay_handshake_exchange(&mut socket, key, &tside)
                             .context("Relay handshake failed")?;
                         rx_handshake_exchange(&mut socket, key, &tside.as_bytes())?;
@@ -649,7 +650,7 @@ impl Wormhole {
                         let checksum = receive_records(&filename, filesize, &mut socket, &skey)?;
 
                         let sha256sum = hex::encode(checksum.as_slice());
-                        trace!("sha256 sum: {:?}", sha256sum);
+                        debug!("sha256 sum: {:?}", sha256sum);
 
                         // 6. verify sha256 sum by sending an ack message to peer along with checksum.
                         let ack_msg = make_transit_ack_msg(&sha256sum, &rkey)?;
@@ -659,10 +660,12 @@ impl Wormhole {
                         // well, no need, it gets dropped when it goes out of scope.
 
                         break
+                    } else {
+                        debug!("Nope");
                     }
                 },
                 Err(_) => {
-                    trace!("could not connect to {:?}", direct_host);
+                    debug!("could not connect to {:?}", direct_host);
                     continue
                 },
             }
@@ -674,7 +677,7 @@ impl Wormhole {
         match msg {
             MessageType::Message(text) => {
                 self.send_message(message(&text).serialize().as_bytes());
-                trace!("sent..");
+                debug!("sent..");
                 // if we close right away, we won't actually send anything. Wait for at
                 // least the verifier to be printed, that ought to give our outbound
                 // message a chance to be delivered.
@@ -686,6 +689,7 @@ impl Wormhole {
             },
             MessageType::File{filename, filesize} => {
                 let k = self.derive_transit_key(&app_id);
+                debug!("transit key {}", hex::encode(&k));
                 self.send_file(&filename, filesize, &k, relay_url)?;
             }
         }
@@ -693,30 +697,24 @@ impl Wormhole {
     }
     
     // TODO this method should not be static
-    pub fn receive(mailbox_server: &str, app_id: &str, code: &str, relay_url: &RelayUrl) -> Result<String> {
-        trace!("connecting..");
-        let mut w = Wormhole::new(&app_id, &mailbox_server);
-        w.set_code(&code);
-        let verifier = w.get_verifier();
-        trace!("verifier: {}", hex::encode(verifier));
-        trace!("receiving..");
+    pub fn receive(mut w: Wormhole, app_id: &str, relay_url: &RelayUrl) -> Result<String> {
         let msg = w.get_message();
         let actual_message =
             PeerMessage::deserialize(str::from_utf8(&msg)?);
         let remote_msg = match actual_message {
             PeerMessage::Offer(offer) => match offer {
                 OfferType::Message(msg) => {
-                    trace!("{}", msg);
+                    debug!("{}", msg);
                     w.send_message(message_ack("ok").serialize().as_bytes());
                     msg
                 }
                 OfferType::File { .. } => {
-                    trace!("Received file offer {:?}", offer);
+                    debug!("Received file offer {:?}", offer);
                     w.send_message(file_ack("ok").serialize().as_bytes());
                     "".to_string()
                 }
                 OfferType::Directory { .. } => {
-                    trace!("Received directory offer: {:?}", offer);
+                    debug!("Received directory offer: {:?}", offer);
                     // TODO: We are doing file_ack without asking user
                     w.send_message(file_ack("ok").serialize().as_bytes());
                     "".to_string()
@@ -726,21 +724,21 @@ impl Wormhole {
                 bail!("Should not receive answer type, I'm receiver")
             },
             PeerMessage::Error(err) => {
-                trace!("Something went wrong: {}", err);
+                debug!("Something went wrong: {}", err);
                 "".to_string()
             },
             PeerMessage::Transit(transit) => {
                 // TODO: This should start transit server connection or direct file transfer
                 // first derive a transit key.
                 let k = w.derive_transit_key(&app_id);
-                trace!("Transit Message received: {:?}", transit);
+                debug!("Transit Message received: {:?}", transit);
                 w.receive_file(&k, transit, relay_url)?;
                 "".to_string()
             }
         };
-        trace!("closing..");
+        debug!("closing..");
         w.close();
-        trace!("closed");
+        debug!("closed");
     
         //let remote_msg = "foobar".to_string();
         Ok(remote_msg)
@@ -785,7 +783,7 @@ fn encrypt_record(plaintext: &[u8], nonce: secretbox::Nonce, key: &[u8]) -> Resu
     let mut nonce_vec = nonce.as_ref().to_vec();
     nonce_vec.reverse();
     let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref())
-        .ok_or(format_err!("encrypt_record: unable to create nonce"))?;
+        .ok_or_else(|| format_err!("encrypt_record: unable to create nonce"))?;
 
     let ciphertext = secretbox::seal(plaintext, &nonce_le, &sodium_key);
     let mut ciphertext_and_nonce = Vec::new();
@@ -844,17 +842,17 @@ fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey
     let mut remaining_size = filesize as usize;
 
     while remaining_size > 0 {
-        trace!("remaining size: {:?}", remaining_size);
+        debug!("remaining size: {:?}", remaining_size);
 
         let enc_packet = receive_record(&mut stream)?;
 
         // enc_packet.truncate(enc_packet_length);
-        trace!("length of the ciphertext: {:?}", enc_packet.len());
+        debug!("length of the ciphertext: {:?}", enc_packet.len());
 
         // 3. decrypt the vector 'enc_packet' with the key.
         let plaintext = decrypt_record(&enc_packet, &skey)?;
 
-        trace!("decryption succeeded");
+        debug!("decryption succeeded");
         f.write_all(&plaintext)?;
 
         // 4. calculate a rolling sha256 sum of the decrypted output.
@@ -863,7 +861,7 @@ fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey
         remaining_size -= plaintext.len();
     }
 
-    trace!("done");
+    debug!("done");
     // TODO: 5. write the buffer into a file.
     Ok(hasher.result().to_vec())
 }
@@ -1071,7 +1069,7 @@ fn relay_handshake_exchange(sock: &mut TcpStream, key: &[u8], tside: &str) -> Re
 fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &[u8], filename: &str) -> Result<()> {
     // 9. create record keys
     let (skey, rkey) = make_record_keys(key);
-    trace!("created record keys");
+    debug!("created record keys");
 
     // 10. exchange handshake over tcp
     let tside = generate_transit_side();
@@ -1084,7 +1082,7 @@ fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &[u8], filenam
 
     // 11. send the file as encrypted records.
     // fn send_records(&mut self, filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u8>
-    trace!("handshake successful");
+    debug!("handshake successful");
     let checksum = send_records(filename, &mut socket, &skey)?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
@@ -1093,7 +1091,7 @@ fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &[u8], filenam
 
     let transit_ack_msg = TransitAck::deserialize(str::from_utf8(&transit_ack)?);
     ensure!(transit_ack_msg.sha256 == hex::encode(checksum), "receive checksum error");
-    trace!("transfer complete!");
+    debug!("transfer complete!");
     Ok(())
 }
 
