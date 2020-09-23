@@ -24,5 +24,5 @@ fn main() {
     debug!("verifier: {}", hex::encode(verifier));
     info!("receiving..");
 
-    Wormhole::receive(w, MAILBOX_SERVER, &RELAY_SERVER.parse().unwrap()).unwrap();
+    Wormhole::receive(w, APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
 }
