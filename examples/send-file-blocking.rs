@@ -21,7 +21,7 @@ fn main() {
     info!("got the code: {}", code);
 
     // send a file
-    let msg = MessageType::File{ filename: "example-file.bin".to_string(), filesize: 40960 };
+    let msg = MessageType::File{ filename: "examples/example-file.bin".to_string(), filesize: 40960 };
     info!("sending..");
     w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap()).unwrap();
 }

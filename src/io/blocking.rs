@@ -422,7 +422,9 @@ impl Wormhole {
         transit_purpose.push_str(const_transit_key_str);
 
         let length = sodiumoxide::crypto::secretbox::KEYBYTES;
-        derive_key(&key, &transit_purpose.as_bytes(), length)
+        let derived_key = derive_key(&key, &transit_purpose.as_bytes(), length);
+        info!("Input key: {}, Transit key: {}, Transit purpose: '{}'", hex::encode(&key), hex::encode(&derived_key), &transit_purpose);
+        derived_key
     }
 
     pub fn get_verifier(&mut self) -> Vec<u8> {
@@ -536,13 +538,18 @@ impl Wormhole {
 
             debug!("peer host: {}", direct_host);
 
+            // TODO wtf
             match connect_or_accept(direct_host) {
-                Ok((socket, _addr)) => {
+                Ok((mut socket, _addr)) => {
                     debug!("connected to {:?}", direct_host);
-                    let result = tcp_file_send(socket, host.0, key, filename);
-                    match result {
-                        Ok(()) => break,
-                        _ => continue
+                    match tx_handshake_exchange(&mut socket, host.0, key) {
+                        Ok((skey, rkey)) => {
+                            return tcp_file_send(socket, filename, &skey, &rkey);
+                        },
+                        Err(e) => {
+                            debug!("That handshake failed :(, {}", e);
+                            continue
+                        }
                     }
                 },
                 Err(_) => {
@@ -630,38 +637,14 @@ impl Wormhole {
             match val {
                 Ok((mut socket, _addr)) => {
                     debug!("connected to {:?}", direct_host);
-
-                    // create record keys
-                    let (skey, rkey) = make_record_keys(key);
-        
-                    // exchange handshake
-                    let tside = generate_transit_side();
-                    debug!("{:?}", tside);
-
-                    if host.0 == HostType::Relay {
-                        debug!("Yes");
-                        relay_handshake_exchange(&mut socket, key, &tside)
-                            .context("Relay handshake failed")?;
-                        rx_handshake_exchange(&mut socket, key, &tside.as_bytes())?;
-
-                        // 5. receive encrypted records
-                        // now skey and rkey can be used. skey is used by the tx side, rkey is used
-                        // by the rx side for symmetric encryption.
-                        let checksum = receive_records(&filename, filesize, &mut socket, &skey)?;
-
-                        let sha256sum = hex::encode(checksum.as_slice());
-                        debug!("sha256 sum: {:?}", sha256sum);
-
-                        // 6. verify sha256 sum by sending an ack message to peer along with checksum.
-                        let ack_msg = make_transit_ack_msg(&sha256sum, &rkey)?;
-                        send_record(&mut socket, &ack_msg)?;
-
-                        // 7. close socket.
-                        // well, no need, it gets dropped when it goes out of scope.
-
-                        break
-                    } else {
-                        debug!("Nope");
+                    match rx_handshake_exchange(&mut socket, host.0, key) {
+                        Ok((skey, rkey)) => {
+                            return tcp_file_receive(socket, &filename, filesize, &skey, &rkey);
+                        },
+                        Err(e) => {
+                            debug!("That handshake failed :(, {}", e);
+                            continue
+                        }
                     }
                 },
                 Err(_) => {
@@ -921,49 +904,118 @@ fn make_relay_handshake(key: &[u8], tside: &str) -> String {
     msg
 }
 
-fn tx_handshake_exchange(sock: &mut TcpStream, key: &[u8], _tside: &[u8]) -> Result<()>{
-    // send handshake and receive handshake
-    let tx_handshake = make_send_handshake(key);
-    let rx_handshake = make_receive_handshake(key);
+fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+    // create record keys
+    let (skey, rkey) = make_record_keys(key);
 
-    let tx_handshake_msg = tx_handshake.as_bytes();
-    let rx_handshake_msg = rx_handshake.as_bytes();
-        
-    // for transmit mode, send send_handshake_msg and compare.
-    // the received message with send_handshake_msg
-    send_buffer(sock, tx_handshake_msg)?;
+    // exchange handshake
+    let tside = generate_transit_side();
+    debug!("{:?}", tside);
 
-    let mut rx: [u8; 89] = [0; 89];
-    recv_buffer(sock, &mut rx)?;
+    if host_type == HostType::Relay {
+        let relay_handshake = make_relay_handshake(key, &tside);
+        let relay_handshake_msg = relay_handshake.as_bytes();
+    
+        send_buffer(socket, relay_handshake_msg)?;
+    
+        let mut rx = [0u8; 3];
+        recv_buffer(socket, &mut rx)?;
+    
+        let ok_msg: [u8; 3] = *b"ok\n";
+        ensure!(ok_msg == rx, format_err!("relay handshake failed"));
+        trace!("relay handshake succeeded");
+    }
 
-    trace!("{:?}", rx_handshake_msg.len());
+    {
+        // send handshake and receive handshake
+        let send_handshake_msg = make_send_handshake(key);
+        let rx_handshake = make_receive_handshake(key);
+        dbg!(&rx_handshake, rx_handshake.as_bytes().len());
+        let receive_handshake_msg = rx_handshake.as_bytes();
 
-    let r_handshake = rx_handshake_msg;
-    let go_msg = b"go\n";
-    ensure!(r_handshake == &rx[..], format_err!("handshake failed"));
-    // send the "go/n" message
-    send_buffer(sock, go_msg)?;
-    Ok(())
+        // for receive mode, send receive_handshake_msg and compare.
+        // the received message with send_handshake_msg
+
+        send_buffer(socket, receive_handshake_msg).unwrap();
+
+        debug!("half's done");
+
+        // The received message "transit receiver $hash ready\n\n" has exactly 87 bytes
+        // Three bytes for the "go\n" ack
+        // TODO do proper line parsing one day, this is atrocious
+        let mut rx: [u8; 90] = [0; 90];
+        recv_buffer(socket, &mut rx).unwrap();
+
+        debug!("60%");
+
+        let mut s_handshake = send_handshake_msg.as_bytes().to_vec();
+        let go_msg = b"go\n";
+        s_handshake.extend_from_slice(go_msg);
+        ensure!(s_handshake == &rx[..], "handshake failed");
+    }
+
+    debug!("Handshake succeeded");
+
+    Ok((skey, rkey))
 }
 
-fn rx_handshake_exchange(sock: &mut TcpStream, key: &[u8], _tside: &[u8]) -> Result<()> {
-    // send handshake and receive handshake
-    let send_handshake_msg = make_send_handshake(key);
-    let rx_handshake = make_receive_handshake(key);
-    let receive_handshake_msg = rx_handshake.as_bytes();
+fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
+    // 9. create record keys
+    let (skey, rkey) = make_record_keys(key);
+    debug!("created record keys");
 
-    // for receive mode, send receive_handshake_msg and compare.
-    // the received message with send_handshake_msg
-    send_buffer(sock, receive_handshake_msg)?;
+    // 10. exchange handshake over tcp
+    let tside = generate_transit_side();
 
-    let mut rx: [u8; 90] = [0; 90];
-    recv_buffer(sock, &mut rx)?;
+    if host_type == HostType::Relay {
+        let relay_handshake = make_relay_handshake(key, &tside);
+        let relay_handshake_msg = relay_handshake.as_bytes();
+    
+        send_buffer(socket, relay_handshake_msg)?;
+    
+        let mut rx = [0u8; 3];
+        recv_buffer(socket, &mut rx)?;
+    
+        let ok_msg: [u8; 3] = *b"ok\n";
+        ensure!(ok_msg == rx, format_err!("relay handshake failed"));
+        trace!("relay handshake succeeded");
+    }
 
-    let mut s_handshake = send_handshake_msg.as_bytes().to_vec();
-    let go_msg = b"go\n";
-    s_handshake.extend_from_slice(go_msg);
-    ensure!(s_handshake == &rx[..], "handshake failed");
-    Ok(())
+    {
+        // send handshake and receive handshake
+        let tx_handshake = make_send_handshake(key);
+        let rx_handshake = make_receive_handshake(key);
+        dbg!(&tx_handshake, tx_handshake.as_bytes().len());
+
+        debug!("tx handshake started");
+
+        let tx_handshake_msg = tx_handshake.as_bytes();
+        let rx_handshake_msg = rx_handshake.as_bytes();
+            
+        // for transmit mode, send send_handshake_msg and compare.
+        // the received message with send_handshake_msg
+        send_buffer(socket, tx_handshake_msg)?;
+
+        debug!("half's done");
+
+        // The received message "transit sender $hash ready\n\n" has exactly 89 bytes
+        // TODO do proper line parsing one day, this is atrocious
+        let mut rx: [u8; 89] = [0; 89];
+        recv_buffer(socket, &mut rx)?;
+
+        trace!("{:?}", rx_handshake_msg.len());
+
+        let r_handshake = rx_handshake_msg;
+        ensure!(r_handshake == &rx[..], format_err!("handshake failed"));
+
+        let go_msg = b"go\n";
+        // send the "go/n" message
+        send_buffer(socket, go_msg)?;
+    }
+
+    debug!("handshake successful");
+
+    Ok((skey, rkey))
 }
 
 // encrypt and send the file to tcp stream and return the sha256 sum
@@ -1051,39 +1103,9 @@ fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hints> {
     hints
 }
 
-fn relay_handshake_exchange(sock: &mut TcpStream, key: &[u8], tside: &str) -> Result<()> {
-    let relay_handshake = make_relay_handshake(key, tside);
-    let relay_handshake_msg = relay_handshake.as_bytes();
-
-    send_buffer(sock, relay_handshake_msg)?;
-
-    let mut rx = [0u8; 3];
-    recv_buffer(sock, &mut rx)?;
-
-    let ok_msg: [u8; 3] = *b"ok\n";
-    ensure!(ok_msg == rx, format_err!("relay handshake failed"));
-    trace!("relay handshake succeeded");
-    Ok(())
-}
-
-fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &[u8], filename: &str) -> Result<()> {
-    // 9. create record keys
-    let (skey, rkey) = make_record_keys(key);
-    debug!("created record keys");
-
-    // 10. exchange handshake over tcp
-    let tside = generate_transit_side();
-
-    if host_type == HostType::Relay {
-        relay_handshake_exchange(&mut socket, key, &tside)?;
-    }
-
-    tx_handshake_exchange(&mut socket, key, &tside.as_bytes())?;
-
+fn tcp_file_send(mut socket: TcpStream, filename: &str, skey: &[u8], rkey: &[u8]) -> Result<()> {
     // 11. send the file as encrypted records.
-    // fn send_records(&mut self, filepath: &str, stream: &mut TcpStream, skey: &Vec<u8>) -> Vec<u8>
-    debug!("handshake successful");
-    let checksum = send_records(filename, &mut socket, &skey)?;
+    let checksum = send_records(filename, &mut socket, skey)?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
     let enc_transit_ack = receive_record(&mut BufReader::new(socket))?;
@@ -1092,6 +1114,25 @@ fn tcp_file_send(mut socket: TcpStream, host_type: HostType, key: &[u8], filenam
     let transit_ack_msg = TransitAck::deserialize(str::from_utf8(&transit_ack)?);
     ensure!(transit_ack_msg.sha256 == hex::encode(checksum), "receive checksum error");
     debug!("transfer complete!");
+    Ok(())
+}
+
+fn tcp_file_receive(mut socket: TcpStream, filename: &str, filesize: u64, skey: &[u8], rkey: &[u8]) -> Result<()> {
+    // 5. receive encrypted records
+    // now skey and rkey can be used. skey is used by the tx side, rkey is used
+    // by the rx side for symmetric encryption.
+    let checksum = receive_records(&filename, filesize, &mut socket, &skey)?;
+
+    let sha256sum = hex::encode(checksum.as_slice());
+    debug!("sha256 sum: {:?}", sha256sum);
+
+    // 6. verify sha256 sum by sending an ack message to peer along with checksum.
+    let ack_msg = make_transit_ack_msg(&sha256sum, &rkey)?;
+    send_record(&mut socket, &ack_msg)?;
+
+    // 7. close socket.
+    // well, no need, it gets dropped when it goes out of scope.
+    debug!("Transfer complete");
     Ok(())
 }
 
