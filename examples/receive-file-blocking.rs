@@ -1,5 +1,6 @@
 use magic_wormhole::io::blocking::Wormhole;
 use log::*;
+use std::io;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
@@ -17,8 +18,11 @@ fn main() {
     info!("connecting..");
     let mut w = Wormhole::new(&APPID, &mailbox_server);
     // Hard-code this in every time you test with a new value
-    let code = "TODO-insert-code-here";
-    w.set_code(code);
+    //let code = "TODO-insert-code-here";
+    println!("Code: ");
+    let mut code = String::new();
+    io::stdin().read_line(&mut code).unwrap();
+    w.set_code(code.trim());
     debug!("using the code: {}", code);
     let verifier = w.get_verifier();
     debug!("verifier: {}", hex::encode(verifier));
