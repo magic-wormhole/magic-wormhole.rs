@@ -666,6 +666,8 @@ impl Wormhole {
                 // if we close right away, we won't actually send anything. Wait for at
                 // least the verifier to be printed, that ought to give our outbound
                 // message a chance to be delivered.
+                // TODO this should not be required. If send_message ought to be blocking, the message should be sent
+                // once it returns.
                 let verifier = self.get_verifier();
                 trace!("verifier: {}", hex::encode(verifier));
                 trace!("got verifier, closing..");
@@ -917,9 +919,9 @@ fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
 
     // exchange handshake
     let tside = generate_transit_side();
-    debug!("{:?}", tside);
 
     if host_type == HostType::Relay {
+        trace!("initiating relay handshake");
         let relay_handshake = make_relay_handshake(key, &tside);
         let relay_handshake_msg = relay_handshake.as_bytes();
     
@@ -961,7 +963,7 @@ fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
         ensure!(s_handshake == &rx[..], "handshake failed");
     }
 
-    debug!("Handshake succeeded");
+    trace!("handshake successful");
 
     Ok((skey, rkey))
 }
@@ -969,12 +971,12 @@ fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
 fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     // 9. create record keys
     let (skey, rkey) = make_record_keys(key);
-    debug!("created record keys");
 
     // 10. exchange handshake over tcp
     let tside = generate_transit_side();
 
     if host_type == HostType::Relay {
+        trace!("initiating relay handshake");
         let relay_handshake = make_relay_handshake(key, &tside);
         let relay_handshake_msg = relay_handshake.as_bytes();
     
@@ -1003,7 +1005,7 @@ fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
         // the received message with send_handshake_msg
         send_buffer(socket, tx_handshake_msg)?;
 
-        debug!("half's done");
+        trace!("half's done");
 
         // The received message "transit sender $hash ready\n\n" has exactly 89 bytes
         // TODO do proper line parsing one day, this is atrocious
@@ -1020,7 +1022,7 @@ fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
         send_buffer(socket, go_msg)?;
     }
 
-    debug!("handshake successful");
+    trace!("handshake successful");
 
     Ok((skey, rkey))
 }
@@ -1115,11 +1117,12 @@ fn tcp_file_send(mut socket: TcpStream, filename: &str, skey: &[u8], rkey: &[u8]
     let checksum = send_records(filename, &mut socket, skey)?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
+    debug!("sent file. Waiting for ack");
     let enc_transit_ack = receive_record(&mut BufReader::new(socket))?;
     let transit_ack = decrypt_record(&enc_transit_ack, &rkey)?;
-
     let transit_ack_msg = TransitAck::deserialize(str::from_utf8(&transit_ack)?);
     ensure!(transit_ack_msg.sha256 == hex::encode(checksum), "receive checksum error");
+    
     debug!("transfer complete!");
     Ok(())
 }
