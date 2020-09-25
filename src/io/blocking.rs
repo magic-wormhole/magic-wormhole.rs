@@ -43,7 +43,7 @@ use sodiumoxide::crypto::secretbox;
 use std::time::Duration;
 use std::path::Path;
 use std::fs::File;
-use anyhow::{Result, ensure, bail, format_err, Context};
+use anyhow::{Result, Error, ensure, bail, format_err, Context};
 
 pub struct RelayUrl {
     pub host: String,
@@ -526,46 +526,75 @@ impl Wormhole {
 
         // TODO: combine our relay hints with the peer's relay hints.
         
-        // TODO: connection establishment and handshake should happen concurrently
-        // and whichever handshake succeeds should only proceed. Right now, it is
-        // serial and painfully slow.
+        let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel();
+        crossbeam_utils::thread::scope(|scope| {
+            for host in hosts {
+                let successful_connections_tx = successful_connections_tx.clone();
+                scope.spawn(move |_| {
+                    debug!("host: {:?}", host);
+                    let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs().unwrap();
+                    let direct_host = direct_host_iter.next().unwrap();
 
-        // TODO if no handshake succeeds, return an error
-        for host in hosts {
-            debug!("host: {:?}", host);
-            let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs()?;
-            let direct_host = direct_host_iter.next().unwrap();
+                    debug!("peer host: {}", direct_host);
 
-            debug!("peer host: {}", direct_host);
-
-            // TODO wtf
-            match connect_or_accept(direct_host) {
-                Ok((mut socket, _addr)) => {
-                    debug!("connected to {:?}", direct_host);
-                    match tx_handshake_exchange(&mut socket, host.0, key) {
-                        Ok((skey, rkey)) => {
-                            return tcp_file_send(socket, filename, &skey, &rkey);
+                    // TODO wtf
+                    match connect_or_accept(direct_host) {
+                        Ok((mut socket, _addr)) => {
+                            debug!("connected to {:?}", direct_host);
+                            match tx_handshake_exchange(&mut socket, host.0, &key) {
+                                Ok((skey, rkey)) => {
+                                    debug!("Handshake with {} succeeded", direct_host);
+                                    successful_connections_tx.send((socket, skey, rkey)).unwrap();
+                                },
+                                Err(e) => {
+                                    debug!("Handshake with {} failed :(, {}", direct_host, e);
+                                }
+                            }
                         },
-                        Err(e) => {
-                            debug!("That handshake failed :(, {}", e);
-                            continue
-                        }
+                        Err(_) => {
+                            trace!("could not connect to {:?}", direct_host);
+                        },
                     }
-                },
-                Err(_) => {
-                    trace!("could not connect to {:?}", direct_host);
-                    continue
-                },
+                });
             }
-        }
-        Ok(())
+            scope.spawn(move |_| {
+                debug!("local host {}", listen_socket.port());
+
+                loop {
+                    match listener.accept() {
+                        Ok((mut socket, _addr)) => {
+                            debug!("connected to localhost:{}", port);
+                            match tx_handshake_exchange(&mut socket, HostType::Direct, &key) {
+                                Ok((skey, rkey)) => {
+                                    successful_connections_tx.send((socket, skey, rkey)).unwrap();
+                                },
+                                Err(e) => {
+                                    debug!("Handshake with localhost:{} failed :(, {}", port, e);
+                                }
+                            }
+                        },
+                        Err(_) => {
+                            debug!("could not connect to local host");
+                        },
+                    }
+                }
+            });
+
+            let (mut socket, skey, rkey) = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
+    
+            debug!("Sending 'go' message to {}", socket.peer_addr().unwrap());
+            send_buffer(&mut socket, b"go\n")?;
+    
+            debug!("Beginning file transfer");
+            tcp_file_send(socket, filename, &skey, &rkey)
+        })
+        .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
     }
 
     pub fn receive_file(&mut self, key: &[u8], ttype: TransitType, relay_url: &RelayUrl) -> Result<()> {
         // 1. start a tcp server on a random port
         let listener = TcpListener::bind("0.0.0.0:0")?;
         let listen_socket = listener.local_addr()?;
-        let _sockaddrs_iter = listen_socket.to_socket_addrs()?;
         let port = listen_socket.port();
 
         // 2. send transit message to peer
@@ -620,42 +649,67 @@ impl Wormhole {
         hosts.append(&mut relay_hosts);
 
         // TODO: combine our relay hints with the peer's relay hints.
-        
-        // TODO: connection establishment and handshake should happen concurrently
-        // and whichever handshake succeeds should only proceed. Right now, it is
-        // serial and painfully slow.
 
-        // TODO if no handshake succeeds, return an error
-        for host in hosts {
-            debug!("host: {:?}", host);
-            let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs()?;
-            let direct_host = direct_host_iter.next().unwrap();
+        let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel();
 
-            debug!("peer host: {}", direct_host);
-            let val = connect_or_accept(direct_host);
+        crossbeam_utils::thread::scope(|scope| {
+            for host in hosts {
+                let successful_connections_tx: std::sync::mpsc::Sender<_> = successful_connections_tx.clone();
+                scope.spawn(move |_| {
+                    debug!("host: {:?}", host);
+                    let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs().unwrap();
+                    let direct_host = direct_host_iter.next().unwrap();
 
-            debug!("returned from connect_or_accept");
+                    debug!("peer host: {}", direct_host);
 
-            match val {
-                Ok((mut socket, _addr)) => {
-                    debug!("connected to {:?}", direct_host);
-                    match rx_handshake_exchange(&mut socket, host.0, key) {
-                        Ok((skey, rkey)) => {
-                            return tcp_file_receive(socket, &filename, filesize, &skey, &rkey);
+                    match connect_or_accept(direct_host) {
+                        Ok((mut socket, _addr)) => {
+                            debug!("connected to {:?}", direct_host);
+                            match rx_handshake_exchange(&mut socket, host.0, &key) {
+                                Ok((skey, rkey)) => {
+                                    debug!("Handshake with {} succeeded", direct_host);
+                                    successful_connections_tx.send((socket, skey, rkey)).unwrap();
+                                },
+                                Err(e) => {
+                                    debug!("Handshake with {} failed :(, {}", direct_host, e);
+                                }
+                            }
                         },
-                        Err(e) => {
-                            debug!("That handshake failed :(, {}", e);
-                            continue
-                        }
+                        Err(_) => {
+                            debug!("could not connect to {:?}", direct_host);
+                        },
                     }
-                },
-                Err(_) => {
-                    debug!("could not connect to {:?}", direct_host);
-                    continue
-                },
+                });
             }
-        }
-        Ok(())
+            scope.spawn(move |_| {
+                debug!("local host {}", listen_socket.port());
+                
+                loop {
+                    match listener.accept() {
+                        Ok((mut socket, _addr)) => {
+                            debug!("connected to localhost:{}", port);
+                            match rx_handshake_exchange(&mut socket, HostType::Direct, &key) {
+                                Ok((skey, rkey)) => {
+                                    successful_connections_tx.send((socket, skey, rkey)).unwrap();
+                                },
+                                Err(e) => {
+                                    debug!("Handshake with localhost:{} failed :(, {}", port, e);
+                                }
+                            }
+                        },
+                        Err(_) => {
+                            debug!("could not connect to local host");
+                        },
+                    }
+                }
+            });
+
+            let (socket, skey, rkey) = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
+    
+            debug!("Beginning file transfer");
+            tcp_file_receive(socket, &filename, filesize, &skey, &rkey)
+        })
+        .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
     }
     
     pub fn send(&mut self, app_id: &str, _code: &str, msg: MessageType, relay_url: &RelayUrl) -> Result<()> {
@@ -945,17 +999,20 @@ fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
         // for receive mode, send receive_handshake_msg and compare.
         // the received message with send_handshake_msg
 
-        send_buffer(socket, receive_handshake_msg).unwrap();
+        send_buffer(socket, receive_handshake_msg)?;
 
-        debug!("half's done");
+        trace!("quarter's done");
+
+        let mut rx: [u8; 90] = [0; 90];
+        recv_buffer(socket, &mut rx[0..87])?;
+
+        trace!("half's done");
+
+        recv_buffer(socket, &mut rx[87..90])?;
 
         // The received message "transit receiver $hash ready\n\n" has exactly 87 bytes
         // Three bytes for the "go\n" ack
         // TODO do proper line parsing one day, this is atrocious
-        let mut rx: [u8; 90] = [0; 90];
-        recv_buffer(socket, &mut rx).unwrap();
-
-        debug!("60%");
 
         let mut s_handshake = send_handshake_msg.as_bytes().to_vec();
         let go_msg = b"go\n";
@@ -1016,10 +1073,6 @@ fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
 
         let r_handshake = rx_handshake_msg;
         ensure!(r_handshake == &rx[..], format_err!("handshake failed"));
-
-        let go_msg = b"go\n";
-        // send the "go/n" message
-        send_buffer(socket, go_msg)?;
     }
 
     trace!("handshake successful");
