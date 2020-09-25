@@ -9,7 +9,7 @@ const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
     env_logger::builder()
-        .filter_level(LevelFilter::Trace)
+        .filter_level(LevelFilter::Debug)
         .filter_module("mio", LevelFilter::Debug)
         .filter_module("ws", LevelFilter::Info)
         .init();
