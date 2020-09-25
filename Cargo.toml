@@ -35,6 +35,7 @@ sodiumoxide = "0.0.16"
 pnet = "0.26.0"
 byteorder = "1.2.1"
 anyhow = "1.0.32"
+crossbeam-utils = "0.7.2"
 
 # for "io_blocking" feature
 ws = { version = "0.9", optional = true }
