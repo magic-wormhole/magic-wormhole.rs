@@ -598,7 +598,9 @@ impl Wormhole {
         let (filename, filesize) = match maybe_offer {
             PeerMessage::Offer(offer_type) => {
                 match offer_type {
-                    OfferType::File{filename, filesize} => (filename, filesize),
+                    // TODO this is to not overwrite things when receiving.
+                    // Absolutely remove this once proper file handling is implemented.
+                    OfferType::File{filename, filesize} => (format!("{}.rcv", filename), filesize),
                     _ => bail!("unexpected offer type"),
                 }
             },
@@ -743,21 +745,26 @@ fn generate_transit_side() -> String {
     hex::encode(x)
 }
 
+// TODO cleanup
 fn connect_or_accept(addr: SocketAddr) -> Result<(TcpStream, SocketAddr), std::io::Error> {
     // let listen_socket = thread::spawn(move || {
     //     listener.accept()
     // });
-
-    let connect_socket = thread::spawn(move || {
+    
+    // let connect_socket = thread::spawn(move || {
         let five_seconds = Duration::new(5, 0);
         let tcp_stream = TcpStream::connect_timeout(&addr, five_seconds);
         match tcp_stream {
-            Ok(stream) => Ok((stream, addr)),
+            Ok(stream) => {
+                stream.set_read_timeout(Some(five_seconds))?;
+                stream.set_write_timeout(Some(five_seconds))?;
+                Ok((stream, addr))
+            },
             Err(e) => Err(e)
         }
-    });
+    // });
 
-    connect_socket.join().unwrap()
+    // connect_socket.join().unwrap()
 }
 
 fn encrypt_record(plaintext: &[u8], nonce: secretbox::Nonce, key: &[u8]) -> Result<Vec<u8>> {
@@ -864,16 +871,16 @@ fn make_record_keys(key: &[u8]) -> (Vec<u8>, Vec<u8>) {
     (sender, receiver)
 }
 
-fn send_buffer(stream: &mut TcpStream, buf: &[u8]) -> io::Result<usize> {
-    stream.write(buf)
+fn send_buffer(stream: &mut TcpStream, buf: &[u8]) -> io::Result<()> {
+    stream.write_all(buf)
 }
 
-fn send_record(stream: &mut TcpStream, buf: &[u8]) -> io::Result<usize> {
+fn send_record(stream: &mut TcpStream, buf: &[u8]) -> io::Result<()> {
     let buf_length: u32 = buf.len() as u32;
     trace!("record size: {:?}", buf_length);
     let buf_length_array: [u8; 4] = buf_length.to_be_bytes();
     stream.write_all(&buf_length_array[..])?;
-    stream.write(buf)
+    stream.write_all(buf)
 }
     
 fn recv_buffer(stream: &mut TcpStream, buf: &mut [u8]) -> io::Result<()> {
