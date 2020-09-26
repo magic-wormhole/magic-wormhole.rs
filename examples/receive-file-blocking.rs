@@ -28,5 +28,5 @@ fn main() {
     debug!("verifier: {}", hex::encode(verifier));
     info!("receiving..");
 
-    Wormhole::receive(w, APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
+    w.receive(APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
 }

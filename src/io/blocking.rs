@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+use std::fmt::Display;
 use std::str::FromStr;
 use crate::core::WormholeCore;
 use crate::core::{
@@ -460,7 +462,9 @@ impl Wormhole {
         }
     }
 
-    pub fn send_file(&mut self, filename: &str, filesize: u64, key: &[u8], relay_url: &RelayUrl) -> Result<()> {
+    pub fn send_file(&mut self, filepath: impl AsRef<Path>, filesize: u64, key: &[u8], relay_url: &RelayUrl) -> Result<()> {
+        let filename = filepath.as_ref().file_name().ok_or_else(|| format_err!("You can't send a file without a file name"))?;
+
         // 1. start a tcp server on a random port
         let listener = TcpListener::bind("0.0.0.0:0")?;
         let listen_socket = listener.local_addr()?;
@@ -501,7 +505,7 @@ impl Wormhole {
         };
 
         // 6. send file offer message.
-        let offer_msg = offer_file(filename, filesize).serialize();
+        let offer_msg = offer_file(filename.to_owned(), filesize).serialize();
         self.send_message(offer_msg.as_bytes());
         
         // 7. wait for file_ack
@@ -581,12 +585,12 @@ impl Wormhole {
             });
 
             let (mut socket, skey, rkey) = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
-    
+
             debug!("Sending 'go' message to {}", socket.peer_addr().unwrap());
             send_buffer(&mut socket, b"go\n")?;
-    
+
             debug!("Beginning file transfer");
-            tcp_file_send(socket, filename, &skey, &rkey)
+            tcp_file_send(socket, &filepath, &skey, &rkey)
         })
         .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
     }
@@ -627,9 +631,7 @@ impl Wormhole {
         let (filename, filesize) = match maybe_offer {
             PeerMessage::Offer(offer_type) => {
                 match offer_type {
-                    // TODO this is to not overwrite things when receiving.
-                    // Absolutely remove this once proper file handling is implemented.
-                    OfferType::File{filename, filesize} => (format!("{}.rcv", filename), filesize),
+                    OfferType::File{filename, filesize} => (filename, filesize),
                     _ => bail!("unexpected offer type"),
                 }
             },
@@ -707,6 +709,7 @@ impl Wormhole {
             let (socket, skey, rkey) = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
     
             debug!("Beginning file transfer");
+            // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
             tcp_file_receive(socket, &filename, filesize, &skey, &rkey)
         })
         .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
@@ -738,26 +741,26 @@ impl Wormhole {
     }
     
     // TODO this method should not be static
-    pub fn receive(mut w: Wormhole, app_id: &str, relay_url: &RelayUrl) -> Result<String> {
-        let msg = w.get_message();
+    pub fn receive(&mut self, app_id: &str, relay_url: &RelayUrl) -> Result<String> {
+        let msg = self.get_message();
         let actual_message =
             PeerMessage::deserialize(str::from_utf8(&msg)?);
         let remote_msg = match actual_message {
             PeerMessage::Offer(offer) => match offer {
                 OfferType::Message(msg) => {
                     debug!("{}", msg);
-                    w.send_message(message_ack("ok").serialize().as_bytes());
+                    self.send_message(message_ack("ok").serialize().as_bytes());
                     msg
                 }
                 OfferType::File { .. } => {
                     debug!("Received file offer {:?}", offer);
-                    w.send_message(file_ack("ok").serialize().as_bytes());
+                    self.send_message(file_ack("ok").serialize().as_bytes());
                     "".to_string()
                 }
                 OfferType::Directory { .. } => {
                     debug!("Received directory offer: {:?}", offer);
                     // TODO: We are doing file_ack without asking user
-                    w.send_message(file_ack("ok").serialize().as_bytes());
+                    self.send_message(file_ack("ok").serialize().as_bytes());
                     "".to_string()
                 }
             },
@@ -771,16 +774,16 @@ impl Wormhole {
             PeerMessage::Transit(transit) => {
                 // TODO: This should start transit server connection or direct file transfer
                 // first derive a transit key.
-                let k = w.derive_transit_key(&app_id);
+                let k = self.derive_transit_key(&app_id);
                 debug!("Transit Message received: {:?}", transit);
-                w.receive_file(&k, transit, relay_url)?;
+                self.receive_file(&k, transit, relay_url)?;
                 "".to_string()
             }
         };
         debug!("closing..");
-        w.close();
+        self.close();
         debug!("closed");
-    
+
         //let remote_msg = "foobar".to_string();
         Ok(remote_msg)
     }
@@ -881,10 +884,10 @@ fn receive_record<T: Read>(stream: &mut BufReader<T>) -> Result<Vec<u8>> {
     Ok(enc_packet)
 }
 
-fn receive_records(filepath: &str, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
+fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
     let mut stream = BufReader::new(tcp_conn);
     let mut hasher = Sha256::default();
-    let mut f = File::create(filepath)?;
+    let mut f = File::create(filepath)?; // TODO overwrite flags & checks & stuff
     let mut remaining_size = filesize as usize;
 
     while remaining_size > 0 {
@@ -1082,7 +1085,7 @@ fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-fn send_records(filepath: &str, stream: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
+fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
     // rough plan:
     // 1. Open the file
     // 2. read a block of N bytes
@@ -1092,10 +1095,8 @@ fn send_records(filepath: &str, stream: &mut TcpStream, skey: &[u8]) -> Result<V
     // 6. go to step #2 till eof.
     // 7. if eof, return sha256 sum.
 
-    let path = Path::new(filepath);
-
-    let mut file = File::open(&path)
-        .context(format!("Could not open {}", path.display()))?;
+    let mut file = File::open(&filepath)
+        .context(format!("Could not open {}", &filepath.as_ref().display()))?;
 
     let mut hasher = Sha256::default();
 
@@ -1165,9 +1166,9 @@ fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hints> {
     hints
 }
 
-fn tcp_file_send(mut socket: TcpStream, filename: &str, skey: &[u8], rkey: &[u8]) -> Result<()> {
+fn tcp_file_send(mut socket: TcpStream, filepath: impl AsRef<Path>, skey: &[u8], rkey: &[u8]) -> Result<()> {
     // 11. send the file as encrypted records.
-    let checksum = send_records(filename, &mut socket, skey)?;
+    let checksum = send_records(filepath, &mut socket, skey)?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
     debug!("sent file. Waiting for ack");
@@ -1180,11 +1181,11 @@ fn tcp_file_send(mut socket: TcpStream, filename: &str, skey: &[u8], rkey: &[u8]
     Ok(())
 }
 
-fn tcp_file_receive(mut socket: TcpStream, filename: &str, filesize: u64, skey: &[u8], rkey: &[u8]) -> Result<()> {
+fn tcp_file_receive(mut socket: TcpStream, filepath: impl AsRef<Path>, filesize: u64, skey: &[u8], rkey: &[u8]) -> Result<()> {
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
-    let checksum = receive_records(&filename, filesize, &mut socket, &skey)?;
+    let checksum = receive_records(filepath, filesize, &mut socket, &skey)?;
 
     let sha256sum = hex::encode(checksum.as_slice());
     debug!("sha256 sum: {:?}", sha256sum);
