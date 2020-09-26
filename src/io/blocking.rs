@@ -1,3 +1,5 @@
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::path::PathBuf;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -468,7 +470,6 @@ impl Wormhole {
         // 1. start a tcp server on a random port
         let listener = TcpListener::bind("0.0.0.0:0")?;
         let listen_socket = listener.local_addr()?;
-        let _sockaddrs_iter = listen_socket.to_socket_addrs()?;
         let port = listen_socket.port();
 
         // 2. send transit message to peer
@@ -529,8 +530,9 @@ impl Wormhole {
         hosts.append(&mut relay_hosts);
 
         // TODO: combine our relay hints with the peer's relay hints.
-        
+
         let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel();
+        let handshake_succeeded = Arc::new(AtomicBool::new(false));
         crossbeam_utils::thread::scope(|scope| {
             for host in hosts {
                 let successful_connections_tx = successful_connections_tx.clone();
@@ -561,36 +563,45 @@ impl Wormhole {
                     }
                 });
             }
-            scope.spawn(move |_| {
-                debug!("local host {}", listen_socket.port());
+            {
+                let handshake_succeeded = handshake_succeeded.clone();
+                scope.spawn(move |_| {
+                    debug!("local host {}", listen_socket.port());
 
-                loop {
-                    match listener.accept() {
-                        Ok((mut socket, _addr)) => {
-                            debug!("connected to localhost:{}", port);
-                            match tx_handshake_exchange(&mut socket, HostType::Direct, &key) {
-                                Ok((skey, rkey)) => {
-                                    successful_connections_tx.send((socket, skey, rkey)).unwrap();
-                                },
-                                Err(e) => {
-                                    debug!("Handshake with localhost:{} failed :(, {}", port, e);
+                    while !handshake_succeeded.load(std::sync::atomic::Ordering::Acquire) {
+                        match listener.accept() {
+                            Ok((mut socket, _addr)) => {
+                                debug!("connected to localhost:{}", port);
+                                socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                                socket.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+                                match tx_handshake_exchange(&mut socket, HostType::Direct, &key) {
+                                    Ok((skey, rkey)) => {
+                                        successful_connections_tx.send((socket, skey, rkey)).unwrap();
+                                    },
+                                    Err(e) => {
+                                        debug!("Handshake with localhost:{} failed :(, {}", port, e);
+                                    }
                                 }
-                            }
-                        },
-                        Err(_) => {
-                            debug!("could not connect to local host");
-                        },
+                            },
+                            Err(_) => {
+                                debug!("could not connect to local host");
+                            },
+                        }
                     }
-                }
-            });
+                    debug!("quit send loop");
+                    unreachable!(); // TODO this is to test that this code is actually reached :)
+                });
+            }
 
             let (mut socket, skey, rkey) = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
+            handshake_succeeded.store(true, std::sync::atomic::Ordering::Release);
 
             debug!("Sending 'go' message to {}", socket.peer_addr().unwrap());
             send_buffer(&mut socket, b"go\n")?;
 
             debug!("Beginning file transfer");
-            tcp_file_send(socket, &filepath, &skey, &rkey)
+            tcp_file_send(&mut socket, &filepath, &skey, &rkey)?;
+            socket.shutdown(std::net::Shutdown::Both).map_err(Error::from)
         })
         .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
     }
@@ -653,6 +664,7 @@ impl Wormhole {
         // TODO: combine our relay hints with the peer's relay hints.
 
         let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel();
+        let handshake_succeeded = Arc::new(AtomicBool::new(false));
 
         crossbeam_utils::thread::scope(|scope| {
             for host in hosts {
@@ -683,31 +695,38 @@ impl Wormhole {
                     }
                 });
             }
-            scope.spawn(move |_| {
-                debug!("local host {}", listen_socket.port());
-                
-                loop {
-                    match listener.accept() {
-                        Ok((mut socket, _addr)) => {
-                            debug!("connected to localhost:{}", port);
-                            match rx_handshake_exchange(&mut socket, HostType::Direct, &key) {
-                                Ok((skey, rkey)) => {
-                                    successful_connections_tx.send((socket, skey, rkey)).unwrap();
-                                },
-                                Err(e) => {
-                                    debug!("Handshake with localhost:{} failed :(, {}", port, e);
+            {
+                let handshake_succeeded = handshake_succeeded.clone();
+                scope.spawn(move |_| {
+                    debug!("local host {}", listen_socket.port());
+
+                    while !handshake_succeeded.load(std::sync::atomic::Ordering::Acquire) {
+                        match listener.accept() {
+                            Ok((mut socket, _addr)) => {
+                                socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                                socket.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+                                debug!("connected to localhost:{}", port);
+                                match rx_handshake_exchange(&mut socket, HostType::Direct, &key) {
+                                    Ok((skey, rkey)) => {
+                                        successful_connections_tx.send((socket, skey, rkey)).unwrap();
+                                    },
+                                    Err(e) => {
+                                        debug!("Handshake with localhost:{} failed :(, {}", port, e);
+                                    }
                                 }
-                            }
-                        },
-                        Err(_) => {
-                            debug!("could not connect to local host");
-                        },
+                            },
+                            Err(_) => {
+                                debug!("could not connect to local host");
+                            },
+                        }
                     }
-                }
-            });
+                    debug!("quit receive loop");
+                });
+            }
 
             let (socket, skey, rkey) = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
-    
+            handshake_succeeded.store(true, std::sync::atomic::Ordering::Release);
+
             debug!("Beginning file transfer");
             // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
             tcp_file_receive(socket, &filename, filesize, &skey, &rkey)
@@ -735,6 +754,7 @@ impl Wormhole {
                 let k = self.derive_transit_key(&app_id);
                 debug!("transit key {}", hex::encode(&k));
                 self.send_file(&filename, filesize, &k, relay_url)?;
+                debug!("send closed");
             }
         }
         Ok(())
@@ -1166,9 +1186,9 @@ fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hints> {
     hints
 }
 
-fn tcp_file_send(mut socket: TcpStream, filepath: impl AsRef<Path>, skey: &[u8], rkey: &[u8]) -> Result<()> {
+fn tcp_file_send(socket: &mut TcpStream, filepath: impl AsRef<Path>, skey: &[u8], rkey: &[u8]) -> Result<()> {
     // 11. send the file as encrypted records.
-    let checksum = send_records(filepath, &mut socket, skey)?;
+    let checksum = send_records(filepath, socket, skey)?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
     debug!("sent file. Waiting for ack");
