@@ -56,7 +56,7 @@ fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Sender<Str
     debug!("verifier: {}", hex::encode(verifier));
     info!("receiving..");
 
-    Wormhole::receive(w, APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
+    w.receive(APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
     receiver_result_tx.send(String::from("")).unwrap();
 }
 
@@ -65,7 +65,7 @@ fn send(code_tx: mpsc::Sender<String>, sender_result_tx: mpsc::Sender<String>) {
 
     let mut w = Wormhole::new(&APPID, &mailbox_server);
     w.allocate_code(2);
-    let code = String::from(w.get_code());
+    let code = w.get_code();
     info!("got the code: {}", code);
     code_tx.send(code.clone()).unwrap();
 
@@ -75,4 +75,3 @@ fn send(code_tx: mpsc::Sender<String>, sender_result_tx: mpsc::Sender<String>) {
     w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap()).unwrap();
     sender_result_tx.send(String::from("")).unwrap();
 }
-    

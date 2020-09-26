@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -15,11 +16,11 @@ pub enum PeerMessage {
 pub enum OfferType {
     Message(String),
     File {
-        filename: String,
+        filename: PathBuf,
         filesize: u64,
     },
     Directory {
-        dirname: String,
+        dirname: PathBuf,
         mode: String,
         zipsize: u64,
         numbytes: u64,
@@ -105,9 +106,9 @@ pub fn message(msg: &str) -> PeerMessage {
     PeerMessage::Offer(OfferType::Message(msg.to_string()))
 }
 
-pub fn offer_file(name: &str, size: u64) -> PeerMessage {
+pub fn offer_file(name: impl Into<PathBuf>, size: u64) -> PeerMessage {
     PeerMessage::Offer(OfferType::File {
-        filename: name.to_string(),
+        filename: name.into(),
         filesize: size,
     })
 }
@@ -132,14 +133,14 @@ pub fn error_message(msg: &str) -> PeerMessage {
 }
 
 pub fn offer_directory(
-    name: &str,
+    name: impl Into<PathBuf>,
     mode: &str,
     compressed_size: u64,
     numbytes: u64,
     numfiles: u64,
 ) -> PeerMessage {
     PeerMessage::Offer(OfferType::Directory {
-        dirname: name.to_string(),
+        dirname: name.into(),
         mode: mode.to_string(),
         zipsize: compressed_size,
         numbytes,
