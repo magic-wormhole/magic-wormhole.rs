@@ -1,5 +1,5 @@
 use magic_wormhole::core::{
-    message, APIAction, APIEvent, Action, AnswerType, IOAction, IOEvent,
+    APIAction, APIEvent, Action, AnswerType, IOAction, IOEvent,
     PeerMessage, WSHandle, WormholeCore,
 };
 use std::cell::RefCell;
@@ -75,7 +75,7 @@ impl ws::Handler for MyHandler {
         // TODO: this should go just after .start()
         let actions = wc.do_api(APIEvent::AllocateCode(2));
         process_actions(&self.out, actions);
-        let offer = message("hello from rust!").serialize();
+        let offer = PeerMessage::new_offer_message("hello from rust!").serialize();
         // let offer = json!({"offer": {"message": "hello from rust"}});
         // then expect {"answer": {"message_ack": "ok"}}
         let actions = wc.do_api(APIEvent::Send(offer.into_bytes()));

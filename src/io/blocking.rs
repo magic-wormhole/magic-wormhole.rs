@@ -7,23 +7,16 @@ use crate::core::WormholeCore;
 use crate::core::{
     APIAction, APIEvent, Action, Code, IOAction, IOEvent, Mood, TimerHandle,
     WSHandle,
-    message,
-    message_ack,
     TransitType,
     Hints,
     DirectType,
-    direct_type,
-    relay_type,
     Abilities,
-    transit,
-    file_ack,
     PeerMessage,
     AnswerType,
     TransitAck,
-    transit_ack,
-    offer_file,
     OfferType,
 };
+
 use crate::core::key::derive_key;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -489,10 +482,9 @@ impl Wormhole {
             our_hints.push(hint);
         }
 
-        let transit_msg = transit(abilities, our_hints).serialize();
-        debug!("transit_msg: {:?}", transit_msg);
-
         // send the transit message
+        let transit_msg = PeerMessage::new_transit(abilities, our_hints).serialize();
+        debug!("transit_msg: {:?}", transit_msg);
         self.send_message(transit_msg.as_bytes());
 
         // 5. receive transit message from peer.
@@ -506,7 +498,7 @@ impl Wormhole {
         };
 
         // 6. send file offer message.
-        let offer_msg = offer_file(filename.to_owned(), filesize).serialize();
+        let offer_msg = PeerMessage::new_offer_file(filename.to_owned(), filesize).serialize();
         self.send_message(offer_msg.as_bytes());
         
         // 7. wait for file_ack
@@ -629,9 +621,9 @@ impl Wormhole {
             our_hints.push(hint);
         }
 
-        let transit_msg = transit(abilities, our_hints).serialize();
-        debug!("Sending '{}'", &transit_msg);
         // send the transit message
+        let transit_msg = PeerMessage::new_transit(abilities, our_hints).serialize();
+        debug!("Sending '{}'", &transit_msg);
         self.send_message(transit_msg.as_bytes());
 
         // 3. receive file offer message from peer
@@ -650,7 +642,7 @@ impl Wormhole {
         };
 
         // send file ack.
-        let file_ack_msg = file_ack("ok").serialize();
+        let file_ack_msg = PeerMessage::new_file_ack("ok").serialize();
         self.send_message(file_ack_msg.as_bytes());
 
         // 4. listen for connections on the port and simultaneously try connecting to the
@@ -737,7 +729,7 @@ impl Wormhole {
     pub fn send(&mut self, app_id: &str, _code: &str, msg: MessageType, relay_url: &RelayUrl) -> Result<()> {
         match msg {
             MessageType::Message(text) => {
-                self.send_message(message(&text).serialize().as_bytes());
+                self.send_message(PeerMessage::new_offer_message(&text).serialize().as_bytes());
                 debug!("sent..");
                 // if we close right away, we won't actually send anything. Wait for at
                 // least the verifier to be printed, that ought to give our outbound
@@ -769,18 +761,19 @@ impl Wormhole {
             PeerMessage::Offer(offer) => match offer {
                 OfferType::Message(msg) => {
                     debug!("{}", msg);
-                    self.send_message(message_ack("ok").serialize().as_bytes());
+                    self.send_message(PeerMessage::new_message_ack("ok").serialize().as_bytes());
                     msg
                 }
                 OfferType::File { .. } => {
                     debug!("Received file offer {:?}", offer);
-                    self.send_message(file_ack("ok").serialize().as_bytes());
+                    // TODO: We are doing file_ack without asking user
+                    self.send_message(PeerMessage::new_file_ack("ok").serialize().as_bytes());
                     "".to_string()
                 }
                 OfferType::Directory { .. } => {
                     debug!("Received directory offer: {:?}", offer);
                     // TODO: We are doing file_ack without asking user
-                    self.send_message(file_ack("ok").serialize().as_bytes());
+                    self.send_message(PeerMessage::new_file_ack("ok").serialize().as_bytes());
                     "".to_string()
                 }
             },

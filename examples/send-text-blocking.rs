@@ -1,4 +1,4 @@
-use magic_wormhole::core::message;
+use magic_wormhole::core::PeerMessage;
 use magic_wormhole::io::blocking::Wormhole;
 use log::*;
 
@@ -19,7 +19,7 @@ fn main() {
     let code = w.get_code();
     trace!("code is: {}", code);
     trace!("sending..");
-    w.send_message(message("hello from rust!").serialize().as_bytes());
+    w.send_message(PeerMessage::new_message_ack("hello from rust!").serialize().as_bytes());
     trace!("sent..");
     // if we close right away, we won't actually send anything. Wait for at
     // least the verifier to be printed, that ought to give our outbound

@@ -1,4 +1,4 @@
-use magic_wormhole::core::{file_ack, message_ack, OfferType, PeerMessage};
+use magic_wormhole::core::{OfferType, PeerMessage};
 use magic_wormhole::io::blocking::Wormhole;
 use std::str;
 use log::*;
@@ -25,16 +25,16 @@ fn main() {
         PeerMessage::Offer(offer) => match offer {
             OfferType::Message(msg) => {
                 trace!("{}", msg);
-                w.send_message(message_ack("ok").serialize().as_bytes());
+                w.send_message(PeerMessage::new_message_ack("ok").serialize().as_bytes());
             }
             OfferType::File { .. } => {
                 trace!("Received file offer {:?}", offer);
-                w.send_message(file_ack("ok").serialize().as_bytes());
+                w.send_message(PeerMessage::new_file_ack("ok").serialize().as_bytes());
             }
             OfferType::Directory { .. } => {
                 trace!("Received directory offer: {:?}", offer);
                 // TODO: We are doing file_ack without asking user
-                w.send_message(file_ack("ok").serialize().as_bytes());
+                w.send_message(PeerMessage::new_file_ack("ok").serialize().as_bytes());
             }
         },
         PeerMessage::Answer(_) => {
