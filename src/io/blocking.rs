@@ -17,8 +17,8 @@ use std::str;
 use log::*;
 use anyhow::{Result, Error, ensure, bail, format_err, Context};
 
-mod transit;
-mod filetransfer;
+pub mod transit;
+pub mod filetransfer;
 
 #[derive(Debug, PartialEq)]
 pub enum MessageType {
@@ -408,6 +408,7 @@ impl Wormhole {
         }
     }
     
+    #[deprecated(note = "This is application-specific code which doesn't belong into the API")]
     pub fn send(&mut self, app_id: &str, _code: &str, msg: MessageType, relay_url: &transit::RelayUrl) -> Result<()> {
         match msg {
             MessageType::Message(text) => {
@@ -425,13 +426,14 @@ impl Wormhole {
                 trace!("closed");
             },
             MessageType::File{filename, filesize} => {
-                async_std::task::block_on(filetransfer::send_file(self, &filename, filesize, app_id, relay_url))?;
+                async_std::task::block_on(filetransfer::send_file(self, &filename, app_id, relay_url))?;
                 debug!("send closed");
             }
         }
         Ok(())
     }
 
+    #[deprecated(note = "This is application-specific code which doesn't belong into the API")]
     pub fn receive(&mut self, app_id: &str, relay_url: &transit::RelayUrl) -> Result<String> {
         let msg = self.get_message();
         let actual_message =

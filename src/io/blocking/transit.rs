@@ -367,29 +367,6 @@ fn generate_transit_side() -> String {
     hex::encode(x)
 }
 
-// TODO cleanup
-async fn connect_or_accept(addr: SocketAddr) -> Result<(TcpStream, SocketAddr), std::io::Error> {
-    // let listen_socket = thread::spawn(move || {
-    //     listener.accept()
-    // });
-    
-    // let connect_socket = thread::spawn(move || {
-        // let five_seconds = Duration::new(5, 0);
-        // let tcp_stream = TcpStream::connect_timeout(&addr, five_seconds).await;
-        let tcp_stream = TcpStream::connect(&addr).await;
-        match tcp_stream {
-            Ok(stream) => {
-                // stream.set_read_timeout(Some(five_seconds))?;
-                // stream.set_write_timeout(Some(five_seconds))?;
-                Ok((stream, addr))
-            },
-            Err(e) => Err(e)
-        }
-    // });
-
-    // connect_socket.join().unwrap()
-}
-
 fn make_record_keys(key: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let s_purpose = "transit_record_sender_key";
     let r_purpose = "transit_record_receiver_key";

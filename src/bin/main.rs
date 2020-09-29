@@ -1,26 +1,36 @@
+use std::path::Path;
 use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg,
     SubCommand,
+    AppSettings,
 };
 use magic_wormhole::core::{
-    error_message, message, message_ack, OfferType, PeerMessage,
+    OfferType, PeerMessage,
 };
-use magic_wormhole::io::blocking::Wormhole;
+use magic_wormhole::io::blocking::{Wormhole, filetransfer};
 use std::str;
+use log::*;
+use anyhow::{Result, Error, ensure, bail, format_err, Context};
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &str = "ws://127.0.0.1:4000/v1";
+const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
+const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
-fn main() {
-    env_logger::try_init().unwrap();
-    let send = SubCommand::with_name("send")
-        .aliases(&["tx"])
-        .arg(
-            Arg::with_name("zero")
-                .short("0")
-                .help("enable no-code anything-goes mode"),
-        )
+fn main() -> Result<()> {
+    env_logger::builder()
+        .filter_level(LevelFilter::Debug)
+        .filter_module("mio", LevelFilter::Debug)
+        .filter_module("ws", LevelFilter::Error)
+        .init();
+    let relay_server_arg = Arg::with_name("relay-server")
+        .long("relay-server")
+        .visible_alias("relay")
+        .takes_value(true)
+        .value_name("tcp:HOSTNAME:PORT")
+        .help("Use a custom relay server");
+    let send_command = SubCommand::with_name("send")
+        .visible_alias("tx")
         .arg(
             Arg::with_name("code-length")
                 .short("c")
@@ -28,50 +38,32 @@ fn main() {
                 .takes_value(true)
                 .value_name("NUMWORDS")
                 .default_value("2")
-                .help("length of code (in bytes/words)"),
+                .help("Length of code (in bytes/words)"),
         )
         .arg(
             Arg::with_name("hide-progress")
                 .long("hide-progress")
-                .help("supress progress-bar display"),
-        )
-        .arg(
-            Arg::with_name("no-listen")
-                .long("no-listen")
-                .help("(debug) don't open a listening socket for Transit"),
+                .help("Suppress progress-bar display"),
         )
         .arg(
             Arg::with_name("code")
                 .long("code")
                 .takes_value(true)
                 .value_name("CODE")
-                .help("human-generated code phrase"),
+                .help("Enter a code instead of generating one automatically"),
         )
+        .arg(relay_server_arg.clone())
         .arg(
-            Arg::with_name("text")
-                .long("text")
-                .takes_value(true)
-                .value_name("MESSAGE")
-                .help("send a text message, not a file"),
+            Arg::with_name("file")
+                .index(1)
+                .required(true)
+                .value_name("FILENAME|DIRNAME")
+                .help("The file or directory to send"),
         );
-    let receive = SubCommand::with_name("receive")
-        .aliases(&["rx"])
-        .arg(
-            Arg::with_name("zero")
-                .short("0")
-                .help("enable no-code anything-goes mode"),
-        )
-        .arg(
-            Arg::with_name("code-length")
-                .short("c")
-                .long("code-length")
-                .takes_value(true)
-                .value_name("NUMWORDS")
-                .help("length of code (in bytes/words)"),
-        )
+    let receive_command = SubCommand::with_name("receive")
+        .visible_alias("rx")
         .arg(
             Arg::with_name("verify")
-                .short("v")
                 .long("verify")
                 .help("display verification string (and wait for approval)"),
         )
@@ -81,130 +73,118 @@ fn main() {
                 .help("supress progress-bar display"),
         )
         .arg(
-            Arg::with_name("no-listen")
-                .long("no-listen")
-                .help("(debug) don't open a listening socket for Transit"),
-        )
-        .arg(
-            Arg::with_name("only-text")
-                .short("t")
-                .long("only-text")
-                .help("refuse file transfers, only accept text messages"),
-        )
-        .arg(
-            Arg::with_name("accept-file")
-                .long("accept-file")
-                .help("accept file transfer without asking for confirmation"),
+            Arg::with_name("noconfirm")
+                .long("noconfirm")
+                .visible_alias("yes")
+                .help("Accept file transfer without asking for confirmation"),
         )
         .arg(
             Arg::with_name("output-file")
                 .short("o")
                 .long("output-file")
+                .visible_alias("out")
                 .takes_value(true)
                 .value_name("FILENAME|DIRNAME")
                 .help("The file or directory to create, overriding the name suggested by the sender"),
         )
         .arg(
             Arg::with_name("code")
-                .help("provide code as argument, rather than typing it interactively")
-        );
+                .index(1)
+                .value_name("CODE")
+                .help("Provide the code now rather than typing it interactively")
+        )
+        .arg(relay_server_arg);
 
-    let matches = App::new(crate_name!())
+    let clap = App::new(crate_name!())
         .version(crate_version!())
         .about(crate_description!())
         .author(crate_authors!())
-        .subcommand(send)
-        .subcommand(receive)
-        .get_matches();
+        .setting(AppSettings::AllowExternalSubcommands)
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .setting(AppSettings::VersionlessSubcommands)
+        .subcommand(send_command)
+        .subcommand(receive_command);
+    let matches = clap.get_matches();
 
-    //println!("m: {:?}", &matches);
-
-    if matches.subcommand_name() == None {
-        println!("Must specify subcommand");
-        return;
-    }
-
-    if let Some(sc) = matches.subcommand_matches("send") {
-        if sc.value_of("text") == None {
-            println!("file transfer is not yet implemented, so --text=MSG is required");
-            return;
-        }
-        let text = sc.value_of("text").unwrap();
-        println!("Sending text message ({} bytes)", text.len());
+    if let Some(matches) = matches.subcommand_matches("send") {
+        let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
 
         let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
-        if sc.is_present("zero") {
-            w.set_code("0");
-        } else {
-            match sc.value_of("code") {
-                None => {
-                    let s = sc.value_of("code-length").unwrap();
-                    let numwords: usize = s.parse().unwrap();
-                    w.allocate_code(numwords);
-                }
-                Some(code) => {
-                    w.set_code(code);
-                }
+        match matches.value_of("code") {
+            None => {
+                let numwords = matches.value_of("code-length").unwrap().parse()?;
+                w.allocate_code(numwords);
+            }
+            Some(code) => {
+                w.set_code(code);
             }
         }
+        let file = matches.value_of("file").unwrap();
         let code = w.get_code();
-        println!("Wormhole code is: {}", code);
-        println!("On the other computer, please run:");
-        println!();
-        println!("wormhole receive {}", code);
-        println!();
-        w.send_message(message(text).serialize().as_bytes());
-        let _ack = w.get_message();
-        println!("text message sent");
-    } else if let Some(sc) = matches.subcommand_matches("receive") {
+        info!("This wormhole's code is: {}", code);
+        info!("On the other computer, please run:\n");
+        info!("wormhole receive {}\n", code);
+
+        send(w, APPID, relay_server, file)?;
+    } else if let Some(matches) = matches.subcommand_matches("receive") {
+        let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
         let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
 
-        if !sc.is_present("code") {
-            println!("must provide CODE in argv: no interactive input yet");
-            return;
-        }
-        let code = sc.value_of("code").unwrap();
-        w.set_code(code);
-        let msg = w.get_message();
-        let actual_message =
-            PeerMessage::deserialize(str::from_utf8(&msg).unwrap());
-        match actual_message {
-            PeerMessage::Offer(offer) => match offer {
-                OfferType::Message(msg) => {
-                    println!("{}", msg);
-                    w.send_message(message_ack("ok").serialize().as_bytes());
-                }
-                OfferType::File { .. } => {
-                    println!("Received file offer {:?}", offer);
-                    w.send_message(
-                        error_message("cannot handle file yet")
-                            .serialize()
-                            .as_bytes(),
-                    );
-                }
-                OfferType::Directory { .. } => {
-                    println!("Received directory offer: {:?}", offer);
-                    w.send_message(
-                        error_message("cannot handle directories yet")
-                            .serialize()
-                            .as_bytes(),
-                    );
-                }
-            },
-            PeerMessage::Answer(_) => {
-                panic!("Should not receive answer type, I'm receiver")
-            }
-            PeerMessage::Error(err) => {
-                println!("Something went wrong: {}", err)
-            }
-            PeerMessage::Transit(transit) => {
-                // TODO: This should start transit server connection or
-                // direct file transfer
-                println!("Transit Message received: {:?}", transit)
-            }
-        };
-        w.close();
+        let code = matches.value_of("code")
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| enter_code().expect("TODO handle this gracefully"));
+
+        w.set_code(code.trim());
+
+        receive(w, APPID, relay_server)?;
     } else {
-        panic!("shouldn't happen, unknown subcommand")
+        let code = matches.subcommand_name();
+        // TODO implement this properly once clap 3.0 is out
+        // if might_be_code(code) {
+            warn!("No command provided, assuming you simply want to receive a file.");
+            warn!("To receive files, use `wormhole receive <CODE>`.");
+            warn!("To list all available commands and options, type `wormhole --help`");
+            warn!("Please refer to `{} --help` for further usage instructions.", crate_name!());
+        // } else {
+            // clap.print_long_help();
+        // }
+        unimplemented!();
     }
+
+    Ok(())
+}
+
+fn _might_be_code(code: Option<&str>) -> bool {
+    unimplemented!()
+}
+
+fn enter_code() -> Result<String> {
+    info!("Enter code: ");
+    let mut code = String::new();
+    std::io::stdin().read_line(&mut code)?;
+    Ok(code)
+}
+
+fn send(mut w: Wormhole, app_id: &str, relay_server: &str, filename: impl AsRef<Path>) -> Result<()> {
+    async_std::task::block_on(filetransfer::send_file(&mut w, filename, app_id, &relay_server.parse().unwrap()))?;
+
+    w.close();
+    Ok(())
+}
+
+fn receive(mut w: Wormhole, app_id: &str, relay_server: &str) -> Result<()> {
+    match PeerMessage::deserialize(str::from_utf8(&w.get_message()).unwrap()) {
+        PeerMessage::Transit(transit) => {
+            async_std::task::block_on(filetransfer::receive_file(&mut w, transit, app_id, &relay_server.parse().unwrap()))?;
+        },
+        PeerMessage::Error(err) => {
+            bail!("Something went wrong on the other side: {}", err);
+        },
+        other => {
+            bail!("Got an unexpected message type, is the other side all right? Got: '{:?}'", other);
+        }
+    };
+
+    w.close();
+    Ok(())
 }
