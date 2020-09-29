@@ -25,11 +25,11 @@ use super::transit::{RelayUrl, Transit};
 pub async fn send_file(
     w: &mut Wormhole,
     filepath: impl AsRef<Path>,
-    filesize: u64,
     appid: &str,
     relay_url: &RelayUrl,
 ) -> Result<()> {
     let filename = filepath.as_ref().file_name().ok_or_else(|| format_err!("You can't send a file without a file name"))?;
+    let filesize = File::open(filepath.as_ref()).await?.metadata().await?.len(); // TODO do that somewhere else
     let (mut transit, ()) = Transit::sender_connect(
         w,
         relay_url,
@@ -62,11 +62,11 @@ pub async fn receive_file(
        .context("Could not receive file")
 }
 
-async fn send_file_offer(w: &mut Wormhole, filename: impl Into<PathBuf>, filesize: u64) -> Result<()> {
+async fn send_file_offer(w: &mut Wormhole, filename: (impl Into<PathBuf> + AsRef<Path>), filesize: u64) -> Result<()> {
     // 6. send file offer message.
     let offer_msg = PeerMessage::new_offer_file(filename, filesize).serialize();
     w.send_message(offer_msg.as_bytes());
-    
+
     // 7. wait for file_ack
     let maybe_fileack = w.get_message();
     let fileack_msg = PeerMessage::deserialize(std::str::from_utf8(&maybe_fileack)?);
@@ -119,6 +119,7 @@ async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: 
 
     let mut file = File::open(&filepath.as_ref()).await
         .context(format!("Could not open {}", &filepath.as_ref().display()))?;
+    debug!("Sending file size {}", file.metadata().await?.len());
 
     let mut hasher = Sha256::default();
 
@@ -128,15 +129,12 @@ async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: 
         .ok_or(format_err!("Could not parse nonce".to_string()))?;
 
     loop {
-        trace!("sending records");
         // read a block of 4096 bytes
         let mut plaintext = [0u8; 4096];
         let n = file.read(&mut plaintext[..]).await?;
+        debug!("sending {} bytes", n);
 
-        let mut plaintext_vec = plaintext.to_vec();
-        plaintext_vec.truncate(n);
-        
-        let ciphertext = transit::encrypt_record(&plaintext_vec, nonce, &skey)?;
+        let ciphertext = transit::encrypt_record(&plaintext[0..n], nonce, &skey)?;
 
         // send the encrypted record
         transit::send_record(stream, &ciphertext).await?;
