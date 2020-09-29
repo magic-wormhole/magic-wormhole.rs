@@ -71,7 +71,7 @@ impl Transit {
         debug!("transit key {}", hex::encode(&transit_key));
 
         // 1. start a tcp server on a random port
-        let listener = TcpListener::bind("0.0.0.0:0")?;
+        let listener = TcpListener::bind("[::]:0")?;
         let listen_socket = listener.local_addr()?;
 
         // 2. send transit message to peer
@@ -118,7 +118,7 @@ impl Transit {
 
         // TODO: combine our relay hints with the peer's relay hints.
 
-        let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel();
+        let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel::<Transit>();
         let handshake_succeeded = Arc::new(AtomicBool::new(false));
         crossbeam_utils::thread::scope(|scope| {
             let transit_key = &transit_key; // Borrow instead of move
@@ -176,21 +176,20 @@ impl Transit {
                         }
                     }
                     debug!("quit send loop");
-                    unreachable!(); // TODO this is to test that this code is actually reached :)
                 });
             }
 
-            let mut transit = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
+            let mut transit: Transit = successful_connections_rx.recv()
+                .context("Could not establish a connection to the other side")?;
             handshake_succeeded.store(true, std::sync::atomic::Ordering::Release);
     
             debug!("Sending 'go' message to {}", transit.socket.peer_addr().unwrap());
             send_buffer(&mut transit.socket, b"go\n")?;
 
             hacky_callback(&mut transit, &handshake_result)?;
-    
+
             Ok((transit, handshake_result))
-        })
-        .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
+        }).unwrap()
     }
 
     pub fn receiver_connect<T>(
@@ -205,7 +204,7 @@ impl Transit {
         debug!("transit key {}", hex::encode(&transit_key));
 
         // 1. start a tcp server on a random port
-        let listener = TcpListener::bind("0.0.0.0:0")?;
+        let listener = TcpListener::bind("[::]:0")?;
         let listen_socket = listener.local_addr()?;
         let port = listen_socket.port();
 
@@ -568,23 +567,14 @@ fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: &[u8]
 }
 
 fn build_direct_hints(port: u16) -> Vec<Hints> {
-    let _localhost = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-    let ifaces = datalink::interfaces();
-
-    let non_local_ifaces: Vec<&datalink::NetworkInterface> = ifaces.iter().filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
-        .collect();
-    let ips: Vec<IpNetwork> = non_local_ifaces.iter()
-        .map(|iface| iface.ips.clone())
-        .flatten()
-        .map(|n| n as IpNetwork)
-        .filter(|ip| ip.is_ipv4())
-        .collect::<Vec<IpNetwork>>();
-    trace!("ips: {:?}", ips);
-
-    // create abilities and hints
-    // TODO: enumerate for all ips, not just ips[0]
-    let mut hints = Vec::new();
-    hints.push(Hints::DirectTcpV1(DirectType{ priority: 0.0, hostname: ips[0].ip().to_string(), port}));
+    let hints = datalink::interfaces().iter()
+        .filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
+        .flat_map(|iface| iface.ips.iter())
+        .map(|n| n as &IpNetwork)
+        // .filter(|ip| ip.is_ipv4()) // TODO why was that there can we remove it?
+        .map(|ip| Hints::DirectTcpV1(DirectType{ priority: 0.0, hostname: ip.ip().to_string(), port}))
+        .collect::<Vec<_>>();
+    dbg!(&hints);
 
     hints
 }

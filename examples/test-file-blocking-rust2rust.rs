@@ -20,18 +20,24 @@ fn main() {
     let (sender_result_tx, _sender_result_rx) = std::sync::mpsc::channel();
     let (receiver_result_tx, _receiver_result_rx) = std::sync::mpsc::channel();
     
-    let sender_thread = std::thread::spawn(move || {
-        send(code_tx, sender_result_tx);
-    });
-    let receiver_thread = std::thread::spawn(move || {
-        receive(code_rx, receiver_result_tx);
-    });
+    let sender_thread = std::thread::Builder::new()
+        .name("sender".to_owned())
+        .spawn(move || {
+            send(code_tx, sender_result_tx);
+        })
+        .unwrap();
+    let receiver_thread = std::thread::Builder::new()
+        .name("receiver".to_owned())
+        .spawn(move || {
+            receive(code_rx, receiver_result_tx);
+        })
+        .unwrap();
     
     sender_thread.join().unwrap();
     receiver_thread.join().unwrap();
     
-    let original = fs::read("example-file.bin").unwrap();
-    let received = fs::read("example-file.bin.rcv").unwrap();
+    let original = fs::read("examples/example-file.bin").unwrap();
+    let received = fs::read("example-file.bin").unwrap();
     
     if original == received {
         println!("Success!");
