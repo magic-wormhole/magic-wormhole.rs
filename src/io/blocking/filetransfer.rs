@@ -35,12 +35,11 @@ pub async fn send_file(
         relay_url,
         appid,
         |w| send_file_offer(w, filename, filesize),
-        // |transit, _| tcp_file_send(transit, &filepath)
     ).await?;
     debug!("Beginning file transfer");
 
-    // tcp_file_send(&mut transit, &filepath)
-    Ok(())
+    tcp_file_send(&mut transit, &filepath).await
+        .context("Could not send file")
 }
 
 pub async fn receive_file(
@@ -55,13 +54,12 @@ pub async fn receive_file(
         appid,
         ttype,
         receive_file_offer,
-        // |transit, (filename, filesize)| tcp_file_receive(transit, filename, *filesize)
     ).await?;
 
     debug!("Beginning file transfer");
     // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-    // tcp_file_receive(&mut transit, &filename, filesize)
-    Ok(())
+    tcp_file_receive(&mut transit, &filename, filesize).await
+       .context("Could not receive file")
 }
 
 async fn send_file_offer(w: &mut Wormhole, filename: impl Into<PathBuf>, filesize: u64) -> Result<()> {
