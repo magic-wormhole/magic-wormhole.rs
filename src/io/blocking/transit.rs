@@ -1,3 +1,4 @@
+use futures::future::TryFutureExt;
 use async_std::prelude::Future;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -68,18 +69,15 @@ impl Transit {
     T,
     C1,
     F1,
-    // F2,
     >(
         w: &'b mut Wormhole,
         relay_url: &RelayUrl,
         appid: &str,
         post_handshake: C1,
-        // hacky_callback: impl FnOnce(&mut Transit, &T) -> F2,
     ) -> Result<(Self, T)> 
         where 
         C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
-        F1: Future<Output = Result<T>>, 
-        // F2: Future<Output = Result<()>>,
+        F1: Future<Output = Result<T>>,
     {
         let transit_key = Arc::new(w.derive_transit_key(appid));
         debug!("transit key {}", hex::encode(&*transit_key));
@@ -122,8 +120,7 @@ impl Transit {
         // TODO remove this one day
         let ttype = &*Box::leak(Box::new(ttype));
         
-        let handshake_result = post_handshake(w).await?;
-        // let handshake_result = todo!();
+        let post_handshake_result = post_handshake(w).await?;
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         // extract peer's ip/hostname from 'ttype'
@@ -132,83 +129,89 @@ impl Transit {
         let mut hosts: Vec<(HostType, &DirectType)> = Vec::new();
         hosts.append(&mut direct_hosts);
         hosts.append(&mut relay_hosts);
-
         // TODO: combine our relay hints with the peer's relay hints.
 
-        let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel::<Transit>();
-        let handshake_succeeded = Arc::new(AtomicBool::new(false));
-        // crossbeam_utils::thread::scope(|scope| {
-            // let transit_key = &transit_key; // Borrow instead of move
-            for host in hosts {
-                // TODO use async scopes to borrow instead of cloning one day
-                let transit_key = transit_key.clone();
-                let successful_connections_tx = successful_connections_tx.clone();
-                async_std::task::spawn(async move {
-                    debug!("host: {:?}", host);
-                    let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs().unwrap();
-                    let direct_host = direct_host_iter.next().unwrap();
+        let mut handshake_futures = Vec::new();
 
-                    debug!("peer host: {}", direct_host);
+        for host in hosts {
+            // TODO use async scopes to borrow instead of cloning one day
+            let transit_key = transit_key.clone();
+            let future = async_std::task::spawn(
+                //async_std::future::timeout(Duration::from_secs(5),
+            async move {
+                debug!("host: {:?}", host);
+                let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs().unwrap();
+                let direct_host = direct_host_iter.next().unwrap();
 
-                    // TODO wtf
-                    match connect_or_accept(direct_host).await {
-                        Ok((mut socket, _addr)) => {
-                            debug!("connected to {:?}", direct_host);
-                            match tx_handshake_exchange(&mut socket, host.0, &*transit_key).await {
-                                Ok((skey, rkey)) => {
-                                    debug!("Handshake with {} succeeded", direct_host);
-                                    successful_connections_tx.send(Transit {socket, skey, rkey}).unwrap();
-                                },
-                                Err(e) => {
-                                    debug!("Handshake with {} failed :(, {}", direct_host, e);
-                                }
-                            }
-                        },
-                        Err(_) => {
-                            trace!("could not connect to {:?}", direct_host);
-                        },
-                    };
-                });
+                debug!("peer host: {}", direct_host);
+
+                TcpStream::connect(direct_host)
+                    .err_into::<Error>()
+                    .and_then(|socket| {
+                        tx_handshake_exchange(socket, host.0, &*transit_key)
+                    })
+                    .await
+            });//);
+            handshake_futures.push(future);
+        }
+        handshake_futures.push(async_std::task::spawn(async move {
+            let port = listen_socket.port();
+            debug!("local host {}", port);
+
+            /* Mixing and matching two different futures library probably isn't the
+             * best idea, but here we are. Simply be careful about prelude::* imports
+             * and don't have both StreamExt/FutureExt/… imported at once
+             */
+            use futures::stream::TryStreamExt;
+            use async_std::prelude::StreamExt;
+            listener.incoming()
+                .err_into::<Error>()
+                .and_then(move |socket| {
+                    /* Pinning a future + moving some value from outer scope is a bit painful */
+                    let transit_key = transit_key.clone();
+                    Box::pin(async move {
+                        tx_handshake_exchange(socket, HostType::Direct, &*transit_key).await
+                    })
+                })
+                .skip_while(Result::is_err)
+                /* We only care about the first that succeeds */
+                .next()
+                .await
+                /* Next always returns Some because Incoming is an infinite stream. We gotta succeed _sometime_. */
+                .unwrap()
+        }));
+
+        /* Try to get a Transit out of the first handshake that succeeds. If all fail,
+         * we fail.
+         */
+        let transit;
+        loop {
+            if handshake_futures.is_empty() {
+                return Err(format_err!("All handshakes failed or timed out"));
             }
-            {
-                let handshake_succeeded = handshake_succeeded.clone();
-                async_std::task::spawn(async move {
-                    let port = listen_socket.port();
-                    while !handshake_succeeded.load(std::sync::atomic::Ordering::Acquire) {
-                        match listener.accept().await {
-                            Ok((mut socket, _addr)) => {
-                                debug!("connected to localhost:{}", port);
-                                // socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                                // socket.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
-                                match tx_handshake_exchange(&mut socket, HostType::Direct, &*transit_key).await {
-                                    Ok((skey, rkey)) => {
-                                        successful_connections_tx.send(Transit {socket, skey, rkey}).unwrap();
-                                    },
-                                    Err(e) => {
-                                        debug!("Handshake with localhost:{} failed :(, {}", port, e);
-                                    }
-                                };
-                            },
-                            Err(_) => {
-                                debug!("could not connect to local host");
-                            },
-                        };
-                    }
-                    debug!("quit send loop");
-                });
+            match futures::future::select_all(handshake_futures).await {
+                (Ok(transit2), _index, remaining) => {
+                    transit = transit2;
+                    handshake_futures = remaining;
+                    break;
+                }
+                (Err(e), _index, remaining) => {
+                    debug!("Some handshake failed {:#}", e);
+                    handshake_futures = remaining;
+                }
             }
+        }
+        let mut transit = transit;
 
-            let mut transit: Transit = successful_connections_rx.recv()
-                .context("Could not establish a connection to the other side")?;
-            handshake_succeeded.store(true, std::sync::atomic::Ordering::Release);
-    
-            debug!("Sending 'go' message to {}", transit.socket.peer_addr().unwrap());
-            send_buffer(&mut transit.socket, b"go\n").await?;
+        /* Cancel all remaining non-finished handshakes */
+        handshake_futures.into_iter()
+            .map(async_std::task::JoinHandle::cancel)
+            .for_each(std::mem::drop);
 
-            // hacky_callback(&mut transit, &handshake_result).await?;
+        debug!("Sending 'go' message to {}", transit.socket.peer_addr().unwrap());
+        send_buffer(&mut transit.socket, b"go\n").await?;
 
-            Ok((transit, handshake_result))
-        // }).unwrap()
+        Ok((transit, post_handshake_result))
     }
 
     pub async fn receiver_connect<
@@ -217,18 +220,15 @@ impl Transit {
     T,
     C1,
     F1,
-    // F2,
     >(
         w: &'b mut Wormhole,
         relay_url: &RelayUrl,
         appid: &str,
         ttype: TransitType,
         post_handshake: C1,
-        // hacky_callback: impl FnOnce(&mut Transit, &T) -> F2,
     ) -> Result<(Self, T)> where 
         C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
         F1: Future<Output = Result<T>>,
-        // F2: Future<Output = Result<()>>,
     {
         let ttype = &*Box::leak(Box::new(ttype)); // TODO remove this one day
         let transit_key = Arc::new(w.derive_transit_key(appid));
@@ -261,8 +261,7 @@ impl Transit {
         debug!("Sending '{}'", &transit_msg);
         w.send_message(transit_msg.as_bytes());
         
-        let handshake_result = post_handshake(w).await?;
-        // let handshake_result = todo!();
+        let post_handshake_result = post_handshake(w).await?;
 
         // 4. listen for connections on the port and simultaneously try connecting to the
         //    peer listening port.
@@ -271,81 +270,85 @@ impl Transit {
         let mut hosts: Vec<(HostType, &DirectType)> = Vec::new();
         hosts.append(&mut direct_hosts);
         hosts.append(&mut relay_hosts);
-
         // TODO: combine our relay hints with the peer's relay hints.
 
-        let (successful_connections_tx, successful_connections_rx) = std::sync::mpsc::channel();
-        let handshake_succeeded = Arc::new(AtomicBool::new(false));
+        let mut handshake_futures = Vec::new();
 
-        // crossbeam_utils::thread::scope(|scope| {
-            // let transit_key = &transit_key; // Borrow instead of move
-            for host in hosts {
-                let transit_key = transit_key.clone();
-                let successful_connections_tx: std::sync::mpsc::Sender<_> = successful_connections_tx.clone();
-                async_std::task::spawn(async move{
-                    debug!("host: {:?}", host);
-                    let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs().unwrap();
-                    let direct_host = direct_host_iter.next().unwrap();
+        for host in hosts {
+            let transit_key = transit_key.clone();
 
-                    debug!("peer host: {}", direct_host);
+            let future = async_std::task::spawn(
+                //async_std::future::timeout(Duration::from_secs(5),
+            async move {
+                debug!("host: {:?}", host);
+                let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port).to_socket_addrs().unwrap();
+                let direct_host = direct_host_iter.next().unwrap();
 
-                    match connect_or_accept(direct_host).await {
-                        Ok((mut socket, _addr)) => {
-                            debug!("connected to {:?}", direct_host);
-                            match rx_handshake_exchange(&mut socket, host.0, &*transit_key).await {
-                                Ok((skey, rkey)) => {
-                                    debug!("Handshake with {} succeeded", direct_host);
-                                    successful_connections_tx.send(Transit {socket, skey, rkey}).unwrap();
-                                },
-                                Err(e) => {
-                                    debug!("Handshake with {} failed :(, {}", direct_host, e);
-                                }
-                            }
-                        },
-                        Err(_) => {
-                            debug!("could not connect to {:?}", direct_host);
-                        },
-                    }
-                });
+                debug!("peer host: {}", direct_host);
+
+                TcpStream::connect(direct_host)
+                    .err_into::<Error>()
+                    .and_then(|socket| {
+                        rx_handshake_exchange(socket, host.0, &*transit_key)
+                    })
+                    .await
+            });//);
+            handshake_futures.push(future);
+        }
+        handshake_futures.push(async_std::task::spawn(async move {
+            let port = listen_socket.port();
+            debug!("local host {}", port);
+
+            /* Mixing and matching two different futures library probably isn't the
+             * best idea, but here we are. Simply be careful about prelude::* imports
+             * and don't have both StreamExt/FutureExt/… imported at once
+             */
+            use futures::stream::TryStreamExt;
+            use async_std::prelude::StreamExt;
+            listener.incoming()
+                .err_into::<Error>()
+                .and_then(move |socket| {
+                    /* Pinning a future + moving some value from outer scope is a bit painful */
+                    let transit_key = transit_key.clone();
+                    Box::pin(async move {
+                        rx_handshake_exchange(socket, HostType::Direct, &*transit_key).await
+                    })
+                })
+                .skip_while(Result::is_err)
+                /* We only care about the first that succeeds */
+                .next()
+                .await
+                /* Next always returns Some because Incoming is an infinite stream. We gotta succeed _sometime_. */
+                .unwrap()
+        }));
+
+        /* Try to get a Transit out of the first handshake that succeeds. If all fail,
+         * we fail.
+         */
+        let transit;
+        loop {
+            if handshake_futures.is_empty() {
+                return Err(format_err!("All handshakes failed or timed out"));
             }
-            {
-                let handshake_succeeded = handshake_succeeded.clone();
-                async_std::task::spawn(async move {
-                    let port = listen_socket.port();
-                    debug!("local host {}", port);
-
-                    while !handshake_succeeded.load(std::sync::atomic::Ordering::Acquire) {
-                        match listener.accept().await {
-                            Ok((mut socket, _addr)) => {
-                                // socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                                // socket.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
-                                debug!("connected to localhost:{}", port);
-                                match rx_handshake_exchange(&mut socket, HostType::Direct, &*transit_key).await {
-                                    Ok((skey, rkey)) => {
-                                        successful_connections_tx.send(Transit {socket, skey, rkey}).unwrap();
-                                    },
-                                    Err(e) => {
-                                        debug!("Handshake with localhost:{} failed :(, {}", port, e);
-                                    }
-                                }
-                            },
-                            Err(_) => {
-                                debug!("could not connect to local host");
-                            },
-                        }
-                    }
-                    debug!("quit receive loop");
-                });
+            match futures::future::select_all(handshake_futures).await {
+                (Ok(transit2), _index, remaining) => {
+                    transit = transit2;
+                    handshake_futures = remaining;
+                    break;
+                }
+                (Err(e), _index, remaining) => {
+                    debug!("Some handshake failed {:#}", e);
+                    handshake_futures = remaining;
+                }
             }
+        }
 
-            let mut transit = successful_connections_rx.recv().context("Could not establish a connection to the other side")?;
-            handshake_succeeded.store(true, std::sync::atomic::Ordering::Release);
-            
-            // hacky_callback(&mut transit, &handshake_result).await?;
+        /* Cancel all remaining non-finished handshakes */
+        handshake_futures.into_iter()
+            .map(async_std::task::JoinHandle::cancel)
+            .for_each(std::mem::drop);
 
-            Ok((transit, handshake_result))
-        // })
-        // .map_err(|err| *err.downcast::<Error>().expect("Please only return 'anyhow::Error' in this code block"))?
+        Ok((transit, post_handshake_result))
     }
 }
 
@@ -487,7 +490,7 @@ fn make_relay_handshake(key: &[u8], tside: &str) -> String {
     msg
 }
 
-async fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: impl AsRef<[u8]>) -> Result<(Vec<u8>, Vec<u8>)> {
+async fn rx_handshake_exchange(mut socket: TcpStream, host_type: HostType, key: impl AsRef<[u8]>) -> Result<Transit> {
     // create record keys
     let (skey, rkey) = make_record_keys(key.as_ref());
 
@@ -499,10 +502,10 @@ async fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key:
         let relay_handshake = make_relay_handshake(key.as_ref(), &tside);
         let relay_handshake_msg = relay_handshake.as_bytes();
     
-        send_buffer(socket, relay_handshake_msg).await?;
+        send_buffer(&mut socket, relay_handshake_msg).await?;
     
         let mut rx = [0u8; 3];
-        recv_buffer(socket, &mut rx).await?;
+        recv_buffer(&mut socket, &mut rx).await?;
     
         let ok_msg: [u8; 3] = *b"ok\n";
         ensure!(ok_msg == rx, format_err!("relay handshake failed"));
@@ -519,16 +522,16 @@ async fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key:
         // for receive mode, send receive_handshake_msg and compare.
         // the received message with send_handshake_msg
 
-        send_buffer(socket, receive_handshake_msg).await?;
+        send_buffer(&mut socket, receive_handshake_msg).await?;
 
         trace!("quarter's done");
 
         let mut rx: [u8; 90] = [0; 90];
-        recv_buffer(socket, &mut rx[0..87]).await?;
+        recv_buffer(&mut socket, &mut rx[0..87]).await?;
 
         trace!("half's done");
 
-        recv_buffer(socket, &mut rx[87..90]).await?;
+        recv_buffer(&mut socket, &mut rx[87..90]).await?;
 
         // The received message "transit receiver $hash ready\n\n" has exactly 87 bytes
         // Three bytes for the "go\n" ack
@@ -542,10 +545,10 @@ async fn rx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key:
 
     trace!("handshake successful");
 
-    Ok((skey, rkey))
+    Ok(Transit { socket, skey, rkey })
 }
 
-async fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key: impl AsRef<[u8]>) -> Result<(Vec<u8>, Vec<u8>)> {
+async fn tx_handshake_exchange(mut socket: TcpStream, host_type: HostType, key: impl AsRef<[u8]>) -> Result<Transit> {
     // 9. create record keys
     let (skey, rkey) = make_record_keys(key.as_ref());
 
@@ -557,10 +560,10 @@ async fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key:
         let relay_handshake = make_relay_handshake(key.as_ref(), &tside);
         let relay_handshake_msg = relay_handshake.as_bytes();
     
-        send_buffer(socket, relay_handshake_msg).await?;
+        send_buffer(&mut socket, relay_handshake_msg).await?;
     
         let mut rx = [0u8; 3];
-        recv_buffer(socket, &mut rx).await?;
+        recv_buffer(&mut socket, &mut rx).await?;
     
         let ok_msg: [u8; 3] = *b"ok\n";
         ensure!(ok_msg == rx, format_err!("relay handshake failed"));
@@ -580,14 +583,14 @@ async fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key:
             
         // for transmit mode, send send_handshake_msg and compare.
         // the received message with send_handshake_msg
-        send_buffer(socket, tx_handshake_msg).await?;
+        send_buffer(&mut socket, tx_handshake_msg).await?;
 
         trace!("half's done");
 
         // The received message "transit sender $hash ready\n\n" has exactly 89 bytes
         // TODO do proper line parsing one day, this is atrocious
         let mut rx: [u8; 89] = [0; 89];
-        recv_buffer(socket, &mut rx).await?;
+        recv_buffer(&mut socket, &mut rx).await?;
 
         trace!("{:?}", rx_handshake_msg.len());
 
@@ -597,7 +600,7 @@ async fn tx_handshake_exchange(socket: &mut TcpStream, host_type: HostType, key:
 
     trace!("handshake successful");
 
-    Ok((skey, rkey))
+    Ok(Transit { socket, skey, rkey } )
 }
 
 fn build_direct_hints(port: u16) -> Vec<Hints> {
