@@ -425,7 +425,7 @@ impl Wormhole {
                 trace!("closed");
             },
             MessageType::File{filename, filesize} => {
-                filetransfer::send_file(self, &filename, filesize, app_id, relay_url)?;
+                async_std::task::block_on(filetransfer::send_file(self, &filename, filesize, app_id, relay_url))?;
                 debug!("send closed");
             }
         }
@@ -465,7 +465,7 @@ impl Wormhole {
             },
             PeerMessage::Transit(transit) => {
                 debug!("Transit Message received: {:?}", transit);
-                filetransfer::receive_file(self, transit, app_id, relay_url)?;
+                async_std::task::block_on(filetransfer::receive_file(self, transit, app_id, relay_url))?;
                 "".to_string()
             }
         };

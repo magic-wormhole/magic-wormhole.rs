@@ -1,4 +1,4 @@
-use std::net::TcpStream;
+use async_std::net::TcpStream;
 use std::path::Path;
 use std::path::PathBuf;
 use crate::core::{
@@ -8,19 +8,21 @@ use crate::core::{
     TransitAck,
     OfferType,
 };
-use std::io::BufReader;
-use std::io::Write;
-use std::io::Read;
+use async_std::io::BufReader;
+use async_std::io::Write;
+use async_std::io::prelude::WriteExt;
+use async_std::io::Read;
+use async_std::io::ReadExt;
 use log::*;
 use sha2::{Digest, Sha256};
 use sodiumoxide::crypto::secretbox;
-use std::fs::File;
+use async_std::fs::File;
 use anyhow::{Result, ensure, bail, format_err, Context};
 use super::Wormhole;
 use super::transit;
 use super::transit::{RelayUrl, Transit};
 
-pub fn send_file(
+pub async fn send_file(
     w: &mut Wormhole,
     filepath: impl AsRef<Path>,
     filesize: u64,
@@ -33,15 +35,15 @@ pub fn send_file(
         relay_url,
         appid,
         |w| send_file_offer(w, filename, filesize),
-        |transit, _| tcp_file_send(transit, &filepath)
-    )?;
+        // |transit, _| tcp_file_send(transit, &filepath)
+    ).await?;
     debug!("Beginning file transfer");
 
     // tcp_file_send(&mut transit, &filepath)
     Ok(())
 }
 
-pub fn receive_file(
+pub async fn receive_file(
     w: &mut Wormhole,
     ttype: TransitType,
     appid: &str,
@@ -53,8 +55,8 @@ pub fn receive_file(
         appid,
         ttype,
         receive_file_offer,
-        |transit, (filename, filesize)| tcp_file_receive(transit, filename, *filesize)
-    )?;
+        // |transit, (filename, filesize)| tcp_file_receive(transit, filename, *filesize)
+    ).await?;
 
     debug!("Beginning file transfer");
     // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
@@ -62,7 +64,7 @@ pub fn receive_file(
     Ok(())
 }
 
-fn send_file_offer(w: &mut Wormhole, filename: impl Into<PathBuf>, filesize: u64) -> Result<()> {
+async fn send_file_offer(w: &mut Wormhole, filename: impl Into<PathBuf>, filesize: u64) -> Result<()> {
     // 6. send file offer message.
     let offer_msg = PeerMessage::new_offer_file(filename, filesize).serialize();
     w.send_message(offer_msg.as_bytes());
@@ -82,7 +84,7 @@ fn send_file_offer(w: &mut Wormhole, filename: impl Into<PathBuf>, filesize: u64
     Ok(())
 }
 
-fn receive_file_offer(w: &mut Wormhole) -> Result<(PathBuf, u64)>  {
+async fn receive_file_offer(w: &mut Wormhole) -> Result<(PathBuf, u64)>  {
     // 3. receive file offer message from peer
     let msg = w.get_message();
     let maybe_offer = PeerMessage::deserialize(std::str::from_utf8(&msg)?);
@@ -107,7 +109,7 @@ fn receive_file_offer(w: &mut Wormhole) -> Result<(PathBuf, u64)>  {
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
+async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
     // rough plan:
     // 1. Open the file
     // 2. read a block of N bytes
@@ -117,7 +119,7 @@ fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8])
     // 6. go to step #2 till eof.
     // 7. if eof, return sha256 sum.
 
-    let mut file = File::open(&filepath)
+    let mut file = File::open(&filepath.as_ref()).await
         .context(format!("Could not open {}", &filepath.as_ref().display()))?;
 
     let mut hasher = Sha256::default();
@@ -131,7 +133,7 @@ fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8])
         trace!("sending records");
         // read a block of 4096 bytes
         let mut plaintext = [0u8; 4096];
-        let n = file.read(&mut plaintext[..])?;
+        let n = file.read(&mut plaintext[..]).await?;
 
         let mut plaintext_vec = plaintext.to_vec();
         plaintext_vec.truncate(n);
@@ -139,7 +141,7 @@ fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8])
         let ciphertext = transit::encrypt_record(&plaintext_vec, nonce, &skey)?;
 
         // send the encrypted record
-        transit::send_record(stream, &ciphertext)?;
+        transit::send_record(stream, &ciphertext).await?;
 
         // increment nonce
         nonce.increment_le_inplace();
@@ -157,16 +159,16 @@ fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8])
     Ok(hasher.result().to_vec())
 }
 
-fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
+async fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
     let mut stream = BufReader::new(tcp_conn);
     let mut hasher = Sha256::default();
-    let mut f = File::create(filepath)?; // TODO overwrite flags & checks & stuff
+    let mut f = File::create(filepath.as_ref()).await?; // TODO overwrite flags & checks & stuff
     let mut remaining_size = filesize as usize;
 
     while remaining_size > 0 {
         debug!("remaining size: {:?}", remaining_size);
 
-        let enc_packet = transit::receive_record(&mut stream)?;
+        let enc_packet = transit::receive_record(&mut stream).await?;
 
         // enc_packet.truncate(enc_packet_length);
         debug!("length of the ciphertext: {:?}", enc_packet.len());
@@ -175,7 +177,7 @@ fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut Tcp
         let plaintext = transit::decrypt_record(&enc_packet, &skey)?;
 
         debug!("decryption succeeded");
-        f.write_all(&plaintext)?;
+        f.write_all(&plaintext).await?;
 
         // 4. calculate a rolling sha256 sum of the decrypted output.
         hasher.input(&plaintext);
@@ -188,13 +190,13 @@ fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut Tcp
     Ok(hasher.result().to_vec())
 }
 
-fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Result<()> {
+async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Result<()> {
     // 11. send the file as encrypted records.
-    let checksum = send_records(filepath, &mut transit.socket, &transit.skey)?;
+    let checksum = send_records(filepath, &mut transit.socket, &transit.skey).await?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
     debug!("sent file. Waiting for ack");
-    let enc_transit_ack = transit::receive_record(&mut BufReader::new(&mut transit.socket))?;
+    let enc_transit_ack = transit::receive_record(&mut BufReader::new(&mut transit.socket)).await?;
     let transit_ack = transit::decrypt_record(&enc_transit_ack, &transit.rkey)?;
     let transit_ack_msg = TransitAck::deserialize(std::str::from_utf8(&transit_ack)?);
     ensure!(transit_ack_msg.sha256 == hex::encode(checksum), "receive checksum error");
@@ -203,18 +205,18 @@ fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Result<()
     Ok(())
 }
 
-fn tcp_file_receive(transit: &mut Transit, filepath: impl AsRef<Path>, filesize: u64) -> Result<()> {
+async fn tcp_file_receive(transit: &mut Transit, filepath: impl AsRef<Path>, filesize: u64) -> Result<()> {
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
-    let checksum = receive_records(filepath, filesize, &mut transit.socket, &transit.skey)?;
+    let checksum = receive_records(filepath, filesize, &mut transit.socket, &transit.skey).await?;
 
     let sha256sum = hex::encode(checksum.as_slice());
     debug!("sha256 sum: {:?}", sha256sum);
 
     // 6. verify sha256 sum by sending an ack message to peer along with checksum.
     let ack_msg = transit::make_transit_ack_msg(&sha256sum, &transit.rkey)?;
-    transit::send_record(&mut transit.socket, &ack_msg)?;
+    transit::send_record(&mut transit.socket, &ack_msg).await?;
 
     // 7. close socket.
     // well, no need, it gets dropped when it goes out of scope.
