@@ -23,13 +23,13 @@ fn main() {
     let sender_thread = std::thread::Builder::new()
         .name("sender".to_owned())
         .spawn(move || {
-            send(code_tx, sender_result_tx);
+            async_std::task::block_on(send(code_tx, sender_result_tx));
         })
         .unwrap();
     let receiver_thread = std::thread::Builder::new()
         .name("receiver".to_owned())
         .spawn(move || {
-            receive(code_rx, receiver_result_tx);
+            async_std::task::block_on(receive(code_rx, receiver_result_tx));
         })
         .unwrap();
     
@@ -48,7 +48,7 @@ fn main() {
     
 }
 
-fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Sender<String>) {
+async fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Sender<String>) {
     let mailbox_server = String::from(MAILBOX_SERVER);
 
     info!("connecting..");
@@ -58,26 +58,26 @@ fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Sender<Str
     let code = code_rx.recv().unwrap();
     w.set_code(&code[..]);
     debug!("using the code: {}", code);
-    let verifier = w.get_verifier();
+    let verifier = w.get_verifier().await;
     debug!("verifier: {}", hex::encode(verifier));
     info!("receiving..");
 
-    w.receive(APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
+    w.receive(APPID, &RELAY_SERVER.parse().unwrap()).await.unwrap();
     receiver_result_tx.send(String::from("")).unwrap();
 }
 
-fn send(code_tx: mpsc::Sender<String>, sender_result_tx: mpsc::Sender<String>) {
+async fn send(code_tx: mpsc::Sender<String>, sender_result_tx: mpsc::Sender<String>) {
     let mailbox_server = String::from(MAILBOX_SERVER);
 
     let mut w = Wormhole::new(&APPID, &mailbox_server);
     w.allocate_code(2);
-    let code = w.get_code();
+    let code = w.get_code().await;
     info!("got the code: {}", code);
     code_tx.send(code.clone()).unwrap();
 
     // send a file
     let msg = MessageType::File{ filename: "examples/example-file.bin".to_string(), filesize: 40960 };
     info!("sending..");
-    w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap()).unwrap();
+    w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap()).await.unwrap();
     sender_result_tx.send(String::from("")).unwrap();
 }

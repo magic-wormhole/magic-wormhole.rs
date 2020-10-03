@@ -15,10 +15,10 @@ fn main() {
     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
     trace!("connecting..");
     w.set_code("8-cumbersome-guidance");// Hard-code this in every time you test with a new value
-    let verifier = w.get_verifier();
+    let verifier = async_std::task::block_on(w.get_verifier());
     trace!("verifier: {}", hex::encode(verifier));
     trace!("receiving..");
-    let msg = w.get_message();
+    let msg = async_std::task::block_on(w.get_message());
     let actual_message =
         PeerMessage::deserialize(str::from_utf8(&msg).unwrap());
     match actual_message {
@@ -47,6 +47,6 @@ fn main() {
         }
     };
     trace!("closing..");
-    w.close();
+    async_std::task::block_on(w.close());
     trace!("closed");
 }

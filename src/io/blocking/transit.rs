@@ -79,7 +79,7 @@ impl Transit {
         C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
         F1: Future<Output = Result<T>>,
     {
-        let transit_key = Arc::new(w.derive_transit_key(appid));
+        let transit_key = Arc::new(w.derive_transit_key(appid).await);
         debug!("transit key {}", hex::encode(&*transit_key));
 
         // 1. start a tcp server on a random port
@@ -109,7 +109,7 @@ impl Transit {
         w.send_message(transit_msg.as_bytes());
 
         // 5. receive transit message from peer.
-        let msg = w.get_message();
+        let msg = w.get_message().await;
         let maybe_transit = PeerMessage::deserialize(str::from_utf8(&msg)?);
         debug!("received transit message: {:?}", maybe_transit);
 
@@ -231,7 +231,7 @@ impl Transit {
         F1: Future<Output = Result<T>>,
     {
         let ttype = &*Box::leak(Box::new(ttype)); // TODO remove this one day
-        let transit_key = Arc::new(w.derive_transit_key(appid));
+        let transit_key = Arc::new(w.derive_transit_key(appid).await);
         debug!("transit key {}", hex::encode(&*transit_key));
 
         // 1. start a tcp server on a random port

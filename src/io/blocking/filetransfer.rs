@@ -68,7 +68,7 @@ async fn send_file_offer(w: &mut Wormhole, filename: (impl Into<PathBuf> + AsRef
     w.send_message(offer_msg.as_bytes());
 
     // 7. wait for file_ack
-    let maybe_fileack = w.get_message();
+    let maybe_fileack = w.get_message().await;
     let fileack_msg = PeerMessage::deserialize(std::str::from_utf8(&maybe_fileack)?);
     debug!("received file ack message: {:?}", fileack_msg);
 
@@ -84,7 +84,7 @@ async fn send_file_offer(w: &mut Wormhole, filename: (impl Into<PathBuf> + AsRef
 
 async fn receive_file_offer(w: &mut Wormhole) -> Result<(PathBuf, u64)>  {
     // 3. receive file offer message from peer
-    let msg = w.get_message();
+    let msg = w.get_message().await;
     let maybe_offer = PeerMessage::deserialize(std::str::from_utf8(&msg)?);
     debug!("Received offer message '{:?}'", &maybe_offer);
 

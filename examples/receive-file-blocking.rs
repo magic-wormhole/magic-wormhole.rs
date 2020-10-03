@@ -24,9 +24,9 @@ fn main() {
     io::stdin().read_line(&mut code).unwrap();
     w.set_code(code.trim());
     debug!("using the code: {}", code);
-    let verifier = w.get_verifier();
+    let verifier = async_std::task::block_on(w.get_verifier());
     debug!("verifier: {}", hex::encode(verifier));
     info!("receiving..");
 
-    w.receive(APPID, &RELAY_SERVER.parse().unwrap()).unwrap();
+    async_std::task::block_on(w.receive(APPID, &RELAY_SERVER.parse().unwrap())).unwrap();
 }
