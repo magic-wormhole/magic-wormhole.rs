@@ -16,7 +16,7 @@ fn main() {
     trace!("connecting..");
     // w.set_code("4-purple-sausages");
     w.allocate_code(2);
-    let code = w.get_code();
+    let code = async_std::task::block_on(w.get_code());
     trace!("code is: {}", code);
     trace!("sending..");
     w.send_message(PeerMessage::new_message_ack("hello from rust!").serialize().as_bytes());
@@ -24,9 +24,9 @@ fn main() {
     // if we close right away, we won't actually send anything. Wait for at
     // least the verifier to be printed, that ought to give our outbound
     // message a chance to be delivered.
-    let verifier = w.get_verifier();
+    let verifier = async_std::task::block_on(w.get_verifier());
     trace!("verifier: {}", hex::encode(verifier));
     trace!("got verifier, closing..");
-    w.close();
+    async_std::task::block_on(w.close());
     trace!("closed");
 }

@@ -17,11 +17,11 @@ fn main() {
 
     let mut w = Wormhole::new(&APPID, &mailbox_server);
     w.allocate_code(2);
-    let code = w.get_code();
+    let code = async_std::task::block_on(w.get_code());
     info!("got the code: {}", code);
 
     // send a file
     let msg = MessageType::File{ filename: "examples/example-file.bin".to_string(), filesize: 40960 };
     info!("sending..");
-    w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap()).unwrap();
+    async_std::task::block_on(w.send(APPID, &code, msg, &RELAY_SERVER.parse().unwrap())).unwrap();
 }

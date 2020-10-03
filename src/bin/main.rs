@@ -120,12 +120,12 @@ fn main() -> Result<()> {
             }
         }
         let file = matches.value_of("file").unwrap();
-        let code = w.get_code();
+        let code = async_std::task::block_on(w.get_code());
         info!("This wormhole's code is: {}", code);
         info!("On the other computer, please run:\n");
         info!("wormhole receive {}\n", code);
 
-        send(w, APPID, relay_server, file)?;
+        send(w, relay_server, file)?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
         let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
@@ -136,7 +136,7 @@ fn main() -> Result<()> {
 
         w.set_code(code.trim());
 
-        receive(w, APPID, relay_server)?;
+        receive(w, relay_server)?;
     } else {
         let code = matches.subcommand_name();
         // TODO implement this properly once clap 3.0 is out
@@ -165,17 +165,23 @@ fn enter_code() -> Result<String> {
     Ok(code)
 }
 
-fn send(mut w: Wormhole, app_id: &str, relay_server: &str, filename: impl AsRef<Path>) -> Result<()> {
-    async_std::task::block_on(filetransfer::send_file(&mut w, filename, app_id, &relay_server.parse().unwrap()))?;
+fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -> Result<()> {
+    async_std::task::block_on(filetransfer::send_file(&mut w, filename, APPID, &relay_server.parse().unwrap()))?;
 
     w.close();
     Ok(())
 }
 
-fn receive(mut w: Wormhole, app_id: &str, relay_server: &str) -> Result<()> {
-    match PeerMessage::deserialize(str::from_utf8(&w.get_message()).unwrap()) {
+fn send_many(relay_server: &str) -> Result<()> {
+    loop {
+        
+    }
+}
+
+fn receive(mut w: Wormhole, relay_server: &str) -> Result<()> {
+    match PeerMessage::deserialize(str::from_utf8(&async_std::task::block_on(w.get_message())).unwrap()) {
         PeerMessage::Transit(transit) => {
-            async_std::task::block_on(filetransfer::receive_file(&mut w, transit, app_id, &relay_server.parse().unwrap()))?;
+            async_std::task::block_on(filetransfer::receive_file(&mut w, transit, APPID, &relay_server.parse().unwrap()))?;
         },
         PeerMessage::Error(err) => {
             bail!("Something went wrong on the other side: {}", err);

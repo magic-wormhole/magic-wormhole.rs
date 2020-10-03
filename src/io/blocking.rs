@@ -58,22 +58,22 @@ struct CoreWrapper {
     rx_by_core: Receiver<ToCore>,
 
     timers: HashSet<TimerHandle>,
-    websockets: HashMap<WSHandle, Sender<WSControl>>,
+    websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
 
-    tx_welcome_to_app: Sender<Value>,
-    tx_messages_to_app: Sender<Vec<u8>>,
-    tx_key_to_transit: Sender<Vec<u8>>,
-    tx_code_to_app: Sender<String>,
-    tx_verifier_to_app: Sender<Vec<u8>>,
-    tx_versions_to_app: Sender<Value>,
-    tx_close_to_app: Sender<Mood>,
+    tx_welcome_to_app: futures::channel::mpsc::UnboundedSender<Value>,
+    tx_messages_to_app: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
+    tx_key_to_transit: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
+    tx_code_to_app: futures::channel::mpsc::UnboundedSender<String>,
+    tx_verifier_to_app: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
+    tx_versions_to_app: futures::channel::mpsc::UnboundedSender<Value>,
+    tx_close_to_app: futures::channel::mpsc::UnboundedSender<Mood>,
 }
 
 async fn ws_connector(
     url: &str,
     handle: WSHandle,
     tx: Sender<ToCore>,
-    ws_rx: Receiver<WSControl>,
+    ws_rx: futures::channel::mpsc::UnboundedReceiver<WSControl>,
 ) {
     use async_tungstenite::async_std::*;
     use futures::stream::StreamExt;
@@ -113,15 +113,19 @@ async fn ws_connector(
     });
     /* Send events from the API to the other websocket side */
     async_std::task::spawn(async move {
-        let mut iter = ws_rx.into_iter();
-        while let Some(c) = iter.next() {
+        ws_rx
+        .map(|c| {
             match c {
                 WSControl::Data(d) => {
-                    write.send(ws2::Message::Text(d)).await.unwrap()
+                    ws2::Message::Text(d)
                 },
-                WSControl::Close => write.send(ws2::Message::Close(None)).await.unwrap(),
+                WSControl::Close => ws2::Message::Close(None),
             }
-        }
+        })
+        .map(Ok)
+        .forward(write)
+        .await
+        .unwrap();
     });
 }
 
@@ -148,33 +152,36 @@ impl CoreWrapper {
                     self.core.do_io(IOEvent::WebSocketConnectionLost(handle))
                 }
             };
-            for action in actions {
-                self.process_action(action);
-            }
+            async_std::task::block_on(async {
+                for action in actions {
+                    self.process_action(action).await;
+                }
+            });
         }
     }
 
-    fn process_action(&mut self, action: Action) {
+    async fn process_action(&mut self, action: Action) {
         match action {
-            Action::API(a) => self.process_api_action(a),
-            Action::IO(i) => self.process_io_action(i),
+            Action::API(a) => self.process_api_action(a).await,
+            Action::IO(i) => self.process_io_action(i).await,
         }
     }
 
-    fn process_api_action(&mut self, action: APIAction) {
+    async fn process_api_action(&mut self, action: APIAction) {
+        use futures::SinkExt;
         use self::APIAction::*;
         match action {
-            GotWelcome(w) => self.tx_welcome_to_app.send(w).unwrap(),
-            GotMessage(m) => self.tx_messages_to_app.send(m).unwrap(),
-            GotCode(c) => self.tx_code_to_app.send(c.to_string()).unwrap(),
-            GotUnverifiedKey(k) => self.tx_key_to_transit.send(k.to_vec()).unwrap(),
-            GotVerifier(v) => self.tx_verifier_to_app.send(v).unwrap(),
-            GotVersions(v) => self.tx_versions_to_app.send(v).unwrap(),
-            GotClosed(mood) => self.tx_close_to_app.send(mood).unwrap(),
+            GotWelcome(w) => self.tx_welcome_to_app.send(w).await.unwrap(),
+            GotMessage(m) => self.tx_messages_to_app.send(m).await.unwrap(),
+            GotCode(c) => self.tx_code_to_app.send(c.to_string()).await.unwrap(),
+            GotUnverifiedKey(k) => self.tx_key_to_transit.send(k.to_vec()).await.unwrap(),
+            GotVerifier(v) => self.tx_verifier_to_app.send(v).await.unwrap(),
+            GotVersions(v) => self.tx_versions_to_app.send(v).await.unwrap(),
+            GotClosed(mood) => self.tx_close_to_app.send(mood).await.unwrap(),
         }
     }
 
-    fn process_io_action(&mut self, action: IOAction) {
+    async fn process_io_action(&mut self, action: IOAction) {
         use self::IOAction::*;
         match action {
             StartTimer(handle, duration) => {
@@ -194,27 +201,31 @@ impl CoreWrapper {
             }
             WebSocketOpen(handle, url) => self.websocket_open(handle, url),
             WebSocketSendMessage(handle, msg) => {
-                self.websocket_send(handle, msg)
+                self.websocket_send(handle, msg).await
             }
-            WebSocketClose(handle) => self.websocket_close(handle),
+            WebSocketClose(handle) => self.websocket_close(handle).await,
         }
     }
 
     fn websocket_open(&mut self, handle: WSHandle, url: String) {
         let tx = self.tx_to_core.clone();
-        let (ws_tx, ws_rx) = channel();
+        let (ws_tx, ws_rx) = futures::channel::mpsc::unbounded();
         self.websockets.insert(handle, ws_tx);
         async_std::task::block_on(async move {
             ws_connector(&url, handle, tx, ws_rx).await;
         });
     }
 
-    fn websocket_send(&self, handle: WSHandle, msg: String) {
-        self.websockets[&handle].send(WSControl::Data(msg)).unwrap();
+    async fn websocket_send(&mut self, handle: WSHandle, msg: String) {
+        use futures::SinkExt;
+        self.websockets.get_mut(&handle).unwrap()
+            .send(WSControl::Data(msg)).await.unwrap();
     }
 
-    fn websocket_close(&mut self, handle: WSHandle) {
-        self.websockets[&handle].send(WSControl::Close).unwrap();
+    async fn websocket_close(&mut self, handle: WSHandle) {
+        use futures::SinkExt;
+        self.websockets.get_mut(&handle).unwrap()
+            .send(WSControl::Close).await.unwrap();
         self.websockets.remove(&handle);
     }
 }
@@ -223,13 +234,13 @@ impl CoreWrapper {
 pub struct Wormhole {
     tx_event_to_core: Sender<ToCore>,
 
-    rx_welcome_from_core: Receiver<Value>,
-    rx_messages_from_core: Receiver<Vec<u8>>,
-    rx_key_from_transit: Receiver<Vec<u8>>,
-    rx_code_from_core: Receiver<String>,
-    rx_verifier_from_core: Receiver<Vec<u8>>,
-    rx_versions_from_core: Receiver<Value>,
-    rx_close_from_core: Receiver<Mood>,
+    rx_welcome_from_core: futures::channel::mpsc::UnboundedReceiver<Value>,
+    rx_messages_from_core: futures::channel::mpsc::UnboundedReceiver<Vec<u8>>,
+    rx_key_from_transit: futures::channel::mpsc::UnboundedReceiver<Vec<u8>>,
+    rx_code_from_core: futures::channel::mpsc::UnboundedReceiver<String>,
+    rx_verifier_from_core: futures::channel::mpsc::UnboundedReceiver<Vec<u8>>,
+    rx_versions_from_core: futures::channel::mpsc::UnboundedReceiver<Value>,
+    rx_close_from_core: futures::channel::mpsc::UnboundedReceiver<Mood>,
 
     code: Option<String>,
     key: Option<Vec<u8>>,
@@ -245,13 +256,13 @@ impl Wormhole {
         // channel to talk to it.
         let (tx_event_to_core, rx_by_core) = channel();
         // the inbound messages get their own channel
-        let (tx_messages_to_app, rx_messages_from_core) = channel();
-        let (tx_welcome_to_app, rx_welcome_from_core) = channel();
-        let (tx_key_to_transit, rx_key_from_transit) = channel();
-        let (tx_code_to_app, rx_code_from_core) = channel();
-        let (tx_verifier_to_app, rx_verifier_from_core) = channel();
-        let (tx_versions_to_app, rx_versions_from_core) = channel();
-        let (tx_close_to_app, rx_close_from_core) = channel();
+        let (tx_messages_to_app, rx_messages_from_core) = futures::channel::mpsc::unbounded();
+        let (tx_welcome_to_app, rx_welcome_from_core) = futures::channel::mpsc::unbounded();
+        let (tx_key_to_transit, rx_key_from_transit) = futures::channel::mpsc::unbounded();
+        let (tx_code_to_app, rx_code_from_core) = futures::channel::mpsc::unbounded();
+        let (tx_verifier_to_app, rx_verifier_from_core) = futures::channel::mpsc::unbounded();
+        let (tx_versions_to_app, rx_versions_from_core) = futures::channel::mpsc::unbounded();
+        let (tx_close_to_app, rx_close_from_core) = futures::channel::mpsc::unbounded();
 
         let mut cw = CoreWrapper {
             core: WormholeCore::new(appid, relay_url),
@@ -308,45 +319,49 @@ impl Wormhole {
             .unwrap();
     }
 
-    pub fn get_message(&mut self) -> Vec<u8> {
+    pub async fn get_message(&mut self) -> Vec<u8> {
+        use futures::StreamExt;
         //b"fake".to_vec()
         // TODO: close, by first sending the mood on a separate channel, then
         // dropping the receiver. We should react to getting a RecvError from
         // .recv() by returning self.mood
-        self.rx_messages_from_core.recv().unwrap()
+        self.rx_messages_from_core.next().await.unwrap()
     }
 
-    pub fn close(&mut self) -> Mood {
+    pub async fn close(&mut self) -> Mood {
+        use futures::StreamExt;
         self.tx_event_to_core
             .send(ToCore::API(APIEvent::Close))
             .unwrap();
-        self.rx_close_from_core.recv().unwrap()
+        self.rx_close_from_core.next().await.unwrap()
     }
 
-    pub fn get_code(&mut self) -> String {
+    pub async fn get_code(&mut self) -> String {
         match self.code {
             Some(ref code) => code.clone(),
             None => {
-                let code = self.rx_code_from_core.recv().unwrap();
+                use futures::StreamExt;
+                let code = self.rx_code_from_core.next().await.unwrap();
                 self.code = Some(code.clone());
                 code
             }
         }
     }
 
-    pub fn get_key(&mut self) -> Vec<u8> {
+    pub async fn get_key(&mut self) -> Vec<u8> {
         match self.key {
             Some(ref key) => key.clone(),
             None => {
-                let key = self.rx_key_from_transit.recv().unwrap();
+                use futures::StreamExt;
+                let key = self.rx_key_from_transit.next().await.unwrap();
                 self.key = Some(key.clone());
                 key
             }
         }
     }
 
-    pub fn derive_transit_key(&mut self, appid: &str) -> Vec<u8> {
-        let key = self.get_key();
+    pub async fn derive_transit_key(&mut self, appid: &str) -> Vec<u8> {
+        let key = self.get_key().await;
         let mut transit_purpose = appid.to_owned();
         let const_transit_key_str = "/transit-key";
         transit_purpose.push_str(const_transit_key_str);
@@ -357,33 +372,36 @@ impl Wormhole {
         derived_key
     }
 
-    pub fn get_verifier(&mut self) -> Vec<u8> {
+    pub async fn get_verifier(&mut self) -> Vec<u8> {
         match self.verifier {
             Some(ref verifier) => verifier.clone(),
             None => {
-                let verifier = self.rx_verifier_from_core.recv().unwrap();
+                use futures::StreamExt;
+                let verifier = self.rx_verifier_from_core.next().await.unwrap();
                 self.verifier = Some(verifier.clone());
                 verifier
             }
         }
     }
 
-    pub fn get_versions(&mut self) -> Value {
+    pub async fn get_versions(&mut self) -> Value {
         match self.versions {
             Some(ref versions) => versions.clone(),
             None => {
-                let versions = self.rx_versions_from_core.recv().unwrap();
+                use futures::StreamExt;
+                let versions = self.rx_versions_from_core.next().await.unwrap();
                 self.versions = Some(versions.clone());
                 versions
             }
         }
     }
 
-    pub fn get_welcome(&mut self) -> Value {
+    pub async fn get_welcome(&mut self) -> Value {
         match self.welcome {
             Some(ref welcome) => welcome.clone(),
             None => {
-                let welcome = self.rx_welcome_from_core.recv().unwrap();
+                use futures::StreamExt;
+                let welcome = self.rx_welcome_from_core.next().await.unwrap();
                 self.welcome = Some(welcome.clone());
                 welcome
             }
@@ -391,7 +409,7 @@ impl Wormhole {
     }
     
     #[deprecated(note = "This is application-specific code which doesn't belong into the API")]
-    pub fn send(&mut self, app_id: &str, _code: &str, msg: MessageType, relay_url: &transit::RelayUrl) -> Result<()> {
+    pub async fn send(&mut self, app_id: &str, _code: &str, msg: MessageType, relay_url: &transit::RelayUrl) -> Result<()> {
         match msg {
             MessageType::Message(text) => {
                 self.send_message(PeerMessage::new_offer_message(&text).serialize().as_bytes());
@@ -401,7 +419,7 @@ impl Wormhole {
                 // message a chance to be delivered.
                 // TODO this should not be required. If send_message ought to be blocking, the message should be sent
                 // once it returns.
-                let verifier = self.get_verifier();
+                let verifier = self.get_verifier().await;
                 trace!("verifier: {}", hex::encode(verifier));
                 trace!("got verifier, closing..");
                 self.close();
@@ -416,8 +434,8 @@ impl Wormhole {
     }
 
     #[deprecated(note = "This is application-specific code which doesn't belong into the API")]
-    pub fn receive(&mut self, app_id: &str, relay_url: &transit::RelayUrl) -> Result<String> {
-        let msg = self.get_message();
+    pub async fn receive(&mut self, app_id: &str, relay_url: &transit::RelayUrl) -> Result<String> {
+        let msg = self.get_message().await;
         let actual_message =
             PeerMessage::deserialize(str::from_utf8(&msg)?);
         let remote_msg = match actual_message {
