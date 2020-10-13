@@ -20,6 +20,7 @@ use anyhow::{Result, Error, ensure, bail, format_err, Context};
 pub mod transit;
 pub mod filetransfer;
 
+#[deprecated]
 #[derive(Debug, PartialEq)]
 pub enum MessageType {
     Message(String),
@@ -68,81 +69,60 @@ struct CoreWrapper {
     tx_close_to_app: Sender<Mood>,
 }
 
-struct WSConnection {
-    handle: WSHandle,
-    tx: Sender<ToCore>,
-}
-
-impl ws::Handler for WSConnection {
-    fn on_open(&mut self, _: ws::Handshake) -> Result<(), ws::Error> {
-        // now that the outbound side is prepared to send messages, notify
-        // the Core
-        self.tx
-            .send(ToCore::WebSocketConnectionMade(self.handle))
-            .unwrap();
-        Ok(())
-    }
-
-    fn on_message(&mut self, msg: ws::Message) -> Result<(), ws::Error> {
-        let s = msg.into_text().unwrap();
-        self.tx
-            .send(ToCore::WebSocketMessageReceived(self.handle, s))
-            .unwrap();
-        Ok(())
-    }
-
-    fn on_close(&mut self, _code: ws::CloseCode, _reason: &str) {
-        self.tx
-            .send(ToCore::WebSocketConnectionLost(self.handle))
-            .unwrap();
-    }
-}
-
-fn ws_outbound(ws_rx: &Receiver<WSControl>, out: &ws::Sender) {
-    while let Ok(c) = ws_rx.recv() {
-        match c {
-            WSControl::Data(d) => out.send(ws::Message::Text(d)).unwrap(),
-            WSControl::Close => out.close(ws::CloseCode::Normal).unwrap(),
-        }
-    }
-}
-
-struct WSFactory {
-    handle: WSHandle,
-    tx: Option<Sender<ToCore>>,
-    ws_rx: Option<Receiver<WSControl>>,
-}
-
-impl ws::Factory for WSFactory {
-    type Handler = WSConnection;
-    fn connection_made(&mut self, out: ws::Sender) -> WSConnection {
-        use std::mem;
-        let ws_rx = mem::replace(&mut self.ws_rx, None).unwrap();
-        let tx = mem::replace(&mut self.tx, None).unwrap();
-        thread::spawn(move || ws_outbound(&ws_rx, &out));
-        WSConnection {
-            handle: self.handle,
-            tx,
-        }
-    }
-}
-
-fn ws_connector(
+async fn ws_connector(
     url: &str,
     handle: WSHandle,
     tx: Sender<ToCore>,
     ws_rx: Receiver<WSControl>,
 ) {
-    // we're called in a new thread created just for this connection
-    let f = WSFactory {
-        handle,
-        tx: Some(tx),
-        ws_rx: Some(ws_rx),
-    };
-    let b = ws::Builder::new();
-    let mut w1 = b.build(f).unwrap();
-    w1.connect(Url::parse(url).unwrap()).unwrap();
-    w1.run().unwrap(); // blocks forever
+    use async_tungstenite::async_std::*;
+    use futures::stream::StreamExt;
+    use futures::sink::SinkExt;
+    use async_tungstenite::tungstenite as ws2;
+
+    let (ws_stream, _) = connect_async(url).await.unwrap();
+    tx.send(ToCore::WebSocketConnectionMade(handle)).unwrap();
+    let (mut write, mut read) = ws_stream.split();
+
+    /* Receive websockets event and forward them to the API */
+    async_std::task::spawn(async move {
+        while let Some(message) = read.next().await {
+            match message.unwrap() {
+                ws2::Message::Text(text) => {
+                    tx.send(ToCore::WebSocketMessageReceived(handle, text)).unwrap();
+                },
+                ws2::Message::Close(_) => {
+                    tx.send(ToCore::WebSocketConnectionLost(handle)).unwrap();
+                },
+                _ => panic!()
+            }
+        }
+        // read.for_each(|message| async {
+        //     match message.unwrap() {
+        //         ws2::Message::Text(text) => {
+        //             println!("B");
+        //             tx.send(ToCore::WebSocketMessageReceived(handle, text)).unwrap();
+        //         },
+        //         ws2::Message::Close(_) => {
+        //             println!("C");
+        //             tx.send(ToCore::WebSocketConnectionLost(handle)).unwrap();
+        //         },
+        //         _ => panic!()
+        //     }
+        // }).await;
+    });
+    /* Send events from the API to the other websocket side */
+    async_std::task::spawn(async move {
+        let mut iter = ws_rx.into_iter();
+        while let Some(c) = iter.next() {
+            match c {
+                WSControl::Data(d) => {
+                    write.send(ws2::Message::Text(d)).await.unwrap()
+                },
+                WSControl::Close => write.send(ws2::Message::Close(None)).await.unwrap(),
+            }
+        }
+    });
 }
 
 impl CoreWrapper {
@@ -224,7 +204,9 @@ impl CoreWrapper {
         let tx = self.tx_to_core.clone();
         let (ws_tx, ws_rx) = channel();
         self.websockets.insert(handle, ws_tx);
-        thread::spawn(move || ws_connector(&url, handle, tx, ws_rx));
+        async_std::task::block_on(async move {
+            ws_connector(&url, handle, tx, ws_rx).await;
+        });
     }
 
     fn websocket_send(&self, handle: WSHandle, msg: String) {
