@@ -36,23 +36,22 @@ pnet = "0.26.0"
 byteorder = "1.2.1"
 anyhow = "1.0.32"
 crossbeam-utils = "0.7.2"
-async-std = "1.6.5"
+async-std = { version = "1.6.5" }
+async-tungstenite = { version = "0.9.1", features = ["async-std-runtime"] }
 
 # for "io_blocking" feature
-ws = { version = "0.9", optional = true }
 url = { version = "2.1", optional = true }
 
 # for "io_tokio" feature
-websocket = { version = "0.24", optional = true }
 futures = { version = "0.3.5", optional = true }
 tokio-core = { version = "0.1", optional = true }
+ws = { version = "0.9" }
 
 # for "bin" feature
 clap = { version = "2.32", optional = true }
 env_logger = { version = "0.7", optional = true }
 
 [dev-dependencies]
-ws = "0.9"
 url = "2.1"
 rustyline = "6.0"
 rustyline-derive = "0.3"
@@ -61,8 +60,8 @@ env_logger = "0.7"
 
 [features]
 default = ["io-blocking", "io-tokio", "bin"]
-io-blocking = ["ws", "url"]
-io-tokio = ["websocket", "futures", "tokio-core"]
+io-blocking = ["url"]
+io-tokio = ["futures"]
 bin = ["clap", "env_logger"]
 
 [[bin]]
