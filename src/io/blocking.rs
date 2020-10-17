@@ -51,24 +51,6 @@ enum WSControl {
     Close,
 }
 
-struct CoreWrapper {
-    core: WormholeCore,
-
-    tx_to_core: Sender<ToCore>, // give clones to websocket/timer threads
-    rx_by_core: Receiver<ToCore>,
-
-    timers: HashSet<TimerHandle>,
-    websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
-
-    tx_welcome_to_app: futures::channel::mpsc::UnboundedSender<Value>,
-    tx_messages_to_app: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
-    tx_key_to_transit: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
-    tx_code_to_app: futures::channel::mpsc::UnboundedSender<String>,
-    tx_verifier_to_app: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
-    tx_versions_to_app: futures::channel::mpsc::UnboundedSender<Value>,
-    tx_close_to_app: futures::channel::mpsc::UnboundedSender<Mood>,
-}
-
 async fn ws_connector(
     url: &str,
     handle: WSHandle,
@@ -94,7 +76,7 @@ async fn ws_connector(
                 ws2::Message::Close(_) => {
                     tx.send(ToCore::WebSocketConnectionLost(handle)).unwrap();
                 },
-                _ => panic!()
+                other => panic!(format!("Got an unexpected websocket message: {}", other))
             }
         }
         // read.for_each(|message| async {
@@ -129,6 +111,24 @@ async fn ws_connector(
     });
 }
 
+struct CoreWrapper {
+    core: WormholeCore,
+
+    tx_to_core: Sender<ToCore>, // give clones to websocket/timer threads
+    rx_by_core: Receiver<ToCore>,
+
+    timers: HashSet<TimerHandle>,
+    websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
+
+    tx_welcome_to_app: futures::channel::mpsc::UnboundedSender<Value>,
+    tx_messages_to_app: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
+    tx_key_to_transit: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
+    tx_code_to_app: futures::channel::mpsc::UnboundedSender<String>,
+    tx_verifier_to_app: futures::channel::mpsc::UnboundedSender<Vec<u8>>,
+    tx_versions_to_app: futures::channel::mpsc::UnboundedSender<Value>,
+    tx_close_to_app: futures::channel::mpsc::UnboundedSender<Mood>,
+}
+
 impl CoreWrapper {
     fn run(&mut self) {
         loop {
@@ -154,79 +154,53 @@ impl CoreWrapper {
             };
             async_std::task::block_on(async {
                 for action in actions {
-                    self.process_action(action).await;
+                    use futures::SinkExt;
+                    use self::APIAction::*;
+                    use self::IOAction::*;
+                    match action {
+                        Action::API(GotWelcome(w)) => self.tx_welcome_to_app.send(w).await.unwrap(),
+                        Action::API(GotMessage(m)) => self.tx_messages_to_app.send(m).await.unwrap(),
+                        Action::API(GotCode(c)) => self.tx_code_to_app.send(c.to_string()).await.unwrap(),
+                        Action::API(GotUnverifiedKey(k)) => self.tx_key_to_transit.send(k.to_vec()).await.unwrap(),
+                        Action::API(GotVerifier(v)) => self.tx_verifier_to_app.send(v).await.unwrap(),
+                        Action::API(GotVersions(v)) => self.tx_versions_to_app.send(v).await.unwrap(),
+                        Action::API(GotClosed(mood)) => self.tx_close_to_app.send(mood).await.unwrap(),
+                        Action::IO(StartTimer(handle, duration)) => {
+                            let tx = self.tx_to_core.clone();
+                            self.timers.insert(handle);
+                            thread::spawn(move || {
+                                // ugh, why can't this just take a float? ok ok,
+                                // Nan, negatives, fine fine
+                                let dur_ms = (duration * 1000.0) as u64;
+                                let dur = time::Duration::from_millis(dur_ms);
+                                thread::sleep(dur);
+                                tx.send(ToCore::TimerExpired(handle)).unwrap();
+                            });
+                        }
+                        Action::IO(CancelTimer(handle)) => {
+                            self.timers.remove(&handle);
+                        },
+                        Action::IO(WebSocketOpen(handle, url)) => {
+                            let tx = self.tx_to_core.clone();
+                            let (ws_tx, ws_rx) = futures::channel::mpsc::unbounded();
+                            self.websockets.insert(handle, ws_tx);
+                            async_std::task::block_on(async move {
+                                ws_connector(&url, handle, tx, ws_rx).await;
+                            });
+                        },
+                        Action::IO(WebSocketSendMessage(handle, msg)) => {
+                            self.websockets.get_mut(&handle).unwrap()
+                                .send(WSControl::Data(msg)).await.unwrap();
+                        },
+                        Action::IO(WebSocketClose(handle)) => {
+                            self.websockets.get_mut(&handle).unwrap()
+                                .send(WSControl::Close).await.unwrap();
+                            self.websockets.remove(&handle);
+                        },
+                    }
                 }
             });
         }
-    }
-
-    async fn process_action(&mut self, action: Action) {
-        match action {
-            Action::API(a) => self.process_api_action(a).await,
-            Action::IO(i) => self.process_io_action(i).await,
-        }
-    }
-
-    async fn process_api_action(&mut self, action: APIAction) {
-        use futures::SinkExt;
-        use self::APIAction::*;
-        match action {
-            GotWelcome(w) => self.tx_welcome_to_app.send(w).await.unwrap(),
-            GotMessage(m) => self.tx_messages_to_app.send(m).await.unwrap(),
-            GotCode(c) => self.tx_code_to_app.send(c.to_string()).await.unwrap(),
-            GotUnverifiedKey(k) => self.tx_key_to_transit.send(k.to_vec()).await.unwrap(),
-            GotVerifier(v) => self.tx_verifier_to_app.send(v).await.unwrap(),
-            GotVersions(v) => self.tx_versions_to_app.send(v).await.unwrap(),
-            GotClosed(mood) => self.tx_close_to_app.send(mood).await.unwrap(),
-        }
-    }
-
-    async fn process_io_action(&mut self, action: IOAction) {
-        use self::IOAction::*;
-        match action {
-            StartTimer(handle, duration) => {
-                let tx = self.tx_to_core.clone();
-                self.timers.insert(handle);
-                thread::spawn(move || {
-                    // ugh, why can't this just take a float? ok ok,
-                    // Nan, negatives, fine fine
-                    let dur_ms = (duration * 1000.0) as u64;
-                    let dur = time::Duration::from_millis(dur_ms);
-                    thread::sleep(dur);
-                    tx.send(ToCore::TimerExpired(handle)).unwrap();
-                });
-            }
-            CancelTimer(handle) => {
-                self.timers.remove(&handle);
-            }
-            WebSocketOpen(handle, url) => self.websocket_open(handle, url),
-            WebSocketSendMessage(handle, msg) => {
-                self.websocket_send(handle, msg).await
-            }
-            WebSocketClose(handle) => self.websocket_close(handle).await,
-        }
-    }
-
-    fn websocket_open(&mut self, handle: WSHandle, url: String) {
-        let tx = self.tx_to_core.clone();
-        let (ws_tx, ws_rx) = futures::channel::mpsc::unbounded();
-        self.websockets.insert(handle, ws_tx);
-        async_std::task::block_on(async move {
-            ws_connector(&url, handle, tx, ws_rx).await;
-        });
-    }
-
-    async fn websocket_send(&mut self, handle: WSHandle, msg: String) {
-        use futures::SinkExt;
-        self.websockets.get_mut(&handle).unwrap()
-            .send(WSControl::Data(msg)).await.unwrap();
-    }
-
-    async fn websocket_close(&mut self, handle: WSHandle) {
-        use futures::SinkExt;
-        self.websockets.get_mut(&handle).unwrap()
-            .send(WSControl::Close).await.unwrap();
-        self.websockets.remove(&handle);
     }
 }
 
