@@ -173,21 +173,6 @@ pub enum IOAction {
     WebSocketClose(WSHandle),
 }
 
-// disabled: for now, the glue should call separate do_api/do_io methods
-// with an APIEvent or IOEvent respectively
-//pub enum InboundEvent { // from IO glue layer
-//    IO(IOEvent),
-//    API(APIEvent),
-//}
-
-#[derive(Debug, PartialEq)]
-pub enum Action {
-    // to IO glue layer
-    // outbound
-    IO(IOAction),
-    API(APIAction),
-}
-
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
