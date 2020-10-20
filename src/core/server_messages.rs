@@ -15,8 +15,8 @@ pub struct Nameplate {
 #[serde(tag = "type")]
 pub enum OutboundMessage {
     Bind { appid: AppID, side: MySide },
-    List {},
-    Allocate {},
+    List,
+    Allocate,
     Claim { nameplate: String },
     Release { nameplate: String }, // TODO: nominally optional
     Open { mailbox: Mailbox },
@@ -25,42 +25,40 @@ pub enum OutboundMessage {
     Ping { ping: u64 },
 }
 
-pub fn bind(appid: AppID, side: MySide) -> OutboundMessage {
-    OutboundMessage::Bind { appid, side }
-}
-pub fn list() -> OutboundMessage {
-    OutboundMessage::List {}
-}
-pub fn allocate() -> OutboundMessage {
-    OutboundMessage::Allocate {}
-}
-pub fn claim(nameplate: &str) -> OutboundMessage {
-    OutboundMessage::Claim {
-        nameplate: nameplate.to_string(),
+impl OutboundMessage {
+    pub fn bind(appid: AppID, side: MySide) -> Self {
+        OutboundMessage::Bind { appid, side }
     }
-}
 
-pub fn release(nameplate: &str) -> OutboundMessage {
-    OutboundMessage::Release {
-        nameplate: nameplate.to_string(),
+    pub fn claim(nameplate: impl Into<String>) -> Self {
+        OutboundMessage::Claim {
+            nameplate: nameplate.into(),
+        }
     }
-}
-pub fn open(mailbox: Mailbox) -> OutboundMessage {
-    OutboundMessage::Open { mailbox }
-}
 
-pub fn add(phase: Phase, body: &[u8]) -> OutboundMessage {
-    // TODO: make this take Vec<u8>, do the hex-encoding internally
-    let hexstr = util::bytes_to_hexstr(body);
-
-    OutboundMessage::Add {
-        body: hexstr,
-        phase,
+    pub fn release(nameplate: impl Into<String>) -> Self {
+        OutboundMessage::Release {
+            nameplate: nameplate.into(),
+        }
     }
-}
 
-pub fn close(mailbox: Mailbox, mood: Mood) -> OutboundMessage {
-    OutboundMessage::Close { mailbox, mood }
+    pub fn open(mailbox: Mailbox) -> Self {
+        OutboundMessage::Open { mailbox }
+    }
+
+    pub fn add(phase: Phase, body: &[u8]) -> Self {
+        // TODO: make this take Vec<u8>, do the hex-encoding internally
+        let hexstr = util::bytes_to_hexstr(body);
+    
+        OutboundMessage::Add {
+            body: hexstr,
+            phase,
+        }
+    }
+
+    pub fn close(mailbox: Mailbox, mood: Mood) -> Self {
+        OutboundMessage::Close { mailbox, mood }
+    }
 }
 
 // we only parse our own outbound messages in unit tests
@@ -91,15 +89,15 @@ pub enum InboundMessage {
     Claimed {
         mailbox: Mailbox,
     },
-    Released {},
+    Released,
     Message {
         side: TheirSide,
         phase: String,
         body: String,
         //id: String,
     },
-    Closed {},
-    Ack {},
+    Closed,
+    Ack,
     Pong {
         pong: u64,
     },
@@ -120,7 +118,7 @@ mod test {
 
     #[test]
     fn test_bind() {
-        let m1 = bind(
+        let m1 = OutboundMessage::bind(
             AppID(String::from("appid")),
             MySide::unchecked_from_string(String::from("side1")),
         );
@@ -135,7 +133,7 @@ mod test {
 
     #[test]
     fn test_list() {
-        let m1 = list();
+        let m1 = OutboundMessage::List;
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(m2, json!({"type": "list"}));
@@ -143,7 +141,7 @@ mod test {
 
     #[test]
     fn test_allocate() {
-        let m1 = allocate();
+        let m1 = OutboundMessage::Allocate;
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(m2, json!({"type": "allocate"}));
@@ -151,7 +149,7 @@ mod test {
 
     #[test]
     fn test_claim() {
-        let m1 = claim("nameplate1");
+        let m1 = OutboundMessage::claim("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(m2, json!({"type": "claim", "nameplate": "nameplate1"}));
@@ -159,7 +157,7 @@ mod test {
 
     #[test]
     fn test_release() {
-        let m1 = release("nameplate1");
+        let m1 = OutboundMessage::release("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(m2, json!({"type": "release", "nameplate": "nameplate1"}));
@@ -167,7 +165,7 @@ mod test {
 
     #[test]
     fn test_open() {
-        let m1 = open(Mailbox(String::from("mailbox1")));
+        let m1 = OutboundMessage::open(Mailbox(String::from("mailbox1")));
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(m2, json!({"type": "open", "mailbox": "mailbox1"}));
@@ -175,7 +173,7 @@ mod test {
 
     #[test]
     fn test_add() {
-        let m1 = add(Phase(String::from("phase1")), b"body");
+        let m1 = OutboundMessage::add(Phase(String::from("phase1")), b"body");
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -187,7 +185,7 @@ mod test {
 
     #[test]
     fn test_close() {
-        let m1 = close(Mailbox(String::from("mailbox1")), Mood::Happy);
+        let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -199,7 +197,7 @@ mod test {
 
     #[test]
     fn test_close_errory() {
-        let m1 = close(Mailbox(String::from("mailbox1")), Mood::Errory);
+        let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Errory);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -211,7 +209,7 @@ mod test {
 
     #[test]
     fn test_close_scared() {
-        let m1 = close(Mailbox(String::from("mailbox1")), Mood::Scared);
+        let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Scared);
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(

@@ -284,18 +284,16 @@ impl RendezvousMachine {
 
     fn send(&mut self, e: RendezvousEvent, wsh: WSHandle) -> Events {
         use super::events::RendezvousEvent::*;
-        use super::server_messages::{
-            add, allocate, bind, claim, close, list, open, release,
-        };
+        use super::server_messages::OutboundMessage;
         let m = match e {
-            TxBind(appid, side) => bind(appid, side),
-            TxOpen(mailbox) => open(mailbox),
-            TxAdd(phase, body) => add(phase, &body),
-            TxClose(mailbox, mood) => close(mailbox, mood),
-            TxClaim(nameplate) => claim(&nameplate),
-            TxRelease(nameplate) => release(&nameplate),
-            TxAllocate => allocate(),
-            TxList => list(),
+            TxBind(appid, side) => OutboundMessage::bind(appid, side),
+            TxOpen(mailbox) => OutboundMessage::open(mailbox),
+            TxAdd(phase, body) => OutboundMessage::add(phase, &body),
+            TxClose(mailbox, mood) => OutboundMessage::close(mailbox, mood),
+            TxClaim(nameplate) => OutboundMessage::claim(nameplate.0),
+            TxRelease(nameplate) => OutboundMessage::release(nameplate.0),
+            TxAllocate => OutboundMessage::Allocate,
+            TxList => OutboundMessage::List,
             Start | Stop => panic!(),
         };
         // TODO: add 'id' (a random string, used to correlate 'ack' responses
