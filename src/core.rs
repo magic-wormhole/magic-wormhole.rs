@@ -25,11 +25,12 @@ mod util;
 mod wordlist;
 
 pub use self::events::{AppID, Code};
+pub use super::io::WormholeIO;
 use self::events::{Event, Events, MySide, Nameplate};
 use log::trace;
 
 pub use self::api::{
-    APIAction, APIEvent, Action, IOAction, IOEvent, InputHelperError, Mood,
+    APIAction, APIEvent, IOAction, IOEvent, InputHelperError, Mood,
     TimerHandle, WSHandle,
 };
 pub use self::transfer::{
@@ -38,7 +39,7 @@ pub use self::transfer::{
     TransitAck,
 };
 
-pub struct WormholeCore {
+pub struct WormholeCore<IO: WormholeIO> {
     allocator: allocator::AllocatorMachine,
     boss: boss::BossMachine,
     code: code::CodeMachine,
@@ -53,6 +54,7 @@ pub struct WormholeCore {
     send: send::SendMachine,
     terminator: terminator::TerminatorMachine,
     timing: timing::Timing,
+    io: IO,
 }
 
 // I don't know how to write this
@@ -60,8 +62,8 @@ pub struct WormholeCore {
     from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
 }*/
 
-impl WormholeCore {
-    pub fn new<T>(appid: T, relay_url: &str) -> WormholeCore
+impl <IO: WormholeIO> WormholeCore<IO> {
+    pub fn new<T>(appid: T, relay_url: &str, io: IO) -> Self
     where
         T: Into<AppID>,
     {
@@ -84,24 +86,28 @@ impl WormholeCore {
             send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
             timing: timing::Timing::new(),
+            io,
         }
     }
 
     // the IO layer must either call start() or do_api(APIEvent::Start), and
     // must act upon all the Actions it gets back
-    pub fn start(&mut self) -> Vec<Action> {
+    #[must_use = "You must execute these actions to make things work"]
+    pub fn start(&mut self) -> Vec<APIAction> {
         self.do_api(APIEvent::Start)
     }
 
-    pub fn do_api(&mut self, event: APIEvent) -> Vec<Action> {
+    #[must_use = "You must execute these actions to make things work"]
+    pub fn do_api(&mut self, event: APIEvent) -> Vec<APIAction> {
         // run with RUST_LOG=magic_wormhole=trace to see these
-        trace!("api: {:?}", event);
+        trace!("  api: {:?}", event);
         let events = self.boss.process_api(event);
         self._execute(events)
     }
 
-    pub fn do_io(&mut self, event: IOEvent) -> Vec<Action> {
-        trace!("io: {:?}", event);
+    #[must_use = "You must execute these actions to make things work"]
+    pub fn do_io(&mut self, event: IOEvent) -> Vec<APIAction> {
+        trace!("   io: {:?}", event);
         let events = self.rendezvous.process_io(event);
         self._execute(events)
     }
@@ -134,8 +140,8 @@ impl WormholeCore {
         self.input.committed_nameplate()
     }
 
-    fn _execute(&mut self, events: Events) -> Vec<Action> {
-        let mut action_queue: Vec<Action> = Vec::new(); // returned
+    fn _execute(&mut self, events: Events) -> Vec<APIAction> {
+        let mut action_queue: Vec<APIAction> = Vec::new(); // returned
         let mut event_queue: VecDeque<Event> = VecDeque::new();
 
         event_queue.append(&mut VecDeque::from(events.events));
@@ -145,13 +151,10 @@ impl WormholeCore {
             use self::events::Event::*; // machine names
             let actions: Events = match e {
                 API(a) => {
-                    action_queue.push(Action::API(a));
+                    action_queue.push(a);
                     events![]
-                }
-                IO(a) => {
-                    action_queue.push(Action::IO(a));
-                    events![]
-                }
+                },
+                IO(a) => {self.io.process(a); events![]},
                 Allocator(e) => self.allocator.process(e),
                 Boss(e) => self.boss.process(e),
                 Code(e) => self.code.process(e),

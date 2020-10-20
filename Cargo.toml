@@ -45,6 +45,7 @@ url = { version = "2.1", optional = true }
 # for "io_tokio" feature
 futures = { version = "0.3.5", optional = true }
 tokio-core = { version = "0.1", optional = true }
+async-trait = "0.1.41"
 ws = { version = "0.9" }
 
 # for "bin" feature
