@@ -67,6 +67,7 @@ impl <IO: WormholeIO> WormholeCore<IO> {
     where
         T: Into<AppID>,
     {
+        // TODO wrap AppID in Arc
         let appid: AppID = appid.into();
         let side = MySide::generate();
         WormholeCore {

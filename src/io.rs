@@ -24,6 +24,7 @@ pub trait WormholeIO {
 }
 
 #[cfg(feature = "io-blocking")]
+#[derive(Debug, Clone)]
 enum WSControl {
     Data(String),
     Close,
@@ -33,59 +34,56 @@ enum WSControl {
 async fn ws_connector(
     url: &str,
     handle: WSHandle,
-    tx: Sender<IOEvent>,
+    mut tx: futures::channel::mpsc::UnboundedSender<IOEvent>,
     ws_rx: futures::channel::mpsc::UnboundedReceiver<WSControl>,
 ) {
     use async_tungstenite::async_std::*;
     use futures::stream::StreamExt;
-    // use futures::sink::SinkExt;
+    use futures::stream::TryStreamExt;
+    use futures::sink::SinkExt;
     use async_tungstenite::tungstenite as ws2;
 
     let (ws_stream, _) = connect_async(url).await.unwrap();
-    tx.send(IOEvent::WebSocketConnectionMade(handle)).unwrap();
-    let (mut write, mut read) = ws_stream.split();
+    tx.send(IOEvent::WebSocketConnectionMade(handle)).await.unwrap();
+    let (write, read) = ws_stream.split();
 
     /* Receive websockets event and forward them to the API */
     async_std::task::spawn(async move {
-        while let Some(message) = read.next().await {
-            match message.unwrap() {
+        read.try_filter_map(|message| async move {
+            debug!("Incoming websockets message '{:?}'", message);
+            Ok(match message {
                 ws2::Message::Text(text) => {
-                    tx.send(IOEvent::WebSocketMessageReceived(handle, text)).unwrap();
+                    Some(IOEvent::WebSocketMessageReceived(handle, text))
                 },
                 ws2::Message::Close(_) => {
-                    tx.send(IOEvent::WebSocketConnectionLost(handle)).unwrap();
+                    Some(IOEvent::WebSocketConnectionLost(handle))
                 },
                 ws2::Message::Ping(_) => {
                     warn!("Not responding to pings for now");
                     // TODO
+                    None
                 },
                 ws2::Message::Pong(_) => {
                     warn!("Got a pong without ping?!");
                     // TODO maybe send pings too?
+                    None
                 },
                 ws2::Message::Binary(_) => {
                     error!("Someone is sending binary data, this is not part of the protocol!");
+                    None
                 },
-            }
-        }
-        // read.for_each(|message| async {
-        //     match message.unwrap() {
-        //         ws2::Message::Text(text) => {
-        //             println!("B");
-        //             tx.send(ToCore::WebSocketMessageReceived(handle, text)).unwrap();
-        //         },
-        //         ws2::Message::Close(_) => {
-        //             println!("C");
-        //             tx.send(ToCore::WebSocketConnectionLost(handle)).unwrap();
-        //         },
-        //         _ => panic!()
-        //     }
-        // }).await;
+            })
+        })
+        .map_err(anyhow::Error::from)
+        .forward(tx.sink_map_err(anyhow::Error::from))
+        .await
+        .unwrap()
     });
     /* Send events from the API to the other websocket side */
     async_std::task::spawn(async move {
         ws_rx
         .map(|c| {
+            debug!("Outgoing websockets message '{:?}'", c);
             match c {
                 WSControl::Data(d) => {
                     ws2::Message::Text(d)
@@ -102,13 +100,13 @@ async fn ws_connector(
 
 #[cfg(feature = "io-blocking")]
 pub struct AsyncStdIO {
-    tx_to_core: Sender<IOEvent>,
+    tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
     timers: HashSet<TimerHandle>,
     websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
 }
 
 impl AsyncStdIO {
-    pub fn new(tx_to_core: Sender<IOEvent>) -> Self {
+    pub fn new(tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
         AsyncStdIO {
             tx_to_core,
             timers: HashSet::new(),
@@ -125,15 +123,15 @@ impl WormholeIO for AsyncStdIO {
         use self::IOAction::*;
         match action {
             StartTimer(handle, duration) => {
-                let tx = self.tx_to_core.clone();
+                let mut tx = self.tx_to_core.clone();
                 self.timers.insert(handle);
-                std::thread::spawn(move || {
+                async_std::task::spawn(async move {
                     // ugh, why can't this just take a float? ok ok,
                     // Nan, negatives, fine fine
                     let dur_ms = (duration * 1000.0) as u64;
                     let dur = time::Duration::from_millis(dur_ms);
-                    std::thread::sleep(dur);
-                    tx.send(IOEvent::TimerExpired(handle)).unwrap();
+                    async_std::task::sleep(dur).await;
+                    tx.send(IOEvent::TimerExpired(handle)).await.unwrap();
                 });
             },
             CancelTimer(handle) => {
