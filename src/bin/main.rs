@@ -206,6 +206,10 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn _might_be_code(_code: Option<&str>) -> bool {
+    // let re = Regex::new(r"\d+-\w+-\w+").unwrap();
+    // if !re.is_match(&line) {
+    //     panic!("Not a valid code format");
+    // }
     unimplemented!()
 }
 

@@ -1,5 +1,5 @@
 use magic_wormhole::core::PeerMessage;
-use magic_wormhole::io::blocking::MessageType;
+use magic_wormhole::MessageType;
 use log::*;
 use std::fs;
 use std::sync::mpsc;
@@ -49,7 +49,7 @@ fn main() {
 }
 
 async fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Sender<String>) {
-    use magic_wormhole::io::blocking::{CodeProvider, filetransfer};
+    use magic_wormhole::{CodeProvider, filetransfer};
     use futures::{Stream, StreamExt, Sink, SinkExt};
 
     let code = code_rx.recv().unwrap();
@@ -74,7 +74,7 @@ async fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Send
 }
 
 async fn send(code_tx: mpsc::Sender<String>, _sender_result_tx: mpsc::Sender<String>) {
-    use magic_wormhole::io::blocking::{CodeProvider, filetransfer};
+    use magic_wormhole::{CodeProvider, filetransfer};
 
     let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::AllocateCode(2)).await;
     info!("Got welcome: {}", &welcome.welcome);
