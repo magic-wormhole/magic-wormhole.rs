@@ -35,18 +35,9 @@ sodiumoxide = "0.0.16"
 pnet = "0.26.0"
 byteorder = "1.2.1"
 anyhow = "1.0.32"
-crossbeam-utils = "0.7.2"
+futures = { version = "0.3.5"}
 async-std = { version = "1.6.5", features = ["attributes"] }
 async-tungstenite = { version = "0.9.1", features = ["async-std-runtime"] }
-
-# for "io_blocking" feature
-url = { version = "2.1", optional = true }
-
-# for "io_tokio" feature
-futures = { version = "0.3.5", optional = true }
-tokio-core = { version = "0.1", optional = true }
-async-trait = "0.1.41"
-ws = { version = "0.9" }
 
 # for "bin" feature
 clap = { version = "2.32", optional = true }
@@ -60,15 +51,12 @@ parking_lot = {version = "0.10", features = ["deadlock_detection"]}
 env_logger = "0.7"
 
 [features]
-default = ["io-blocking", "io-tokio", "bin"]
-io-blocking = ["url"]
-io-tokio = ["futures"]
+default = ["bin"]
 bin = ["clap", "env_logger"]
 
 [[bin]]
 name = "wormhole"
 path = "src/bin/main.rs"
-required-features = ["io-blocking"]
 
 [profile.release]
 overflow-checks = true
