@@ -1,3 +1,4 @@
+use magic_wormhole::io::blocking::CodeProvider;
 use std::path::Path;
 use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg,
@@ -10,7 +11,7 @@ use magic_wormhole::core::{
 use magic_wormhole::io::blocking::{Wormhole, filetransfer};
 use std::str;
 use log::*;
-use anyhow::{Result, Error, ensure, bail, format_err, Context};
+use futures::{Stream, StreamExt, Sink, SinkExt};
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
@@ -18,7 +19,7 @@ const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
 const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 #[async_std::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     env_logger::builder()
         .filter_level(LevelFilter::Debug)
         .filter_module("magic_wormhole::core", LevelFilter::Trace)
@@ -137,83 +138,55 @@ async fn main() -> Result<()> {
 
     if let Some(matches) = matches.subcommand_matches("send") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        if true {
-            use magic_wormhole::io::blocking::{Wormhole2, CodeProvider};
-            let (welcome, connector) = Wormhole2::new(APPID, MAILBOX_SERVER, match matches.value_of("code") {
-                None => {
-                    let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
-                    CodeProvider::AllocateCode(numwords)
-                }
-                Some(code) => {
-                    CodeProvider::SetCode(code.to_string())
-                }
-            }).await;
-            info!("Got welcome: {}", &welcome.welcome);
-            info!("This wormhole's code is: {}", &welcome.code);
-            info!("On the other computer, please run:\n");
-            info!("wormhole receive {}\n", &welcome.code);
-            let (mut tx, mut rx, key) = connector.do_pake().await;
-            info!("Got key: {:x?}", key);
-            let file = matches.value_of("file").unwrap();
-            filetransfer::send_file(
-                &key,
-                &mut tx,
-                &mut rx,
-                file,
-                APPID,
-                &relay_server.parse().unwrap(),
-            ).await.unwrap();
-            // async_std::task::sleep(std::time::Duration::from_secs(5)).await;
-        } else {
-            let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
-            match matches.value_of("code") {
-                None => {
-                    let numwords = matches.value_of("code-length").unwrap().parse()?;
-                    w.allocate_code(numwords).await;
-                }
-                Some(code) => {
-                    w.set_code(code).await;
-                }
+        use magic_wormhole::io::blocking::{CodeProvider};
+        let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
+            None => {
+                let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
+                CodeProvider::AllocateCode(numwords)
             }
-            let file = matches.value_of("file").unwrap();
-            let code = w.get_code().await;
-            info!("This wormhole's code is: {}", code);
-            info!("On the other computer, please run:\n");
-            info!("wormhole receive {}\n", code);
-
-            async_std::task::sleep(std::time::Duration::from_secs(5)).await;
-            // w.get_key().await;
-            // send(w, relay_server, file)?;
-        }
+            Some(code) => {
+                CodeProvider::SetCode(code.to_string())
+            }
+        }).await;
+        info!("Got welcome: {}", &welcome.welcome);
+        info!("This wormhole's code is: {}", &welcome.code);
+        info!("On the other computer, please run:\n");
+        info!("wormhole receive {}\n", &welcome.code);
+        let mut wormhole = connector.connect_2().await;
+        info!("Got key: {:x?}", wormhole.key);
+        let file = matches.value_of("file").unwrap();
+        filetransfer::send_file(
+            &mut wormhole,
+            file,
+            &relay_server.parse().unwrap(),
+        ).await.unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        let code = match matches.value_of("code") {
+        let (welcome, _connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
             None => {
-                let numwords = matches.value_of("code-length").unwrap().parse()?;
-                let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
-                w.allocate_code(numwords).await;
-                let code = w.get_code().await;
-                w.close().await;
-                code
+                let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
+                CodeProvider::AllocateCode(numwords)
             }
-            Some(code) => code.trim().to_owned(),
-        };
+            Some(code) => {
+                CodeProvider::SetCode(code.to_string())
+            }
+        }).await;
         let file = matches.value_of("file").unwrap();
 
-        info!("This wormhole's code is: {}", code);
+        info!("Got welcome: {}", &welcome.welcome);
+        info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
-        info!("wormhole receive {}\n", code);
+        info!("wormhole receive {}\n", &welcome.code);
         
-        send_many(relay_server, &code, file).await?;
+        send_many(relay_server, &welcome.code, file).await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
-
         let code = matches.value_of("code")
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| enter_code().expect("TODO handle this gracefully"));
 
-        w.set_code(code.trim()).await;
+        let (_welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.trim().to_owned())).await;
+        let w = connector.connect_2().await;
 
         receive(w, relay_server).await?;
     } else {
@@ -237,21 +210,19 @@ fn _might_be_code(_code: Option<&str>) -> bool {
     unimplemented!()
 }
 
-fn enter_code() -> Result<String> {
+fn enter_code() -> anyhow::Result<String> {
     info!("Enter code: ");
     let mut code = String::new();
     std::io::stdin().read_line(&mut code)?;
     Ok(code)
 }
 
-async fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -> Result<()> {
-    todo!();
-    // let result = filetransfer::send_file(&mut w, filename, APPID, &relay_server.parse().unwrap()).await;
-    w.close().await;
-    // result
+async fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
+    let result = filetransfer::send_file(&mut w, filename, &relay_server.parse().unwrap()).await;
+    result
 }
 
-async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> Result<()> {
+async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
     loop {
         // match {
         //     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
@@ -273,20 +244,18 @@ async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -
     // Ok(())
 }
 
-async fn receive(mut w: Wormhole, relay_server: &str) -> Result<()> {
-    match PeerMessage::deserialize(str::from_utf8(&w.get_message().await).unwrap()) {
+async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
+    match PeerMessage::deserialize(str::from_utf8(&w.rx.next().await.unwrap()).unwrap()) {
         PeerMessage::Transit(transit) => {
-            todo!();
-            // filetransfer::receive_file(&mut w, transit, APPID, &relay_server.parse().unwrap()).await?;
+            filetransfer::receive_file(&mut w, transit, &relay_server.parse().unwrap()).await?;
         },
         PeerMessage::Error(err) => {
-            bail!("Something went wrong on the other side: {}", err);
+            anyhow::bail!("Something went wrong on the other side: {}", err);
         },
         other => {
-            bail!("Got an unexpected message type, is the other side all right? Got: '{:?}'", other);
+            anyhow::bail!("Got an unexpected message type, is the other side all right? Got: '{:?}'", other);
         }
     };
 
-    w.close().await;
     Ok(())
 }
