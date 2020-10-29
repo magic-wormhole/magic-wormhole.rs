@@ -15,7 +15,9 @@ pub use super::wordlist::Wordlist;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
+// TODO make immutable
 pub struct AppID(pub String);
+//pub struct AppID(pub Arc<String>); // TODO
 
 impl<'a> From<&'a str> for AppID {
     fn from(s: &'a str) -> AppID {

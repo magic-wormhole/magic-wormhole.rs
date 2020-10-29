@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use crate::core::{
     IOAction,
     IOEvent,
@@ -7,30 +6,14 @@ use crate::core::{
 };
 use std::collections::{HashMap, HashSet};
 use std::time;
-use std::sync::mpsc::{channel, Receiver, Sender};
 use log::*;
-use anyhow::{Result, Error, ensure, bail, format_err, Context};
 
-#[cfg(feature = "io-blocking")]
-pub mod blocking;
-
-#[cfg(feature = "io-tokio")]
-pub mod tokio;
-
-#[cfg(feature = "io-blocking")]
-#[async_trait]
-pub trait WormholeIO {
-    fn process(&mut self, action: IOAction);
-}
-
-#[cfg(feature = "io-blocking")]
 #[derive(Debug, Clone)]
 enum WSControl {
     Data(String),
     Close,
 }
 
-#[cfg(feature = "io-blocking")]
 async fn ws_connector(
     url: &str,
     handle: WSHandle,
@@ -98,27 +81,22 @@ async fn ws_connector(
     });
 }
 
-#[cfg(feature = "io-blocking")]
-pub struct AsyncStdIO {
+pub struct WormholeIO {
     tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
     timers: HashSet<TimerHandle>,
     websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
 }
 
-impl AsyncStdIO {
+impl WormholeIO {
     pub fn new(tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
-        AsyncStdIO {
+        WormholeIO {
             tx_to_core,
             timers: HashSet::new(),
             websockets: HashMap::new(),
         }
     }
-}
 
-#[cfg(feature = "io-blocking")]
-#[async_trait]
-impl WormholeIO for AsyncStdIO {
-    fn process(&mut self, action: IOAction) {
+    pub fn process(&mut self, action: IOAction) {
         use futures::SinkExt;
         use self::IOAction::*;
         match action {
