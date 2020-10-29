@@ -1,3 +1,5 @@
+use futures::channel::mpsc::UnboundedReceiver;
+use futures::channel::mpsc::UnboundedSender;
 use std::collections::VecDeque;
 
 #[macro_use]
@@ -23,11 +25,11 @@ mod timing;
 mod transfer;
 mod util;
 mod wordlist;
-pub mod io;
+mod io;
 
 pub use self::events::{AppID, Code};
-use self::events::{Event, Events, MySide, Nameplate};
-use log::trace;
+use self::events::{Event, Events, MySide};
+use log::*;
 
 pub use self::api::{
     APIAction, APIEvent, IOAction, IOEvent, InputHelperError, Mood,
@@ -39,7 +41,53 @@ pub use self::transfer::{
     TransitAck,
 };
 
-pub struct WormholeCore {
+/// Set up a WormholeCore and run it
+/// 
+/// This will create a new WormholeCore, connect its IO and API interfaces together
+/// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
+pub fn run(appid: &str, relay_url: &str) ->
+    (UnboundedSender<APIEvent>, UnboundedReceiver<APIAction>)
+{
+    use futures::channel::mpsc::unbounded;
+    use futures::StreamExt;
+    use futures::SinkExt;
+
+    let (tx_io_to_core, mut rx_io_to_core) = unbounded();
+    let (tx_api_to_core, mut rx_api_to_core) = unbounded();
+    let (mut tx_api_from_core, rx_api_from_core) = unbounded();
+    let mut core = WormholeCore::new(appid, relay_url, tx_io_to_core);
+
+    async_std::task::spawn(async move {
+        loop {
+            let actions = futures::select! {
+                action = rx_api_to_core.select_next_some() => {
+                    debug!("Doing API {:?}", action);
+                    core.do_api(action)
+                },
+                action = rx_io_to_core.select_next_some() => {
+                    debug!("Doing IO {:?}", action);
+                    core.do_io(action)
+                },
+            };
+            debug!("Done API/IO {:?}", &actions);
+            for action in actions {
+                tx_api_from_core.send(action).await.unwrap();
+            }
+        }
+    });
+
+    (tx_api_to_core, rx_api_from_core)
+}
+
+/// The core implementation of the protocol(s)
+///
+/// This is a big composite state machine that implements the Client-Server and Client-Client protocols
+/// in a rather weird way. All state machines communicate with each other by sending events and actions around
+/// like crazy. The wormhole is driven by processing APIActions that generate APIEvents.
+/// 
+/// Due to the inherent asynchronous nature of IO together with these synchronous blocking state machines, generated IOEvents
+/// are sent to a channel. The holder of the struct must then take care of letting the core process these by calling `do_io`.
+struct WormholeCore {
     allocator: allocator::AllocatorMachine,
     boss: boss::BossMachine,
     code: code::CodeMachine,
@@ -57,17 +105,11 @@ pub struct WormholeCore {
     io: io::WormholeIO,
 }
 
-// I don't know how to write this
-/*fn to_results<Vec<T>>(from: Vec<T>) -> Vec<Result> {
-    from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
-}*/
-
 impl WormholeCore {
-    pub fn new<T>(appid: T, relay_url: &str, io: io::WormholeIO) -> Self
+    fn new<T>(appid: T, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self
     where
         T: Into<AppID>,
     {
-        // TODO wrap AppID in Arc
         let appid: AppID = appid.into();
         let side = MySide::generate();
         WormholeCore {
@@ -87,15 +129,8 @@ impl WormholeCore {
             send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
             timing: timing::Timing::new(),
-            io,
+            io: io::WormholeIO::new(io_to_core),
         }
-    }
-
-    // the IO layer must either call start() or do_api(APIEvent::Start), and
-    // must act upon all the Actions it gets back
-    #[must_use = "You must execute these actions to make things work"]
-    pub fn start(&mut self) -> Vec<APIAction> {
-        self.do_api(APIEvent::Start)
     }
 
     #[must_use = "You must execute these actions to make things work"]
@@ -111,34 +146,6 @@ impl WormholeCore {
         trace!("   io: {:?}", event);
         let events = self.rendezvous.process_io(event);
         self._execute(events)
-    }
-
-    pub fn derive_key(&mut self, _purpose: &str, _length: u8) -> Vec<u8> {
-        // TODO: only valid after GotVerifiedKey, but should return
-        // synchronously. Maybe the Core should expose the conversion
-        // function (which requires the key as input) and let the IO glue
-        // layer decide how to manage the synchronization?
-        panic!("not implemented");
-    }
-
-    pub fn input_helper_get_nameplate_completions(
-        &mut self,
-        prefix: &str,
-    ) -> Result<Vec<String>, InputHelperError> {
-        self.input.get_nameplate_completions(prefix)
-    }
-
-    pub fn input_helper_get_word_completions(
-        &mut self,
-        prefix: &str,
-    ) -> Result<Vec<String>, InputHelperError> {
-        self.input.get_word_completions(prefix)
-    }
-
-    // TODO: remove this, the helper should remember whether it's called
-    // choose_nameplate yet or not instead of asking the core
-    pub fn input_helper_committed_nameplate(&self) -> Option<Nameplate> {
-        self.input.committed_nameplate()
     }
 
     fn _execute(&mut self, events: Events) -> Vec<APIAction> {
@@ -185,6 +192,3 @@ impl WormholeCore {
         action_queue
     }
 }
-
-// TODO: is there a generic way (e.g. impl From) to convert a Vec<A> into
-// Vec<B> when we've got an A->B convertor?

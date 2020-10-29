@@ -12,7 +12,6 @@ use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
 use futures::Sink;
 use futures::Stream;
-use crate::core::WormholeCore;
 use crate::core::{
     APIAction, APIEvent, Code,
 };
@@ -166,35 +165,9 @@ pub async fn connect_1(appid: &str, relay_url: &str, code_provider: CodeProvider
     WormholeWelcome,
     WormholeConnector,
 ) {
-    use futures::channel::mpsc::unbounded;
     use futures::StreamExt;
-    use futures::SinkExt;
 
-    let (tx_io_to_core, mut rx_io_to_core) = unbounded();
-    let (tx_api_to_core, mut rx_api_to_core) = unbounded();
-    let (mut tx_api_from_core, mut rx_api_from_core) = unbounded();
-    let io = crate::core::io::WormholeIO::new(tx_io_to_core);
-    let mut core = WormholeCore::new(appid, relay_url, io);
-
-    async_std::task::spawn(async move {
-        loop {
-            let actions = futures::select! {
-                action = rx_api_to_core.select_next_some() => {
-                    debug!("Doing API {:?}", action);
-                    core.do_api(action)
-                },
-                action = rx_io_to_core.select_next_some() => {
-                    debug!("Doing IO {:?}", action);
-                    core.do_io(action)
-                },
-            };
-            debug!("Done API/IO {:?}", &actions);
-            for action in actions {
-                dbg!(&action);
-                tx_api_from_core.send(action).await.unwrap();
-            }
-        }
-    });
+    let (tx_api_to_core, mut rx_api_from_core) = crate::core::run(appid, relay_url);
 
     let mut code = None;
     let mut welcome = None;
