@@ -14,14 +14,31 @@ use zeroize::Zeroize;
 pub use super::wordlist::Wordlist;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-#[serde(transparent)]
-// TODO make immutable
-pub struct AppID(pub String);
-//pub struct AppID(pub Arc<String>); // TODO
+#[serde(from = "String")]
+#[serde(into = "String")]
+pub struct AppID(pub Arc<String>);
 
-impl<'a> From<&'a str> for AppID {
-    fn from(s: &'a str) -> AppID {
-        AppID(s.to_string())
+impl AppID {
+    pub fn new(id: impl Into<String>) -> Self {
+        AppID(Arc::new(id.into()))
+    }
+}
+
+impl Into<String> for &AppID {
+    fn into(self) -> String {
+        (*self.0).clone()
+    }
+}
+
+impl Into<String> for AppID {
+    fn into(self) -> String {
+        (*self.0).clone()
+    }
+}
+
+impl From<String> for AppID {
+    fn from(s: String) -> Self {
+        Self::new(s)
     }
 }
 
