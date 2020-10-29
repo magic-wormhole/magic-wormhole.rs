@@ -1,6 +1,5 @@
 use futures::future::TryFutureExt;
 use async_std::prelude::Future;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::str::FromStr;
 use crate::core::{
@@ -65,28 +64,21 @@ pub struct Transit {
 
 impl Transit {
     pub async fn sender_connect<
-    'a,
-    'b: 'a,
-    T,
-    C1,
-    F1,
-    WormholeTX,
-    WormholeRX,
+        'a,
+        'b: 'a,
+        T,
+        C1,
+        F1,
     >(
-        key: &Vec<u8>,
-        wormhole_tx: &'b mut WormholeTX,
-        wormhole_rx: &'b mut WormholeRX,
+        wormhole: &'b mut Wormhole,
         relay_url: &RelayUrl,
-        appid: &str,
         post_handshake: C1,
     ) -> Result<(Self, T)> 
         where 
-        WormholeTX: Sink<Vec<u8>> + std::marker::Unpin,
-        WormholeRX: Stream<Item = Vec<u8>> + std::marker::Unpin,
-        C1: FnOnce(&'a mut WormholeTX, &'a mut WormholeRX) -> F1 + 'a,
+        C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
         F1: Future<Output = Result<T>>,
     {
-        let transit_key = Arc::new(Wormhole::derive_transit_key2(key, appid));
+        let transit_key = Arc::new(wormhole.key.derive_transit_key());
         debug!("transit key {}", hex::encode(&*transit_key));
 
         // 1. start a tcp server on a random port
@@ -113,10 +105,10 @@ impl Transit {
         // send the transit message
         let transit_msg = PeerMessage::new_transit(abilities, our_hints).serialize();
         debug!("transit_msg: {:?}", transit_msg);
-        let _todo = wormhole_tx.send(transit_msg.as_bytes().to_vec()).await;
+        let _todo = wormhole.tx.send(transit_msg.as_bytes().to_vec()).await;
 
         // 5. receive transit message from peer.
-        let msg = wormhole_rx.next().await.unwrap();
+        let msg = wormhole.rx.next().await.unwrap();
         let maybe_transit = PeerMessage::deserialize(str::from_utf8(&msg)?);
         debug!("received transit message: {:?}", maybe_transit);
 
@@ -127,7 +119,7 @@ impl Transit {
         // TODO remove this one day
         let ttype = &*Box::leak(Box::new(ttype));
         
-        let post_handshake_result = post_handshake(wormhole_tx, wormhole_rx).await?;
+        let post_handshake_result = post_handshake(wormhole).await?;
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         // extract peer's ip/hostname from 'ttype'
@@ -221,30 +213,23 @@ impl Transit {
     }
 
     pub async fn receiver_connect<
-    'a,
-    'b: 'a,
-    T,
-    C1,
-    F1,
-    WormholeTX,
-    WormholeRX,
+        'a,
+        'b: 'a,
+        T,
+        C1,
+        F1,
     >(
-        key: &Vec<u8>,
-        wormhole_tx: &'b mut WormholeTX,
-        wormhole_rx: &'b mut WormholeRX,
+        wormhole: &'b mut Wormhole,
         relay_url: &RelayUrl,
-        appid: &str,
         ttype: TransitType,
         post_handshake: C1,
     ) -> Result<(Self, T)> 
         where 
-        WormholeTX: Sink<Vec<u8>> + std::marker::Unpin,
-        WormholeRX: Stream<Item = Vec<u8>> + std::marker::Unpin,
-        C1: FnOnce(&'a mut WormholeTX, &'a mut WormholeRX) -> F1 + 'a,
+        C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
         F1: Future<Output = Result<T>>,
     {
         let ttype = &*Box::leak(Box::new(ttype)); // TODO remove this one day
-        let transit_key = Arc::new(Wormhole::derive_transit_key2(key, appid));
+        let transit_key = Arc::new(wormhole.key.derive_transit_key());
         debug!("transit key {}", hex::encode(&*transit_key));
 
         // 1. start a tcp server on a random port
@@ -272,9 +257,9 @@ impl Transit {
         // send the transit message
         let transit_msg = PeerMessage::new_transit(abilities, our_hints).serialize();
         debug!("Sending '{}'", &transit_msg);
-        let _todo = wormhole_tx.send(transit_msg.as_bytes().to_vec()).await;
+        let _todo = wormhole.tx.send(transit_msg.as_bytes().to_vec()).await;
         
-        let post_handshake_result = post_handshake(wormhole_tx, wormhole_rx).await?;
+        let post_handshake_result = post_handshake(wormhole).await?;
 
         // 4. listen for connections on the port and simultaneously try connecting to the
         //    peer listening port.

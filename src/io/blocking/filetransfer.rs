@@ -24,22 +24,16 @@ use super::transit;
 use super::transit::{RelayUrl, Transit};
 
 pub async fn send_file(
-    key: &Vec<u8>,
-    wormhole_tx: &mut (impl Sink<Vec<u8>> + std::marker::Unpin),
-    wormhole_rx: &mut (impl Stream<Item = Vec<u8>> + std::marker::Unpin),
+    wormhole: &mut Wormhole,
     filepath: impl AsRef<Path>,
-    appid: &str,
     relay_url: &RelayUrl,
 ) -> Result<()> {
     let filename = filepath.as_ref().file_name().ok_or_else(|| format_err!("You can't send a file without a file name"))?;
     let filesize = File::open(filepath.as_ref()).await?.metadata().await?.len(); // TODO do that somewhere else
     let (mut transit, ()) = Transit::sender_connect(
-        key,
-        wormhole_tx,
-        wormhole_rx,
+        wormhole,
         relay_url,
-        appid,
-        |tx, rx| send_file_offer(tx, rx, filename, filesize),
+        |w| send_file_offer(w, filename, filesize),
     ).await?;
     debug!("Beginning file transfer");
 
@@ -48,19 +42,13 @@ pub async fn send_file(
 }
 
 pub async fn receive_file(
-    key: &Vec<u8>,
-    wormhole_tx: &mut (impl Sink<Vec<u8>> + std::marker::Unpin),
-    wormhole_rx: &mut (impl Stream<Item = Vec<u8>> + std::marker::Unpin),
+    wormhole: &mut Wormhole,
     ttype: TransitType,
-    appid: &str,
     relay_url: &RelayUrl,
 ) -> Result<()> {
     let (mut transit, (filename, filesize)) = Transit::receiver_connect(
-        key,
-        wormhole_tx,
-        wormhole_rx,
+        wormhole,
         relay_url,
-        appid,
         ttype,
         receive_file_offer,
     ).await?;
@@ -72,18 +60,17 @@ pub async fn receive_file(
 }
 
 async fn send_file_offer(
-    wormhole_tx: &mut (impl Sink<Vec<u8>> + std::marker::Unpin),
-    wormhole_rx: &mut (impl Stream<Item = Vec<u8>> + std::marker::Unpin),
+    wormhole: &mut Wormhole,
     filename: (impl Into<PathBuf> + AsRef<Path>), 
     filesize: u64
 ) -> Result<()> 
 {
     // 6. send file offer message.
     let offer_msg = PeerMessage::new_offer_file(filename, filesize).serialize();
-    wormhole_tx.send(offer_msg.as_bytes().to_vec()).await;
+    wormhole.tx.send(offer_msg.as_bytes().to_vec()).await;
 
     // 7. wait for file_ack
-    let maybe_fileack = wormhole_rx.next().await.unwrap();
+    let maybe_fileack = wormhole.rx.next().await.unwrap();
     let fileack_msg = PeerMessage::deserialize(std::str::from_utf8(&maybe_fileack)?);
     debug!("received file ack message: {:?}", fileack_msg);
 
@@ -97,13 +84,9 @@ async fn send_file_offer(
     Ok(())
 }
 
-async fn receive_file_offer(
-    wormhole_tx: &mut (impl Sink<Vec<u8>> + std::marker::Unpin),
-    wormhole_rx: &mut (impl Stream<Item = Vec<u8>> + std::marker::Unpin),
-) -> Result<(PathBuf, u64)>
-{
+async fn receive_file_offer(wormhole: &mut Wormhole, ) -> Result<(PathBuf, u64)> {
     // 3. receive file offer message from peer
-    let msg = wormhole_rx.next().await.unwrap();
+    let msg = wormhole.rx.next().await.unwrap();
     let maybe_offer = PeerMessage::deserialize(std::str::from_utf8(&msg)?);
     debug!("Received offer message '{:?}'", &maybe_offer);
 
@@ -119,7 +102,7 @@ async fn receive_file_offer(
 
     // send file ack.
     let file_ack_msg = PeerMessage::new_file_ack("ok").serialize();
-    wormhole_tx.send(file_ack_msg.as_bytes().to_vec()).await;
+    wormhole.tx.send(file_ack_msg.as_bytes().to_vec()).await;
     
     Ok((filename, filesize))
 }
