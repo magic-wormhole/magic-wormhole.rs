@@ -23,9 +23,9 @@ mod timing;
 mod transfer;
 mod util;
 mod wordlist;
+pub mod io;
 
 pub use self::events::{AppID, Code};
-pub use super::io::WormholeIO;
 use self::events::{Event, Events, MySide, Nameplate};
 use log::trace;
 
@@ -39,7 +39,7 @@ pub use self::transfer::{
     TransitAck,
 };
 
-pub struct WormholeCore<IO: WormholeIO> {
+pub struct WormholeCore {
     allocator: allocator::AllocatorMachine,
     boss: boss::BossMachine,
     code: code::CodeMachine,
@@ -54,7 +54,7 @@ pub struct WormholeCore<IO: WormholeIO> {
     send: send::SendMachine,
     terminator: terminator::TerminatorMachine,
     timing: timing::Timing,
-    io: IO,
+    io: io::WormholeIO,
 }
 
 // I don't know how to write this
@@ -62,8 +62,8 @@ pub struct WormholeCore<IO: WormholeIO> {
     from.into_iter().map(|r| Result::from(r)).collect::<Vec<Result>>()
 }*/
 
-impl <IO: WormholeIO> WormholeCore<IO> {
-    pub fn new<T>(appid: T, relay_url: &str, io: IO) -> Self
+impl WormholeCore {
+    pub fn new<T>(appid: T, relay_url: &str, io: io::WormholeIO) -> Self
     where
         T: Into<AppID>,
     {

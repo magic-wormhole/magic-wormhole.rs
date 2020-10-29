@@ -1,4 +1,4 @@
-use magic_wormhole::io::blocking::CodeProvider;
+use magic_wormhole::CodeProvider;
 use std::path::Path;
 use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, Arg,
@@ -8,7 +8,7 @@ use clap::{
 use magic_wormhole::core::{
     PeerMessage,
 };
-use magic_wormhole::io::blocking::{Wormhole, filetransfer};
+use magic_wormhole::{Wormhole, filetransfer};
 use std::str;
 use log::*;
 use futures::{Stream, StreamExt, Sink, SinkExt};
@@ -138,7 +138,6 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(matches) = matches.subcommand_matches("send") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        use magic_wormhole::io::blocking::{CodeProvider};
         let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
             None => {
                 let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
@@ -190,7 +189,7 @@ async fn main() -> anyhow::Result<()> {
 
         receive(w, relay_server).await?;
     } else {
-        let code = matches.subcommand_name();
+        let _code = matches.subcommand_name();
         // TODO implement this properly once clap 3.0 is out
         // if might_be_code(code) {
             warn!("No command provided, assuming you simply want to receive a file.");
@@ -225,13 +224,9 @@ async fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -
 async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
     loop {
         // match {
-        //     let mut w = Wormhole::new(APPID, MAILBOX_SERVER);
-        //     w.set_code(code).await;
-        //     w.get_code().await;
-        //     todo!();
-        //     // let result = filetransfer::send_file(&mut w, &filename, APPID, &relay_server.parse().unwrap()).await;
-        //     w.close().await;
-        //     // result
+            let _ = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.to_owned())).await;
+            let _result = filetransfer::send_file(&mut todo!(), &filename, &relay_server.parse().unwrap()).await;
+            // result
         // } {
         //     Ok(_) => {
         //         info!("TOOD success message");
