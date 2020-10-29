@@ -45,7 +45,7 @@ pub use self::transfer::{
 /// 
 /// This will create a new WormholeCore, connect its IO and API interfaces together
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
-pub fn run(appid: &str, relay_url: &str) ->
+pub fn run(appid: AppID, relay_url: &str) ->
     (UnboundedSender<APIEvent>, UnboundedReceiver<APIAction>)
 {
     use futures::channel::mpsc::unbounded;
@@ -106,10 +106,7 @@ struct WormholeCore {
 }
 
 impl WormholeCore {
-    fn new<T>(appid: T, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self
-    where
-        T: Into<AppID>,
-    {
+    fn new(appid: AppID, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
         let appid: AppID = appid.into();
         let side = MySide::generate();
         WormholeCore {

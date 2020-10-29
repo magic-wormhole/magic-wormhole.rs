@@ -48,7 +48,7 @@ impl Default for CodeProvider {
 #[derive(Clone, Debug,)]
 pub struct WormholeKey {
     key: Vec<u8>,
-    // appid: AppID,
+    appid: AppID,
 }
 
 impl Display for WormholeKey {
@@ -60,13 +60,12 @@ impl Display for WormholeKey {
 
 impl WormholeKey {
     pub fn derive_transit_key(&self) -> Vec<u8> {
-        // let transit_purpose = format!("{}/transit-key", &self.appid.0);
+        let transit_purpose = format!("{}/transit-key", &self.appid.0);
 
-        // let length = sodiumoxide::crypto::secretbox::KEYBYTES;
-        // let derived_key = derive_key(&self.key, &transit_purpose.as_bytes(), length);
-        // trace!("Input key: {}, Transit key: {}, Transit purpose: '{}'", hex::encode(&self.key), hex::encode(&derived_key), &transit_purpose);
-        // derived_key
-        todo!()
+        let length = sodiumoxide::crypto::secretbox::KEYBYTES;
+        let derived_key = derive_key(&self.key, &transit_purpose.as_bytes(), length);
+        trace!("Input key: {}, Transit key: {}, Transit purpose: '{}'", hex::encode(&self.key), hex::encode(&derived_key), &transit_purpose);
+        derived_key
     }
 }
 
@@ -74,6 +73,7 @@ pub struct WormholeConnector {
     queued_messages: Vec<APIAction>,
     /* In case we got that too early */
     key: Option<Vec<u8>>,
+    appid: AppID,
     tx_api_to_core: UnboundedSender<APIEvent>,
     rx_api_from_core: UnboundedReceiver<APIAction>,
 }
@@ -144,6 +144,7 @@ impl WormholeConnector {
             rx: Box::pin(rx_api_from_core),
             key: WormholeKey {
                 key: self.key.unwrap(),
+                appid: self.appid,
             },
         }
     }
@@ -160,14 +161,13 @@ pub struct WormholeWelcome {
     pub welcome: String,
 }
 
-pub async fn connect_1(appid: &str, relay_url: &str, code_provider: CodeProvider, )
+pub async fn connect_1(appid: impl Into<String>, relay_url: &str, code_provider: CodeProvider, )
 -> (
     WormholeWelcome,
     WormholeConnector,
 ) {
-    use futures::StreamExt;
-
-    let (tx_api_to_core, mut rx_api_from_core) = crate::core::run(appid, relay_url);
+    let appid: AppID = AppID::new(appid);
+    let (tx_api_to_core, mut rx_api_from_core) = crate::core::run(appid.clone(), relay_url);
 
     let mut code = None;
     let mut welcome = None;
@@ -186,6 +186,8 @@ pub async fn connect_1(appid: &str, relay_url: &str, code_provider: CodeProvider
             tx_api_to_core.unbounded_send(APIEvent::SetCode(Code(code))).unwrap();
         }
     }
+
+    use futures::StreamExt;
 
     while let Some(action) = rx_api_from_core.next().await {
         use self::APIAction::*;
@@ -238,6 +240,7 @@ pub async fn connect_1(appid: &str, relay_url: &str, code_provider: CodeProvider
             tx_api_to_core,
             rx_api_from_core,
             key,
+            appid,
         }
     )
 }
