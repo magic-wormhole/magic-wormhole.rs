@@ -22,7 +22,7 @@ const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 async fn main() -> anyhow::Result<()> {
     env_logger::builder()
         .filter_level(LevelFilter::Debug)
-        .filter_module("magic_wormhole::core", LevelFilter::Trace)
+        // .filter_module("magic_wormhole::core", LevelFilter::Trace)
         .filter_module("mio", LevelFilter::Debug)
         .filter_module("ws", LevelFilter::Error)
         .init();
@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
         ).await.unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        let (welcome, _connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
+        let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
             None => {
                 let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
                 CodeProvider::AllocateCode(numwords)
@@ -170,6 +170,8 @@ async fn main() -> anyhow::Result<()> {
                 CodeProvider::SetCode(code.to_string())
             }
         }).await;
+        /* Explicitely close connection */
+        std::mem::drop(connector);
         let file = matches.value_of("file").unwrap();
 
         info!("Got welcome: {}", &welcome.welcome);
@@ -227,18 +229,19 @@ async fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -
 
 async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
     loop {
-        // match {
-            let _ = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.to_owned())).await;
-            let _result = filetransfer::send_file(&mut todo!(), &filename, &relay_server.parse().unwrap()).await;
-            // result
-        // } {
-        //     Ok(_) => {
-        //         info!("TOOD success message");
-        //     },
-        //     Err(e) => {
-        //         warn!("Send failed, {}", e);
-        //     }
-        // }
+        match {
+            let (_welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.to_owned())).await;
+            let mut wormhole = connector.connect_2().await;
+            let result = filetransfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
+            result
+        } {
+            Ok(_) => {
+                info!("TOOD success message");
+            },
+            Err(e) => {
+                warn!("Send failed, {}", e);
+            }
+        }
     }
     // Ok(())
 }
