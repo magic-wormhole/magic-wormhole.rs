@@ -45,7 +45,11 @@ pub use self::transfer::{
 /// 
 /// This will create a new WormholeCore, connect its IO and API interfaces together
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
-pub fn run(appid: AppID, relay_url: &str) ->
+pub fn run(
+    appid: AppID,
+    relay_url: &str,
+    #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
+) ->
     (UnboundedSender<APIEvent>, UnboundedReceiver<APIAction>)
 {
     use futures::channel::mpsc::unbounded;
@@ -57,12 +61,13 @@ pub fn run(appid: AppID, relay_url: &str) ->
     let (mut tx_api_from_core, rx_api_from_core) = unbounded();
     let mut core = WormholeCore::new(appid, relay_url, tx_io_to_core);
 
-    async_std::task::spawn(async move {
-        loop {
+    #[allow(unused_variables)]
+    let join_handle = async_std::task::spawn(async move {
+        'outer: loop {
             let actions = futures::select! {
-                action = rx_api_to_core.select_next_some() => {
+                action = rx_api_to_core.next() => {
                     debug!("Doing API {:?}", action);
-                    core.do_api(action)
+                    core.do_api(action.unwrap_or(APIEvent::Close))
                 },
                 action = rx_io_to_core.select_next_some() => {
                     debug!("Doing IO {:?}", action);
@@ -71,10 +76,19 @@ pub fn run(appid: AppID, relay_url: &str) ->
             };
             debug!("Done API/IO {:?}", &actions);
             for action in actions {
-                tx_api_from_core.send(action).await.unwrap();
+                if let APIAction::GotClosed(_) = action {
+                    tx_api_from_core.close().await.expect("Don't close the receiver before shutting down the wormhole!");
+                    debug!("Stopping wormhole event loop");
+                    break 'outer;
+                } else {
+                    tx_api_from_core.send(action).await.expect("Don't close the receiver before shutting down the wormhole!");
+                }
             }
         }
     });
+    #[cfg(test)] {
+        *eventloop_task = Some(join_handle);
+    }
 
     (tx_api_to_core, rx_api_from_core)
 }
@@ -107,7 +121,6 @@ struct WormholeCore {
 
 impl WormholeCore {
     fn new(appid: AppID, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
-        let appid: AppID = appid.into();
         let side = MySide::generate();
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),

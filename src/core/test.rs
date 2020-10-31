@@ -1,7 +1,103 @@
 #![cfg_attr(tarpaulin, skip)]
 
+use crate::CodeProvider;
 use super::api::Mood;
 use super::events::{Event, Events, Phase};
+
+const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
+const APPID: &str = "lothar.com/wormhole/rusty-wormhole-test";
+
+#[async_std::test]
+pub async fn test_eventloop_exit() {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
+        .filter_module("mio", log::LevelFilter::Debug)
+        .filter_module("ws", log::LevelFilter::Error)
+        .init();
+
+    use futures::StreamExt;
+    use futures::SinkExt;
+    use std::time::Duration;
+
+    let code = "42-something-something"; // TODO dynamic code allocation
+    let dummy_task = async_std::task::spawn(async move {
+        let (_welcome, connector) = crate::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let _wormhole = connector.connect_2().await;
+        log::info!("A Connected.");
+        async_std::task::sleep(Duration::from_secs(5)).await;
+        log::info!("A Done sleeping.");
+    });
+    async_std::future::timeout(Duration::from_secs(5), async {
+        let (_welcome, connector) = crate::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let mut wormhole = connector.connect_2().await;
+        log::info!("B Connected.");
+        wormhole.tx.close().await.unwrap();
+        log::info!("B Closed sender");
+        wormhole.rx.for_each(|e| async move {log::info!("Received {:?}", e);}).await;
+    })
+    .await
+    .expect("Test failed");
+
+    dummy_task.cancel().await;
+}
+
+#[async_std::test]
+pub async fn test_eventloop_exit2() {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
+        .filter_module("mio", log::LevelFilter::Debug)
+        .filter_module("ws", log::LevelFilter::Error)
+        .init();
+
+    use futures::StreamExt;
+    use futures::SinkExt;
+    use std::time::Duration;
+
+    let code = "42-something-something"; // TODO dynamic code allocation
+    let dummy_task = async_std::task::spawn(async move {
+        let (_welcome, connector) = crate::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let _wormhole = connector.connect_2().await;
+        log::info!("A Connected.");
+        async_std::task::sleep(Duration::from_secs(5)).await;
+        log::info!("A Done sleeping.");
+    });
+    async_std::future::timeout(Duration::from_secs(5), async {
+        let (_welcome, connector) = crate::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let wormhole = connector.connect_2().await;
+        log::info!("B Connected.");
+        std::mem::drop(wormhole.tx);
+        wormhole.rx.for_each(|e| async move {log::info!("Received {:?}", e);}).await;
+        log::info!("B Closed.");
+    })
+    .await
+    .expect("Test failed");
+
+    dummy_task.cancel().await;
+}
+
+#[async_std::test]
+pub async fn test_eventloop_exit3() {
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
+        .filter_module("mio", log::LevelFilter::Debug)
+        .filter_module("ws", log::LevelFilter::Error)
+        .init();
+
+    use std::time::Duration;
+
+    async_std::future::timeout(Duration::from_secs(5), async {
+        let mut eventloop_task = None;
+        let (_welcome, connector) = crate::connect_1(APPID, MAILBOX_SERVER, CodeProvider::AllocateCode(2), &mut eventloop_task).await;
+        let eventloop_task = eventloop_task.unwrap();
+
+        log::info!("Connected.");
+        std::mem::drop(connector);
+        eventloop_task.await;
+        log::info!("Closed.");
+    })
+    .await
+    .expect("Test failed");
+}
 
 pub fn filt(ev: Events) -> Events {
     ev.into_iter()
