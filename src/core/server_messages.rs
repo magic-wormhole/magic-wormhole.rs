@@ -119,7 +119,7 @@ mod test {
     #[test]
     fn test_bind() {
         let m1 = OutboundMessage::bind(
-            AppID(String::from("appid")),
+            AppID::new("appid"),
             MySide::unchecked_from_string(String::from("side1")),
         );
         let s = serde_json::to_string(&m1).unwrap();

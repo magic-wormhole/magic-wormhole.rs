@@ -14,7 +14,7 @@ use async_std::io::prelude::WriteExt;
 use async_std::io::Read;
 use async_std::io::ReadExt;
 use log::*;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, digest::FixedOutput};
 use sodiumoxide::crypto::secretbox;
 use async_std::fs::File;
 use futures::{Stream, StreamExt, Sink, SinkExt};
@@ -145,7 +145,7 @@ async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: 
         nonce.increment_le_inplace();
 
         // sha256 of the input
-        hasher.input(&plaintext[..n]);
+        hasher.update(&plaintext[..n]);
 
         if n < 4096 {
             break;
@@ -154,7 +154,7 @@ async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: 
             continue;
         }
     }
-    Ok(hasher.result().to_vec())
+    Ok(hasher.finalize_fixed().to_vec())
 }
 
 async fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
@@ -178,14 +178,14 @@ async fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &m
         f.write_all(&plaintext).await?;
 
         // 4. calculate a rolling sha256 sum of the decrypted output.
-        hasher.input(&plaintext);
+        hasher.update(&plaintext);
 
         remaining_size -= plaintext.len();
     }
 
     debug!("done");
     // TODO: 5. write the buffer into a file.
-    Ok(hasher.result().to_vec())
+    Ok(hasher.finalize_fixed().to_vec())
 }
 
 async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Result<()> {

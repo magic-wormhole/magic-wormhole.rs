@@ -336,7 +336,7 @@ mod test {
     fn create() {
         let side = MySide::unchecked_from_string(String::from("side1"));
         let mut r = super::RendezvousMachine::new(
-            &AppID(String::from("appid")),
+            &AppID::new("appid"),
             "url",
             &side,
             5.0,
@@ -378,7 +378,7 @@ mod test {
                 b = b0;
                 match &b {
                     RC_TxBind(ref appid0, ref side0) => {
-                        assert_eq!(&appid0.0, "appid");
+                        assert_eq!(&*appid0.0, "appid");
                         assert_eq!(
                             side0,
                             &MySide::unchecked_from_string(String::from(
@@ -412,7 +412,7 @@ mod test {
                 if let OutboundMessage::Bind { appid, side } =
                     deserialize_outbound(&m)
                 {
-                    assert_eq!(&appid.0, "appid");
+                    assert_eq!(&*appid.0, "appid");
                     assert_eq!(&side.0, "side1");
                 } else {
                     panic!();
@@ -479,7 +479,7 @@ mod test {
     fn first_connect_fails() {
         let side = MySide::unchecked_from_string(String::from("side1"));
         let mut r = super::RendezvousMachine::new(
-            &AppID(String::from("appid")),
+            &AppID::new("appid"),
             "url",
             &side,
             5.0,

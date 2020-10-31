@@ -2,7 +2,7 @@ use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::{self, Value};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, digest::FixedOutput};
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
 use xsalsa20poly1305::{
     aead::{
@@ -164,7 +164,7 @@ fn encrypt_data_with_nonce(
     plaintext: &[u8],
     noncebuf: &[u8],
 ) -> Vec<u8> {
-    let cipher = XSalsa20Poly1305::new(*GenericArray::from_slice(&key));
+    let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(&key));
     let mut ciphertext = cipher
         .encrypt(GenericArray::from_slice(&noncebuf), plaintext)
         .unwrap();
@@ -188,7 +188,7 @@ pub fn decrypt_data(key: &[u8], encrypted: &[u8]) -> Option<Vec<u8>> {
     let nonce_size = <XSalsa20Poly1305 as Aead>::NonceSize::to_usize();
     let (nonce, ciphertext) = encrypted.split_at(nonce_size);
     assert_eq!(nonce.len(), nonce_size);
-    let cipher = XSalsa20Poly1305::new(*GenericArray::from_slice(key));
+    let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(key));
     cipher
         .decrypt(GenericArray::from_slice(nonce), ciphertext)
         .ok()
@@ -196,8 +196,8 @@ pub fn decrypt_data(key: &[u8], encrypted: &[u8]) -> Option<Vec<u8>> {
 
 fn sha256_digest(input: &[u8]) -> Vec<u8> {
     let mut hasher = Sha256::default();
-    hasher.input(input);
-    hasher.result().to_vec()
+    hasher.update(input);
+    hasher.finalize_fixed().to_vec()
 }
 
 pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
@@ -238,7 +238,7 @@ mod test {
     #[test]
     fn test_extract_pake_msg() {
         let _key = super::KeyMachine::new(
-            &AppID(String::from("appid")),
+            &AppID::new("appid"),
             &MySide::unchecked_from_string(String::from("side1")),
         );
 
@@ -317,7 +317,7 @@ mod test {
         // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
         let _k = KeyMachine::new(
-            &AppID(String::from("appid1")),
+            &AppID::new("appid1"),
             &MySide::unchecked_from_string(String::from("side")),
         );
 
@@ -406,7 +406,7 @@ mod test {
         };
 
         let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID(String::from("appid1"));
+        let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
         let mut k = KeyMachine::new(&appid, &side);
 
@@ -461,7 +461,7 @@ mod test {
         };
 
         let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID(String::from("appid1"));
+        let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
         let mut k = KeyMachine::new(&appid, &side);
 
@@ -514,7 +514,7 @@ mod test {
     #[should_panic]
     fn test_pake_pake() {
         let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID(String::from("appid1"));
+        let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
         let mut k = KeyMachine::new(&appid, &side);
 
@@ -527,7 +527,7 @@ mod test {
     #[should_panic]
     fn test_code_code() {
         let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID(String::from("appid1"));
+        let appid = AppID::new(String::from("appid1"));
         let side = MySide::unchecked_from_string(String::from("side"));
         let mut k = KeyMachine::new(&appid, &side);
 
@@ -539,7 +539,7 @@ mod test {
     #[should_panic]
     fn test_code_pake_code() {
         let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID(String::from("appid1"));
+        let appid = AppID::new(String::from("appid1"));
         let side = MySide::unchecked_from_string(String::from("side"));
         let mut k = KeyMachine::new(&appid, &side);
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
@@ -553,7 +553,7 @@ mod test {
     #[should_panic]
     fn test_pake_code_pake() {
         let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID(String::from("appid1"));
+        let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
         let mut k = KeyMachine::new(&appid, &side);
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
