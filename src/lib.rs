@@ -151,8 +151,8 @@ impl WormholeConnector {
 }
 
 pub struct Wormhole {
-    pub tx: Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError>>>,
-    pub rx: Pin<Box<dyn Stream<Item = Vec<u8>>>>,
+    pub tx: Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
+    pub rx: Pin<Box<dyn Stream<Item = Vec<u8>> + std::marker::Send>>,
     pub key: WormholeKey,
 }
 
@@ -161,13 +161,20 @@ pub struct WormholeWelcome {
     pub welcome: String,
 }
 
-pub async fn connect_1(appid: impl Into<String>, relay_url: &str, code_provider: CodeProvider, )
--> (
+pub async fn connect_1(
+    appid: impl Into<String>,
+    relay_url: &str,
+    code_provider: CodeProvider,
+    #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
+) -> (
     WormholeWelcome,
     WormholeConnector,
 ) {
     let appid: AppID = AppID::new(appid);
-    let (tx_api_to_core, mut rx_api_from_core) = crate::core::run(appid.clone(), relay_url);
+    let (tx_api_to_core, mut rx_api_from_core) = {
+        #[cfg(test)] { crate::core::run(appid.clone(), relay_url, eventloop_task) }
+        #[cfg(not(test))] { crate::core::run(appid.clone(), relay_url) }
+    };
 
     let mut code = None;
     let mut welcome = None;
