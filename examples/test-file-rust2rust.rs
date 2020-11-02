@@ -1,4 +1,4 @@
-use magic_wormhole::core::PeerMessage;
+use magic_wormhole::transfer::PeerMessage;
 use magic_wormhole::MessageType;
 use log::*;
 use std::fs;
@@ -17,19 +17,17 @@ fn main() {
         .init();
     
     let (code_tx, code_rx) = std::sync::mpsc::channel();
-    let (sender_result_tx, _sender_result_rx) = std::sync::mpsc::channel();
-    let (receiver_result_tx, _receiver_result_rx) = std::sync::mpsc::channel();
-    
+
     let sender_thread = std::thread::Builder::new()
         .name("sender".to_owned())
         .spawn(move || {
-            async_std::task::block_on(send(code_tx, sender_result_tx));
+            async_std::task::block_on(send(code_tx));
         })
         .unwrap();
     let receiver_thread = std::thread::Builder::new()
         .name("receiver".to_owned())
         .spawn(move || {
-            async_std::task::block_on(receive(code_rx, receiver_result_tx));
+            async_std::task::block_on(receive(code_rx));
         })
         .unwrap();
     
@@ -48,9 +46,8 @@ fn main() {
     
 }
 
-async fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Sender<String>) {
-    use magic_wormhole::{CodeProvider, filetransfer};
-    use futures::{Stream, StreamExt, Sink, SinkExt};
+async fn receive(code_rx: mpsc::Receiver<String>) {
+    use magic_wormhole::{CodeProvider, transfer};
 
     let code = code_rx.recv().unwrap();
     info!("Got code over local: {}", &code);
@@ -59,22 +56,14 @@ async fn receive(code_rx: mpsc::Receiver<String>, receiver_result_tx: mpsc::Send
 
     let mut w = connector.connect_2().await;
     info!("Got key: {:x?}", &w.key);
-    let msg = w.rx.next().await.unwrap();
-    let actual_message = PeerMessage::deserialize(std::str::from_utf8(&msg).unwrap());
-    match actual_message {
-        PeerMessage::Transit(transit) => {
-            filetransfer::receive_file(
-                    &mut w,
-                    transit,
-                    &RELAY_SERVER.parse().unwrap(),
-                ).await.unwrap();
-        },
-        _ => todo!()
-    };
+    transfer::receive_file(
+        &mut w,
+        &RELAY_SERVER.parse().unwrap(),
+    ).await.unwrap();
 }
 
-async fn send(code_tx: mpsc::Sender<String>, _sender_result_tx: mpsc::Sender<String>) {
-    use magic_wormhole::{CodeProvider, filetransfer};
+async fn send(code_tx: mpsc::Sender<String>) {
+    use magic_wormhole::{CodeProvider, transfer};
 
     let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::AllocateCode(2)).await;
     info!("Got welcome: {}", &welcome.welcome);
@@ -82,7 +71,7 @@ async fn send(code_tx: mpsc::Sender<String>, _sender_result_tx: mpsc::Sender<Str
     code_tx.send(welcome.code.0).unwrap();
     let mut w = connector.connect_2().await;
     info!("Got key: {:x?}", &w.key);
-    filetransfer::send_file(
+    transfer::send_file(
         &mut w,
         "examples/example-file.bin",
         &RELAY_SERVER.parse().unwrap(),

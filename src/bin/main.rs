@@ -5,10 +5,8 @@ use clap::{
     SubCommand,
     AppSettings,
 };
-use magic_wormhole::core::{
-    PeerMessage,
-};
-use magic_wormhole::{Wormhole, filetransfer};
+use magic_wormhole::transfer::PeerMessage;
+use magic_wormhole::{Wormhole, transfer};
 use std::str;
 use log::*;
 use futures::{Stream, StreamExt, Sink, SinkExt};
@@ -154,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
         let mut wormhole = connector.connect_2().await;
         info!("Got key: {:x?}", wormhole.key);
         let file = matches.value_of("file").unwrap();
-        filetransfer::send_file(
+        transfer::send_file(
             &mut wormhole,
             file,
             &relay_server.parse().unwrap(),
@@ -223,7 +221,7 @@ fn enter_code() -> anyhow::Result<String> {
 }
 
 async fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
-    let result = filetransfer::send_file(&mut w, filename, &relay_server.parse().unwrap()).await;
+    let result = transfer::send_file(&mut w, filename, &relay_server.parse().unwrap()).await;
     result
 }
 
@@ -232,7 +230,7 @@ async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -
         match {
             let (_welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.to_owned())).await;
             let mut wormhole = connector.connect_2().await;
-            let result = filetransfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
+            let result = transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
             result
         } {
             Ok(_) => {
@@ -247,17 +245,7 @@ async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
-    match PeerMessage::deserialize(str::from_utf8(&w.rx.next().await.unwrap()).unwrap()) {
-        PeerMessage::Transit(transit) => {
-            filetransfer::receive_file(&mut w, transit, &relay_server.parse().unwrap()).await?;
-        },
-        PeerMessage::Error(err) => {
-            anyhow::bail!("Something went wrong on the other side: {}", err);
-        },
-        other => {
-            anyhow::bail!("Got an unexpected message type, is the other side all right? Got: '{:?}'", other);
-        }
-    };
+    transfer::receive_file(&mut w, &relay_server.parse().unwrap()).await?;
 
     Ok(())
 }

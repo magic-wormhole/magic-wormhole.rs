@@ -1,15 +1,11 @@
+use crate::WormholeKey;
+use serde_derive::{Deserialize, Serialize};
+use serde_json::json;
+
 use futures::future::TryFutureExt;
 use async_std::prelude::Future;
 use std::sync::Arc;
 use std::str::FromStr;
-use crate::core::{
-    TransitType,
-    Hints,
-    DirectType,
-    Abilities,
-    PeerMessage,
-    TransitAck,
-};
 use std::str;
 use std::net::{SocketAddr, ToSocketAddrs};
 use async_std::net::{TcpListener, TcpStream};
@@ -28,6 +24,68 @@ use anyhow::{Result, Error, ensure, bail, format_err, Context};
 use super::derive_key_from_purpose;
 use super::Wormhole;
 use futures::{Stream, StreamExt, Sink, SinkExt};
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub struct TransitType {
+    pub abilities_v1: Vec<Ability>,
+    pub hints_v1: Vec<Hint>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Ability {
+    DirectTcpV1,
+    RelayV1,
+    /* TODO Fix once https://github.com/serde-rs/serde/issues/912 is done */
+    #[serde(other)]
+    Other,
+}
+
+impl Ability {
+    pub fn all_abilities() -> Vec<Ability> {
+        vec![ Self::DirectTcpV1, Self::RelayV1, ]
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Hint {
+    DirectTcpV1(DirectHint),
+    RelayV1(RelayHint),
+}
+
+impl Hint {
+    pub fn new_direct(priority: f32, hostname: &str, port: u16) -> Self {
+        Hint::DirectTcpV1(
+            DirectHint {
+                priority,
+                hostname: hostname.to_string(),
+                port,
+            }
+        )
+    }
+
+    pub fn new_relay(h: Vec<DirectHint>) -> Self {
+        Hint::RelayV1(
+            RelayHint { hints: h }
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", tag = "type", rename = "direct-tcp-v1")]
+pub struct DirectHint {
+    pub priority: f32,
+    pub hostname: String,
+    pub port: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", tag = "type", rename = "relay-v1")]
+pub struct RelayHint {
+    pub hints: Vec<DirectHint>,
+}
 
 #[derive(Debug, PartialEq)]
 enum HostType {
@@ -56,82 +114,56 @@ impl FromStr for RelayUrl {
     }
 }
 
-pub struct Transit {
-    pub socket: TcpStream,
-    pub skey: Vec<u8>,
-    pub rkey: Vec<u8>,
+pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl,) -> Result<TransitConnector> {
+    let listener = TcpListener::bind("[::]:0").await?;
+    let port = listener.local_addr()?.port();
+
+    let mut our_hints: Vec<Hint> = Vec::new();
+    if abilities.contains(&Ability::DirectTcpV1) {
+        our_hints.extend(build_direct_hints(port));
+    }
+    if abilities.contains(&Ability::RelayV1) {
+        our_hints.extend(build_relay_hints(relay_url));
+    }
+
+    Ok(TransitConnector {
+        listener,
+        port,
+        our_side_ttype: Arc::new(TransitType { abilities_v1: abilities, hints_v1: our_hints }),
+    })
 }
 
-impl Transit {
-    pub async fn sender_connect<
-        'a,
-        'b: 'a,
-        T,
-        C1,
-        F1,
-    >(
-        wormhole: &'b mut Wormhole,
-        relay_url: &RelayUrl,
-        post_handshake: C1,
-    ) -> Result<(Self, T)> 
-        where 
-        C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
-        F1: Future<Output = Result<T>>,
-    {
-        let transit_key = Arc::new(wormhole.key.derive_transit_key());
+pub struct TransitConnector {
+    listener: TcpListener,
+    port: u16,
+    our_side_ttype: Arc<TransitType>,
+}
+
+impl TransitConnector {
+    pub fn our_side_ttype(&self) -> &Arc<TransitType> {
+        &self.our_side_ttype
+    }
+
+    pub async fn sender_connect(self, key: &WormholeKey, other_side_ttype: TransitType) -> Result<Transit> {
+        let transit_key = Arc::new(key.derive_transit_key());
         debug!("transit key {}", hex::encode(&*transit_key));
 
-        // 1. start a tcp server on a random port
-        let listener = TcpListener::bind("[::]:0").await?;
-        let listen_socket = listener.local_addr()?;
-
-        // 2. send transit message to peer
-        let direct_hints: Vec<Hints> = build_direct_hints(listen_socket.port());
-        let relay_hints: Vec<Hints> = build_relay_hints(relay_url);
-
-        let mut abilities = Vec::new();
-        abilities.push(Abilities{ttype: "direct-tcp-v1".to_string()});
-        abilities.push(Abilities{ttype: "relay-v1".to_string()});
-
-        // combine direct hints and relay hints
-        let mut our_hints: Vec<Hints> = Vec::new();
-        for hint in direct_hints {
-            our_hints.push(hint);
-        }
-        for hint in relay_hints {
-            our_hints.push(hint);
-        }
-
-        // send the transit message
-        let transit_msg = PeerMessage::new_transit(abilities, our_hints).serialize();
-        debug!("transit_msg: {:?}", transit_msg);
-        let _todo = wormhole.tx.send(transit_msg.as_bytes().to_vec()).await;
-
-        // 5. receive transit message from peer.
-        let msg = wormhole.rx.next().await.unwrap();
-        let maybe_transit = PeerMessage::deserialize(str::from_utf8(&msg)?);
-        debug!("received transit message: {:?}", maybe_transit);
-
-        let ttype = match maybe_transit {
-            PeerMessage::Transit(tmsg) => tmsg,
-            _ => bail!(format_err!("unexpected message: {:?}", maybe_transit)),
-        };
+        let port = self.port;
+        let listener = self.listener;
+        // let other_side_ttype = Arc::new(other_side_ttype);
         // TODO remove this one day
-        let ttype = &*Box::leak(Box::new(ttype));
-        
-        let post_handshake_result = post_handshake(wormhole).await?;
+        let ttype = &*Box::leak(Box::new(other_side_ttype));
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         // extract peer's ip/hostname from 'ttype'
         let (mut direct_hosts, mut relay_hosts) = get_direct_relay_hosts(&ttype);
 
-        let mut hosts: Vec<(HostType, &DirectType)> = Vec::new();
+        let mut hosts: Vec<(HostType, &DirectHint)> = Vec::new();
         hosts.append(&mut direct_hosts);
         hosts.append(&mut relay_hosts);
         // TODO: combine our relay hints with the peer's relay hints.
 
         let mut handshake_futures = Vec::new();
-
         for host in hosts {
             // TODO use async scopes to borrow instead of cloning one day
             let transit_key = transit_key.clone();
@@ -154,7 +186,6 @@ impl Transit {
             handshake_futures.push(future);
         }
         handshake_futures.push(async_std::task::spawn(async move {
-            let port = listen_socket.port();
             debug!("local host {}", port);
 
             /* Mixing and matching two different futures library probably isn't the
@@ -209,69 +240,28 @@ impl Transit {
         debug!("Sending 'go' message to {}", transit.socket.peer_addr().unwrap());
         send_buffer(&mut transit.socket, b"go\n").await?;
 
-        Ok((transit, post_handshake_result))
+        Ok(transit)
     }
 
-    pub async fn receiver_connect<
-        'a,
-        'b: 'a,
-        T,
-        C1,
-        F1,
-    >(
-        wormhole: &'b mut Wormhole,
-        relay_url: &RelayUrl,
-        ttype: TransitType,
-        post_handshake: C1,
-    ) -> Result<(Self, T)> 
-        where 
-        C1: FnOnce(&'a mut Wormhole) -> F1 + 'a,
-        F1: Future<Output = Result<T>>,
-    {
-        let ttype = &*Box::leak(Box::new(ttype)); // TODO remove this one day
-        let transit_key = Arc::new(wormhole.key.derive_transit_key());
+    pub async fn receiver_connect(self, key: &WormholeKey, other_side_ttype: TransitType) -> Result<Transit> {
+        let transit_key = Arc::new(key.derive_transit_key());
         debug!("transit key {}", hex::encode(&*transit_key));
 
-        // 1. start a tcp server on a random port
-        let listener = TcpListener::bind("[::]:0").await?;
-        let listen_socket = listener.local_addr()?;
-        let port = listen_socket.port();
-
-        // 2. send transit message to peer
-        let direct_hints: Vec<Hints> = build_direct_hints(port);
-        let relay_hints: Vec<Hints> = build_relay_hints(relay_url);
-
-        let mut abilities = Vec::new();
-        abilities.push(Abilities{ttype: "direct-tcp-v1".to_string()});
-        abilities.push(Abilities{ttype: "relay-v1".to_string()});
-
-        // combine direct hints and relay hints
-        let mut our_hints: Vec<Hints> = Vec::new();
-        for hint in direct_hints {
-            our_hints.push(hint);
-        }
-        for hint in relay_hints {
-            our_hints.push(hint);
-        }
-
-        // send the transit message
-        let transit_msg = PeerMessage::new_transit(abilities, our_hints).serialize();
-        debug!("Sending '{}'", &transit_msg);
-        let _todo = wormhole.tx.send(transit_msg.as_bytes().to_vec()).await;
-        
-        let post_handshake_result = post_handshake(wormhole).await?;
+        let port = self.port;
+        let listener = self.listener;
+        // let other_side_ttype = Arc::new(other_side_ttype);
+        let ttype = &*Box::leak(Box::new(other_side_ttype)); // TODO remove this one day
 
         // 4. listen for connections on the port and simultaneously try connecting to the
         //    peer listening port.
         let (mut direct_hosts, mut relay_hosts) = get_direct_relay_hosts(&ttype);
 
-        let mut hosts: Vec<(HostType, &DirectType)> = Vec::new();
+        let mut hosts: Vec<(HostType, &DirectHint)> = Vec::new();
         hosts.append(&mut direct_hosts);
         hosts.append(&mut relay_hosts);
         // TODO: combine our relay hints with the peer's relay hints.
 
         let mut handshake_futures = Vec::new();
-
         for host in hosts {
             let transit_key = transit_key.clone();
 
@@ -294,7 +284,6 @@ impl Transit {
             handshake_futures.push(future);
         }
         handshake_futures.push(async_std::task::spawn(async move {
-            let port = listen_socket.port();
             debug!("local host {}", port);
 
             /* Mixing and matching two different futures library probably isn't the
@@ -345,12 +334,18 @@ impl Transit {
             .map(async_std::task::JoinHandle::cancel)
             .for_each(std::mem::drop);
 
-        Ok((transit, post_handshake_result))
+        Ok(transit)
     }
 }
 
+pub struct Transit {
+    pub socket: TcpStream,
+    pub skey: Vec<u8>,
+    pub rkey: Vec<u8>,
+}
+
 pub fn make_transit_ack_msg(sha256: &str, key: &[u8]) -> Result<Vec<u8>> {
-    let plaintext = TransitAck::new("ok", sha256).serialize();
+    let plaintext = crate::transfer::TransitAck::new("ok", sha256).serialize();
 
     let nonce_slice: [u8; sodiumoxide::crypto::secretbox::NONCEBYTES]
         = [0; sodiumoxide::crypto::secretbox::NONCEBYTES];
@@ -577,22 +572,22 @@ async fn tx_handshake_exchange(mut socket: TcpStream, host_type: HostType, key: 
     Ok(Transit { socket, skey, rkey } )
 }
 
-fn build_direct_hints(port: u16) -> Vec<Hints> {
+fn build_direct_hints(port: u16) -> Vec<Hint> {
     let hints = datalink::interfaces().iter()
         .filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
         .flat_map(|iface| iface.ips.iter())
         .map(|n| n as &IpNetwork)
         // .filter(|ip| ip.is_ipv4()) // TODO why was that there can we remove it?
-        .map(|ip| Hints::DirectTcpV1(DirectType{ priority: 0.0, hostname: ip.ip().to_string(), port}))
+        .map(|ip| Hint::DirectTcpV1(DirectHint{ priority: 0.0, hostname: ip.ip().to_string(), port}))
         .collect::<Vec<_>>();
     dbg!(&hints);
 
     hints
 }
 
-fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hints> {
+fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hint> {
     let mut hints = Vec::new();
-    hints.push(Hints::new_relay(vec![DirectType {
+    hints.push(Hint::new_relay(vec![DirectHint {
         priority: 0.0, 
         hostname: relay_url.host.clone(), 
         port: relay_url.port
@@ -602,35 +597,35 @@ fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hints> {
 }
 
 #[allow(clippy::type_complexity)]
-fn get_direct_relay_hosts<'a, 'b: 'a>(ttype: &'b TransitType) -> (Vec<(HostType, &'a DirectType)>, Vec<(HostType, &'a DirectType)>) {
-    let direct_hosts: Vec<(HostType, &DirectType)> = ttype.hints_v1.iter()
+fn get_direct_relay_hosts<'a, 'b: 'a>(ttype: &'b TransitType) -> (Vec<(HostType, &'a DirectHint)>, Vec<(HostType, &'a DirectHint)>) {
+    let direct_hosts: Vec<(HostType, &DirectHint)> = ttype.hints_v1.iter()
         .filter(|hint|
                 match hint {
-                    Hints::DirectTcpV1(_) => true,
+                    Hint::DirectTcpV1(_) => true,
                     _ => false,
                 })
         .map(|hint|
              match hint {
-                 Hints::DirectTcpV1(dt) => (HostType::Direct, dt),
+                 Hint::DirectTcpV1(dt) => (HostType::Direct, dt),
                  _ => unreachable!(),
              })
         .collect();
-    let relay_hosts_list: Vec<&Vec<DirectType>> = ttype.hints_v1.iter()
+    let relay_hosts_list: Vec<&Vec<DirectHint>> = ttype.hints_v1.iter()
         .filter(|hint|
                 match hint {
-                    Hints::RelayV1(_) => true,
+                    Hint::RelayV1(_) => true,
                     _ => false,
                 })
         .map(|hint|
              match hint {
-                 Hints::RelayV1(rt) => &rt.hints,
+                 Hint::RelayV1(rt) => &rt.hints,
                  _ => unreachable!(),
              })
         .collect();
 
-    let _hosts: Vec<(HostType, &DirectType)> = Vec::new();
+    let _hosts: Vec<(HostType, &DirectHint)> = Vec::new();
     let maybe_relay_hosts = relay_hosts_list.first();
-    let relay_hosts: Vec<(HostType, &DirectType)> = match maybe_relay_hosts {
+    let relay_hosts: Vec<(HostType, &DirectHint)> = match maybe_relay_hosts {
         Some(relay_host_vec) => relay_host_vec.iter()
             .map(|host| (HostType::Relay, host))
             .collect(),
@@ -646,4 +641,27 @@ async fn send_buffer(stream: &mut TcpStream, buf: &[u8]) -> std::io::Result<()> 
 
 async fn recv_buffer(stream: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<()> {
     stream.read_exact(buf).await
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_transit() {
+        let abilities = vec![
+            Ability::DirectTcpV1,
+            Ability::RelayV1,
+        ];
+        let hints = vec![
+            Hint::new_direct(0.0, "192.168.1.8", 46295),
+            Hint::new_relay(vec![DirectHint {
+                priority: 2.0,
+                hostname: "magic-wormhole-transit.debian.net".to_string(),
+                port: 4001,
+            }]),
+        ];
+        let t = crate::transfer::PeerMessage::new_transit(abilities, hints);
+        assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"priority\":0.0,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001,\"priority\":2.0,\"type\":\"direct-tcp-v1\"}],\"type\":\"relay-v1\"}]}}")
+    }
 }
