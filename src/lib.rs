@@ -2,7 +2,7 @@
 // #![deny(warnings)]
 
 pub mod core;
-pub mod filetransfer;
+pub mod transfer;
 pub mod transit;
 
 use std::fmt::Display;

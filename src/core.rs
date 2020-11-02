@@ -22,7 +22,6 @@ mod terminator;
 #[cfg(test)]
 mod test;
 mod timing;
-mod transfer;
 mod util;
 mod wordlist;
 mod io;
@@ -34,11 +33,6 @@ use log::*;
 pub use self::api::{
     APIAction, APIEvent, IOAction, IOEvent, InputHelperError, Mood,
     TimerHandle, WSHandle,
-};
-pub use self::transfer::{
-    Abilities, AnswerType,
-    DirectType, Hints, OfferType, PeerMessage, RelayType, TransitType,
-    TransitAck,
 };
 
 /// Set up a WormholeCore and run it
