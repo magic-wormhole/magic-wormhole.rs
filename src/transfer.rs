@@ -1,24 +1,24 @@
-use std::sync::Arc;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 
-use async_std::net::TcpStream;
-use std::path::Path;
-use std::path::PathBuf;
-use async_std::io::BufReader;
-use async_std::io::Write;
-use async_std::io::prelude::WriteExt;
-use async_std::io::Read;
-use async_std::io::ReadExt;
-use log::*;
-use sha2::{Digest, Sha256, digest::FixedOutput};
-use sodiumoxide::crypto::secretbox;
-use async_std::fs::File;
-use futures::{Stream, StreamExt, Sink, SinkExt};
-use anyhow::{Result, ensure, bail, format_err, Context};
-use super::Wormhole;
 use super::transit;
 use super::transit::{RelayUrl, Transit};
+use super::Wormhole;
+use anyhow::{bail, ensure, format_err, Context, Result};
+use async_std::fs::File;
+use async_std::io::prelude::WriteExt;
+use async_std::io::BufReader;
+use async_std::io::Read;
+use async_std::io::ReadExt;
+use async_std::io::Write;
+use async_std::net::TcpStream;
+use futures::{Sink, SinkExt, Stream, StreamExt};
+use log::*;
+use sha2::{digest::FixedOutput, Digest, Sha256};
+use sodiumoxide::crypto::secretbox;
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -94,7 +94,6 @@ impl PeerMessage {
             numfiles,
         })
     }
-    
     pub fn new_transit(abilities: Vec<transit::Ability>, hints: Vec<transit::Hint>) -> Self {
         PeerMessage::Transit(Arc::new(transit::TransitType {
             abilities_v1: abilities,
@@ -142,32 +141,42 @@ pub async fn send_file(
     filepath: impl AsRef<Path>,
     relay_url: &RelayUrl,
 ) -> Result<()> {
-    let filename = filepath.as_ref().file_name().ok_or_else(|| format_err!("You can't send a file without a file name"))?;
+    let filename = filepath
+        .as_ref()
+        .file_name()
+        .ok_or_else(|| format_err!("You can't send a file without a file name"))?;
     let filesize = File::open(filepath.as_ref()).await?.metadata().await?.len(); // TODO do that somewhere else
 
     let connector = transit::init(transit::Ability::all_abilities(), relay_url).await?;
 
     // We want to do some transit
     debug!("Sending transit message '{:?}", connector.our_side_ttype());
-    wormhole.tx.send(
-        PeerMessage::Transit(connector.our_side_ttype().clone())
-        .serialize()
-        .as_bytes()
-        .to_vec()
-    ).await?;
+    wormhole
+        .tx
+        .send(
+            PeerMessage::Transit(connector.our_side_ttype().clone())
+                .serialize()
+                .as_bytes()
+                .to_vec(),
+        )
+        .await?;
 
     // Send file offer message.
     debug!("Sending file offer");
-    wormhole.tx.send(
-        PeerMessage::new_offer_file(filename, filesize)
-        .serialize()
-        .as_bytes()
-        .to_vec()
-    ).await?;
+    wormhole
+        .tx
+        .send(
+            PeerMessage::new_offer_file(filename, filesize)
+                .serialize()
+                .as_bytes()
+                .to_vec(),
+        )
+        .await?;
 
     // Wait for their transit response
     let other_side_ttype = {
-        let maybe_transit = PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
+        let maybe_transit =
+            PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
         debug!("received transit message: {:?}", maybe_transit);
 
         match maybe_transit {
@@ -176,60 +185,66 @@ pub async fn send_file(
         }
     };
 
-    { // Wait for file_ack
-        let fileack_msg = PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
+    {
+        // Wait for file_ack
+        let fileack_msg =
+            PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
         debug!("received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
                 ensure!(msg == "ok", "file ack failed");
-            },
-            _ => bail!("did not receive file ack")
+            }
+            _ => bail!("did not receive file ack"),
         }
     }
 
-    let mut transit = connector.sender_connect(&wormhole.key, Arc::try_unwrap(other_side_ttype).unwrap()).await?;
+    let mut transit = connector
+        .sender_connect(&wormhole.key, Arc::try_unwrap(other_side_ttype).unwrap())
+        .await?;
     debug!("Beginning file transfer");
 
-    tcp_file_send(&mut transit, &filepath).await
+    tcp_file_send(&mut transit, &filepath)
+        .await
         .context("Could not send file")
 }
 
-pub async fn receive_file(
-    wormhole: &mut Wormhole,
-    relay_url: &RelayUrl,
-) -> Result<()> {
+pub async fn receive_file(wormhole: &mut Wormhole, relay_url: &RelayUrl) -> Result<()> {
     let connector = transit::init(transit::Ability::all_abilities(), relay_url).await?;
 
     // send the transit message
     debug!("Sending transit message '{:?}", connector.our_side_ttype());
-    let transit_msg = crate::transfer::PeerMessage::Transit(connector.our_side_ttype().clone()).serialize();
+    let transit_msg =
+        crate::transfer::PeerMessage::Transit(connector.our_side_ttype().clone()).serialize();
     wormhole.tx.send(transit_msg.as_bytes().to_vec()).await?;
 
     // receive transit message
-    let other_side_ttype = match PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?) {
-        PeerMessage::Transit(transit) => {
-            debug!("received transit message: {:?}", transit);
-            transit
-        },
-        PeerMessage::Error(err) => {
-            anyhow::bail!("Something went wrong on the other side: {}", err);
-        },
-        other => {
-            anyhow::bail!("Got an unexpected message type, is the other side all right? Got: '{:?}'", other);
-        }
-    };
+    let other_side_ttype =
+        match PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?) {
+            PeerMessage::Transit(transit) => {
+                debug!("received transit message: {:?}", transit);
+                transit
+            }
+            PeerMessage::Error(err) => {
+                anyhow::bail!("Something went wrong on the other side: {}", err);
+            }
+            other => {
+                anyhow::bail!(
+                    "Got an unexpected message type, is the other side all right? Got: '{:?}'",
+                    other
+                );
+            }
+        };
 
     // 3. receive file offer message from peer
-    let maybe_offer = PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
+    let maybe_offer =
+        PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
     debug!("Received offer message '{:?}'", &maybe_offer);
 
     let (filename, filesize) = match maybe_offer {
-        PeerMessage::Offer(offer_type) => {
-            match offer_type {
-                OfferType::File{filename, filesize} => (filename, filesize),
-                _ => bail!("unsupported offer type"),
-            }
+        PeerMessage::Offer(offer_type) => match offer_type {
+            OfferType::File { filename, filesize } => (filename, filesize),
+            _ => bail!("unsupported offer type"),
         },
         _ => bail!("unexpected message: {:?}", maybe_offer),
     };
@@ -237,19 +252,34 @@ pub async fn receive_file(
     // send file ack.
     // TODO ask upper layer to ack the file.
     debug!("Sending ack");
-    wormhole.tx.send(PeerMessage::new_file_ack("ok").serialize().as_bytes().to_vec()).await?;
+    wormhole
+        .tx
+        .send(
+            PeerMessage::new_file_ack("ok")
+                .serialize()
+                .as_bytes()
+                .to_vec(),
+        )
+        .await?;
 
-    let mut transit = connector.receiver_connect(&wormhole.key, Arc::try_unwrap(other_side_ttype).unwrap()).await?;
+    let mut transit = connector
+        .receiver_connect(&wormhole.key, Arc::try_unwrap(other_side_ttype).unwrap())
+        .await?;
 
     debug!("Beginning file transfer");
     // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-    tcp_file_receive(&mut transit, &filename, filesize).await
-       .context("Could not receive file")
+    tcp_file_receive(&mut transit, &filename, filesize)
+        .await
+        .context("Could not receive file")
 }
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
+async fn send_records(
+    filepath: impl AsRef<Path>,
+    stream: &mut TcpStream,
+    skey: &[u8],
+) -> Result<Vec<u8>> {
     // rough plan:
     // 1. Open the file
     // 2. read a block of N bytes
@@ -259,14 +289,15 @@ async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: 
     // 6. go to step #2 till eof.
     // 7. if eof, return sha256 sum.
 
-    let mut file = File::open(&filepath.as_ref()).await
+    let mut file = File::open(&filepath.as_ref())
+        .await
         .context(format!("Could not open {}", &filepath.as_ref().display()))?;
     debug!("Sending file size {}", file.metadata().await?.len());
 
     let mut hasher = Sha256::default();
 
-    let nonce_slice: [u8; sodiumoxide::crypto::secretbox::NONCEBYTES]
-        = [0; sodiumoxide::crypto::secretbox::NONCEBYTES];
+    let nonce_slice: [u8; sodiumoxide::crypto::secretbox::NONCEBYTES] =
+        [0; sodiumoxide::crypto::secretbox::NONCEBYTES];
     let mut nonce = secretbox::Nonce::from_slice(&nonce_slice[..])
         .ok_or(format_err!("Could not parse nonce".to_string()))?;
 
@@ -289,15 +320,19 @@ async fn send_records(filepath: impl AsRef<Path>, stream: &mut TcpStream, skey: 
 
         if n < 4096 {
             break;
-        }
-        else {
+        } else {
             continue;
         }
     }
     Ok(hasher.finalize_fixed().to_vec())
 }
 
-async fn receive_records(filepath: impl AsRef<Path>, filesize: u64, tcp_conn: &mut TcpStream, skey: &[u8]) -> Result<Vec<u8>> {
+async fn receive_records(
+    filepath: impl AsRef<Path>,
+    filesize: u64,
+    tcp_conn: &mut TcpStream,
+    skey: &[u8],
+) -> Result<Vec<u8>> {
     let mut stream = BufReader::new(tcp_conn);
     let mut hasher = Sha256::default();
     let mut f = File::create(filepath.as_ref()).await?; // TODO overwrite flags & checks & stuff
@@ -337,13 +372,19 @@ async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Res
     let enc_transit_ack = transit::receive_record(&mut BufReader::new(&mut transit.socket)).await?;
     let transit_ack = transit::decrypt_record(&enc_transit_ack, &transit.rkey)?;
     let transit_ack_msg = TransitAck::deserialize(std::str::from_utf8(&transit_ack)?);
-    ensure!(transit_ack_msg.sha256 == hex::encode(checksum), "receive checksum error");
-    
+    ensure!(
+        transit_ack_msg.sha256 == hex::encode(checksum),
+        "receive checksum error"
+    );
     debug!("transfer complete!");
     Ok(())
 }
 
-async fn tcp_file_receive(transit: &mut Transit, filepath: impl AsRef<Path>, filesize: u64) -> Result<()> {
+async fn tcp_file_receive(
+    transit: &mut Transit,
+    filepath: impl AsRef<Path>,
+    filesize: u64,
+) -> Result<()> {
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
@@ -382,7 +423,7 @@ mod test {
         assert_eq!(
             f1.serialize(),
             "{\"offer\":{\"file\":{\"filename\":\"somefile.txt\",\"filesize\":34556}}}"
-       );
+        );
     }
 
     #[test]
