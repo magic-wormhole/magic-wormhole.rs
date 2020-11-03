@@ -1,19 +1,16 @@
-Magic Wormhole (rust edition)
+# Rusty Wormhole
 
-* Get things from one computer to another, safely.
+Get things from one computer to another, safely.
 
-http://magic-wormhole.io/
+<http://magic-wormhole.io/>
 
-This is a Rust port of the Python version at https://github.com/warner/magic-wormhole .
+This is a Rust port of the Python version at <https://github.com/warner/magic-wormhole>.
 
-It is a work in progress: much of the low-level protocol is implemented, but
-not the file-transfer part. As of version 0.0.1, `wormhole send --text
-MESSAGE` can talk to `wormhole receive CODE`, as long as you get the code
-right. If you get the code wrong, the clients hang instead of showing an
-error message. Interactive code input (i.e. `wormhole receive`, without the
-code argument) does not work, nor does sending files (i.e. `wormhole send`
-without the `--text=` argument). These will come eventually.
+## This is a work in progress
 
+As of version `0.1.0`, most of the major protocols are implemented. The library part can be deemed "usable", although the API is far away from being "stable". There is still a lot of work to be done here, notably error handling and code documentation.
+
+The CLI is in a "proof of concept" state at the moment. Basic file sending and receiving is implemented, but everything else is missing. Note that this is not a 1:1 port of the Python API; and it won't be a drop-in replacement for it.
 
 ![Build Status][build-status-image]
 [![CircleCI Status][circleci-status-image]][circleci-status-url]
