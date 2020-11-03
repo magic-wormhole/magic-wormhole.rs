@@ -5,29 +5,24 @@ pub mod core;
 pub mod transfer;
 pub mod transit;
 
-use std::fmt::Display;
-use std::pin::Pin;
 use crate::core::AppID;
+use crate::core::{APIAction, APIEvent, Code};
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
 use futures::Sink;
 use futures::Stream;
-use crate::core::{
-    APIAction, APIEvent, Code,
-};
+use std::fmt::Display;
+use std::pin::Pin;
 
 use crate::core::key::derive_key;
-use std::str;
 use log::*;
+use std::str;
 
 #[deprecated]
 #[derive(Debug, PartialEq)]
 pub enum MessageType {
     Message(String),
-    File {
-        filename: String,
-        filesize: u64,
-    }
+    File { filename: String, filesize: u64 },
 }
 
 pub enum CodeProvider {
@@ -45,7 +40,7 @@ impl Default for CodeProvider {
 //     Closed(Mood),
 // }
 
-#[derive(Clone, Debug,)]
+#[derive(Clone, Debug)]
 pub struct WormholeKey {
     key: Vec<u8>,
     appid: AppID,
@@ -64,7 +59,12 @@ impl WormholeKey {
 
         let length = sodiumoxide::crypto::secretbox::KEYBYTES;
         let derived_key = derive_key(&self.key, &transit_purpose.as_bytes(), length);
-        trace!("Input key: {}, Transit key: {}, Transit purpose: '{}'", hex::encode(&self.key), hex::encode(&derived_key), &transit_purpose);
+        trace!(
+            "Input key: {}, Transit key: {}, Transit purpose: '{}'",
+            hex::encode(&self.key),
+            hex::encode(&derived_key),
+            &transit_purpose
+        );
         derived_key
     }
 }
@@ -80,8 +80,8 @@ pub struct WormholeConnector {
 
 impl WormholeConnector {
     pub async fn connect_2(mut self) -> Wormhole {
-        use futures::StreamExt;
         use futures::SinkExt;
+        use futures::StreamExt;
 
         let mut verifier = None;
         let mut versions = None;
@@ -93,25 +93,25 @@ impl WormholeConnector {
                     GotUnverifiedKey(k) => {
                         debug!("Got key");
                         self.key = Some(k.0.clone());
-                    },
+                    }
                     GotVerifier(v) => {
                         debug!("Got verifier {:x?}", &v);
                         verifier = Some(v);
-                    },
+                    }
                     GotVersions(v) => {
                         debug!("Got version");
                         versions = Some(v);
-                    },
+                    }
                     action @ GotMessage(_) => {
                         warn!("Got message from other side during initialization. Will deliver it after initialization.");
                         self.queued_messages.push(action);
-                    },
+                    }
                     GotWelcome(_) | GotCode(_) => {
                         panic!("TODO I don't want this what is this?!");
-                    },
+                    }
                     GotClosed(mood) => {
                         panic!("TODO return error");
-                    },
+                    }
                 }
 
                 if self.key.is_some() {
@@ -121,23 +121,27 @@ impl WormholeConnector {
             }
         }
 
-        let tx_api_to_core = self.tx_api_to_core
-            .with(|message| async {Result::<_, futures::channel::mpsc::SendError>::Ok(APIEvent::Send(message))});
+        let tx_api_to_core = self.tx_api_to_core.with(|message| async {
+            Result::<_, futures::channel::mpsc::SendError>::Ok(APIEvent::Send(message))
+        });
         let rx_api_from_core = futures::stream::iter(self.queued_messages)
             .chain(self.rx_api_from_core)
-            .filter_map(|action| async { match action {
-                APIAction::GotMessage(m) => {
-                    Some(m)
-                },
-                APIAction::GotClosed(_) => {
-                    todo!("close streams");
-                },
-                action => {
-                    warn!("Received unexpected action after initialization: '{:?}'", action);
-                    // todo!("error handling"); // TODO
-                    None
+            .filter_map(|action| async {
+                match action {
+                    APIAction::GotMessage(m) => Some(m),
+                    APIAction::GotClosed(_) => {
+                        todo!("close streams");
+                    }
+                    action => {
+                        warn!(
+                            "Received unexpected action after initialization: '{:?}'",
+                            action
+                        );
+                        // todo!("error handling"); // TODO
+                        None
+                    }
                 }
-            }});
+            });
 
         Wormhole {
             tx: Box::pin(tx_api_to_core),
@@ -151,7 +155,8 @@ impl WormholeConnector {
 }
 
 pub struct Wormhole {
-    pub tx: Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
+    pub tx:
+        Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
     pub rx: Pin<Box<dyn Stream<Item = Vec<u8>> + std::marker::Send>>,
     pub key: WormholeKey,
 }
@@ -166,14 +171,17 @@ pub async fn connect_1(
     relay_url: &str,
     code_provider: CodeProvider,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
-) -> (
-    WormholeWelcome,
-    WormholeConnector,
-) {
+) -> (WormholeWelcome, WormholeConnector) {
     let appid: AppID = AppID::new(appid);
     let (tx_api_to_core, mut rx_api_from_core) = {
-        #[cfg(test)] { crate::core::run(appid.clone(), relay_url, eventloop_task) }
-        #[cfg(not(test))] { crate::core::run(appid.clone(), relay_url) }
+        #[cfg(test)]
+        {
+            crate::core::run(appid.clone(), relay_url, eventloop_task)
+        }
+        #[cfg(not(test))]
+        {
+            crate::core::run(appid.clone(), relay_url)
+        }
     };
 
     let mut code = None;
@@ -187,10 +195,14 @@ pub async fn connect_1(
 
     match code_provider {
         CodeProvider::AllocateCode(num_words) => {
-            tx_api_to_core.unbounded_send(APIEvent::AllocateCode(num_words)).unwrap();
-        },
+            tx_api_to_core
+                .unbounded_send(APIEvent::AllocateCode(num_words))
+                .unwrap();
+        }
         CodeProvider::SetCode(code) => {
-            tx_api_to_core.unbounded_send(APIEvent::SetCode(Code(code))).unwrap();
+            tx_api_to_core
+                .unbounded_send(APIEvent::SetCode(Code(code)))
+                .unwrap();
         }
     }
 
@@ -202,31 +214,31 @@ pub async fn connect_1(
             GotWelcome(w) => {
                 debug!("Got welcome");
                 welcome = Some(w.to_string());
-            },
+            }
             action @ GotMessage(_) => {
                 warn!("Got message from other side during initialization. Will deliver it after initialization.");
                 queued_messages.push(action);
-            },
+            }
             GotCode(c) => {
                 debug!("Got code");
                 code = Some(c.clone());
-            },
+            }
             GotUnverifiedKey(k) => {
                 /* This shouldn't happen now, but it might */
                 debug!("Got key");
                 key = Some(k.0.clone());
-            },
+            }
             GotVerifier(v) => {
                 debug!("Got verifier {:x?}", &v);
                 verifier = Some(v);
-            },
+            }
             GotVersions(v) => {
                 debug!("Got version");
                 versions = Some(v);
-            },
+            }
             GotClosed(mood) => {
                 panic!("TODO return error");
-            },
+            }
         }
 
         if welcome.is_some() && code.is_some() {
@@ -248,7 +260,7 @@ pub async fn connect_1(
             rx_api_from_core,
             key,
             appid,
-        }
+        },
     )
 }
 

@@ -1,15 +1,13 @@
-use magic_wormhole::CodeProvider;
-use std::path::Path;
 use clap::{
-    crate_authors, crate_description, crate_name, crate_version, App, Arg,
-    SubCommand,
-    AppSettings,
+    crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
 };
-use magic_wormhole::transfer::PeerMessage;
-use magic_wormhole::{Wormhole, transfer};
-use std::str;
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use log::*;
-use futures::{Stream, StreamExt, Sink, SinkExt};
+use magic_wormhole::transfer::PeerMessage;
+use magic_wormhole::CodeProvider;
+use magic_wormhole::{transfer, Wormhole};
+use std::path::Path;
+use std::str;
 
 // Can ws do hostname lookup? Use ip addr, not localhost, for now
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
@@ -30,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
         .takes_value(true)
         .value_name("tcp:HOSTNAME:PORT")
         .help("Use a custom relay server");
-        let send_command = SubCommand::with_name("send")
+    let send_command = SubCommand::with_name("send")
         .visible_alias("tx")
         .arg(
             Arg::with_name("code-length")
@@ -112,13 +110,15 @@ async fn main() -> anyhow::Result<()> {
                 .visible_alias("out")
                 .takes_value(true)
                 .value_name("FILENAME|DIRNAME")
-                .help("The file or directory to create, overriding the name suggested by the sender"),
+                .help(
+                    "The file or directory to create, overriding the name suggested by the sender",
+                ),
         )
         .arg(
             Arg::with_name("code")
                 .index(1)
                 .value_name("CODE")
-                .help("Provide the code now rather than typing it interactively")
+                .help("Provide the code now rather than typing it interactively"),
         )
         .arg(relay_server_arg);
 
@@ -136,15 +136,22 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(matches) = matches.subcommand_matches("send") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
-            None => {
-                let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
-                CodeProvider::AllocateCode(numwords)
-            }
-            Some(code) => {
-                CodeProvider::SetCode(code.to_string())
-            }
-        }).await;
+        let (welcome, connector) = magic_wormhole::connect_1(
+            APPID,
+            MAILBOX_SERVER,
+            match matches.value_of("code") {
+                None => {
+                    let numwords = matches
+                        .value_of("code-length")
+                        .unwrap()
+                        .parse()
+                        .expect("TODO error handling");
+                    CodeProvider::AllocateCode(numwords)
+                }
+                Some(code) => CodeProvider::SetCode(code.to_string()),
+            },
+        )
+        .await;
         info!("Got welcome: {}", &welcome.welcome);
         info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
@@ -152,22 +159,27 @@ async fn main() -> anyhow::Result<()> {
         let mut wormhole = connector.connect_2().await;
         info!("Got key: {:x?}", wormhole.key);
         let file = matches.value_of("file").unwrap();
-        transfer::send_file(
-            &mut wormhole,
-            file,
-            &relay_server.parse().unwrap(),
-        ).await.unwrap();
+        transfer::send_file(&mut wormhole, file, &relay_server.parse().unwrap())
+            .await
+            .unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        let (welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, match matches.value_of("code") {
-            None => {
-                let numwords = matches.value_of("code-length").unwrap().parse().expect("TODO error handling");
-                CodeProvider::AllocateCode(numwords)
-            }
-            Some(code) => {
-                CodeProvider::SetCode(code.to_string())
-            }
-        }).await;
+        let (welcome, connector) = magic_wormhole::connect_1(
+            APPID,
+            MAILBOX_SERVER,
+            match matches.value_of("code") {
+                None => {
+                    let numwords = matches
+                        .value_of("code-length")
+                        .unwrap()
+                        .parse()
+                        .expect("TODO error handling");
+                    CodeProvider::AllocateCode(numwords)
+                }
+                Some(code) => CodeProvider::SetCode(code.to_string()),
+            },
+        )
+        .await;
         /* Explicitely close connection */
         std::mem::drop(connector);
         let file = matches.value_of("file").unwrap();
@@ -176,15 +188,20 @@ async fn main() -> anyhow::Result<()> {
         info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
         info!("wormhole receive {}\n", &welcome.code);
-        
         send_many(relay_server, &welcome.code, file).await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
-        let code = matches.value_of("code")
+        let code = matches
+            .value_of("code")
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| enter_code().expect("TODO handle this gracefully"));
 
-        let (_welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.trim().to_owned())).await;
+        let (_welcome, connector) = magic_wormhole::connect_1(
+            APPID,
+            MAILBOX_SERVER,
+            CodeProvider::SetCode(code.trim().to_owned()),
+        )
+        .await;
         let w = connector.connect_2().await;
 
         receive(w, relay_server).await?;
@@ -192,12 +209,15 @@ async fn main() -> anyhow::Result<()> {
         let _code = matches.subcommand_name();
         // TODO implement this properly once clap 3.0 is out
         // if might_be_code(code) {
-            warn!("No command provided, assuming you simply want to receive a file.");
-            warn!("To receive files, use `wormhole receive <CODE>`.");
-            warn!("To list all available commands and options, type `wormhole --help`");
-            warn!("Please refer to `{} --help` for further usage instructions.", crate_name!());
+        warn!("No command provided, assuming you simply want to receive a file.");
+        warn!("To receive files, use `wormhole receive <CODE>`.");
+        warn!("To list all available commands and options, type `wormhole --help`");
+        warn!(
+            "Please refer to `{} --help` for further usage instructions.",
+            crate_name!()
+        );
         // } else {
-            // clap.print_long_help();
+        // clap.print_long_help();
         // }
         unimplemented!();
     }
@@ -220,22 +240,36 @@ fn enter_code() -> anyhow::Result<String> {
     Ok(code)
 }
 
-async fn send(mut w: Wormhole, relay_server: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
+async fn send(
+    mut w: Wormhole,
+    relay_server: &str,
+    filename: impl AsRef<Path>,
+) -> anyhow::Result<()> {
     let result = transfer::send_file(&mut w, filename, &relay_server.parse().unwrap()).await;
     result
 }
 
-async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
+async fn send_many(
+    relay_server: &str,
+    code: &str,
+    filename: impl AsRef<Path>,
+) -> anyhow::Result<()> {
     loop {
         match {
-            let (_welcome, connector) = magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.to_owned())).await;
+            let (_welcome, connector) = magic_wormhole::connect_1(
+                APPID,
+                MAILBOX_SERVER,
+                CodeProvider::SetCode(code.to_owned()),
+            )
+            .await;
             let mut wormhole = connector.connect_2().await;
-            let result = transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
+            let result =
+                transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
             result
         } {
             Ok(_) => {
                 info!("TOOD success message");
-            },
+            }
             Err(e) => {
                 warn!("Send failed, {}", e);
             }
