@@ -18,6 +18,11 @@ use crate::core::key::derive_key;
 use log::*;
 use std::str;
 
+/// Some mailbox server you might use.
+///
+/// Two applications that want to communicate with each other *must* use the same mailbox server.
+pub const DEFAULT_MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
+
 #[deprecated]
 #[derive(Debug, PartialEq)]
 pub enum MessageType {

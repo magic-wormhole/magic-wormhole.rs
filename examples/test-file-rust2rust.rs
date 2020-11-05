@@ -1,13 +1,6 @@
 use log::*;
-use magic_wormhole::transfer::PeerMessage;
-use magic_wormhole::MessageType;
 use std::fs;
 use std::sync::mpsc;
-
-// Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
-const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
-const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 fn main() {
     env_logger::builder()
@@ -48,22 +41,35 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
 
     let code = code_rx.recv().unwrap();
     info!("Got code over local: {}", &code);
-    let (welcome, connector) =
-        magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code)).await;
+    let (welcome, connector) = magic_wormhole::connect_1(
+        magic_wormhole::transfer::APPID,
+        magic_wormhole::DEFAULT_MAILBOX_SERVER,
+        CodeProvider::SetCode(code),
+    )
+    .await;
     info!("Got welcome: {}", &welcome.welcome);
 
     let mut w = connector.connect_2().await;
     info!("Got key: {:x?}", &w.key);
-    transfer::receive_file(&mut w, &RELAY_SERVER.parse().unwrap())
-        .await
-        .unwrap();
+    transfer::receive_file(
+        &mut w,
+        &magic_wormhole::transit::DEFAULT_RELAY_SERVER
+            .parse()
+            .unwrap(),
+    )
+    .await
+    .unwrap();
 }
 
 async fn send(code_tx: mpsc::Sender<String>) {
     use magic_wormhole::{transfer, CodeProvider};
 
-    let (welcome, connector) =
-        magic_wormhole::connect_1(APPID, MAILBOX_SERVER, CodeProvider::AllocateCode(2)).await;
+    let (welcome, connector) = magic_wormhole::connect_1(
+        magic_wormhole::transfer::APPID,
+        magic_wormhole::DEFAULT_MAILBOX_SERVER,
+        CodeProvider::AllocateCode(2),
+    )
+    .await;
     info!("Got welcome: {}", &welcome.welcome);
     info!("This wormhole's code is: {}", &welcome.code);
     code_tx.send(welcome.code.0).unwrap();
@@ -72,7 +78,9 @@ async fn send(code_tx: mpsc::Sender<String>) {
     transfer::send_file(
         &mut w,
         "examples/example-file.bin",
-        &RELAY_SERVER.parse().unwrap(),
+        &magic_wormhole::transit::DEFAULT_RELAY_SERVER
+            .parse()
+            .unwrap(),
     )
     .await
     .unwrap();
