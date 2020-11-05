@@ -25,6 +25,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// ULR to a default hosted relay server. Please don't abuse or DOS.
+pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct TransitType {

@@ -1,18 +1,11 @@
 use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
 };
-use futures::{Sink, SinkExt, Stream, StreamExt};
 use log::*;
-use magic_wormhole::transfer::PeerMessage;
 use magic_wormhole::CodeProvider;
 use magic_wormhole::{transfer, Wormhole};
 use std::path::Path;
 use std::str;
-
-// Can ws do hostname lookup? Use ip addr, not localhost, for now
-const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
-const RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
-const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -135,10 +128,12 @@ async fn main() -> anyhow::Result<()> {
     let matches = clap.get_matches();
 
     if let Some(matches) = matches.subcommand_matches("send") {
-        let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
+        let relay_server = matches
+            .value_of("relay-server")
+            .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
         let (welcome, connector) = magic_wormhole::connect_1(
-            APPID,
-            MAILBOX_SERVER,
+            magic_wormhole::transfer::APPID,
+            magic_wormhole::DEFAULT_MAILBOX_SERVER,
             match matches.value_of("code") {
                 None => {
                     let numwords = matches
@@ -163,10 +158,12 @@ async fn main() -> anyhow::Result<()> {
             .await
             .unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
+        let relay_server = matches
+            .value_of("relay-server")
+            .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
         let (welcome, connector) = magic_wormhole::connect_1(
-            APPID,
-            MAILBOX_SERVER,
+            magic_wormhole::transfer::APPID,
+            magic_wormhole::DEFAULT_MAILBOX_SERVER,
             match matches.value_of("code") {
                 None => {
                     let numwords = matches
@@ -190,15 +187,17 @@ async fn main() -> anyhow::Result<()> {
         info!("wormhole receive {}\n", &welcome.code);
         send_many(relay_server, &welcome.code, file).await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
-        let relay_server = matches.value_of("relay-server").unwrap_or(RELAY_SERVER);
+        let relay_server = matches
+            .value_of("relay-server")
+            .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
         let code = matches
             .value_of("code")
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| enter_code().expect("TODO handle this gracefully"));
 
         let (_welcome, connector) = magic_wormhole::connect_1(
-            APPID,
-            MAILBOX_SERVER,
+            magic_wormhole::transfer::APPID,
+            magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.trim().to_owned()),
         )
         .await;
@@ -257,8 +256,8 @@ async fn send_many(
     loop {
         match {
             let (_welcome, connector) = magic_wormhole::connect_1(
-                APPID,
-                MAILBOX_SERVER,
+                magic_wormhole::transfer::APPID,
+                magic_wormhole::DEFAULT_MAILBOX_SERVER,
                 CodeProvider::SetCode(code.to_owned()),
             )
             .await;

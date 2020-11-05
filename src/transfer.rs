@@ -20,6 +20,9 @@ use sodiumoxide::crypto::secretbox;
 use std::path::Path;
 use std::path::PathBuf;
 
+/// The App ID associated with this protocol.
+pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct TransitAck {
