@@ -18,6 +18,15 @@ pub use super::wordlist::Wordlist;
 #[serde(into = "String")]
 pub struct AppID(pub Arc<String>);
 
+impl std::ops::Deref for AppID {
+    type Target=String;
+
+    /// Dereferences the value.
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
 impl AppID {
     pub fn new(id: impl Into<String>) -> Self {
         AppID(Arc::new(id.into()))

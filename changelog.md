@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased changes
+
+- Reworked Key API. It now uses type-level programming to distinguish key purposes, in the hope you'll never ever confuse them.
+- Internal improvements in Transit implementation. Little API changed except for the Keys.
+
 ## Version 0.1.0
 
 - Merged Transit/Transfer implementation from @vu3rdd and made it work.

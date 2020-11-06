@@ -50,7 +50,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     info!("Got welcome: {}", &welcome.welcome);
 
     let mut w = connector.connect_2().await;
-    info!("Got key: {:x?}", &w.key);
+    info!("Got key: {}", &w.key);
     transfer::receive_file(
         &mut w,
         &magic_wormhole::transit::DEFAULT_RELAY_SERVER
@@ -74,7 +74,7 @@ async fn send(code_tx: mpsc::Sender<String>) {
     info!("This wormhole's code is: {}", &welcome.code);
     code_tx.send(welcome.code.0).unwrap();
     let mut w = connector.connect_2().await;
-    info!("Got key: {:x?}", &w.key);
+    info!("Got key: {}", &w.key);
     transfer::send_file(
         &mut w,
         "examples/example-file.bin",

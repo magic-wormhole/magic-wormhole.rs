@@ -1,17 +1,11 @@
-use crate::WormholeKey;
+use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
-use serde_json::json;
 
-use super::derive_key_from_purpose;
-use super::Wormhole;
 use anyhow::{bail, ensure, format_err, Context, Error, Result};
 use async_std::io::prelude::WriteExt;
-use async_std::io::BufReader;
 use async_std::io::Read;
 use async_std::io::ReadExt;
-use async_std::io::Write;
 use async_std::net::{TcpListener, TcpStream};
-use async_std::prelude::Future;
 use futures::future::TryFutureExt;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use log::*;
@@ -20,13 +14,18 @@ use pnet::ipnetwork::IpNetwork;
 use sodiumoxide::crypto::secretbox;
 use std::net::{IpAddr, Ipv4Addr};
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::str;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
+
+pub struct TransitKey;
+impl KeyPurpose for TransitKey {}
+pub struct TransitRxKey;
+impl KeyPurpose for TransitRxKey {}
+pub struct TransitTxKey;
+impl KeyPurpose for TransitTxKey {}
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -122,10 +121,28 @@ pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl) -> Result<Trans
 
     let mut our_hints: Vec<Hint> = Vec::new();
     if abilities.contains(&Ability::DirectTcpV1) {
-        our_hints.extend(build_direct_hints(port));
+        our_hints.extend(
+            datalink::interfaces()
+                .iter()
+                .filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
+                .flat_map(|iface| iface.ips.iter())
+                .map(|n| n as &IpNetwork)
+                // .filter(|ip| ip.is_ipv4()) // TODO why was that there can we remove it?
+                .map(|ip| {
+                    Hint::DirectTcpV1(DirectHint {
+                        priority: 0.0,
+                        hostname: ip.ip().to_string(),
+                        port,
+                    })
+                }),
+        );
     }
     if abilities.contains(&Ability::RelayV1) {
-        our_hints.extend(build_relay_hints(relay_url));
+        our_hints.push(Hint::new_relay(vec![DirectHint {
+            priority: 0.0,
+            hostname: relay_url.host.clone(),
+            port: relay_url.port,
+        }]));
     }
 
     Ok(TransitConnector {
@@ -151,11 +168,12 @@ impl TransitConnector {
 
     pub async fn sender_connect(
         self,
-        key: &WormholeKey,
+        transit_key: Key<TransitKey>,
         other_side_ttype: TransitType,
     ) -> Result<Transit> {
-        let transit_key = Arc::new(key.derive_transit_key());
-        debug!("transit key {}", hex::encode(&*transit_key));
+        let transit_key = Arc::new(transit_key);
+        /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */
+        debug!("transit key {}", hex::encode(&***transit_key));
 
         let port = self.port;
         let listener = self.listener;
@@ -252,18 +270,19 @@ impl TransitConnector {
             "Sending 'go' message to {}",
             transit.socket.peer_addr().unwrap()
         );
-        send_buffer(&mut transit.socket, b"go\n").await?;
+        transit.socket.write_all(b"go\n").await?;
 
         Ok(transit)
     }
 
     pub async fn receiver_connect(
         self,
-        key: &WormholeKey,
+        transit_key: Key<TransitKey>,
         other_side_ttype: TransitType,
     ) -> Result<Transit> {
-        let transit_key = Arc::new(key.derive_transit_key());
-        debug!("transit key {}", hex::encode(&*transit_key));
+        let transit_key = Arc::new(transit_key);
+        /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */
+        debug!("transit key {}", hex::encode(&***transit_key));
 
         let port = self.port;
         let listener = self.listener;
@@ -360,8 +379,8 @@ impl TransitConnector {
 
 pub struct Transit {
     pub socket: TcpStream,
-    pub skey: Vec<u8>,
-    pub rkey: Vec<u8>,
+    pub skey: Key<TransitTxKey>,
+    pub rkey: Key<TransitRxKey>,
 }
 
 pub fn make_transit_ack_msg(sha256: &str, key: &[u8]) -> Result<Vec<u8>> {
@@ -377,16 +396,6 @@ pub fn make_transit_ack_msg(sha256: &str, key: &[u8]) -> Result<Vec<u8>> {
 fn generate_transit_side() -> String {
     let x: [u8; 8] = rand::random();
     hex::encode(x)
-}
-
-fn make_record_keys(key: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let s_purpose = "transit_record_sender_key";
-    let r_purpose = "transit_record_receiver_key";
-
-    let sender = derive_key_from_purpose(key, s_purpose);
-    let receiver = derive_key_from_purpose(key, r_purpose);
-
-    (sender, receiver)
 }
 
 pub async fn send_record(stream: &mut TcpStream, buf: &[u8]) -> std::io::Result<()> {
@@ -458,85 +467,69 @@ pub fn decrypt_record(enc_packet: &[u8], key: &[u8]) -> Result<Vec<u8>> {
     Ok(plaintext)
 }
 
-fn make_receive_handshake(key: &[u8]) -> String {
-    let purpose = "transit_receiver";
-    let sub_key = derive_key_from_purpose(key, purpose);
-
-    let msg = format!("transit receiver {} ready\n\n", hex::encode(sub_key));
-    msg
-}
-
-fn make_send_handshake(key: &[u8]) -> String {
-    let purpose = "transit_sender";
-    let sub_key = derive_key_from_purpose(key, purpose);
-
-    let msg = format!("transit sender {} ready\n\n", hex::encode(sub_key));
-    msg
-}
-
-fn make_relay_handshake(key: &[u8], tside: &str) -> String {
-    let purpose = "transit_relay_token";
-    let sub_key = derive_key_from_purpose(key, purpose);
-    let msg = format!("please relay {} for side {}\n", hex::encode(sub_key), tside);
-    trace!("relay handshake message: {}", msg);
-    msg
+fn make_relay_handshake(key: &Key<TransitKey>, tside: &str) -> String {
+    let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
+    format!(
+        "please relay {} for side {}\n",
+        hex::encode(&**sub_key),
+        tside
+    )
 }
 
 async fn rx_handshake_exchange(
     mut socket: TcpStream,
     host_type: HostType,
-    key: impl AsRef<[u8]>,
+    key: &Key<TransitKey>,
 ) -> Result<Transit> {
     // create record keys
-    let (skey, rkey) = make_record_keys(key.as_ref());
+    let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
+    let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
 
     // exchange handshake
     let tside = generate_transit_side();
 
     if host_type == HostType::Relay {
         trace!("initiating relay handshake");
-        let relay_handshake = make_relay_handshake(key.as_ref(), &tside);
-        let relay_handshake_msg = relay_handshake.as_bytes();
-        send_buffer(&mut socket, relay_handshake_msg).await?;
+        socket
+            .write_all(make_relay_handshake(key, &tside).as_bytes())
+            .await?;
         let mut rx = [0u8; 3];
-        recv_buffer(&mut socket, &mut rx).await?;
+        socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
         ensure!(ok_msg == rx, format_err!("relay handshake failed"));
-        trace!("relay handshake succeeded");
     }
 
     {
-        // send handshake and receive handshake
-        let send_handshake_msg = make_send_handshake(key.as_ref());
-        let rx_handshake = make_receive_handshake(key.as_ref());
-        dbg!(&rx_handshake, rx_handshake.as_bytes().len());
-        let receive_handshake_msg = rx_handshake.as_bytes();
-
         // for receive mode, send receive_handshake_msg and compare.
         // the received message with send_handshake_msg
 
-        send_buffer(&mut socket, receive_handshake_msg).await?;
-
-        trace!("quarter's done");
-
-        let mut rx: [u8; 90] = [0; 90];
-        recv_buffer(&mut socket, &mut rx[0..87]).await?;
-
-        trace!("half's done");
-
-        recv_buffer(&mut socket, &mut rx[87..90]).await?;
+        socket
+            .write_all(
+                format!(
+                    "transit receiver {} ready\n\n",
+                    hex::encode(
+                        &**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
+                    )
+                )
+                .as_bytes(),
+            )
+            .await?;
 
         // The received message "transit receiver $hash ready\n\n" has exactly 87 bytes
         // Three bytes for the "go\n" ack
         // TODO do proper line parsing one day, this is atrocious
+        let mut rx: [u8; 90] = [0; 90];
+        socket.read_exact(&mut rx).await?;
 
-        let mut s_handshake = send_handshake_msg.as_bytes().to_vec();
-        let go_msg = b"go\n";
-        s_handshake.extend_from_slice(go_msg);
-        ensure!(s_handshake == &rx[..], "handshake failed");
+        let expected_tx_handshake = format!(
+            "transit sender {} ready\n\ngo\n",
+            hex::encode(&**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender"))
+        );
+        ensure!(
+            &rx[..] == expected_tx_handshake.as_bytes(),
+            "handshake failed"
+        );
     }
-
-    trace!("handshake successful");
 
     Ok(Transit { socket, skey, rkey })
 }
@@ -544,87 +537,56 @@ async fn rx_handshake_exchange(
 async fn tx_handshake_exchange(
     mut socket: TcpStream,
     host_type: HostType,
-    key: impl AsRef<[u8]>,
+    key: &Key<TransitKey>,
 ) -> Result<Transit> {
     // 9. create record keys
-    let (skey, rkey) = make_record_keys(key.as_ref());
+    let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
+    let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
 
     // 10. exchange handshake over tcp
     let tside = generate_transit_side();
 
     if host_type == HostType::Relay {
-        trace!("initiating relay handshake");
-        let relay_handshake = make_relay_handshake(key.as_ref(), &tside);
-        let relay_handshake_msg = relay_handshake.as_bytes();
-        send_buffer(&mut socket, relay_handshake_msg).await?;
+        socket
+            .write_all(make_relay_handshake(key, &tside).as_bytes())
+            .await?;
         let mut rx = [0u8; 3];
-        recv_buffer(&mut socket, &mut rx).await?;
+        socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
         ensure!(ok_msg == rx, format_err!("relay handshake failed"));
-        trace!("relay handshake succeeded");
     }
 
     {
-        // send handshake and receive handshake
-        let tx_handshake = make_send_handshake(key.as_ref());
-        let rx_handshake = make_receive_handshake(key.as_ref());
-        dbg!(&tx_handshake, tx_handshake.as_bytes().len());
-
-        debug!("tx handshake started");
-
-        let tx_handshake_msg = tx_handshake.as_bytes();
-        let rx_handshake_msg = rx_handshake.as_bytes();
         // for transmit mode, send send_handshake_msg and compare.
         // the received message with send_handshake_msg
-        send_buffer(&mut socket, tx_handshake_msg).await?;
-
-        trace!("half's done");
+        socket
+            .write_all(
+                format!(
+                    "transit sender {} ready\n\n",
+                    hex::encode(
+                        &**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
+                    )
+                )
+                .as_bytes(),
+            )
+            .await?;
 
         // The received message "transit sender $hash ready\n\n" has exactly 89 bytes
         // TODO do proper line parsing one day, this is atrocious
         let mut rx: [u8; 89] = [0; 89];
-        recv_buffer(&mut socket, &mut rx).await?;
+        socket.read_exact(&mut rx).await?;
 
-        trace!("{:?}", rx_handshake_msg.len());
-
-        let r_handshake = rx_handshake_msg;
-        ensure!(r_handshake == &rx[..], format_err!("handshake failed"));
+        let expected_rx_handshake = format!(
+            "transit receiver {} ready\n\n",
+            hex::encode(&**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver"))
+        );
+        ensure!(
+            &rx[..] == expected_rx_handshake.as_bytes(),
+            format_err!("handshake failed")
+        );
     }
 
-    trace!("handshake successful");
-
     Ok(Transit { socket, skey, rkey })
-}
-
-fn build_direct_hints(port: u16) -> Vec<Hint> {
-    let hints = datalink::interfaces()
-        .iter()
-        .filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
-        .flat_map(|iface| iface.ips.iter())
-        .map(|n| n as &IpNetwork)
-        // .filter(|ip| ip.is_ipv4()) // TODO why was that there can we remove it?
-        .map(|ip| {
-            Hint::DirectTcpV1(DirectHint {
-                priority: 0.0,
-                hostname: ip.ip().to_string(),
-                port,
-            })
-        })
-        .collect::<Vec<_>>();
-    dbg!(&hints);
-
-    hints
-}
-
-fn build_relay_hints(relay_url: &RelayUrl) -> Vec<Hint> {
-    let mut hints = Vec::new();
-    hints.push(Hint::new_relay(vec![DirectHint {
-        priority: 0.0,
-        hostname: relay_url.host.clone(),
-        port: relay_url.port,
-    }]));
-
-    hints
 }
 
 #[allow(clippy::type_complexity)]
@@ -670,14 +632,6 @@ fn get_direct_relay_hosts<'a, 'b: 'a>(
     };
 
     (direct_hosts, relay_hosts)
-}
-
-async fn send_buffer(stream: &mut TcpStream, buf: &[u8]) -> std::io::Result<()> {
-    stream.write_all(buf).await
-}
-
-async fn recv_buffer(stream: &mut TcpStream, buf: &mut [u8]) -> std::io::Result<()> {
-    stream.read_exact(buf).await
 }
 
 #[cfg(test)]
