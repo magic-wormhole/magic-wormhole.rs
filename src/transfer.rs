@@ -203,7 +203,10 @@ pub async fn send_file(
     }
 
     let mut transit = connector
-        .sender_connect(&wormhole.key, Arc::try_unwrap(other_side_ttype).unwrap())
+        .sender_connect(
+            wormhole.key.derive_transit_key(&wormhole.appid),
+            Arc::try_unwrap(other_side_ttype).unwrap(),
+        )
         .await?;
     debug!("Beginning file transfer");
 
@@ -266,7 +269,10 @@ pub async fn receive_file(wormhole: &mut Wormhole, relay_url: &RelayUrl) -> Resu
         .await?;
 
     let mut transit = connector
-        .receiver_connect(&wormhole.key, Arc::try_unwrap(other_side_ttype).unwrap())
+        .receiver_connect(
+            wormhole.key.derive_transit_key(&wormhole.appid),
+            Arc::try_unwrap(other_side_ttype).unwrap(),
+        )
         .await?;
 
     debug!("Beginning file transfer");

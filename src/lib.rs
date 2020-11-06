@@ -23,13 +23,7 @@ use std::str;
 /// Two applications that want to communicate with each other *must* use the same mailbox server.
 pub const DEFAULT_MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 
-#[deprecated]
-#[derive(Debug, PartialEq)]
-pub enum MessageType {
-    Message(String),
-    File { filename: String, filesize: u64 },
-}
-
+#[non_exhaustive]
 pub enum CodeProvider {
     AllocateCode(usize),
     SetCode(String),
@@ -41,36 +35,57 @@ impl Default for CodeProvider {
     }
 }
 
-// enum WormholeError {
-//     Closed(Mood),
-// }
+// TODO Once const generics are stabilized, try out if a const string generic may replace this.
+pub trait KeyPurpose {}
 
+pub struct WormholeKey;
+impl KeyPurpose for WormholeKey {}
+pub struct GenericKey;
+impl KeyPurpose for GenericKey {}
+
+/**
+ * The symmetric encryption key used to communicate with the other side.
+ * 
+ * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
+ */
 #[derive(Clone, Debug)]
-pub struct WormholeKey {
-    key: Vec<u8>,
-    appid: AppID,
-}
+pub struct Key<P: KeyPurpose>(pub Vec<u8>, std::marker::PhantomData<P>);
 
-impl Display for WormholeKey {
+impl <P: KeyPurpose> Display for Key<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use std::fmt::Debug;
-        self.key.fmt(f)
+        self.0.fmt(f)
     }
 }
 
-impl WormholeKey {
-    pub fn derive_transit_key(&self) -> Vec<u8> {
-        let transit_purpose = format!("{}/transit-key", &self.appid.0);
+impl <P: KeyPurpose> std::ops::Deref for Key<P> {
+    type Target=Vec<u8>;
 
-        let length = sodiumoxide::crypto::secretbox::KEYBYTES;
-        let derived_key = derive_key(&self.key, &transit_purpose.as_bytes(), length);
+    /// Dereferences the value.
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Key<WormholeKey> {
+    pub fn derive_transit_key(&self, appid: &AppID) -> Key<transit::TransitKey> {
+        let transit_purpose = format!("{}/transit-key", &**appid);
+
+        let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
         trace!(
             "Input key: {}, Transit key: {}, Transit purpose: '{}'",
-            hex::encode(&self.key),
-            hex::encode(&derived_key),
+            hex::encode(&**self),
+            hex::encode(&**derived_key),
             &transit_purpose
         );
         derived_key
+    }
+}
+
+impl <P: KeyPurpose> Key<P> {
+    fn derive_subkey_from_purpose<NewP: KeyPurpose>(&self, purpose: &str) -> Key<NewP> {
+        let length = sodiumoxide::crypto::secretbox::KEYBYTES;
+        Key(derive_key(&*self, &purpose.as_bytes(), length), std::marker::PhantomData)
     }
 }
 
@@ -151,10 +166,8 @@ impl WormholeConnector {
         Wormhole {
             tx: Box::pin(tx_api_to_core),
             rx: Box::pin(rx_api_from_core),
-            key: WormholeKey {
-                key: self.key.unwrap(),
-                appid: self.appid,
-            },
+            key: Key(self.key.unwrap(), std::marker::PhantomData),
+            appid: self.appid,
         }
     }
 }
@@ -163,7 +176,8 @@ pub struct Wormhole {
     pub tx:
         Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
     pub rx: Pin<Box<dyn Stream<Item = Vec<u8>> + std::marker::Send>>,
-    pub key: WormholeKey,
+    pub key: Key<WormholeKey>,
+    pub appid: AppID,
 }
 
 pub struct WormholeWelcome {
@@ -267,10 +281,4 @@ pub async fn connect_1(
             appid,
         },
     )
-}
-
-#[deprecated]
-fn derive_key_from_purpose(key: &[u8], purpose: &str) -> Vec<u8> {
-    let length = sodiumoxide::crypto::secretbox::KEYBYTES;
-    derive_key(key, &purpose.as_bytes(), length)
 }
