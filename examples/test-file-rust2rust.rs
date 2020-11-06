@@ -41,7 +41,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
 
     let code = code_rx.recv().unwrap();
     info!("Got code over local: {}", &code);
-    let (welcome, connector) = magic_wormhole::connect_1(
+    let (welcome, connector) = magic_wormhole::connect_to_server(
         magic_wormhole::transfer::APPID,
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::SetCode(code),
@@ -49,7 +49,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     .await;
     info!("Got welcome: {}", &welcome.welcome);
 
-    let mut w = connector.connect_2().await;
+    let mut w = connector.connect_to_client().await;
     info!("Got key: {}", &w.key);
     transfer::receive_file(
         &mut w,
@@ -64,7 +64,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
 async fn send(code_tx: mpsc::Sender<String>) {
     use magic_wormhole::{transfer, CodeProvider};
 
-    let (welcome, connector) = magic_wormhole::connect_1(
+    let (welcome, connector) = magic_wormhole::connect_to_server(
         magic_wormhole::transfer::APPID,
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::AllocateCode(2),
@@ -73,7 +73,7 @@ async fn send(code_tx: mpsc::Sender<String>) {
     info!("Got welcome: {}", &welcome.welcome);
     info!("This wormhole's code is: {}", &welcome.code);
     code_tx.send(welcome.code.0).unwrap();
-    let mut w = connector.connect_2().await;
+    let mut w = connector.connect_to_client().await;
     info!("Got key: {}", &w.key);
     transfer::send_file(
         &mut w,

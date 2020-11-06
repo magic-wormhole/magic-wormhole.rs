@@ -131,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
         let relay_server = matches
             .value_of("relay-server")
             .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
-        let (welcome, connector) = magic_wormhole::connect_1(
+        let (welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             match matches.value_of("code") {
@@ -151,7 +151,7 @@ async fn main() -> anyhow::Result<()> {
         info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
         info!("wormhole receive {}\n", &welcome.code);
-        let mut wormhole = connector.connect_2().await;
+        let mut wormhole = connector.connect_to_client().await;
         info!("Got key: {:x?}", wormhole.key);
         let file = matches.value_of("file").unwrap();
         transfer::send_file(&mut wormhole, file, &relay_server.parse().unwrap())
@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
         let relay_server = matches
             .value_of("relay-server")
             .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
-        let (welcome, connector) = magic_wormhole::connect_1(
+        let (welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             match matches.value_of("code") {
@@ -195,13 +195,13 @@ async fn main() -> anyhow::Result<()> {
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| enter_code().expect("TODO handle this gracefully"));
 
-        let (_welcome, connector) = magic_wormhole::connect_1(
+        let (_welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.trim().to_owned()),
         )
         .await;
-        let w = connector.connect_2().await;
+        let w = connector.connect_to_client().await;
 
         receive(w, relay_server).await?;
     } else {
@@ -255,13 +255,13 @@ async fn send_many(
 ) -> anyhow::Result<()> {
     loop {
         match {
-            let (_welcome, connector) = magic_wormhole::connect_1(
+            let (_welcome, connector) = magic_wormhole::connect_to_server(
                 magic_wormhole::transfer::APPID,
                 magic_wormhole::DEFAULT_MAILBOX_SERVER,
                 CodeProvider::SetCode(code.to_owned()),
             )
             .await;
-            let mut wormhole = connector.connect_2().await;
+            let mut wormhole = connector.connect_to_client().await;
             let result =
                 transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
             result
