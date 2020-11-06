@@ -99,7 +99,7 @@ pub struct WormholeConnector {
 }
 
 impl WormholeConnector {
-    pub async fn connect_2(mut self) -> Wormhole {
+    pub async fn connect_to_client(mut self) -> Wormhole {
         use futures::SinkExt;
         use futures::StreamExt;
 
@@ -185,7 +185,7 @@ pub struct WormholeWelcome {
     pub welcome: String,
 }
 
-pub async fn connect_1(
+pub async fn connect_to_server(
     appid: impl Into<String>,
     relay_url: &str,
     code_provider: CodeProvider,
