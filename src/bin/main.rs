@@ -152,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
         info!("On the other computer, please run:\n");
         info!("wormhole receive {}\n", &welcome.code);
         let mut wormhole = connector.connect_to_client().await;
-        info!("Got key: {:x?}", wormhole.key);
+        info!("Got key: {}", wormhole.key);
         let file = matches.value_of("file").unwrap();
         transfer::send_file(&mut wormhole, file, &relay_server.parse().unwrap())
             .await
