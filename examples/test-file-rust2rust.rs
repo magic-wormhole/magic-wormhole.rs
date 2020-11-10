@@ -51,7 +51,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
 
     let mut w = connector.connect_to_client().await;
     info!("Got key: {}", &w.key);
-    transfer::receive_file(
+    let req = transfer::request_file(
         &mut w,
         &magic_wormhole::transit::DEFAULT_RELAY_SERVER
             .parse()
@@ -59,6 +59,8 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     )
     .await
     .unwrap();
+
+    req.resolve().await.unwrap();
 }
 
 async fn send(code_tx: mpsc::Sender<String>) {
