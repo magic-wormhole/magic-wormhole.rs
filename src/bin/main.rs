@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
                         .parse()
                         .expect("TODO error handling");
                     CodeProvider::AllocateCode(numwords)
-                }
+                },
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
                         .parse()
                         .expect("TODO error handling");
                     CodeProvider::AllocateCode(numwords)
-                }
+                },
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
@@ -268,10 +268,10 @@ async fn send_many(
         } {
             Ok(_) => {
                 info!("TOOD success message");
-            }
+            },
             Err(e) => {
                 warn!("Send failed, {}", e);
-            }
+            },
         }
     }
     // Ok(())
