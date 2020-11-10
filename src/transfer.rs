@@ -199,7 +199,7 @@ pub async fn send_file(
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
                 ensure!(msg == "ok", "file ack failed");
-            }
+            },
             _ => bail!("did not receive file ack"),
         }
     }
