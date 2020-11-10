@@ -19,6 +19,8 @@ use sha2::{digest::FixedOutput, Digest, Sha256};
 use sodiumoxide::crypto::secretbox;
 use std::path::Path;
 use std::path::PathBuf;
+use transit::TransitConnector;
+use transit::TransitType;
 
 /// The App ID associated with this protocol.
 pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
@@ -197,7 +199,7 @@ pub async fn send_file(
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
                 ensure!(msg == "ok", "file ack failed");
-            }
+            },
             _ => bail!("did not receive file ack"),
         }
     }
@@ -215,7 +217,10 @@ pub async fn send_file(
         .context("Could not send file")
 }
 
-pub async fn receive_file(wormhole: &mut Wormhole, relay_url: &RelayUrl) -> Result<()> {
+pub async fn request_file<'a>(
+    wormhole: &'a mut Wormhole,
+    relay_url: &RelayUrl,
+) -> Result<ReceiveRequest<'a>> {
     let connector = transit::init(transit::Ability::all_abilities(), relay_url).await?;
 
     // send the transit message
@@ -230,16 +235,16 @@ pub async fn receive_file(wormhole: &mut Wormhole, relay_url: &RelayUrl) -> Resu
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
                 transit
-            }
+            },
             PeerMessage::Error(err) => {
                 anyhow::bail!("Something went wrong on the other side: {}", err);
-            }
+            },
             other => {
                 anyhow::bail!(
                     "Got an unexpected message type, is the other side all right? Got: '{:?}'",
                     other
                 );
-            }
+            },
         };
 
     // 3. receive file offer message from peer
@@ -255,31 +260,68 @@ pub async fn receive_file(wormhole: &mut Wormhole, relay_url: &RelayUrl) -> Resu
         _ => bail!("unexpected message: {:?}", maybe_offer),
     };
 
-    // send file ack.
-    // TODO ask upper layer to ack the file.
-    debug!("Sending ack");
-    wormhole
-        .tx
-        .send(
-            PeerMessage::new_file_ack("ok")
-                .serialize()
-                .as_bytes()
-                .to_vec(),
-        )
-        .await?;
+    let req = ReceiveRequest {
+        wormhole,
+        filename,
+        filesize,
+        connector,
+        other_side_ttype,
+    };
 
-    let mut transit = connector
-        .receiver_connect(
-            wormhole.key.derive_transit_key(&wormhole.appid),
-            Arc::try_unwrap(other_side_ttype).unwrap(),
-        )
-        .await?;
+    Ok(req)
+}
 
-    debug!("Beginning file transfer");
-    // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-    tcp_file_receive(&mut transit, &filename, filesize)
-        .await
-        .context("Could not receive file")
+#[must_use]
+pub struct ReceiveRequest<'a> {
+    wormhole: &'a mut Wormhole,
+    connector: TransitConnector,
+    pub filename: PathBuf,
+    pub filesize: u64,
+    other_side_ttype: Arc<transit::TransitType>,
+}
+
+impl<'a> ReceiveRequest<'a> {
+    pub async fn accept(self) -> Result<()> {
+        // send file ack.
+        debug!("Sending ack");
+        self.wormhole
+            .tx
+            .send(
+                PeerMessage::new_file_ack("ok")
+                    .serialize()
+                    .as_bytes()
+                    .to_vec(),
+            )
+            .await?;
+
+        let mut transit = self
+            .connector
+            .receiver_connect(
+                self.wormhole.key.derive_transit_key(&self.wormhole.appid),
+                Arc::try_unwrap(self.other_side_ttype).unwrap(),
+            )
+            .await?;
+
+        debug!("Beginning file transfer");
+        // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
+        tcp_file_receive(&mut transit, &self.filename, self.filesize)
+            .await
+            .context("Could not receive file")
+    }
+
+    pub async fn reject(self) -> Result<()> {
+        self.wormhole
+            .tx
+            .send(
+                PeerMessage::new_error_message("transfer rejected")
+                    .serialize()
+                    .as_bytes()
+                    .to_vec(),
+            )
+            .await?;
+
+        Ok(())
+    }
 }
 
 // encrypt and send the file to tcp stream and return the sha256 sum

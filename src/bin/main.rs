@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
                         .parse()
                         .expect("TODO error handling");
                     CodeProvider::AllocateCode(numwords)
-                }
+                },
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
                         .parse()
                         .expect("TODO error handling");
                     CodeProvider::AllocateCode(numwords)
-                }
+                },
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
@@ -268,17 +268,56 @@ async fn send_many(
         } {
             Ok(_) => {
                 info!("TOOD success message");
-            }
+            },
             Err(e) => {
                 warn!("Send failed, {}", e);
-            }
+            },
         }
     }
     // Ok(())
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
-    transfer::receive_file(&mut w, &relay_server.parse().unwrap()).await?;
+    use async_std::io;
+    use async_std::prelude::*;
 
-    Ok(())
+    let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
+
+    let mut stdout = io::stdout();
+    let stdin = io::stdin();
+
+    let answer = loop {
+        stdout
+            .write_fmt(format_args!(
+                "Receive file '{}' (size: {} bytes)? (y/N) ",
+                req.filename.display(),
+                req.filesize
+            ))
+            .await
+            .unwrap();
+
+        stdout.flush().await.unwrap();
+
+        let mut answer = String::new();
+        stdin.read_line(&mut answer).await.unwrap();
+
+        match answer.chars().next() {
+            Some('y') | Some('Y') => break true,
+            Some('n') | Some('N') => break false,
+            _ => {
+                stdout
+                    .write_fmt(format_args!("Please type y or n!\n"))
+                    .await
+                    .unwrap();
+                stdout.flush().await.unwrap();
+                continue;
+            },
+        };
+    };
+
+    if answer {
+        req.accept().await
+    } else {
+        req.reject().await
+    }
 }
