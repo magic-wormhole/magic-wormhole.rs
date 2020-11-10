@@ -2,6 +2,7 @@
 
 ## Unreleased changes
 
+- Added API documentation \o/ (still a long way to go though)
 - Reworked Key API. It now uses type-level programming to distinguish key purposes, in the hope you'll never ever confuse them.
 - Internal improvements in Transit implementation. Little API changed except for the Keys.
 

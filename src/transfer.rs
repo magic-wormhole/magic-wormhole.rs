@@ -1,3 +1,13 @@
+//! Client-to-Client protocol to organize file transfers
+//! 
+//! This gives you the actual capability to transfer files, that feature that Magic Wormhole got known and loved for.
+//! 
+//! It is bound to an [`APPID`](APPID). Only applications using that APPID (and thus this protocol) can interoperate with
+//! the original Python implementation (and other compliant implementations).
+//! 
+//! At its core, [`PeerMessage`s](PeerMessage) are exchanged over an established wormhole connection with the other side.
+//! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
+
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -51,12 +61,17 @@ impl TransitAck {
     }
 }
 
+/**
+ * The type of message exchanged over the wormhole for this protocol
+ */
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum PeerMessage {
     Offer(OfferType),
     Answer(AnswerType),
+    /** Tell the other side you got an error */
     Error(String),
+    /** Used to set up a transit channel */
     Transit(Arc<transit::TransitType>),
 }
 
@@ -141,6 +156,7 @@ pub enum AnswerType {
     FileAck(String),
 }
 
+/// Send a file to the other side
 pub async fn send_file(
     wormhole: &mut Wormhole,
     filepath: impl AsRef<Path>,
@@ -217,6 +233,12 @@ pub async fn send_file(
         .context("Could not send file")
 }
 
+/**
+ * Wait for a file offer from the other side
+ * 
+ * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
+ * It will also start building a TCP connection to the other side using the transit protocol.
+ */
 pub async fn request_file<'a>(
     wormhole: &'a mut Wormhole,
     relay_url: &RelayUrl,
@@ -271,6 +293,11 @@ pub async fn request_file<'a>(
     Ok(req)
 }
 
+/**
+ * A pending files send offer from the other side
+ * 
+ * You *should* consume this object, either by calling [`accept`](ReceiveRequest::accept) or [`reject`](ReceiveRequest::reject).
+ */
 #[must_use]
 pub struct ReceiveRequest<'a> {
     wormhole: &'a mut Wormhole,
@@ -281,6 +308,11 @@ pub struct ReceiveRequest<'a> {
 }
 
 impl<'a> ReceiveRequest<'a> {
+    /**
+     * Accept the file offer
+     * 
+     * This will transfer the file and save it on disk.
+     */
     pub async fn accept(self) -> Result<()> {
         // send file ack.
         debug!("Sending ack");
@@ -309,6 +341,12 @@ impl<'a> ReceiveRequest<'a> {
             .context("Could not receive file")
     }
 
+    /**
+     * Reject the file offer
+     *
+     * This will send an error message to the other side so that it knows the transfer failed.
+     * You can close the wormhole afterwards.
+     */
     pub async fn reject(self) -> Result<()> {
         self.wormhole
             .tx
