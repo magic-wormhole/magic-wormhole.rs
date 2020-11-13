@@ -21,14 +21,14 @@ pub async fn test_eventloop_exit() {
 
     let code = "42-something-something"; // TODO dynamic code allocation
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
         let _wormhole = connector.connect_to_client().await;
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
     async_std::future::timeout(Duration::from_secs(5), async {
-        let (_welcome, connector) = crate::connect_to_server(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
         let mut wormhole = connector.connect_to_client().await;
         log::info!("B Connected.");
         wormhole.tx.close().await.unwrap();
@@ -55,14 +55,14 @@ pub async fn test_eventloop_exit2() {
 
     let code = "42-something-something"; // TODO dynamic code allocation
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
         let _wormhole = connector.connect_to_client().await;
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
     async_std::future::timeout(Duration::from_secs(5), async {
-        let (_welcome, connector) = crate::connect_to_server(APPID, MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
         let wormhole = connector.connect_to_client().await;
         log::info!("B Connected.");
         std::mem::drop(wormhole.tx);
@@ -87,7 +87,7 @@ pub async fn test_eventloop_exit3() {
 
     async_std::future::timeout(Duration::from_secs(5), async {
         let mut eventloop_task = None;
-        let (_welcome, connector) = crate::connect_to_server(APPID, MAILBOX_SERVER, CodeProvider::AllocateCode(2), &mut eventloop_task).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::AllocateCode(2), &mut eventloop_task).await;
         let eventloop_task = eventloop_task.unwrap();
 
         log::info!("Connected.");

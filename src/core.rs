@@ -41,6 +41,7 @@ pub use self::api::{
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
 pub fn run(
     appid: AppID,
+    versions: serde_json::Value,
     relay_url: &str,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
 ) ->
@@ -53,7 +54,7 @@ pub fn run(
     let (tx_io_to_core, mut rx_io_to_core) = unbounded();
     let (tx_api_to_core, mut rx_api_to_core) = unbounded();
     let (mut tx_api_from_core, rx_api_from_core) = unbounded();
-    let mut core = WormholeCore::new(appid, relay_url, tx_io_to_core);
+    let mut core = WormholeCore::new(appid, versions, relay_url, tx_io_to_core);
 
     #[allow(unused_variables)]
     let join_handle = async_std::task::spawn(async move {
@@ -114,14 +115,14 @@ struct WormholeCore {
 }
 
 impl WormholeCore {
-    fn new(appid: AppID, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
+    fn new(appid: AppID, versions: serde_json::Value, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
         let side = MySide::generate();
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
             code: code::CodeMachine::new(),
             input: input::InputMachine::new(),
-            key: key::KeyMachine::new(&appid, &side),
+            key: key::KeyMachine::new(&appid, &side, versions),
             lister: lister::ListerMachine::new(),
             mailbox: mailbox::MailboxMachine::new(&side),
             nameplate: nameplate::NameplateMachine::new(),
