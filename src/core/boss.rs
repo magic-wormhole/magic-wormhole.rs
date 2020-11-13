@@ -253,6 +253,7 @@ impl BossMachine {
                         actions.push(APIAction::GotMessage(plaintext));
                     } else {
                         // TODO: log and ignore, for future expansion
+                        todo!("log and ignore, for future expansion");
                     }
                     old_state
                 }

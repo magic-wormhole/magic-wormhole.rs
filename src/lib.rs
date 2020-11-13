@@ -188,7 +188,7 @@ impl WormholeConnector {
                     }
                 }
 
-                if self.key.is_some() {
+                if self.key.is_some() && versions.is_some() && verifier.is_some() {
                     /* We know enough */
                     break;
                 }
@@ -211,7 +211,6 @@ impl WormholeConnector {
                             "Received unexpected action after initialization: '{:?}'",
                             action
                         );
-                        // todo!("error handling"); // TODO
                         None
                     }
                 }
@@ -221,6 +220,8 @@ impl WormholeConnector {
             tx: Box::pin(tx_api_to_core),
             rx: Box::pin(rx_api_from_core),
             key: Key(self.key.unwrap(), std::marker::PhantomData),
+            verifier: verifier.unwrap(),
+            peer_version: versions.unwrap(),
             appid: self.appid,
         }
     }
@@ -239,12 +240,26 @@ impl WormholeConnector {
  * will result in a panic on the event loop. You can also simply drop the struct as a whole, but you might miss
  * some pending events that way.
  */
+/* TODO 
+ * Maybe a better way to handle application level protocols is to create a trait for them and then
+ * to paramterize over them.
+ */
 pub struct Wormhole {
     pub tx:
         Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
     pub rx: Pin<Box<dyn Stream<Item = Vec<u8>> + std::marker::Send>>,
     pub key: Key<WormholeKey>,
+    pub verifier: Vec<u8>,
+    /** 
+     * The `AppID` this wormhole is bound to.
+     * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
+     */
     pub appid: AppID,
+    /**
+     * Protocol version information from the other side.
+     * This is bound by the `AppID`'s protocol and thus shall be handled on a higher level.
+     */
+    pub peer_version: serde_json::Value,
 }
 
 /**
@@ -262,24 +277,28 @@ pub struct WormholeWelcome {
  * This establishes a connection to the mailbox server and handles setting or allocating a code.
  * It will spawn an event loop task that will run for the whole lifetime of the Wormhole.
  *
+ * The `appid` and `versions` parameters are bound to the application level protocol (e.g. [`transfer`]).
+ *
  * This method returns a [`WormholeWelcome`] containing the server initialization result and a [`WormholeConnector`]
  * that can be used to finish the other part of the handshake. Dropping the connector closes the connection.
  */
 pub async fn connect_to_server(
     appid: impl Into<String>,
+    versions: impl serde::Serialize,
     relay_url: &str,
     code_provider: CodeProvider,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
 ) -> (WormholeWelcome, WormholeConnector) {
     let appid: AppID = AppID::new(appid);
+    let versions = serde_json::to_value(versions).expect("Could not serialize versions");
     let (tx_api_to_core, mut rx_api_from_core) = {
         #[cfg(test)]
         {
-            crate::core::run(appid.clone(), relay_url, eventloop_task)
+            crate::core::run(appid.clone(), versions, relay_url, eventloop_task)
         }
         #[cfg(not(test))]
         {
-            crate::core::run(appid.clone(), relay_url)
+            crate::core::run(appid.clone(), versions, relay_url)
         }
     };
 

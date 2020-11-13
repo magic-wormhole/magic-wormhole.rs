@@ -35,6 +35,7 @@ enum State {
 
 pub struct KeyMachine {
     appid: AppID,
+    versions: serde_json::Value,
     side: MySide,
     state: Option<State>,
 }
@@ -56,9 +57,10 @@ fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
 }
 
 impl KeyMachine {
-    pub fn new(appid: &AppID, side: &MySide) -> KeyMachine {
+    pub fn new(appid: &AppID, side: &MySide, versions: serde_json::Value) -> KeyMachine {
         KeyMachine {
             appid: appid.clone(),
+            versions,
             state: Some(State::S0KnowNothing),
             side: side.clone(),
         }
@@ -86,7 +88,7 @@ impl KeyMachine {
         let key = Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap());
         t2.finish(None);
         actions.push(t2);
-        let versions = json!({"app_versions": {}}); // TODO: self.versions
+        let versions = json!({"app_versions": self.versions});
         let (version_phase, version_msg) =
             build_version_msg(&self.side, &key, &versions);
         actions.push(M_AddMessage(version_phase, version_msg));
@@ -240,6 +242,7 @@ mod test {
         let _key = super::KeyMachine::new(
             &AppID::new("appid"),
             &MySide::unchecked_from_string(String::from("side1")),
+            json!({}),
         );
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
@@ -319,6 +322,7 @@ mod test {
         let _k = KeyMachine::new(
             &AppID::new("appid1"),
             &MySide::unchecked_from_string(String::from("side")),
+            json!({}),
         );
 
         let key = Key(b"key".to_vec());
@@ -408,7 +412,7 @@ mod test {
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side);
+        let mut k = KeyMachine::new(&appid, &side, json!({}));
 
         // we set our own code first, which generates+sends a PAKE message
         let mut e = strip_timing(k.process(KeyEvent::GotCode(code.clone())));
@@ -463,7 +467,7 @@ mod test {
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side);
+        let mut k = KeyMachine::new(&appid, &side, json!({}));
 
         // build a PAKE message to simulate our peer
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
@@ -516,7 +520,7 @@ mod test {
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side);
+        let mut k = KeyMachine::new(&appid, &side, json!({}));
 
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
         k.process(KeyEvent::GotPake(pake_msg_ser.clone()));
@@ -529,7 +533,7 @@ mod test {
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new(String::from("appid1"));
         let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side);
+        let mut k = KeyMachine::new(&appid, &side, json!({}));
 
         k.process(KeyEvent::GotCode(code.clone()));
         k.process(KeyEvent::GotCode(code));
@@ -541,7 +545,7 @@ mod test {
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new(String::from("appid1"));
         let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side);
+        let mut k = KeyMachine::new(&appid, &side, json!({}));
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
 
         k.process(KeyEvent::GotCode(code.clone()));
@@ -555,7 +559,7 @@ mod test {
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new("appid1");
         let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side);
+        let mut k = KeyMachine::new(&appid, &side, json!({}));
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
 
         k.process(KeyEvent::GotPake(pake_msg_ser.clone()));

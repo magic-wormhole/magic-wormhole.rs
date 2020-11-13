@@ -30,10 +30,18 @@ use sodiumoxide::crypto::secretbox;
 use std::path::Path;
 use std::path::PathBuf;
 use transit::TransitConnector;
-use transit::TransitType;
 
 /// The App ID associated with this protocol.
 pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
+
+/**
+ * The application specific version information for this protocol.
+ *
+ * At the moment, this always is an empty object, but this will likely change in the future.
+ */ 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AppVersion {
+}
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]

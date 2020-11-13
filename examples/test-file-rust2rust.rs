@@ -44,6 +44,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     info!("Got code over local: {}", &code);
     let (welcome, connector) = magic_wormhole::connect_to_server(
         magic_wormhole::transfer::APPID,
+        magic_wormhole::transfer::AppVersion::default(),
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::SetCode(code),
     )
@@ -69,6 +70,7 @@ async fn send(code_tx: mpsc::Sender<String>) {
 
     let (welcome, connector) = magic_wormhole::connect_to_server(
         magic_wormhole::transfer::APPID,
+        magic_wormhole::transfer::AppVersion::default(),
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::AllocateCode(2),
     )

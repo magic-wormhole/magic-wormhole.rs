@@ -133,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
         let (welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
+            magic_wormhole::transfer::AppVersion::default(),
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             match matches.value_of("code") {
                 None => {
@@ -163,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
         let (welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
+            magic_wormhole::transfer::AppVersion::default(),
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             match matches.value_of("code") {
                 None => {
@@ -197,6 +199,7 @@ async fn main() -> anyhow::Result<()> {
 
         let (_welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
+            magic_wormhole::transfer::AppVersion::default(),
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.trim().to_owned()),
         )
@@ -257,6 +260,7 @@ async fn send_many(
         match {
             let (_welcome, connector) = magic_wormhole::connect_to_server(
                 magic_wormhole::transfer::APPID,
+                magic_wormhole::transfer::AppVersion::default(),
                 magic_wormhole::DEFAULT_MAILBOX_SERVER,
                 CodeProvider::SetCode(code.to_owned()),
             )
