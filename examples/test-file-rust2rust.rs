@@ -5,6 +5,7 @@ use std::sync::mpsc;
 fn main() {
     env_logger::builder()
         // .filter_level(LevelFilter::Debug)
+        .filter_level(LevelFilter::Trace)
         .filter_module("magic_wormhole::transfer", LevelFilter::Trace)
         .filter_module("magic_wormhole::transit", LevelFilter::Trace)
         .filter_module("mio", LevelFilter::Debug)
@@ -60,7 +61,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     .await
     .unwrap();
 
-    req.resolve().await.unwrap();
+    req.accept().await.unwrap();
 }
 
 async fn send(code_tx: mpsc::Sender<String>) {
