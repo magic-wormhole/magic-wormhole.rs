@@ -66,13 +66,23 @@ pub fn run(
                 },
                 action = rx_io_to_core.select_next_some() => {
                     debug!("Doing IO {:?}", action);
-                    core.do_io(action)
+                    match core.do_io(action) {
+                        Ok(events) => events,
+                        Err(e) => {
+                            // TODO propagate that error to the outside
+                            log::error!("Got error from core: {}", e);
+                            tx_api_from_core.close_channel();
+                            rx_api_to_core.close();
+                            rx_io_to_core.close();
+                            break 'outer;
+                        },
+                    }
                 },
             };
             debug!("Done API/IO {:?}", &actions);
             for action in actions {
                 if let APIAction::GotClosed(_) = action {
-                    tx_api_from_core.close().await.expect("Don't close the receiver before shutting down the wormhole!");
+                    tx_api_from_core.close_channel();
                     debug!("Stopping wormhole event loop");
                     break 'outer;
                 } else {
@@ -147,10 +157,10 @@ impl WormholeCore {
     }
 
     #[must_use = "You must execute these actions to make things work"]
-    pub fn do_io(&mut self, event: IOEvent) -> Vec<APIAction> {
+    pub fn do_io(&mut self, event: IOEvent) -> anyhow::Result<Vec<APIAction>> {
         trace!("   io: {:?}", event);
-        let events = self.rendezvous.process_io(event);
-        self._execute(events)
+        let events = self.rendezvous.process_io(event)?;
+        Ok(self._execute(events))
     }
 
     fn _execute(&mut self, events: Events) -> Vec<APIAction> {

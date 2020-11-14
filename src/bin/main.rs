@@ -147,12 +147,12 @@ async fn main() -> anyhow::Result<()> {
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
-        .await;
+        .await?;
         info!("Got welcome: {}", &welcome.welcome);
         info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
         info!("wormhole receive {}\n", &welcome.code);
-        let mut wormhole = connector.connect_to_client().await;
+        let mut wormhole = connector.connect_to_client().await?;
         info!("Got key: {}", wormhole.key);
         let file = matches.value_of("file").unwrap();
         transfer::send_file(&mut wormhole, file, &relay_server.parse().unwrap())
@@ -178,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
-        .await;
+        .await?;
         /* Explicitely close connection */
         std::mem::drop(connector);
         let file = matches.value_of("file").unwrap();
@@ -203,8 +203,8 @@ async fn main() -> anyhow::Result<()> {
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.trim().to_owned()),
         )
-        .await;
-        let w = connector.connect_to_client().await;
+        .await?;
+        let w = connector.connect_to_client().await?;
 
         receive(w, relay_server).await?;
     } else {
@@ -264,8 +264,8 @@ async fn send_many(
                 magic_wormhole::DEFAULT_MAILBOX_SERVER,
                 CodeProvider::SetCode(code.to_owned()),
             )
-            .await;
-            let mut wormhole = connector.connect_to_client().await;
+            .await?;
+            let mut wormhole = connector.connect_to_client().await?;
             let result =
                 transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
             result

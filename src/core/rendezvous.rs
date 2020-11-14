@@ -76,7 +76,7 @@ impl RendezvousMachine {
         wsh
     }
 
-    pub fn process_io(&mut self, event: IOEvent) -> Events {
+    pub fn process_io(&mut self, event: IOEvent) -> anyhow::Result<Events> {
         use super::api::IOEvent::*;
         use State::*;
         let old_state = self.state.take().unwrap();
@@ -120,7 +120,7 @@ impl RendezvousMachine {
                 }
                 WebSocketMessageReceived(h, message) => {
                     assert!(wsh == h);
-                    self.receive(&message, &mut actions);
+                    self.receive(&message, &mut actions)?;
                     old_state
                 }
                 WebSocketConnectionLost(h) => {
@@ -172,7 +172,7 @@ impl RendezvousMachine {
                 TimerExpired(..) => panic!(),
             },
         });
-        actions
+        Ok(actions)
     }
 
     pub fn process(&mut self, event: RendezvousEvent) -> Events {
@@ -237,7 +237,7 @@ impl RendezvousMachine {
         actions
     }
 
-    fn receive(&mut self, message: &str, actions: &mut Events) {
+    fn receive(&mut self, message: &str, actions: &mut Events) -> anyhow::Result<()> {
         trace!("msg is {:?}", message);
         use super::server_messages::deserialize;
         let m = deserialize(message);
@@ -246,9 +246,6 @@ impl RendezvousMachine {
         t.detail("_side", &self.side);
         t.detail_json("message", &serde_json::to_value(&m).unwrap());
         actions.push(t);
-
-        // TODO: log+ignore unrecognized messages. They should flunk unit
-        // tests, but not break normal operation
 
         use super::server_messages::InboundMessage::*;
         match m {
@@ -279,7 +276,16 @@ impl RendezvousMachine {
                     .collect();
                 actions.push(ListerEvent::RxNameplates(nids));
             }
+            Error { error: message, orig: _ } => {
+                // TODO maybe hanlde orig field for better messages
+                anyhow::bail!("Received error message from server: {}", message);
+            },
+            Unknown => {
+                // TODO add more information once serde gets it's … done
+                log::warn!("Received unknown message type from server");
+            }
         };
+        Ok(())
     }
 
     fn send(&mut self, e: RendezvousEvent, wsh: WSHandle) -> Events {
@@ -365,7 +371,7 @@ mod test {
 
         // now we tell it we're connected
         actions =
-            filt(r.process_io(IOEvent::WebSocketConnectionMade(wsh))).events;
+            filt(r.process_io(IOEvent::WebSocketConnectionMade(wsh)).unwrap()).events;
         // it should tell itself to send a BIND then it should notify several
         // other machines at this point, we have BIND, N_Connected, M_Connected
         // L_Connected and A_Connected
@@ -424,7 +430,7 @@ mod test {
         // once connected, we react to connection loss by starting the
         // reconnection timer
         actions =
-            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh))).events;
+            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap()).events;
         assert_eq!(actions.len(), 5);
         let e = actions.remove(0);
         match e {
@@ -445,7 +451,7 @@ mod test {
             .events
         );
 
-        actions = filt(r.process_io(IOEvent::TimerExpired(th))).events;
+        actions = filt(r.process_io(IOEvent::TimerExpired(th)).unwrap()).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         let wsh2;
@@ -471,7 +477,7 @@ mod test {
         }
 
         actions =
-            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh2))).events;
+            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh2)).unwrap()).events;
         assert_eq!(actions, vec![Terminator(T_Stopped)]);
     }
 
@@ -493,7 +499,7 @@ mod test {
         }
         assert!(actions.is_empty());
 
-        let actions = filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)));
+        let actions = filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap());
         assert_eq!(
             actions,
             events![BossEvent::Error(String::from(

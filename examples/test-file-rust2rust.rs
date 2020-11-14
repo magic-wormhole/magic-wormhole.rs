@@ -4,12 +4,11 @@ use std::sync::mpsc;
 
 fn main() {
     env_logger::builder()
-        // .filter_level(LevelFilter::Debug)
-        .filter_level(LevelFilter::Trace)
+        .filter_level(LevelFilter::Debug)
+        .filter_module("magic_wormhole", LevelFilter::Trace)
         .filter_module("magic_wormhole::transfer", LevelFilter::Trace)
         .filter_module("magic_wormhole::transit", LevelFilter::Trace)
         .filter_module("mio", LevelFilter::Debug)
-        .filter_module("ws", LevelFilter::Info)
         .init();
     let (code_tx, code_rx) = std::sync::mpsc::channel();
 
@@ -48,10 +47,10 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::SetCode(code),
     )
-    .await;
+    .await.unwrap();
     info!("Got welcome: {}", &welcome.welcome);
 
-    let mut w = connector.connect_to_client().await;
+    let mut w = connector.connect_to_client().await.unwrap();
     info!("Got key: {}", &w.key);
     let req = transfer::request_file(
         &mut w,
@@ -74,11 +73,11 @@ async fn send(code_tx: mpsc::Sender<String>) {
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::AllocateCode(2),
     )
-    .await;
+    .await.unwrap();
     info!("Got welcome: {}", &welcome.welcome);
     info!("This wormhole's code is: {}", &welcome.code);
     code_tx.send(welcome.code.0).unwrap();
-    let mut w = connector.connect_to_client().await;
+    let mut w = connector.connect_to_client().await.unwrap();
     info!("Got key: {}", &w.key);
     transfer::send_file(
         &mut w,

@@ -152,46 +152,49 @@ impl WormholeConnector {
      * This will perform the PAKE key exchange and all other necessary things to fully connect.
      * It returns a [`Wormhole`] struct over which you can send and receive byte messages with the other side.
      */
-    // TODO why doesn't this return a `Result`? We are surely missing some error handling here!
-    pub async fn connect_to_client(mut self) -> Wormhole {
+    pub async fn connect_to_client(mut self) -> anyhow::Result<Wormhole> {
         use futures::SinkExt;
         use futures::StreamExt;
 
         let mut verifier = None;
         let mut versions = None;
-
-        if self.key.is_none() {
-            while let Some(action) = self.rx_api_from_core.next().await {
-                use self::APIAction::*;
-                match action {
-                    GotUnverifiedKey(k) => {
-                        debug!("Got key");
-                        self.key = Some(k.0.clone());
-                    }
-                    GotVerifier(v) => {
-                        debug!("Got verifier {:x?}", &v);
-                        verifier = Some(v);
-                    }
-                    GotVersions(v) => {
-                        debug!("Got version");
-                        versions = Some(v);
-                    }
-                    action @ GotMessage(_) => {
-                        warn!("Got message from other side during initialization. Will deliver it after initialization.");
-                        self.queued_messages.push(action);
-                    }
-                    GotWelcome(_) | GotCode(_) => {
-                        panic!("TODO I don't want this what is this?!");
-                    }
-                    GotClosed(mood) => {
-                        panic!("TODO return error");
-                    }
+        
+        loop {
+            use self::APIAction::*;
+            match self.rx_api_from_core.next().await  {
+                Some(GotUnverifiedKey(k)) => {
+                    debug!("Got key");
+                    self.key = Some(k.0.clone());
                 }
-
-                if self.key.is_some() && versions.is_some() && verifier.is_some() {
-                    /* We know enough */
-                    break;
+                Some(GotVerifier(v)) => {
+                    debug!("Got verifier {:x?}", &v);
+                    verifier = Some(v);
                 }
+                Some(GotVersions(v)) => {
+                    debug!("Got version");
+                    versions = Some(v);
+                }
+                Some(action @ GotMessage(_)) => {
+                    warn!("Got message from other side during initialization. Will deliver it after initialization.");
+                    self.queued_messages.push(action);
+                }
+                Some(action @ GotWelcome(_)) | Some(action @ GotCode(_)) => {
+                    self.tx_api_to_core.unbounded_send(APIEvent::Close).unwrap();
+                    /* Drain remaining events. Don't handle errors as we don't want to shadow the actual one. */
+                    let _ = self.rx_api_from_core.map(Result::Ok).forward(futures::sink::drain()).await;
+                    anyhow::bail!("Invalid message from peer during client handshake! {:?}", action);
+                }
+                Some(GotClosed(_)) => {
+                    unreachable!("already handled in core");
+                }
+                None => {
+                    anyhow::bail!("Wormhole unexpectedly closed");
+                }
+            }
+
+            if self.key.is_some() && versions.is_some() && verifier.is_some() {
+                /* We know enough */
+                break;
             }
         }
 
@@ -204,8 +207,8 @@ impl WormholeConnector {
                 match action {
                     APIAction::GotMessage(m) => Some(m),
                     APIAction::GotClosed(_) => {
-                        todo!("close streams");
-                    }
+                        unreachable!("already handled in core");
+                    },
                     action => {
                         warn!(
                             "Received unexpected action after initialization: '{:?}'",
@@ -216,14 +219,14 @@ impl WormholeConnector {
                 }
             });
 
-        Wormhole {
+        Ok(Wormhole {
             tx: Box::pin(tx_api_to_core),
             rx: Box::pin(rx_api_from_core),
             key: Key(self.key.unwrap(), std::marker::PhantomData),
             verifier: verifier.unwrap(),
             peer_version: versions.unwrap(),
             appid: self.appid,
-        }
+        })
     }
 }
 
@@ -288,7 +291,7 @@ pub async fn connect_to_server(
     relay_url: &str,
     code_provider: CodeProvider,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
-) -> (WormholeWelcome, WormholeConnector) {
+) -> anyhow::Result<(WormholeWelcome, WormholeConnector)> {
     let appid: AppID = AppID::new(appid);
     let versions = serde_json::to_value(versions).expect("Could not serialize versions");
     let (tx_api_to_core, mut rx_api_from_core) = {
@@ -304,8 +307,6 @@ pub async fn connect_to_server(
 
     let mut code = None;
     let mut welcome = None;
-    let mut verifier = None;
-    let mut versions = None;
     let mut key = None;
     let mut queued_messages = Vec::new();
 
@@ -326,51 +327,50 @@ pub async fn connect_to_server(
 
     use futures::StreamExt;
 
-    while let Some(action) = rx_api_from_core.next().await {
+    loop {
         use self::APIAction::*;
-        match action {
-            GotWelcome(w) => {
+        match rx_api_from_core.next().await {
+            Some(GotWelcome(w)) => {
                 debug!("Got welcome");
                 welcome = Some(w.to_string());
             }
-            action @ GotMessage(_) => {
+            Some(action @ GotMessage(_)) => {
                 warn!("Got message from other side during initialization. Will deliver it after initialization.");
                 queued_messages.push(action);
             }
-            GotCode(c) => {
+            Some(GotCode(c)) => {
                 debug!("Got code");
                 code = Some(c.clone());
             }
-            GotUnverifiedKey(k) => {
+            Some(GotUnverifiedKey(k)) => {
                 /* This shouldn't happen now, but it might */
                 debug!("Got key");
                 key = Some(k.0.clone());
             }
-            GotVerifier(v) => {
-                debug!("Got verifier {:x?}", &v);
-                verifier = Some(v);
+            /* If we failed, don't do anything. Wait for the close confirmation then bail out */
+            Some(action @ GotVerifier(_)) | Some(action @ GotVersions(_)) => {
+                tx_api_to_core.unbounded_send(APIEvent::Close).unwrap();
+                /* Drain remaining events. Don't handle errors as we don't want to shadow the actual one. */
+                let _ = rx_api_from_core.map(Result::Ok).forward(futures::sink::drain()).await;
+                anyhow::bail!("Invalid message from peer during client handshake! {:?}", action);
             }
-            GotVersions(v) => {
-                debug!("Got version");
-                versions = Some(v);
+            Some(GotClosed(_)) => {
+                unreachable!("already handled in core");
             }
-            GotClosed(mood) => {
-                panic!("TODO return error");
+            None => {
+                anyhow::bail!("Wormhole unexpectedly closed");
             }
-        }
-
+    }
         if welcome.is_some() && code.is_some() {
             /* We know enough */
             break;
         }
     }
 
-    (
+    Ok((
         WormholeWelcome {
             code: code.unwrap(),
             welcome: welcome.unwrap(),
-            // verifier,
-            // versions,
         },
         WormholeConnector {
             queued_messages,
@@ -379,5 +379,5 @@ pub async fn connect_to_server(
             key,
             appid,
         },
-    )
+    ))
 }
