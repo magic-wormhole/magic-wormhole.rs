@@ -8,9 +8,7 @@ mod allocator;
 mod api;
 mod boss;
 mod code;
-mod input;
 pub mod key;
-mod lister;
 mod mailbox;
 mod nameplate;
 mod order;
@@ -31,8 +29,8 @@ use self::events::{Event, Events, MySide};
 use log::*;
 
 pub use self::api::{
-    APIAction, APIEvent, IOAction, IOEvent, InputHelperError, Mood,
-    TimerHandle, WSHandle,
+    APIAction, APIEvent, IOAction, IOEvent, Mood,
+    WSHandle,
 };
 
 /// Set up a WormholeCore and run it
@@ -110,9 +108,7 @@ struct WormholeCore {
     allocator: allocator::AllocatorMachine,
     boss: boss::BossMachine,
     code: code::CodeMachine,
-    input: input::InputMachine,
     key: key::KeyMachine,
-    lister: lister::ListerMachine,
     mailbox: mailbox::MailboxMachine,
     nameplate: nameplate::NameplateMachine,
     order: order::OrderMachine,
@@ -131,9 +127,7 @@ impl WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
             code: code::CodeMachine::new(),
-            input: input::InputMachine::new(),
             key: key::KeyMachine::new(&appid, &side, versions),
-            lister: lister::ListerMachine::new(),
             mailbox: mailbox::MailboxMachine::new(&side),
             nameplate: nameplate::NameplateMachine::new(),
             order: order::OrderMachine::new(),
@@ -181,9 +175,7 @@ impl WormholeCore {
                 Allocator(e) => self.allocator.process(e),
                 Boss(e) => self.boss.process(e),
                 Code(e) => self.code.process(e),
-                Input(e) => self.input.process(e),
                 Key(e) => self.key.process(e),
-                Lister(e) => self.lister.process(e),
                 Mailbox(e) => self.mailbox.process(e),
                 Nameplate(e) => self.nameplate.process(e),
                 Order(e) => self.order.process(e),

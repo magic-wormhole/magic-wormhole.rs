@@ -186,7 +186,6 @@ impl fmt::Display for Code {
 pub enum AllocatorEvent {
     Allocate(Arc<Wordlist>),
     Connected,
-    Lost,
     RxAllocated(Nameplate),
 }
 
@@ -229,21 +228,9 @@ impl fmt::Debug for BossEvent {
 #[derive(Debug, PartialEq)]
 pub enum CodeEvent {
     AllocateCode(Arc<Wordlist>),
-    InputCode,
     SetCode(Code),
     Allocated(Nameplate, Code),
     GotNameplate(Nameplate),
-    FinishedInput(Code),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum InputEvent {
-    Start,
-    ChooseNameplate(Nameplate),
-    ChooseWords(String),
-    GotNameplates(Vec<Nameplate>),
-    GotWordlist(Arc<Wordlist>),
-    RefreshNameplates,
 }
 
 #[derive(PartialEq)]
@@ -263,18 +250,9 @@ impl fmt::Debug for KeyEvent {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ListerEvent {
-    Connected,
-    Lost,
-    RxNameplates(Vec<Nameplate>),
-    Refresh,
-}
-
 #[derive(PartialEq)]
 pub enum MailboxEvent {
     Connected,
-    Lost,
     RxMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
     RxClosed,
     Close(Mood),
@@ -287,7 +265,7 @@ impl fmt::Debug for MailboxEvent {
         use self::MailboxEvent::*;
         let t = match *self {
             Connected => String::from("Connected"),
-            Lost => String::from("Lost"),
+            // Lost => String::from("Lost"),
             RxMessage(ref side, ref phase, ref body) => format!(
                 "RxMessage(side={:?}, phase={:?}, body={})",
                 side,
@@ -308,7 +286,6 @@ impl fmt::Debug for MailboxEvent {
 #[derive(Debug, PartialEq)]
 pub enum NameplateEvent {
     Connected,
-    Lost,
     RxClaimed(Mailbox),
     RxReleased,
     SetNameplate(Nameplate),
@@ -429,9 +406,7 @@ pub enum Event {
     Allocator(AllocatorEvent),
     Boss(BossEvent),
     Code(CodeEvent),
-    Input(InputEvent),
     Key(KeyEvent),
-    Lister(ListerEvent),
     Mailbox(MailboxEvent),
     Nameplate(NameplateEvent),
     Order(OrderEvent),
@@ -474,21 +449,9 @@ impl From<CodeEvent> for Event {
     }
 }
 
-impl From<InputEvent> for Event {
-    fn from(r: InputEvent) -> Self {
-        Event::Input(r)
-    }
-}
-
 impl From<KeyEvent> for Event {
     fn from(r: KeyEvent) -> Self {
         Event::Key(r)
-    }
-}
-
-impl From<ListerEvent> for Event {
-    fn from(r: ListerEvent) -> Self {
-        Event::Lister(r)
     }
 }
 
@@ -554,17 +517,12 @@ impl Events {
         Events { events: vec![] }
     }
 
-    //fn add<T>(&mut self, item: T) where T: Into<Event> {
     pub fn push<T>(&mut self, item: T)
     where
         Event: From<T>,
     {
         self.events.push(Event::from(item));
     }
-
-    //pub fn append(&mut self, other: &mut Events) {
-    //    self.events.append(&mut other.events);
-    //}
 }
 
 impl IntoIterator for Events {

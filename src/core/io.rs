@@ -1,7 +1,6 @@
-use crate::core::{IOAction, IOEvent, TimerHandle, WSHandle};
+use crate::core::{IOAction, IOEvent, WSHandle};
 use log::*;
-use std::collections::{HashMap, HashSet};
-use std::time;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 enum WSControl {
@@ -74,7 +73,7 @@ async fn ws_connector(
 
 pub struct WormholeIO {
     tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
-    timers: HashSet<TimerHandle>,
+    // timers: HashSet<TimerHandle>,
     websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
 }
 
@@ -82,7 +81,7 @@ impl WormholeIO {
     pub fn new(tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
         WormholeIO {
             tx_to_core,
-            timers: HashSet::new(),
+            // timers: HashSet::new(),
             websockets: HashMap::new(),
         }
     }
@@ -91,21 +90,21 @@ impl WormholeIO {
         use self::IOAction::*;
         use futures::SinkExt;
         match action {
-            StartTimer(handle, duration) => {
-                let mut tx = self.tx_to_core.clone();
-                self.timers.insert(handle);
-                async_std::task::spawn(async move {
-                    // ugh, why can't this just take a float? ok ok,
-                    // Nan, negatives, fine fine
-                    let dur_ms = (duration * 1000.0) as u64;
-                    let dur = time::Duration::from_millis(dur_ms);
-                    async_std::task::sleep(dur).await;
-                    tx.send(IOEvent::TimerExpired(handle)).await.unwrap();
-                });
-            }
-            CancelTimer(handle) => {
-                self.timers.remove(&handle);
-            }
+            // StartTimer(handle, duration) => {
+            //     let mut tx = self.tx_to_core.clone();
+            //     self.timers.insert(handle);
+            //     async_std::task::spawn(async move {
+            //         // ugh, why can't this just take a float? ok ok,
+            //         // Nan, negatives, fine fine
+            //         let dur_ms = (duration * 1000.0) as u64;
+            //         let dur = time::Duration::from_millis(dur_ms);
+            //         async_std::task::sleep(dur).await;
+            //         tx.send(IOEvent::TimerExpired(handle)).await.unwrap();
+            //     });
+            // }
+            // CancelTimer(handle) => {
+            //     self.timers.remove(&handle);
+            // }
             WebSocketOpen(handle, url) => {
                 let tx = self.tx_to_core.clone();
                 let (ws_tx, ws_rx) = futures::channel::mpsc::unbounded();

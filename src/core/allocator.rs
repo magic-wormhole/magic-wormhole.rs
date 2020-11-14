@@ -40,7 +40,6 @@ impl AllocatorMachine {
                 _ => panic!(),
             },
             S0BIdleConnected => match event {
-                Lost => S0AIdleDisconnected,
                 Allocate(wordlist) => {
                     actions.push(RC_TxAllocate);
                     S1BAllocatingConnected(wordlist)
@@ -55,7 +54,6 @@ impl AllocatorMachine {
                 _ => panic!(),
             },
             S1BAllocatingConnected(wordlist) => match event {
-                Lost => S1AAllocatingDisconnected(wordlist),
                 RxAllocated(nameplate) => {
                     let words = wordlist.choose_words();
                     let code = Code(nameplate.to_string() + "-" + &words);
@@ -117,7 +115,7 @@ mod test {
         }
         assert_eq!(e.events.len(), 0);
 
-        assert_eq!(a.process(Lost).events.len(), 0);
+        // assert_eq!(a.process(Lost).events.len(), 0);
         e = a.process(Connected);
         match e.events.remove(0) {
             Event::Rendezvous(RendezvousEvent::TxAllocate) => (),
@@ -166,7 +164,7 @@ mod test {
         let mut a = AllocatorMachine::new();
 
         assert_eq!(a.process(Connected).events.len(), 0);
-        assert_eq!(a.process(Lost).events.len(), 0);
+        // assert_eq!(a.process(Lost).events.len(), 0);
         assert_eq!(a.process(Allocate(w)).events.len(), 0);
         let mut e = a.process(Connected);
         match e.events.remove(0) {
@@ -202,12 +200,12 @@ mod test {
         a.process(Connected);
     }
 
-    #[test]
-    #[should_panic]
-    fn test_l_panic() {
-        let mut a = AllocatorMachine::new();
-        a.process(Lost);
-    }
+    // #[test]
+    // #[should_panic]
+    // fn test_l_panic() {
+    //     let mut a = AllocatorMachine::new();
+    //     a.process(Lost);
+    // }
 
     #[test]
     fn test_acrr() {

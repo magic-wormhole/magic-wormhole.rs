@@ -2,7 +2,7 @@ use super::events::{Code, Key};
 use super::util::maybe_utf8;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
-use std::error::Error;
+// use std::error::Error;
 use std::fmt;
 
 #[derive(PartialEq)]
@@ -10,10 +10,6 @@ pub enum APIEvent {
     // from application to IO glue to WormholeCore
     Start,
     AllocateCode(usize), // num_words
-    InputCode,
-    InputHelperRefreshNameplates,
-    InputHelperChooseNameplate(String),
-    InputHelperChooseWords(String),
     SetCode(Code),
     Close,
     Send(Vec<u8>),
@@ -27,63 +23,11 @@ impl fmt::Debug for APIEvent {
             AllocateCode(ref num_words) => {
                 format!("AllocateCode({})", num_words)
             }
-            InputCode => String::from("InputCode"),
-            InputHelperRefreshNameplates => {
-                String::from("InputHelperRefreshNameplates")
-            }
-            InputHelperChooseNameplate(ref nameplate) => {
-                format!("InputHelperChooseNameplate({})", nameplate)
-            }
-            InputHelperChooseWords(ref words) => {
-                format!("InputHelperChooseWords({})", words)
-            }
             SetCode(ref code) => format!("SetCode({:?})", code),
             Close => String::from("Close"),
             Send(ref msg) => format!("Send({})", maybe_utf8(msg)),
         };
         write!(f, "APIEvent::{}", t)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum InputHelperError {
-    Inactive,
-    MustChooseNameplateFirst,
-    AlreadyChoseNameplate,
-    AlreadyChoseWords,
-}
-
-impl fmt::Display for InputHelperError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            InputHelperError::Inactive => write!(f, "Inactive"),
-            InputHelperError::MustChooseNameplateFirst => {
-                write!(f, "Should Choose Nameplate first")
-            }
-            InputHelperError::AlreadyChoseNameplate => {
-                write!(f, "nameplate already chosen, can't go back")
-            }
-            InputHelperError::AlreadyChoseWords => {
-                write!(f, "Words are already chosen")
-            }
-        }
-    }
-}
-
-impl Error for InputHelperError {
-    fn description(&self) -> &str {
-        match *self {
-            InputHelperError::Inactive => "Input is not yet started",
-            InputHelperError::MustChooseNameplateFirst => {
-                "You should input name plate first!"
-            }
-            InputHelperError::AlreadyChoseNameplate => {
-                "Nameplate is already chosen, you can't go back!"
-            }
-            InputHelperError::AlreadyChoseWords => {
-                "Words are already chosen you can't go back!"
-            }
-        }
     }
 }
 
@@ -138,14 +82,6 @@ impl fmt::Debug for APIAction {
 // constructed externally, nor can existing ones be modified.
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct TimerHandle(u64);
-impl TimerHandle {
-    pub(crate) fn new(id: u64) -> TimerHandle {
-        TimerHandle(id)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WSHandle(u64);
 impl WSHandle {
     pub(crate) fn new(id: u64) -> WSHandle {
@@ -156,7 +92,6 @@ impl WSHandle {
 #[derive(Debug, PartialEq)]
 pub enum IOEvent {
     // from IO glue layer into WormholeCore
-    TimerExpired(TimerHandle),
     WebSocketConnectionMade(WSHandle),
     WebSocketMessageReceived(WSHandle, String),
     WebSocketConnectionLost(WSHandle),
@@ -164,10 +99,6 @@ pub enum IOEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum IOAction {
-    // commands from WormholeCore out to IO glue layer
-    StartTimer(TimerHandle, f32),
-    CancelTimer(TimerHandle),
-
     WebSocketOpen(WSHandle, String), // url
     WebSocketSendMessage(WSHandle, String),
     WebSocketClose(WSHandle),
