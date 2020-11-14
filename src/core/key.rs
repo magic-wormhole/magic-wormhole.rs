@@ -157,7 +157,7 @@ fn build_version_msg(
 
 fn extract_pake_msg(body: &[u8]) -> Option<String> {
     serde_json::from_slice(&body)
-        .and_then(|res: PhaseMessage| Ok(res.pake_v1))
+        .map(|res: PhaseMessage| res.pake_v1)
         .ok()
 }
 

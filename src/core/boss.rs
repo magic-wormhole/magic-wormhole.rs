@@ -1,5 +1,5 @@
 use super::api::Mood;
-use super::events::{Events, Nameplate, Phase};
+use super::events::{Events, Phase};
 use super::wordlist::default_wordlist;
 use serde_json::json;
 use std::sync::Arc;
@@ -10,12 +10,8 @@ use super::events::BossEvent;
 // we emit these
 use super::api::APIAction;
 use super::events::CodeEvent::{
-    AllocateCode as C_AllocateCode, InputCode as C_InputCode,
+    AllocateCode as C_AllocateCode,
     SetCode as C_SetCode,
-};
-use super::events::InputEvent::{
-    ChooseNameplate as I_ChooseNameplate, ChooseWords as I_ChooseWords,
-    RefreshNameplates as I_RefreshNameplates,
 };
 use super::events::RendezvousEvent::Start as RC_Start;
 use super::events::SendEvent::Send as S_Send;
@@ -26,7 +22,6 @@ enum State {
     Unstarted,
     Empty(u64),
     Coding(u64),
-    Inputting(u64),
     Lonely(u64),
     Happy(u64),
     Closing(Mood),
@@ -75,11 +70,6 @@ impl BossMachine {
                     actions.push(C_SetCode(code));
                     Coding(i)
                 }
-                InputCode => {
-                    // TODO: return Helper somehow
-                    actions.push(C_InputCode);
-                    Inputting(i)
-                }
                 Send(plaintext) => {
                     actions.push(S_Send(Phase(format!("{}", i)), plaintext));
                     Empty(i + 1)
@@ -95,29 +85,6 @@ impl BossMachine {
                 Send(plaintext) => {
                     actions.push(S_Send(Phase(format!("{}", i)), plaintext));
                     Coding(i + 1)
-                }
-                Close => {
-                    actions.push(T_Close(Mood::Lonely));
-                    Closing(Mood::Lonely)
-                }
-                _ => panic!(),
-            },
-            Inputting(i) => match event {
-                InputHelperRefreshNameplates => {
-                    actions.push(I_RefreshNameplates);
-                    Inputting(i)
-                }
-                InputHelperChooseNameplate(nameplate) => {
-                    actions.push(I_ChooseNameplate(Nameplate(nameplate)));
-                    Inputting(i)
-                }
-                InputHelperChooseWords(words) => {
-                    actions.push(I_ChooseWords(words));
-                    Inputting(i)
-                }
-                Send(plaintext) => {
-                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
-                    Inputting(i + 1)
                 }
                 Close => {
                     actions.push(T_Close(Mood::Lonely));
@@ -183,21 +150,6 @@ impl BossMachine {
                 _ => panic!(),
             },
             Coding(i) => match event {
-                RxWelcome(v) => {
-                    actions.push(APIAction::GotWelcome(v));
-                    old_state
-                }
-                GotCode(code) => {
-                    actions.push(APIAction::GotCode(code));
-                    Lonely(i)
-                }
-                Error(_s) | RxError(_s) => {
-                    actions.push(APIAction::GotClosed(Mood::Errory));
-                    State::Closed(Mood::Errory)
-                }
-                _ => panic!(),
-            },
-            Inputting(i) => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state

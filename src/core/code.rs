@@ -4,15 +4,12 @@ use super::events::CodeEvent;
 // we emit these
 use super::events::AllocatorEvent::Allocate as A_Allocate;
 use super::events::BossEvent::GotCode as B_GotCode;
-use super::events::InputEvent::Start as I_Start;
 use super::events::KeyEvent::GotCode as K_GotCode;
 use super::events::NameplateEvent::SetNameplate as N_SetNameplate;
 
 #[derive(Debug, PartialEq)]
 enum State {
     Idle,
-    InputtingNameplate,
-    InputtingWords,
     Allocating,
     Known,
 }
@@ -39,11 +36,6 @@ impl CodeMachine {
                     actions.push(A_Allocate(wordlist));
                     Allocating
                 }
-                InputCode => {
-                    actions.push(I_Start);
-                    // TODO: return Input object
-                    InputtingNameplate
-                }
                 SetCode(code) => {
                     // TODO: try!(validate_code(code))
                     let code_string = code.to_string();
@@ -57,21 +49,6 @@ impl CodeMachine {
                 _ => panic!(),
             },
 
-            InputtingNameplate => match event {
-                GotNameplate(nameplate) => {
-                    actions.push(N_SetNameplate(nameplate));
-                    InputtingWords
-                }
-                _ => panic!(),
-            },
-            InputtingWords => match event {
-                FinishedInput(code) => {
-                    actions.push(B_GotCode(code.clone()));
-                    actions.push(K_GotCode(code));
-                    Known
-                }
-                _ => panic!(),
-            },
             Allocating => match event {
                 Allocated(nameplate, code) => {
                     // TODO: assert code.startswith(nameplate+"-")
@@ -163,30 +140,30 @@ mod test {
         assert_keyboss(e);
     }
 
-    #[test]
-    fn test_input_code() {
-        use super::super::events::{InputEvent, Nameplate};
-        let mut c = CodeMachine::new();
-        let mut e = c.process(InputCode).events;
+    // #[test]
+    // fn test_input_code() {
+    //     use super::super::events::{InputEvent, Nameplate};
+    //     let mut c = CodeMachine::new();
+    //     let mut e = c.process(InputCode).events;
 
-        match e.remove(0) {
-            Event::Input(InputEvent::Start) => (),
-            _ => panic!(),
-        }
-        assert_eq!(e.len(), 0);
+    //     match e.remove(0) {
+    //         Event::Input(InputEvent::Start) => (),
+    //         _ => panic!(),
+    //     }
+    //     assert_eq!(e.len(), 0);
 
-        let n = Nameplate::new("4");
-        e = c.process(GotNameplate(n)).events;
-        match e.remove(0) {
-            Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
-                assert_eq!(n.to_string(), "4");
-            }
-            _ => panic!(),
-        }
-        assert_eq!(e.len(), 0);
+    //     let n = Nameplate::new("4");
+    //     e = c.process(GotNameplate(n)).events;
+    //     match e.remove(0) {
+    //         Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
+    //             assert_eq!(n.to_string(), "4");
+    //         }
+    //         _ => panic!(),
+    //     }
+    //     assert_eq!(e.len(), 0);
 
-        let code = Code(String::from("4-purple-sausages"));
-        e = c.process(FinishedInput(code)).events;
-        assert_keyboss(e);
-    }
+    //     let code = Code(String::from("4-purple-sausages"));
+    //     e = c.process(FinishedInput(code)).events;
+    //     assert_keyboss(e);
+    // }
 }
