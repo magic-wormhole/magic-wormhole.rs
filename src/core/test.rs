@@ -7,13 +7,21 @@ use super::events::{Event, Events, Phase};
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/rusty-wormhole-test";
 
-#[async_std::test]
-pub async fn test_eventloop_exit() {
-    env_logger::builder()
+fn init_logger() {
+    /* Ignore errors from succeedent initialization tries */
+    let _ = env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
+        .filter_module("magic_wormhole", log::LevelFilter::Trace)
+        .filter_module("magic_wormhole::transfer", log::LevelFilter::Trace)
+        .filter_module("magic_wormhole::transit", log::LevelFilter::Trace)
         .filter_module("mio", log::LevelFilter::Debug)
-        .filter_module("ws", log::LevelFilter::Error)
-        .init();
+        .try_init();
+}
+
+/** Start a connection from both sides, and then close one and check that the event loop stops. */
+#[async_std::test]
+pub async fn test_eventloop_exit1() {
+    init_logger();
 
     use futures::StreamExt;
     use futures::SinkExt;
@@ -21,15 +29,15 @@ pub async fn test_eventloop_exit() {
 
     let code = "42-something-something"; // TODO dynamic code allocation
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
-        let _wormhole = connector.connect_to_client().await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let _wormhole = connector.connect_to_client().await.unwrap();
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
     async_std::future::timeout(Duration::from_secs(5), async {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
-        let mut wormhole = connector.connect_to_client().await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let mut wormhole = connector.connect_to_client().await.unwrap();
         log::info!("B Connected.");
         wormhole.tx.close().await.unwrap();
         log::info!("B Closed sender");
@@ -41,29 +49,26 @@ pub async fn test_eventloop_exit() {
     dummy_task.cancel().await;
 }
 
+/** Start a connection from both sides, and then drop one and check that the event loop stops. */
 #[async_std::test]
 pub async fn test_eventloop_exit2() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
-        .filter_module("mio", log::LevelFilter::Debug)
-        .filter_module("ws", log::LevelFilter::Error)
-        .init();
+    init_logger();
 
     use futures::StreamExt;
     use futures::SinkExt;
     use std::time::Duration;
 
-    let code = "42-something-something"; // TODO dynamic code allocation
+    let code = "41-something-something"; // TODO dynamic code allocation
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
         let _wormhole = connector.connect_to_client().await;
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
     async_std::future::timeout(Duration::from_secs(5), async {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await;
-        let wormhole = connector.connect_to_client().await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let wormhole = connector.connect_to_client().await.unwrap();
         log::info!("B Connected.");
         std::mem::drop(wormhole.tx);
         wormhole.rx.for_each(|e| async move {log::info!("Received {:?}", e);}).await;
@@ -75,19 +80,16 @@ pub async fn test_eventloop_exit2() {
     dummy_task.cancel().await;
 }
 
+/** Start a connection only to the server (no other client), drop the connector and assert that the event loop stops */
 #[async_std::test]
 pub async fn test_eventloop_exit3() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Debug)
-        .filter_module("mio", log::LevelFilter::Debug)
-        .filter_module("ws", log::LevelFilter::Error)
-        .init();
+    init_logger();
 
     use std::time::Duration;
 
     async_std::future::timeout(Duration::from_secs(5), async {
         let mut eventloop_task = None;
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::AllocateCode(2), &mut eventloop_task).await;
+        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::AllocateCode(2), &mut eventloop_task).await.unwrap();
         let eventloop_task = eventloop_task.unwrap();
 
         log::info!("Connected.");
