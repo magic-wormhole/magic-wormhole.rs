@@ -37,16 +37,16 @@ async fn ws_connector(
                     warn!("Not responding to pings for now");
                     // TODO
                     None
-                }
+                },
                 ws2::Message::Pong(_) => {
                     warn!("Got a pong without ping?!");
                     // TODO maybe send pings too?
                     None
-                }
+                },
                 ws2::Message::Binary(_) => {
                     error!("Someone is sending binary data, this is not part of the protocol!");
                     None
-                }
+                },
             })
         })
         .map_err(anyhow::Error::from)
@@ -112,7 +112,7 @@ impl WormholeIO {
                 async_std::task::block_on(async move {
                     ws_connector(&url, handle, tx, ws_rx).await;
                 });
-            }
+            },
             WebSocketSendMessage(handle, msg) => {
                 async_std::task::block_on(
                     self.websockets
@@ -121,7 +121,7 @@ impl WormholeIO {
                         .send(WSControl::Data(msg)),
                 )
                 .unwrap();
-            }
+            },
             WebSocketClose(handle) => {
                 async_std::task::block_on(
                     self.websockets
@@ -131,7 +131,7 @@ impl WormholeIO {
                 )
                 .unwrap();
                 self.websockets.remove(&handle);
-            }
+            },
         }
     }
 }

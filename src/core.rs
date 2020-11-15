@@ -8,6 +8,7 @@ mod allocator;
 mod api;
 mod boss;
 mod code;
+mod io;
 pub mod key;
 mod mailbox;
 mod nameplate;
@@ -21,19 +22,15 @@ mod terminator;
 mod test;
 mod util;
 mod wordlist;
-mod io;
 
 pub use self::events::{AppID, Code};
 use self::events::{Event, Events, MySide};
 use log::*;
 
-pub use self::api::{
-    APIAction, APIEvent, IOAction, IOEvent, Mood,
-    WSHandle,
-};
+pub use self::api::{APIAction, APIEvent, IOAction, IOEvent, Mood, WSHandle};
 
 /// Set up a WormholeCore and run it
-/// 
+///
 /// This will create a new WormholeCore, connect its IO and API interfaces together
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
 pub fn run(
@@ -41,12 +38,10 @@ pub fn run(
     versions: serde_json::Value,
     relay_url: &str,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
-) ->
-    (UnboundedSender<APIEvent>, UnboundedReceiver<APIAction>)
-{
+) -> (UnboundedSender<APIEvent>, UnboundedReceiver<APIAction>) {
     use futures::channel::mpsc::unbounded;
-    use futures::StreamExt;
     use futures::SinkExt;
+    use futures::StreamExt;
 
     let (tx_io_to_core, mut rx_io_to_core) = unbounded();
     let (tx_api_to_core, mut rx_api_to_core) = unbounded();
@@ -83,12 +78,16 @@ pub fn run(
                     debug!("Stopping wormhole event loop");
                     break 'outer;
                 } else {
-                    tx_api_from_core.send(action).await.expect("Don't close the receiver before shutting down the wormhole!");
+                    tx_api_from_core
+                        .send(action)
+                        .await
+                        .expect("Don't close the receiver before shutting down the wormhole!");
                 }
             }
         }
     });
-    #[cfg(test)] {
+    #[cfg(test)]
+    {
         *eventloop_task = Some(join_handle);
     }
 
@@ -100,7 +99,7 @@ pub fn run(
 /// This is a big composite state machine that implements the Client-Server and Client-Client protocols
 /// in a rather weird way. All state machines communicate with each other by sending events and actions around
 /// like crazy. The wormhole is driven by processing APIActions that generate APIEvents.
-/// 
+///
 /// Due to the inherent asynchronous nature of IO together with these synchronous blocking state machines, generated IOEvents
 /// are sent to a channel. The holder of the struct must then take care of letting the core process these by calling `do_io`.
 struct WormholeCore {
@@ -119,7 +118,12 @@ struct WormholeCore {
 }
 
 impl WormholeCore {
-    fn new(appid: AppID, versions: serde_json::Value, relay_url: &str, io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
+    fn new(
+        appid: AppID,
+        versions: serde_json::Value,
+        relay_url: &str,
+        io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
+    ) -> Self {
         let side = MySide::generate();
         WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
@@ -130,9 +134,7 @@ impl WormholeCore {
             nameplate: nameplate::NameplateMachine::new(),
             order: order::OrderMachine::new(),
             receive: receive::ReceiveMachine::new(),
-            rendezvous: rendezvous::RendezvousMachine::new(
-                &appid, relay_url, &side, 5.0,
-            ),
+            rendezvous: rendezvous::RendezvousMachine::new(&appid, relay_url, &side, 5.0),
             send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
             io: io::WormholeIO::new(io_to_core),
@@ -168,7 +170,10 @@ impl WormholeCore {
                     action_queue.push(a);
                     events![]
                 },
-                IO(a) => {self.io.process(a); events![]},
+                IO(a) => {
+                    self.io.process(a);
+                    events![]
+                },
                 Allocator(e) => self.allocator.process(e),
                 Boss(e) => self.boss.process(e),
                 Code(e) => self.code.process(e),

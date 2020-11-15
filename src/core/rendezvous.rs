@@ -7,7 +7,7 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use super::api::{WSHandle};
+use super::api::WSHandle;
 use super::events::{AppID, Events, MySide, Nameplate, Phase};
 use log::trace;
 // we process these
@@ -15,10 +15,7 @@ use super::api::IOEvent;
 use super::events::RendezvousEvent;
 // we emit these
 use super::api::IOAction;
-use super::events::{
-    AllocatorEvent, BossEvent, MailboxEvent, NameplateEvent,
-    TerminatorEvent,
-};
+use super::events::{AllocatorEvent, BossEvent, MailboxEvent, NameplateEvent, TerminatorEvent};
 
 use super::events::RendezvousEvent::TxBind as RC_TxBind; // loops around
 
@@ -85,50 +82,40 @@ impl RendezvousMachine {
                     actions.push(MailboxEvent::Connected);
                     actions.push(AllocatorEvent::Connected);
                     Connected(wsh)
-                }
+                },
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(h) => {
                     assert!(wsh == h);
-                    let e = BossEvent::Error(String::from(
-                        "initial WebSocket connection lost",
-                    ));
+                    let e = BossEvent::Error(String::from("initial WebSocket connection lost"));
                     actions.push(e);
                     Stopped
-                }
+                },
             },
             Connected(wsh) => match event {
-                WebSocketConnectionMade(..) => {
-                    panic!("bad transition from {:?}", self)
-                }
+                WebSocketConnectionMade(..) => panic!("bad transition from {:?}", self),
                 WebSocketMessageReceived(h, message) => {
                     assert!(wsh == h);
                     self.receive(&message, &mut actions)?;
                     old_state
-                }
+                },
                 WebSocketConnectionLost(h) => {
                     assert!(wsh == h);
-                    let e = BossEvent::Error(String::from(
-                        "initial WebSocket connection lost",
-                    ));
+                    let e = BossEvent::Error(String::from("initial WebSocket connection lost"));
                     actions.push(e);
                     Stopped
-                }
+                },
             },
             Disconnecting(wsh) => match event {
-                WebSocketConnectionMade(..) => {
-                    panic!("bad transition from {:?}", self)
-                }
+                WebSocketConnectionMade(..) => panic!("bad transition from {:?}", self),
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(h) => {
                     assert!(wsh == h);
                     actions.push(TerminatorEvent::Stopped);
                     Stopped
-                }
+                },
             },
             Stopped => match event {
-                WebSocketConnectionMade(..) => {
-                    panic!("bad transition from {:?}", self)
-                }
+                WebSocketConnectionMade(..) => panic!("bad transition from {:?}", self),
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(..) => panic!(),
             },
@@ -149,12 +136,9 @@ impl RendezvousMachine {
                     // multiple connections in the future. The IO layer is
                     // supposed to pass this back in websocket_* messages.
                     let wsh = self.new_ws_handle();
-                    actions.push(IOAction::WebSocketOpen(
-                        wsh,
-                        self.relay_url.clone(),
-                    ));
+                    actions.push(IOAction::WebSocketOpen(wsh, self.relay_url.clone()));
                     Connecting(wsh)
-                }
+                },
                 Stop => Stopped,
                 _ => panic!(),
             },
@@ -162,20 +146,20 @@ impl RendezvousMachine {
                 Stop => {
                     actions.push(IOAction::WebSocketClose(wsh));
                     Disconnecting(wsh)
-                }
+                },
                 _ => panic!(),
             },
             Connected(wsh) => match event {
                 Start => panic!(),
-                TxBind(..) | TxOpen(..) | TxAdd(..) | TxClose(..)
-                | TxClaim(..) | TxRelease(..) | TxAllocate | TxList => {
+                TxBind(..) | TxOpen(..) | TxAdd(..) | TxClose(..) | TxClaim(..) | TxRelease(..)
+                | TxAllocate | TxList => {
                     actions.push(self.send(event, wsh));
                     old_state
-                }
+                },
                 Stop => {
                     actions.push(IOAction::WebSocketClose(wsh));
                     Disconnecting(wsh)
-                }
+                },
             },
             Disconnecting(_) => match event {
                 Stop => old_state,
@@ -196,26 +180,20 @@ impl RendezvousMachine {
 
         use super::server_messages::InboundMessage::*;
         match m {
-            Welcome { ref welcome } => {
-                actions.push(BossEvent::RxWelcome(welcome.clone()))
-            }
+            Welcome { ref welcome } => actions.push(BossEvent::RxWelcome(welcome.clone())),
             Released { .. } => actions.push(NameplateEvent::RxReleased),
             Closed { .. } => actions.push(MailboxEvent::RxClosed),
             Pong { .. } => (), // TODO
             Ack { .. } => (),  // we ignore this, it's only for the timing log
-            Claimed { mailbox } => {
-                actions.push(NameplateEvent::RxClaimed(mailbox))
-            }
-            Message { side, phase, body } => {
-                actions.push(MailboxEvent::RxMessage(
-                    side,
-                    Phase(phase),
-                    hex::decode(body).unwrap(),
-                ))
-            }
+            Claimed { mailbox } => actions.push(NameplateEvent::RxClaimed(mailbox)),
+            Message { side, phase, body } => actions.push(MailboxEvent::RxMessage(
+                side,
+                Phase(phase),
+                hex::decode(body).unwrap(),
+            )),
             Allocated { nameplate } => {
                 actions.push(AllocatorEvent::RxAllocated(Nameplate(nameplate)))
-            }
+            },
             Nameplates { nameplates: _ } => {
                 // TODO what does this event do?
                 // I cut that code out and Wormhole seems to be still working fine?!
@@ -225,15 +203,18 @@ impl RendezvousMachine {
                 //     .map(|n| Nameplate(n.id.to_owned()))
                 //     .collect();
                 // actions.push(ListerEvent::RxNameplates(nids));
-            }
-            Error { error: message, orig: _ } => {
+            },
+            Error {
+                error: message,
+                orig: _,
+            } => {
                 // TODO maybe hanlde orig field for better messages
                 anyhow::bail!("Received error message from server: {}", message);
             },
             Unknown => {
                 // TODO add more information once serde gets it's … done
                 log::warn!("Received unknown message type from server");
-            }
+            },
         };
         Ok(())
     }
@@ -263,28 +244,21 @@ impl RendezvousMachine {
 mod test {
     use crate::core::api::IOAction;
     use crate::core::api::IOEvent;
-    use crate::core::api::{WSHandle};
+    use crate::core::api::WSHandle;
     use crate::core::events::Event::{Nameplate, Rendezvous, Terminator, IO};
     use crate::core::events::RendezvousEvent::{
         Start as RC_Start, Stop as RC_Stop, TxBind as RC_TxBind,
     };
     use crate::core::events::TerminatorEvent::Stopped as T_Stopped;
-    use crate::core::events::{
-        BossEvent, NameplateEvent,
-    };
     use crate::core::events::{AppID, MySide};
+    use crate::core::events::{BossEvent, NameplateEvent};
     use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
     use log::trace;
 
     #[test]
     fn create() {
         let side = MySide::unchecked_from_string(String::from("side1"));
-        let mut r = super::RendezvousMachine::new(
-            &AppID::new("appid"),
-            "url",
-            &side,
-            5.0,
-        );
+        let mut r = super::RendezvousMachine::new(&AppID::new("appid"), "url", &side, 5.0);
 
         let wsh: WSHandle;
         // let th: TimerHandle;
@@ -303,12 +277,15 @@ mod test {
             IO(IOAction::WebSocketOpen(wsh0, url0)) => {
                 wsh = wsh0;
                 assert_eq!(url0, "url");
-            }
+            },
             _ => panic!(),
         }
 
         // now we tell it we're connected
-        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).unwrap().events;
+        actions = r
+            .process_io(IOEvent::WebSocketConnectionMade(wsh))
+            .unwrap()
+            .events;
         // it should tell itself to send a BIND then it should notify several
         // other machines at this point, we have BIND, N_Connected, M_Connected
         // L_Connected and A_Connected
@@ -322,16 +299,11 @@ mod test {
                 match &b {
                     RC_TxBind(ref appid0, ref side0) => {
                         assert_eq!(&*appid0.0, "appid");
-                        assert_eq!(
-                            side0,
-                            &MySide::unchecked_from_string(String::from(
-                                "side1"
-                            ))
-                        );
-                    }
+                        assert_eq!(side0, &MySide::unchecked_from_string(String::from("side1")));
+                    },
                     _ => panic!(),
                 }
-            }
+            },
             _ => panic!(),
         }
 
@@ -340,7 +312,7 @@ mod test {
         match e {
             Nameplate(NameplateEvent::Connected) => {
                 // yay
-            }
+            },
             _ => panic!(),
         }
 
@@ -352,21 +324,22 @@ mod test {
         match e {
             IO(IOAction::WebSocketSendMessage(wsh0, m)) => {
                 assert_eq!(wsh0, wsh);
-                if let OutboundMessage::Bind { appid, side } =
-                    deserialize_outbound(&m)
-                {
+                if let OutboundMessage::Bind { appid, side } = deserialize_outbound(&m) {
                     assert_eq!(&*appid.0, "appid");
                     assert_eq!(&side.0, "side1");
                 } else {
                     panic!();
                 }
-            }
+            },
             _ => panic!(),
         }
 
         // once connected, we react to connection loss by starting the
         // reconnection timer
-        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap().events;
+        actions = r
+            .process_io(IOEvent::WebSocketConnectionLost(wsh))
+            .unwrap()
+            .events;
         assert_eq!(actions.len(), 5);
         // let e = actions.remove(0);
         // match e {
@@ -408,7 +381,7 @@ mod test {
         match e {
             IO(IOAction::WebSocketClose(_wsh0)) => {
                 //assert_eq!(wsh0, wsh2);
-            }
+            },
             _ => panic!(),
         }
 
@@ -420,12 +393,7 @@ mod test {
     #[test]
     fn first_connect_fails() {
         let side = MySide::unchecked_from_string(String::from("side1"));
-        let mut r = super::RendezvousMachine::new(
-            &AppID::new("appid"),
-            "url",
-            &side,
-            5.0,
-        );
+        let mut r = super::RendezvousMachine::new(&AppID::new("appid"), "url", &side, 5.0);
         let wsh: WSHandle;
         let mut actions = r.process(RC_Start).events;
         if let IO(IOAction::WebSocketOpen(wsh0, ..)) = actions.remove(0) {

@@ -1,10 +1,10 @@
 //! Client-to-Client protocol to organize file transfers
-//! 
+//!
 //! This gives you the actual capability to transfer files, that feature that Magic Wormhole got known and loved for.
-//! 
+//!
 //! It is bound to an [`APPID`](APPID). Only applications using that APPID (and thus this protocol) can interoperate with
 //! the original Python implementation (and other compliant implementations).
-//! 
+//!
 //! At its core, [`PeerMessage`s](PeerMessage) are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
@@ -38,10 +38,9 @@ pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
  * The application specific version information for this protocol.
  *
  * At the moment, this always is an empty object, but this will likely change in the future.
- */ 
+ */
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct AppVersion {
-}
+pub struct AppVersion {}
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -243,7 +242,7 @@ pub async fn send_file(
 
 /**
  * Wait for a file offer from the other side
- * 
+ *
  * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
  * It will also start building a TCP connection to the other side using the transit protocol.
  */
@@ -303,7 +302,7 @@ pub async fn request_file<'a>(
 
 /**
  * A pending files send offer from the other side
- * 
+ *
  * You *should* consume this object, either by calling [`accept`](ReceiveRequest::accept) or [`reject`](ReceiveRequest::reject).
  */
 #[must_use]
@@ -318,7 +317,7 @@ pub struct ReceiveRequest<'a> {
 impl<'a> ReceiveRequest<'a> {
     /**
      * Accept the file offer
-     * 
+     *
      * This will transfer the file and save it on disk.
      */
     pub async fn accept(self) -> Result<()> {

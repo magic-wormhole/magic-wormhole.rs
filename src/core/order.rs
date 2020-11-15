@@ -44,11 +44,7 @@ impl OrderMachine {
                         // got a pake message
                         actions.push(K_GotPake(body));
                         for &(ref side, ref phase, ref body) in &self.queue {
-                            actions.push(R_GotMessage(
-                                side.clone(),
-                                phase.clone(),
-                                body.to_vec(),
-                            ));
+                            actions.push(R_GotMessage(side.clone(), phase.clone(), body.to_vec()));
                         }
                         self.queue = Vec::new(); // todo just empty it
                         S1YesPake
@@ -57,13 +53,13 @@ impl OrderMachine {
                         self.queue.push((side, phase, body));
                         S0NoPake
                     }
-                }
+                },
             },
             S1YesPake => match event {
                 GotMessage(side, phase, body) => {
                     actions.push(R_GotMessage(side, phase, body));
                     State::S1YesPake
-                }
+                },
             },
         });
         actions
@@ -97,11 +93,7 @@ mod test {
             b"body2".to_vec(),
         ));
         assert_eq!(out, events![]);
-        let out = m.process(OrderEvent::GotMessage(
-            s1.clone(),
-            ppake,
-            b"pake".to_vec(),
-        ));
+        let out = m.process(OrderEvent::GotMessage(s1.clone(), ppake, b"pake".to_vec()));
         assert_eq!(
             out,
             events![
@@ -115,10 +107,7 @@ mod test {
             p3.clone(),
             b"body3".to_vec(),
         ));
-        assert_eq!(
-            out,
-            events![R_GotMessage(s1, p3, b"body3".to_vec()),]
-        );
+        assert_eq!(out, events![R_GotMessage(s1, p3, b"body3".to_vec()),]);
     }
 
     #[test]
@@ -130,11 +119,7 @@ mod test {
         let _p3: Phase = Phase(String::from("phase3"));
         let ppake: Phase = Phase(String::from("pake"));
 
-        let out = m.process(OrderEvent::GotMessage(
-            s1.clone(),
-            ppake,
-            b"pake".to_vec(),
-        ));
+        let out = m.process(OrderEvent::GotMessage(s1.clone(), ppake, b"pake".to_vec()));
         assert_eq!(out, events![K_GotPake(b"pake".to_vec()),]);
         let out = m.process(OrderEvent::GotMessage(
             s1.clone(),
@@ -150,9 +135,6 @@ mod test {
             p2.clone(),
             b"body2".to_vec(),
         ));
-        assert_eq!(
-            out,
-            events![R_GotMessage(s1, p2, b"body2".to_vec()),]
-        );
+        assert_eq!(out, events![R_GotMessage(s1, p2, b"body2".to_vec()),]);
     }
 }

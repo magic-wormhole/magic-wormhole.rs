@@ -9,10 +9,7 @@ use super::api::APIEvent;
 use super::events::BossEvent;
 // we emit these
 use super::api::APIAction;
-use super::events::CodeEvent::{
-    AllocateCode as C_AllocateCode,
-    SetCode as C_SetCode,
-};
+use super::events::CodeEvent::{AllocateCode as C_AllocateCode, SetCode as C_SetCode};
 use super::events::RendezvousEvent::Start as RC_Start;
 use super::events::SendEvent::Send as S_Send;
 use super::events::TerminatorEvent::Close as T_Close;
@@ -50,7 +47,7 @@ impl BossMachine {
                 Start => {
                     actions.push(RC_Start);
                     Empty(0)
-                }
+                },
                 _ => panic!("w.start() must be called first"),
             },
             Empty(i) => match event {
@@ -59,7 +56,7 @@ impl BossMachine {
                     let wordlist = Arc::new(default_wordlist(num_words));
                     actions.push(C_AllocateCode(wordlist));
                     Coding(i)
-                }
+                },
                 SetCode(code) => {
                     // TODO: validate code, maybe signal KeyFormatError
                     // We move to Coding instead of directly to Lonely
@@ -69,15 +66,15 @@ impl BossMachine {
                     // input_code
                     actions.push(C_SetCode(code));
                     Coding(i)
-                }
+                },
                 Send(plaintext) => {
                     actions.push(S_Send(Phase(format!("{}", i)), plaintext));
                     Empty(i + 1)
-                }
+                },
                 Close => {
                     actions.push(T_Close(Mood::Lonely));
                     Closing(Mood::Lonely)
-                }
+                },
                 _ => panic!(),
             },
             Coding(i) => match event {
@@ -85,33 +82,33 @@ impl BossMachine {
                 Send(plaintext) => {
                     actions.push(S_Send(Phase(format!("{}", i)), plaintext));
                     Coding(i + 1)
-                }
+                },
                 Close => {
                     actions.push(T_Close(Mood::Lonely));
                     Closing(Mood::Lonely)
-                }
+                },
                 _ => panic!(),
             },
             Lonely(i) => match event {
                 Send(plaintext) => {
                     actions.push(S_Send(Phase(format!("{}", i)), plaintext));
                     Lonely(i + 1)
-                }
+                },
                 Close => {
                     actions.push(T_Close(Mood::Lonely));
                     Closing(Mood::Lonely)
-                }
+                },
                 _ => panic!(),
             },
             Happy(i) => match event {
                 Send(plaintext) => {
                     actions.push(S_Send(Phase(format!("{}", i)), plaintext));
                     Happy(i + 1)
-                }
+                },
                 Close => {
                     actions.push(T_Close(Mood::Happy));
                     Closing(Mood::Happy)
-                }
+                },
                 _ => panic!(),
             },
             Closing(_) | Closed(_) => panic!("No API calls after close"),
@@ -131,7 +128,7 @@ impl BossMachine {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
-                }
+                },
                 Error(_s) => {
                     // e.g. Rendezvous cannot make the initial websocket
                     // connection
@@ -141,61 +138,60 @@ impl BossMachine {
                     // to deliver the e.g. connection failure reason up to
                     // the application
                     State::Closed(Mood::Errory)
-                }
+                },
                 RxError(_s) => {
                     // e.g. the server didn't like us
                     actions.push(APIAction::GotClosed(Mood::Errory));
                     State::Closed(Mood::Errory)
-                }
+                },
                 _ => panic!(),
             },
             Coding(i) => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
-                }
+                },
                 GotCode(code) => {
                     actions.push(APIAction::GotCode(code));
                     Lonely(i)
-                }
+                },
                 Error(_s) | RxError(_s) => {
                     actions.push(APIAction::GotClosed(Mood::Errory));
                     State::Closed(Mood::Errory)
-                }
+                },
                 _ => panic!(),
             },
             Lonely(i) => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
-                }
+                },
                 GotKey(key) => {
                     actions.push(APIAction::GotUnverifiedKey(key));
                     old_state
-                }
+                },
                 BossEvent::Happy => State::Happy(i),
                 Error(_s) | RxError(_s) => {
                     actions.push(APIAction::GotClosed(Mood::Errory));
                     State::Closed(Mood::Errory)
-                }
+                },
                 _ => panic!(),
             },
             State::Happy(_) => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
-                }
+                },
                 GotVerifier(verifier) => {
                     actions.push(APIAction::GotVerifier(verifier));
                     old_state
-                }
+                },
                 GotMessage(phase, plaintext) => {
                     if phase.is_version() {
                         // TODO handle error conditions
                         use serde_json::Value;
                         let version_str = String::from_utf8(plaintext).unwrap();
-                        let v: Value =
-                            serde_json::from_str(&version_str).unwrap();
+                        let v: Value = serde_json::from_str(&version_str).unwrap();
                         let app_versions = match v.get("app_versions") {
                             Some(versions) => versions.clone(),
                             None => json!({}),
@@ -208,11 +204,11 @@ impl BossMachine {
                         todo!("log and ignore, for future expansion");
                     }
                     old_state
-                }
+                },
                 Error(_s) | RxError(_s) => {
                     actions.push(APIAction::GotClosed(Mood::Errory));
                     State::Closed(Mood::Errory)
-                }
+                },
                 // Scared: TODO
                 _ => panic!(),
             },
@@ -222,11 +218,11 @@ impl BossMachine {
                 BossEvent::Closed => {
                     actions.push(APIAction::GotClosed(mood));
                     State::Closed(mood)
-                }
+                },
                 Error(_s) | RxError(_s) => {
                     actions.push(APIAction::GotClosed(Mood::Errory));
                     State::Closed(Mood::Errory)
-                }
+                },
                 _ => panic!(),
             },
             State::Closed(_) => panic!("No events after closed"),

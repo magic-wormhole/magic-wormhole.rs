@@ -52,10 +52,8 @@ impl TerminatorMachine {
                     actions.push(M_Close(mood));
                     Snm
                 },
-                Stopped => panic!(
-                    "Got stopped too early. Nameplate and Mailbox are still active"
-                ),
-            }
+                Stopped => panic!("Got stopped too early. Nameplate and Mailbox are still active"),
+            },
             Sno => match event {
                 // nameplate_open
                 NameplateDone => So,
@@ -238,9 +236,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Got stopped too early. Nameplate and Mailbox are still active"
-    )]
+    #[should_panic(expected = "Got stopped too early. Nameplate and Mailbox are still active")]
     fn panic1() {
         let mut terminator = TerminatorMachine::new();
         terminator.process(Stopped);

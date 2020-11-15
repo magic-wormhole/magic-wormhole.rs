@@ -2,7 +2,7 @@ use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::{self, Value};
-use sha2::{Digest, Sha256, digest::FixedOutput};
+use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
 use xsalsa20poly1305::{
     aead::{
@@ -80,8 +80,7 @@ impl KeyMachine {
         let msg2 = extract_pake_msg(&their_pake_msg).unwrap();
         let key = Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap());
         let versions = json!({"app_versions": self.versions});
-        let (version_phase, version_msg) =
-            build_version_msg(&self.side, &key, &versions);
+        let (version_phase, version_msg) = build_version_msg(&self.side, &key, &versions);
         actions.push(M_AddMessage(version_phase, version_msg));
         actions.push(B_GotKey(key.clone()));
         actions.push(R_GotKey(key.clone()));
@@ -103,24 +102,22 @@ impl KeyMachine {
                 GotCode(code) => {
                     let pake_state = self.start(code, &mut actions);
                     S1KnowCode(pake_state)
-                }
+                },
                 GotPake(pake) => S2KnowPake(pake),
             },
             S1KnowCode(pake_state) => match event {
                 GotCode(_) => panic!("already got code"),
                 GotPake(their_pake_msg) => {
-                    let key =
-                        self.finish(pake_state, &their_pake_msg, &mut actions);
+                    let key = self.finish(pake_state, &their_pake_msg, &mut actions);
                     S3KnowBoth(key)
-                }
+                },
             },
             S2KnowPake(ref their_pake_msg) => match event {
                 GotCode(code) => {
                     let pake_state = self.start(code, &mut actions);
-                    let key =
-                        self.finish(pake_state, &their_pake_msg, &mut actions);
+                    let key = self.finish(pake_state, &their_pake_msg, &mut actions);
                     S3KnowBoth(key)
-                }
+                },
                 GotPake(_) => panic!("already got pake"),
             },
             S3KnowBoth(_) => match event {
@@ -134,11 +131,7 @@ impl KeyMachine {
     }
 }
 
-fn build_version_msg(
-    side: &MySide,
-    key: &Key,
-    versions: &Value,
-) -> (Phase, Vec<u8>) {
+fn build_version_msg(side: &MySide, key: &Key, versions: &Value) -> (Phase, Vec<u8>) {
     let phase = Phase(String::from("version"));
     let data_key = derive_phase_key(&side, &key, &phase);
     let plaintext = versions.to_string();
@@ -152,11 +145,7 @@ fn extract_pake_msg(body: &[u8]) -> Option<String> {
         .ok()
 }
 
-fn encrypt_data_with_nonce(
-    key: &[u8],
-    plaintext: &[u8],
-    noncebuf: &[u8],
-) -> Vec<u8> {
+fn encrypt_data_with_nonce(key: &[u8], plaintext: &[u8], noncebuf: &[u8]) -> Vec<u8> {
     let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(&key));
     let mut ciphertext = cipher
         .encrypt(GenericArray::from_slice(&noncebuf), plaintext)
@@ -171,8 +160,7 @@ pub fn encrypt_data(key: &[u8], plaintext: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let mut noncebuf: GenericArray<u8, <XSalsa20Poly1305 as Aead>::NonceSize> =
         GenericArray::default();
     util::random_bytes(&mut noncebuf);
-    let nonce_and_ciphertext =
-        encrypt_data_with_nonce(key, plaintext, &noncebuf);
+    let nonce_and_ciphertext = encrypt_data_with_nonce(key, plaintext, &noncebuf);
     (noncebuf.to_vec(), nonce_and_ciphertext)
 }
 
@@ -200,11 +188,7 @@ pub fn derive_key(key: &[u8], purpose: &[u8], length: usize) -> Vec<u8> {
     v
 }
 
-pub fn derive_phase_key(
-    side: &EitherSide,
-    key: &Key,
-    phase: &Phase,
-) -> Zeroizing<Vec<u8>> {
+pub fn derive_phase_key(side: &EitherSide, key: &Key, phase: &Phase) -> Zeroizing<Vec<u8>> {
     let side_bytes = side.0.as_bytes();
     let phase_bytes = phase.0.as_bytes();
     let side_digest: Vec<u8> = sha256_digest(side_bytes);
@@ -238,15 +222,18 @@ mod test {
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = super::extract_pake_msg(&hex::decode(s1).unwrap());
-        assert_eq!(pake_msg, Some(String::from("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e")));
+        assert_eq!(
+            pake_msg,
+            Some(String::from(
+                "537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e"
+            ))
+        );
     }
 
     #[test]
     fn test_derive_key() {
-        let main = hex::decode(
-            "588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1",
-        )
-        .unwrap();
+        let main = hex::decode("588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1")
+            .unwrap();
         let dk1 = derive_key(&main, b"purpose1", 32);
         assert_eq!(
             hex::encode(dk1),
@@ -319,8 +306,7 @@ mod test {
         let key = Key(b"key".to_vec());
         let side = "side";
         let phase = Phase(String::from("phase1"));
-        let phase1_key =
-            derive_phase_key(&EitherSide::from(side), &key, &phase);
+        let phase1_key = derive_phase_key(&EitherSide::from(side), &key, &phase);
 
         assert_eq!(
             hex::encode(&*phase1_key),
@@ -330,16 +316,11 @@ mod test {
 
     #[test]
     fn test_encrypt_data() {
-        let k = hex::decode(
-            "ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679",
-        )
-        .unwrap();
-        let plaintext =
-            hex::decode("edc089a518219ec1cee184e89d2d37af").unwrap();
+        let k = hex::decode("ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679")
+            .unwrap();
+        let plaintext = hex::decode("edc089a518219ec1cee184e89d2d37af").unwrap();
         assert_eq!(plaintext.len(), 16);
-        let nonce =
-            hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80")
-                .unwrap();
+        let nonce = hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80").unwrap();
         assert_eq!(nonce.len(), 24);
         let msg = encrypt_data_with_nonce(&k, &plaintext, &nonce);
         assert_eq!(hex::encode(msg), "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a");
@@ -347,21 +328,16 @@ mod test {
 
     #[test]
     fn test_decrypt_data() {
-        let k = hex::decode(
-            "ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679",
-        )
-        .unwrap();
+        let k = hex::decode("ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679")
+            .unwrap();
         let encrypted = hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a").unwrap();
         match decrypt_data(&k, &encrypted) {
             Some(plaintext) => {
-                assert_eq!(
-                    hex::encode(plaintext),
-                    "edc089a518219ec1cee184e89d2d37af"
-                );
-            }
+                assert_eq!(hex::encode(plaintext), "edc089a518219ec1cee184e89d2d37af");
+            },
             None => {
                 panic!("failed to decrypt");
-            }
+            },
         };
     }
 
@@ -373,22 +349,19 @@ mod test {
         let data_key = derive_phase_key(&EitherSide::from(side), &key, &phase);
         let plaintext = "hello world";
 
-        let (_nonce, encrypted) =
-            encrypt_data(&data_key, &plaintext.as_bytes());
+        let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
         let maybe_plaintext = decrypt_data(&data_key, &encrypted);
         match maybe_plaintext {
             Some(plaintext_decrypted) => {
                 assert_eq!(plaintext.as_bytes().to_vec(), plaintext_decrypted);
-            }
+            },
             None => panic!(),
         }
     }
 
     #[test]
     fn test_code_first() {
-        use super::super::events::{
-            BossEvent, MailboxEvent, Phase, ReceiveEvent,
-        };
+        use super::super::events::{BossEvent, MailboxEvent, Phase, ReceiveEvent};
 
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new("appid1");
@@ -401,10 +374,8 @@ mod test {
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
                 assert_eq!(phase, Phase(String::from("pake")));
-                assert!(String::from_utf8(body)
-                    .unwrap()
-                    .contains("{\"pake_v1\":"));
-            }
+                assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+            },
             _ => panic!(),
         }
         assert_eq!(e.len(), 0);
@@ -418,7 +389,7 @@ mod test {
             Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
                 assert_eq!(phase, Phase(String::from("version")));
                 //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            }
+            },
             _ => panic!(),
         }
         let shared_key = match e.remove(0) {
@@ -426,7 +397,7 @@ mod test {
                 //assert_eq!(phase, Phase(String::from("version")));
                 //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
                 key
-            }
+            },
             _ => panic!(),
         };
         match e.remove(0) {
@@ -434,16 +405,14 @@ mod test {
                 assert_eq!(shared_key, rkey);
                 //assert_eq!(phase, Phase(String::from("version")));
                 //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            }
+            },
             _ => panic!(),
         }
     }
 
     #[test]
     fn test_pake_first() {
-        use super::super::events::{
-            BossEvent, MailboxEvent, Phase, ReceiveEvent,
-        };
+        use super::super::events::{BossEvent, MailboxEvent, Phase, ReceiveEvent};
 
         let code = Code(String::from("4-purple-sausages"));
         let appid = AppID::new("appid1");
@@ -464,17 +433,15 @@ mod test {
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
                 assert_eq!(phase, Phase(String::from("pake")));
-                assert!(String::from_utf8(body)
-                    .unwrap()
-                    .contains("{\"pake_v1\":"));
-            }
+                assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
+            },
             _ => panic!(),
         }
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
                 assert_eq!(phase, Phase(String::from("version")));
                 //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            }
+            },
             _ => panic!(),
         }
         let shared_key = match e.remove(0) {
@@ -482,7 +449,7 @@ mod test {
                 //assert_eq!(phase, Phase(String::from("version")));
                 //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
                 key
-            }
+            },
             _ => panic!(),
         };
         match e.remove(0) {
@@ -490,7 +457,7 @@ mod test {
                 assert_eq!(shared_key, rkey);
                 //assert_eq!(phase, Phase(String::from("version")));
                 //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            }
+            },
             _ => panic!(),
         }
     }

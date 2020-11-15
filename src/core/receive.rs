@@ -6,8 +6,7 @@ use log::trace;
 use super::events::ReceiveEvent;
 // we emit these
 use super::events::BossEvent::{
-    GotMessage as B_GotMessage, GotVerifier as B_GotVerifier, Happy as B_Happy,
-    Scared as B_Scared,
+    GotMessage as B_GotMessage, GotVerifier as B_GotVerifier, Happy as B_Happy, Scared as B_Scared,
 };
 use super::events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
 
@@ -51,9 +50,7 @@ impl ReceiveMachine {
             S1UnverifiedKey(ref key) => match event {
                 GotKey(_) => panic!(),
                 GotMessage(side, phase, body) => {
-                    match Self::derive_key_and_decrypt(
-                        &side, &key, &phase, &body,
-                    ) {
+                    match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
                         Some(plaintext) => {
                             // got_message_good
                             let msg = key::derive_verifier(&key);
@@ -62,33 +59,31 @@ impl ReceiveMachine {
                             actions.push(B_GotVerifier(msg));
                             actions.push(B_GotMessage(phase, plaintext));
                             S2VerifiedKey(key.clone())
-                        }
+                        },
                         None => {
                             // got_message_bad
                             actions.push(B_Scared);
                             S3Scared
-                        }
+                        },
                     }
-                }
+                },
             },
             S2VerifiedKey(ref key) => match event {
                 GotKey(_) => panic!(),
                 GotMessage(side, phase, body) => {
-                    match Self::derive_key_and_decrypt(
-                        &side, &key, &phase, &body,
-                    ) {
+                    match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
                         Some(plaintext) => {
                             // got_message_good
                             actions.push(B_GotMessage(phase, plaintext));
                             S2VerifiedKey(key.clone())
-                        }
+                        },
                         None => {
                             // got_message_bad
                             actions.push(B_Scared);
                             S3Scared
-                        }
+                        },
                     }
-                }
+                },
             },
             S3Scared => match event {
                 GotKey(..) => panic!(),
@@ -114,9 +109,7 @@ impl ReceiveMachine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::events::{
-        BossEvent, EitherSide, ReceiveEvent::*, SendEvent, TheirSide,
-    };
+    use crate::core::events::{BossEvent, EitherSide, ReceiveEvent::*, SendEvent, TheirSide};
     use crate::core::key::{derive_phase_key, derive_verifier, encrypt_data};
 
     #[test]
@@ -128,11 +121,7 @@ mod test {
         let side1 = String::from("side1");
         let t1 = TheirSide::from(side1.clone());
         let phase1 = Phase(String::from("phase1"));
-        let phasekey1 = derive_phase_key(
-            &EitherSide::from(&side1[..]),
-            &masterkey,
-            &phase1,
-        );
+        let phasekey1 = derive_phase_key(&EitherSide::from(&side1[..]), &masterkey, &phase1);
         let plaintext1 = b"plaintext1";
         let (_, nonce_and_ciphertext1) = encrypt_data(&phasekey1, plaintext1);
 
@@ -164,11 +153,7 @@ mod test {
 
         // second message should only provoke GotMessage
         let phase2 = Phase(String::from("phase2"));
-        let phasekey2 = derive_phase_key(
-            &EitherSide::from(&side1[..]),
-            &masterkey,
-            &phase2,
-        );
+        let phasekey2 = derive_phase_key(&EitherSide::from(&side1[..]), &masterkey, &phase2);
         let plaintext2 = b"plaintext2";
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
 
@@ -186,28 +171,18 @@ mod test {
         let phase3 = Phase(String::from("phase3"));
         let bad_phasekey3 = b"00112233445566778899aabbccddeeff".to_vec();
         let plaintext3 = b"plaintext3";
-        let (_, nonce_and_ciphertext3) =
-            encrypt_data(&bad_phasekey3, plaintext3);
+        let (_, nonce_and_ciphertext3) = encrypt_data(&bad_phasekey3, plaintext3);
 
-        e = r.process(GotMessage(
-            t1.clone(),
-            phase3,
-            nonce_and_ciphertext3,
-        ));
+        e = r.process(GotMessage(t1.clone(), phase3, nonce_and_ciphertext3));
         assert_eq!(e, events![BossEvent::Scared]);
 
         // all messages are ignored once we're Scared
         let phase4 = Phase(String::from("phase4"));
-        let phasekey4 =
-            derive_phase_key(&EitherSide::from(side1), &masterkey, &phase4);
+        let phasekey4 = derive_phase_key(&EitherSide::from(side1), &masterkey, &phase4);
         let plaintext4 = b"plaintext4";
         let (_, nonce_and_ciphertext4) = encrypt_data(&phasekey4, plaintext4);
 
-        e = r.process(GotMessage(
-            t1,
-            phase4,
-            nonce_and_ciphertext4,
-        ));
+        e = r.process(GotMessage(t1, phase4, nonce_and_ciphertext4));
         assert_eq!(e, events![]);
     }
 
@@ -234,28 +209,18 @@ mod test {
         let phase1 = Phase(String::from("phase1"));
         let bad_phasekey1 = b"00112233445566778899aabbccddeeff".to_vec();
         let plaintext1 = b"plaintext1";
-        let (_, nonce_and_ciphertext1) =
-            encrypt_data(&bad_phasekey1, plaintext1);
+        let (_, nonce_and_ciphertext1) = encrypt_data(&bad_phasekey1, plaintext1);
 
-        e = r.process(GotMessage(
-            t1.clone(),
-            phase1,
-            nonce_and_ciphertext1,
-        ));
+        e = r.process(GotMessage(t1.clone(), phase1, nonce_and_ciphertext1));
         assert_eq!(e, events![BossEvent::Scared]);
 
         // all messages are ignored once we're Scared
         let phase2 = Phase(String::from("phase2"));
-        let phasekey2 =
-            derive_phase_key(&EitherSide::from(side1), &masterkey, &phase2);
+        let phasekey2 = derive_phase_key(&EitherSide::from(side1), &masterkey, &phase2);
         let plaintext2 = b"plaintext2";
         let (_, nonce_and_ciphertext2) = encrypt_data(&phasekey2, plaintext2);
 
-        e = r.process(GotMessage(
-            t1,
-            phase2,
-            nonce_and_ciphertext2,
-        ));
+        e = r.process(GotMessage(t1, phase2, nonce_and_ciphertext2));
         assert_eq!(e, events![]);
     }
 }

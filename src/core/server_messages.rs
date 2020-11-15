@@ -49,7 +49,7 @@ impl OutboundMessage {
     pub fn add(phase: Phase, body: &[u8]) -> Self {
         // TODO: make this take Vec<u8>, do the hex-encoding internally
         let hexstr = util::bytes_to_hexstr(body);
-    
+
         OutboundMessage::Add {
             body: hexstr,
             phase,
@@ -237,9 +237,7 @@ mod test {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
         let m = deserialize(&s);
         match m {
-            InboundMessage::Welcome { welcome: msg } => {
-                assert_eq!(msg, json!({}))
-            }
+            InboundMessage::Welcome { welcome: msg } => assert_eq!(msg, json!({})),
             _ => panic!(),
         }
     }
@@ -249,9 +247,7 @@ mod test {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
         let m = deserialize(&s);
         match m {
-            InboundMessage::Welcome { welcome: msg } => {
-                assert_eq!(msg, json!({}))
-            }
+            InboundMessage::Welcome { welcome: msg } => assert_eq!(msg, json!({})),
             _ => panic!(),
         }
     }

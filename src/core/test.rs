@@ -1,8 +1,8 @@
 #![cfg_attr(tarpaulin, skip)]
 
-use crate::CodeProvider;
 use super::api::Mood;
 use super::events::{Event, Events, Phase};
+use crate::CodeProvider;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/rusty-wormhole-test";
@@ -23,25 +23,46 @@ fn init_logger() {
 pub async fn test_eventloop_exit1() {
     init_logger();
 
-    use futures::StreamExt;
     use futures::SinkExt;
+    use futures::StreamExt;
     use std::time::Duration;
 
     let code = "42-something-something"; // TODO dynamic code allocation
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let (_welcome, connector) = crate::connect_to_server(
+            APPID,
+            serde_json::json!({}),
+            MAILBOX_SERVER,
+            CodeProvider::SetCode(code.into()),
+            &mut None,
+        )
+        .await
+        .unwrap();
         let _wormhole = connector.connect_to_client().await.unwrap();
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
     async_std::future::timeout(Duration::from_secs(5), async {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let (_welcome, connector) = crate::connect_to_server(
+            APPID,
+            serde_json::json!({}),
+            MAILBOX_SERVER,
+            CodeProvider::SetCode(code.into()),
+            &mut None,
+        )
+        .await
+        .unwrap();
         let mut wormhole = connector.connect_to_client().await.unwrap();
         log::info!("B Connected.");
         wormhole.tx.close().await.unwrap();
         log::info!("B Closed sender");
-        wormhole.rx.for_each(|e| async move {log::info!("Received {:?}", e);}).await;
+        wormhole
+            .rx
+            .for_each(|e| async move {
+                log::info!("Received {:?}", e);
+            })
+            .await;
     })
     .await
     .expect("Test failed");
@@ -54,24 +75,45 @@ pub async fn test_eventloop_exit1() {
 pub async fn test_eventloop_exit2() {
     init_logger();
 
-    use futures::StreamExt;
     use futures::SinkExt;
+    use futures::StreamExt;
     use std::time::Duration;
 
     let code = "41-something-something"; // TODO dynamic code allocation
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let (_welcome, connector) = crate::connect_to_server(
+            APPID,
+            serde_json::json!({}),
+            MAILBOX_SERVER,
+            CodeProvider::SetCode(code.into()),
+            &mut None,
+        )
+        .await
+        .unwrap();
         let _wormhole = connector.connect_to_client().await;
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
     async_std::future::timeout(Duration::from_secs(5), async {
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::SetCode(code.into()), &mut None).await.unwrap();
+        let (_welcome, connector) = crate::connect_to_server(
+            APPID,
+            serde_json::json!({}),
+            MAILBOX_SERVER,
+            CodeProvider::SetCode(code.into()),
+            &mut None,
+        )
+        .await
+        .unwrap();
         let wormhole = connector.connect_to_client().await.unwrap();
         log::info!("B Connected.");
         std::mem::drop(wormhole.tx);
-        wormhole.rx.for_each(|e| async move {log::info!("Received {:?}", e);}).await;
+        wormhole
+            .rx
+            .for_each(|e| async move {
+                log::info!("Received {:?}", e);
+            })
+            .await;
         log::info!("B Closed.");
     })
     .await
@@ -89,7 +131,15 @@ pub async fn test_eventloop_exit3() {
 
     async_std::future::timeout(Duration::from_secs(5), async {
         let mut eventloop_task = None;
-        let (_welcome, connector) = crate::connect_to_server(APPID, serde_json::json!({}), MAILBOX_SERVER, CodeProvider::AllocateCode(2), &mut eventloop_task).await.unwrap();
+        let (_welcome, connector) = crate::connect_to_server(
+            APPID,
+            serde_json::json!({}),
+            MAILBOX_SERVER,
+            CodeProvider::AllocateCode(2),
+            &mut eventloop_task,
+        )
+        .await
+        .unwrap();
         let eventloop_task = eventloop_task.unwrap();
 
         log::info!("Connected.");

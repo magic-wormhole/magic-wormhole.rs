@@ -1,18 +1,18 @@
 //! In reality, there is no "Magic Wormhole" protocol. What makes Wormhole work is a handful of different protocols
 //! and handshakes, layered on another and weaved together. This allows other applications to build upon the parts they want
 //! and then add new ones special to their needs.
-//! 
+//!
 //! At the core, there is a rendezvous server with a message box that allows clients to connect to and perform a PAKE.
 //! Protocol wise, this is split into the "client-server" part (connect to a server, allocate nameplates, send and receive messages)
 //! and a "client-client" part (do a key exchange). Code wise, both are implemented in the [`core`] module. There is a "sane" API
 //! wrapping them in the root module (see the methods below). Use it. It'll guide you through the handshakes and provide a channel pair
 //! to exchange encrypted messages with the other side.
-//! 
+//!
 //! Two clients that are connected to each other need to know beforehand how to communicate with each other once the connection is established.
 //! This why they have an [`AppID`]. The protocol they use to talk to each other is bound to the AppID. Clients with different AppIDs cannot communicate.
-//! 
+//!
 //! Magic wormhole is known for its ability to transfer files. This is implemented in the [`transfer`] module.
-//! 
+//!
 //! Transferring large amounts of data should not be done over the rendezvous server. Instead, you have to set up a [`transit`]
 //! connection. A transit is little more than an encrypted TcpConnection. If a direct connection between both clients is not possible,
 //! a relay server will transparently connect them together. Transit is used by the file transfer for example, but any other AppID protocol
@@ -97,10 +97,10 @@ impl<P: KeyPurpose> std::ops::Deref for Key<P> {
 impl Key<WormholeKey> {
     /**
      * Derive the sub-key used for transit
-     * 
+     *
      * This one's a bit special, since the Wormhole's AppID is included in the purpose. Different kinds of applications
      * can't talk to each other, not even accidentally, by design.
-     * 
+     *
      * The new key is derived with the `"{appid}/transit-key"` purpose.
      */
     pub fn derive_transit_key(&self, appid: &AppID) -> Key<transit::TransitKey> {
@@ -132,7 +132,7 @@ impl<P: KeyPurpose> Key<P> {
 
 /**
  * A partial Wormhole connection
- * 
+ *
  * A value of this struct represents a Wormhole that has done the server handshake, but is not connected to any
  * "other side" client yet.
  */
@@ -148,7 +148,7 @@ pub struct WormholeConnector {
 impl WormholeConnector {
     /**
      * Connect to the other side client
-     * 
+     *
      * This will perform the PAKE key exchange and all other necessary things to fully connect.
      * It returns a [`Wormhole`] struct over which you can send and receive byte messages with the other side.
      */
@@ -158,38 +158,45 @@ impl WormholeConnector {
 
         let mut verifier = None;
         let mut versions = None;
-        
+
         loop {
             use self::APIAction::*;
-            match self.rx_api_from_core.next().await  {
+            match self.rx_api_from_core.next().await {
                 Some(GotUnverifiedKey(k)) => {
                     debug!("Got key");
                     self.key = Some(k.0.clone());
-                }
+                },
                 Some(GotVerifier(v)) => {
                     debug!("Got verifier {:x?}", &v);
                     verifier = Some(v);
-                }
+                },
                 Some(GotVersions(v)) => {
                     debug!("Got version");
                     versions = Some(v);
-                }
+                },
                 Some(action @ GotMessage(_)) => {
                     warn!("Got message from other side during initialization. Will deliver it after initialization.");
                     self.queued_messages.push(action);
-                }
+                },
                 Some(action @ GotWelcome(_)) | Some(action @ GotCode(_)) => {
                     self.tx_api_to_core.unbounded_send(APIEvent::Close).unwrap();
                     /* Drain remaining events. Don't handle errors as we don't want to shadow the actual one. */
-                    let _ = self.rx_api_from_core.map(Result::Ok).forward(futures::sink::drain()).await;
-                    anyhow::bail!("Invalid message from peer during client handshake! {:?}", action);
-                }
+                    let _ = self
+                        .rx_api_from_core
+                        .map(Result::Ok)
+                        .forward(futures::sink::drain())
+                        .await;
+                    anyhow::bail!(
+                        "Invalid message from peer during client handshake! {:?}",
+                        action
+                    );
+                },
                 Some(GotClosed(_)) => {
                     unreachable!("already handled in core");
-                }
+                },
                 None => {
                     anyhow::bail!("Wormhole unexpectedly closed");
-                }
+                },
             }
 
             if self.key.is_some() && versions.is_some() && verifier.is_some() {
@@ -215,7 +222,7 @@ impl WormholeConnector {
                             action
                         );
                         None
-                    }
+                    },
                 }
             });
 
@@ -243,7 +250,7 @@ impl WormholeConnector {
  * will result in a panic on the event loop. You can also simply drop the struct as a whole, but you might miss
  * some pending events that way.
  */
-/* TODO 
+/* TODO
  * Maybe a better way to handle application level protocols is to create a trait for them and then
  * to paramterize over them.
  */
@@ -253,7 +260,7 @@ pub struct Wormhole {
     pub rx: Pin<Box<dyn Stream<Item = Vec<u8>> + std::marker::Send>>,
     pub key: Key<WormholeKey>,
     pub verifier: Vec<u8>,
-    /** 
+    /**
      * The `AppID` this wormhole is bound to.
      * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
      */
@@ -317,12 +324,12 @@ pub async fn connect_to_server(
             tx_api_to_core
                 .unbounded_send(APIEvent::AllocateCode(num_words))
                 .unwrap();
-        }
+        },
         CodeProvider::SetCode(code) => {
             tx_api_to_core
                 .unbounded_send(APIEvent::SetCode(Code(code)))
                 .unwrap();
-        }
+        },
     }
 
     use futures::StreamExt;
@@ -333,34 +340,40 @@ pub async fn connect_to_server(
             Some(GotWelcome(w)) => {
                 debug!("Got welcome");
                 welcome = Some(w.to_string());
-            }
+            },
             Some(action @ GotMessage(_)) => {
                 warn!("Got message from other side during initialization. Will deliver it after initialization.");
                 queued_messages.push(action);
-            }
+            },
             Some(GotCode(c)) => {
                 debug!("Got code");
                 code = Some(c.clone());
-            }
+            },
             Some(GotUnverifiedKey(k)) => {
                 /* This shouldn't happen now, but it might */
                 debug!("Got key");
                 key = Some(k.0.clone());
-            }
+            },
             /* If we failed, don't do anything. Wait for the close confirmation then bail out */
             Some(action @ GotVerifier(_)) | Some(action @ GotVersions(_)) => {
                 tx_api_to_core.unbounded_send(APIEvent::Close).unwrap();
                 /* Drain remaining events. Don't handle errors as we don't want to shadow the actual one. */
-                let _ = rx_api_from_core.map(Result::Ok).forward(futures::sink::drain()).await;
-                anyhow::bail!("Invalid message from peer during client handshake! {:?}", action);
-            }
+                let _ = rx_api_from_core
+                    .map(Result::Ok)
+                    .forward(futures::sink::drain())
+                    .await;
+                anyhow::bail!(
+                    "Invalid message from peer during client handshake! {:?}",
+                    action
+                );
+            },
             Some(GotClosed(_)) => {
                 unreachable!("already handled in core");
-            }
+            },
             None => {
                 anyhow::bail!("Wormhole unexpectedly closed");
-            }
-    }
+            },
+        }
         if welcome.is_some() && code.is_some() {
             /* We know enough */
             break;

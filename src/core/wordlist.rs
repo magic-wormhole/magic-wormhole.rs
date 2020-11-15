@@ -69,8 +69,7 @@ impl Wordlist {
 }
 
 fn load_pgpwords() -> Vec<Vec<String>> {
-    let raw_words_value: Value =
-        serde_json::from_str(include_str!("pgpwords.json")).unwrap();
+    let raw_words_value: Value = serde_json::from_str(include_str!("pgpwords.json")).unwrap();
     let raw_words = raw_words_value.as_object().unwrap();
     let mut even_words: Vec<String> = Vec::with_capacity(256);
     even_words.resize(256, String::from(""));
@@ -157,8 +156,7 @@ mod test {
 
     #[test]
     fn test_choose_words() {
-        let few_words: Vec<Vec<String>> =
-            vec![vecstrings("purple"), vecstrings("sausages")];
+        let few_words: Vec<Vec<String>> = vec![vecstrings("purple"), vecstrings("sausages")];
 
         let w = Wordlist::new(2, few_words.clone());
         assert_eq!(w.choose_words(), "purple-sausages");

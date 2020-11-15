@@ -5,9 +5,7 @@ use std::sync::Arc;
 use super::events::NameplateEvent;
 // we emit these
 use super::events::MailboxEvent::GotMailbox as M_GotMailbox;
-use super::events::RendezvousEvent::{
-    TxClaim as RC_TxClaim, TxRelease as RC_TxRelease,
-};
+use super::events::RendezvousEvent::{TxClaim as RC_TxClaim, TxRelease as RC_TxRelease};
 use super::events::TerminatorEvent::NameplateDone as T_NameplateDone;
 
 // all -A states are not-connected, while -B states are yes-connected
@@ -51,11 +49,11 @@ impl NameplateMachine {
                 SetNameplate(nameplate) => {
                     // TODO: validate_nameplate(nameplate)
                     S1A(nameplate)
-                }
+                },
                 Close => {
                     actions.push(T_NameplateDone);
                     S5
-                }
+                },
                 _ => panic!(),
             },
             S0B => match event {
@@ -64,22 +62,22 @@ impl NameplateMachine {
                     // TODO: validate_nameplate(nameplate)
                     actions.push(RC_TxClaim(nameplate.clone()));
                     S2B(nameplate)
-                }
+                },
                 Close => {
                     actions.push(T_NameplateDone);
                     S5
-                }
+                },
                 _ => panic!(),
             },
             S1A(nameplate) => match event {
                 Connected => {
                     actions.push(RC_TxClaim(nameplate.clone()));
                     S2B(nameplate)
-                }
+                },
                 Close => {
                     actions.push(T_NameplateDone);
                     S5
-                }
+                },
                 _ => panic!(),
             },
             S2B(nameplate) => match event {
@@ -88,34 +86,34 @@ impl NameplateMachine {
                     // TODO: use nameplate attributes to pick which wordlist we use
                     actions.push(M_GotMailbox(mailbox));
                     S3B(nameplate)
-                }
+                },
                 Close => {
                     actions.push(RC_TxRelease(nameplate.clone()));
                     S4B(nameplate)
-                }
+                },
                 _ => panic!(),
             },
             S3B(nameplate) => match event {
                 Release => {
                     actions.push(RC_TxRelease(nameplate.clone()));
                     S4B(nameplate)
-                }
+                },
                 Close => {
                     actions.push(RC_TxRelease(nameplate.clone()));
                     S4B(nameplate)
-                }
+                },
                 _ => panic!(),
             },
             S4B(ref nameplate) => match event {
                 Connected => {
                     actions.push(RC_TxRelease(nameplate.clone()));
                     S4B(nameplate.clone())
-                }
+                },
                 RxClaimed(_mailbox) => old_state,
                 RxReleased => {
                     actions.push(T_NameplateDone);
                     S5
-                }
+                },
                 Release => old_state,
                 Close => old_state,
                 _ => panic!(),
