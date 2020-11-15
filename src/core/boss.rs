@@ -10,13 +10,11 @@ use super::events::BossEvent;
 // we emit these
 use super::api::APIAction;
 use super::events::CodeEvent::{AllocateCode as C_AllocateCode, SetCode as C_SetCode};
-use super::events::RendezvousEvent::Start as RC_Start;
 use super::events::SendEvent::Send as S_Send;
 use super::events::TerminatorEvent::Close as T_Close;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
-    Unstarted,
     Empty(u64),
     Coding(u64),
     Lonely(u64),
@@ -32,7 +30,7 @@ pub struct BossMachine {
 impl BossMachine {
     pub fn new() -> BossMachine {
         BossMachine {
-            state: Some(State::Unstarted),
+            state: Some(State::Empty(0)),
         }
     }
 
@@ -43,13 +41,6 @@ impl BossMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            Unstarted => match event {
-                Start => {
-                    actions.push(RC_Start);
-                    Empty(0)
-                },
-                _ => panic!("w.start() must be called first"),
-            },
             Empty(i) => match event {
                 AllocateCode(num_words) => {
                     // TODO: provide choice of wordlists
@@ -75,7 +66,6 @@ impl BossMachine {
                     actions.push(T_Close(Mood::Lonely));
                     Closing(Mood::Lonely)
                 },
-                _ => panic!(),
             },
             Coding(i) => match event {
                 // TODO: allocate/input/set-code: signal AlreadyStartedCodeError
@@ -123,7 +113,6 @@ impl BossMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            Unstarted => panic!("w.start() must be called first"),
             Empty(_) => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
@@ -205,7 +194,7 @@ impl BossMachine {
 mod test {
     use super::*;
     use crate::core::api::{APIEvent, Mood};
-    use crate::core::events::{Code, Key, RendezvousEvent, TerminatorEvent};
+    use crate::core::events::{Code, Key, TerminatorEvent};
 
     #[test]
     fn create() {
@@ -215,8 +204,6 @@ mod test {
     #[test]
     fn process_api() {
         let mut b = BossMachine::new();
-        let actions = b.process_api(APIEvent::Start);
-        assert_eq!(actions, events![RendezvousEvent::Start]);
 
         let actions = b.process_api(APIEvent::Close);
         assert_eq!(actions, events![TerminatorEvent::Close(Mood::Lonely)]);
@@ -226,7 +213,6 @@ mod test {
     fn versions() {
         let mut b = BossMachine::new();
         use self::BossEvent::*;
-        b.process_api(APIEvent::Start); // -> Started
         b.process_api(APIEvent::SetCode(Code(String::from("4-foo")))); // -> Coding
         b.process(GotCode(Code(String::from("4-foo")))); // -> Lonely
         b.process(GotKey(Key(b"".to_vec()))); // not actually necessary

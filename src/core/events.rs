@@ -330,23 +330,21 @@ impl fmt::Debug for ReceiveEvent {
 
 #[derive(PartialEq)]
 pub enum RendezvousEvent {
-    Start,
     TxBind(AppID, MySide),
     TxOpen(Mailbox),
     TxAdd(Phase, Vec<u8>), // phase, body
     TxClose(Mailbox, Mood),
-    Stop,
     TxClaim(Nameplate),   // nameplate
     TxRelease(Nameplate), // nameplate
     TxAllocate,
     TxList,
+    Stop,
 }
 
 impl fmt::Debug for RendezvousEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::RendezvousEvent::*;
         let t = match *self {
-            Start => String::from("Start"),
             TxBind(ref appid, ref side) => format!("TxBind(appid={:?}, side={:?})", appid, side),
             TxOpen(ref mailbox) => format!("TxOpen({:?})", mailbox),
             TxAdd(ref phase, ref body) => format!("TxAdd({:?}, {})", phase, maybe_utf8(body)),

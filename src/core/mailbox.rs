@@ -17,17 +17,13 @@ use super::events::TerminatorEvent::MailboxDone as T_MailboxDone;
 #[derive(Debug, PartialEq)]
 enum State {
     // S0: We know nothing
-    S0A,
     S0B,
-    // S1: mailbox known
-    S1A(Mailbox),
-    // S2: mailbox known, maybe open
-    S2B(Mailbox), // opened
+    // S2: mailbox known and opened
+    S2B(Mailbox),
     // S3: closing
     S3B(Mailbox, Mood),
     // S4: closed
-    S4A,
-    S4B,
+    S4,
 }
 
 pub struct MailboxMachine {
@@ -40,7 +36,7 @@ pub struct MailboxMachine {
 impl MailboxMachine {
     pub fn new(side: &MySide) -> MailboxMachine {
         MailboxMachine {
-            state: Some(State::S0A),
+            state: Some(State::S0B),
             side: side.clone(),
             pending_outbound: HashMap::new(),
             processed: HashSet::new(),
@@ -67,26 +63,11 @@ impl MailboxMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            S0A => match event {
-                Connected => S0B,
-                Close(_) => {
-                    self.pending_outbound.clear();
-                    actions.push(T_MailboxDone);
-                    S4A
-                },
-                GotMailbox(mailbox) => S1A(mailbox),
-                AddMessage(phase, body) => {
-                    self.pending_outbound.insert(phase, body);
-                    S0A
-                },
-                _ => panic!(),
-            },
-
             S0B => match event {
                 Close(_) => {
                     self.pending_outbound.clear();
                     actions.push(T_MailboxDone);
-                    S4B
+                    S4
                 },
                 GotMailbox(mailbox) => {
                     self.send_open_and_queue(&mut actions, &mailbox);
@@ -95,23 +76,6 @@ impl MailboxMachine {
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase, body);
                     S0B
-                },
-                _ => panic!(),
-            },
-
-            S1A(mailbox) => match event {
-                Connected => {
-                    self.send_open_and_queue(&mut actions, &mailbox);
-                    S2B(mailbox)
-                },
-                Close(_) => {
-                    self.pending_outbound.clear();
-                    actions.push(T_MailboxDone);
-                    S4A
-                },
-                AddMessage(phase, body) => {
-                    self.pending_outbound.insert(phase, body);
-                    S1A(mailbox)
                 },
                 _ => panic!(),
             },
@@ -150,22 +114,14 @@ impl MailboxMachine {
                 RxMessage(..) => S3B(mailbox, mood),
                 RxClosed => {
                     actions.push(T_MailboxDone);
-                    S4B
+                    S4
                 },
                 Close(close_mood) => S3B(mailbox, close_mood),
                 AddMessage(..) => S3B(mailbox, mood),
                 _ => panic!(),
             },
 
-            S4A => match event {
-                Connected => S4B,
-                _ => panic!(),
-            },
-
-            S4B => match event {
-                RxMessage(..) | Close(_) | AddMessage(..) => old_state,
-                _ => panic!(),
-            },
+            S4 => old_state,
         });
 
         actions

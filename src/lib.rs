@@ -304,11 +304,11 @@ pub async fn connect_to_server(
     let (tx_api_to_core, mut rx_api_from_core) = {
         #[cfg(test)]
         {
-            crate::core::run(appid.clone(), versions, relay_url, eventloop_task)
+            crate::core::run(appid.clone(), versions, relay_url, eventloop_task).await
         }
         #[cfg(not(test))]
         {
-            crate::core::run(appid.clone(), versions, relay_url)
+            crate::core::run(appid.clone(), versions, relay_url).await
         }
     };
 
@@ -316,8 +316,6 @@ pub async fn connect_to_server(
     let mut welcome = None;
     let mut key = None;
     let mut queued_messages = Vec::new();
-
-    tx_api_to_core.unbounded_send(APIEvent::Start).unwrap();
 
     match code_provider {
         CodeProvider::AllocateCode(num_words) => {

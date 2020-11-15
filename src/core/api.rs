@@ -7,8 +7,6 @@ use std::fmt;
 
 #[derive(PartialEq)]
 pub enum APIEvent {
-    // from application to IO glue to WormholeCore
-    Start,
     AllocateCode(usize), // num_words
     SetCode(Code),
     Close,
@@ -19,7 +17,6 @@ impl fmt::Debug for APIEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::APIEvent::*;
         let t = match *self {
-            Start => String::from("Start"),
             AllocateCode(ref num_words) => format!("AllocateCode({})", num_words),
             SetCode(ref code) => format!("SetCode({:?})", code),
             Close => String::from("Close"),
@@ -73,31 +70,16 @@ impl fmt::Debug for APIAction {
     }
 }
 
-// Handles should be unforgeable: the struct is pub so they can be referenced
-// by application code, but the 'id' field is private, so they cannot be
-// constructed externally, nor can existing ones be modified.
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct WSHandle(u64);
-impl WSHandle {
-    pub(crate) fn new(id: u64) -> WSHandle {
-        WSHandle(id)
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub enum IOEvent {
-    // from IO glue layer into WormholeCore
-    WebSocketConnectionMade(WSHandle),
-    WebSocketMessageReceived(WSHandle, String),
-    WebSocketConnectionLost(WSHandle),
+    WebSocketMessageReceived(String),
+    WebSocketConnectionLost,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum IOAction {
-    WebSocketOpen(WSHandle, String), // url
-    WebSocketSendMessage(WSHandle, String),
-    WebSocketClose(WSHandle),
+    WebSocketSendMessage(String),
+    WebSocketClose,
 }
 
 #[cfg_attr(tarpaulin, skip)]
