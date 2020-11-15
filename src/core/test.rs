@@ -101,15 +101,6 @@ pub async fn test_eventloop_exit3() {
     .expect("Test failed");
 }
 
-pub fn filt(ev: Events) -> Events {
-    ev.into_iter()
-        .filter(|e| match e {
-            Event::Timing(_) => false,
-            _ => true,
-        })
-        .collect()
-}
-
 #[test]
 fn test_phase() {
     let p = Phase(String::from("pake"));

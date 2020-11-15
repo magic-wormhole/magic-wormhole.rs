@@ -21,7 +21,6 @@ use super::events::KeyEvent;
 use super::events::BossEvent::GotKey as B_GotKey;
 use super::events::MailboxEvent::AddMessage as M_AddMessage;
 use super::events::ReceiveEvent::GotKey as R_GotKey;
-use super::timing::new_timelog;
 
 #[derive(Debug, PartialEq, Eq)]
 enum State {
@@ -67,11 +66,7 @@ impl KeyMachine {
     }
 
     fn start(&self, code: Code, actions: &mut Events) -> SPAKE2<Ed25519Group> {
-        let mut t1 = new_timelog("pake1", None);
-        t1.detail("waiting", "crypto");
         let (pake_state, pake_msg_ser) = make_pake(&code, &self.appid);
-        t1.finish(None);
-        actions.push(t1);
         actions.push(M_AddMessage(Phase(String::from("pake")), pake_msg_ser));
         pake_state
     }
@@ -82,12 +77,8 @@ impl KeyMachine {
         their_pake_msg: &[u8],
         actions: &mut Events,
     ) -> Key {
-        let mut t2 = new_timelog("pake2", None);
-        t2.detail("waiting", "crypto");
         let msg2 = extract_pake_msg(&their_pake_msg).unwrap();
         let key = Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap());
-        t2.finish(None);
-        actions.push(t2);
         let versions = json!({"app_versions": self.versions});
         let (version_phase, version_msg) =
             build_version_msg(&self.side, &key, &versions);
@@ -393,16 +384,6 @@ mod test {
         }
     }
 
-    fn strip_timing(events: Events) -> Vec<Event> {
-        events
-            .into_iter()
-            .filter(|e| match e {
-                Event::Timing(_) => false,
-                _ => true,
-            })
-            .collect()
-    }
-
     #[test]
     fn test_code_first() {
         use super::super::events::{
@@ -415,7 +396,7 @@ mod test {
         let mut k = KeyMachine::new(&appid, &side, json!({}));
 
         // we set our own code first, which generates+sends a PAKE message
-        let mut e = strip_timing(k.process(KeyEvent::GotCode(code.clone())));
+        let mut e = k.process(KeyEvent::GotCode(code.clone())).events;
 
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
@@ -432,7 +413,7 @@ mod test {
         let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
 
         // deliver it, which should finish the key-agreement process
-        let mut e = strip_timing(k.process(KeyEvent::GotPake(pake_msg_ser)));
+        let mut e = k.process(KeyEvent::GotPake(pake_msg_ser)).events;
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
                 assert_eq!(phase, Phase(String::from("version")));
@@ -474,11 +455,11 @@ mod test {
 
         // we receive the PAKE from our peer before the user finishes
         // providing our code, so we emit no messages
-        let e = strip_timing(k.process(KeyEvent::GotPake(pake_msg_ser)));
+        let e = k.process(KeyEvent::GotPake(pake_msg_ser)).events;
         assert_eq!(e.len(), 0);
 
         // setting our own code should both start and finish the process
-        let mut e = strip_timing(k.process(KeyEvent::GotCode(code)));
+        let mut e = k.process(KeyEvent::GotCode(code)).events;
 
         match e.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {

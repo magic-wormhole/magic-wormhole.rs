@@ -21,7 +21,6 @@ use super::events::{
 };
 
 use super::events::RendezvousEvent::TxBind as RC_TxBind; // loops around
-use super::timing::new_timelog;
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -170,9 +169,7 @@ impl RendezvousMachine {
                 Start => panic!(),
                 TxBind(..) | TxOpen(..) | TxAdd(..) | TxClose(..)
                 | TxClaim(..) | TxRelease(..) | TxAllocate | TxList => {
-                    for a in self.send(event, wsh) {
-                        actions.push(a)
-                    }
+                    actions.push(self.send(event, wsh));
                     old_state
                 }
                 Stop => {
@@ -196,11 +193,6 @@ impl RendezvousMachine {
         trace!("msg is {:?}", message);
         use super::server_messages::deserialize;
         let m = deserialize(message);
-
-        let mut t = new_timelog("ws_receive", None);
-        t.detail("_side", &self.side);
-        t.detail_json("message", &serde_json::to_value(&m).unwrap());
-        actions.push(t);
 
         use super::server_messages::InboundMessage::*;
         match m {
@@ -246,7 +238,7 @@ impl RendezvousMachine {
         Ok(())
     }
 
-    fn send(&mut self, e: RendezvousEvent, wsh: WSHandle) -> Events {
+    fn send(&mut self, e: RendezvousEvent, wsh: WSHandle) -> IOAction {
         use super::events::RendezvousEvent::*;
         use super::server_messages::OutboundMessage;
         let m = match e {
@@ -260,20 +252,9 @@ impl RendezvousMachine {
             TxList => OutboundMessage::List,
             Start | Stop => panic!(),
         };
-        // TODO: add 'id' (a random string, used to correlate 'ack' responses
-        // for timing-graph instrumentation)
-        let mut t = new_timelog("ws_send", None);
-        t.detail("_side", &self.side);
-        //t.detail("id", id);
-        //t.detail("type",
-        // TODO: the Python version merges all the keys of 'm' at the top of
-        // the event dict, rather than putting them down in the ["message"]
-        // key
-        t.detail_json("message", &serde_json::to_value(&m).unwrap());
 
         let ms = serde_json::to_string(&m).unwrap();
-        let s = IOAction::WebSocketSendMessage(wsh, ms);
-        events![t, s]
+        IOAction::WebSocketSendMessage(wsh, ms)
     }
 }
 
@@ -293,7 +274,6 @@ mod test {
     };
     use crate::core::events::{AppID, MySide};
     use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
-    use crate::core::test::filt;
     use log::trace;
 
     #[test]
@@ -309,7 +289,7 @@ mod test {
         let wsh: WSHandle;
         // let th: TimerHandle;
 
-        let mut actions = filt(r.process(RC_Start)).events;
+        let mut actions = r.process(RC_Start).events;
         assert_eq!(actions.len(), 1);
         let e = actions.pop().unwrap();
         // TODO: I want to:
@@ -328,8 +308,7 @@ mod test {
         }
 
         // now we tell it we're connected
-        actions =
-            filt(r.process_io(IOEvent::WebSocketConnectionMade(wsh)).unwrap()).events;
+        actions = r.process_io(IOEvent::WebSocketConnectionMade(wsh)).unwrap().events;
         // it should tell itself to send a BIND then it should notify several
         // other machines at this point, we have BIND, N_Connected, M_Connected
         // L_Connected and A_Connected
@@ -366,7 +345,7 @@ mod test {
         }
 
         // we let the TxBind loop around
-        actions = filt(r.process(b)).events;
+        actions = r.process(b).events;
         assert_eq!(actions.len(), 1);
         let e = actions.remove(0);
         trace!("e is {:?}", e);
@@ -387,8 +366,7 @@ mod test {
 
         // once connected, we react to connection loss by starting the
         // reconnection timer
-        actions =
-            filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap()).events;
+        actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap().events;
         assert_eq!(actions.len(), 5);
         // let e = actions.remove(0);
         // match e {
@@ -422,7 +400,7 @@ mod test {
         //     _ => panic!(),
         // }
 
-        actions = filt(r.process(RC_Stop)).events;
+        actions = r.process(RC_Stop).events;
         // we were Connecting, so we should see a close and then wait for
         // disconnect
         assert_eq!(actions.len(), 1);
@@ -449,7 +427,7 @@ mod test {
             5.0,
         );
         let wsh: WSHandle;
-        let mut actions = filt(r.process(RC_Start)).events;
+        let mut actions = r.process(RC_Start).events;
         if let IO(IOAction::WebSocketOpen(wsh0, ..)) = actions.remove(0) {
             wsh = wsh0;
         } else {
@@ -457,7 +435,7 @@ mod test {
         }
         assert!(actions.is_empty());
 
-        let actions = filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap());
+        let actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap();
         assert_eq!(
             actions,
             events![BossEvent::Error(String::from(

@@ -6,7 +6,6 @@ use std::ops::Deref;
 use std::sync::Arc;
 // Events come into the core, Actions go out of it (to the IO glue layer)
 use super::api::{APIAction, IOAction, Mood};
-use super::timing::TimingLogEvent;
 use super::util::maybe_utf8;
 use crate::core::util::random_bytes;
 use zeroize::Zeroize;
@@ -414,7 +413,6 @@ pub enum Event {
     Rendezvous(RendezvousEvent),
     Send(SendEvent),
     Terminator(TerminatorEvent),
-    Timing(TimingLogEvent),
 }
 
 // conversion from specific event types to the generic Event
@@ -494,12 +492,6 @@ impl From<SendEvent> for Event {
 impl From<TerminatorEvent> for Event {
     fn from(r: TerminatorEvent) -> Self {
         Event::Terminator(r)
-    }
-}
-
-impl From<TimingLogEvent> for Event {
-    fn from(r: TimingLogEvent) -> Self {
-        Event::Timing(r)
     }
 }
 
