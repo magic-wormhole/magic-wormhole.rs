@@ -43,14 +43,14 @@ impl AllocatorMachine {
                 Allocate(wordlist) => {
                     actions.push(RC_TxAllocate);
                     S1BAllocatingConnected(wordlist)
-                }
+                },
                 _ => panic!(),
             },
             S1AAllocatingDisconnected(wordlist) => match event {
                 Connected => {
                     actions.push(RC_TxAllocate);
                     S1BAllocatingConnected(wordlist)
-                }
+                },
                 _ => panic!(),
             },
             S1BAllocatingConnected(wordlist) => match event {
@@ -59,7 +59,7 @@ impl AllocatorMachine {
                     let code = Code(nameplate.to_string() + "-" + &words);
                     actions.push(C_Allocated(nameplate, code));
                     S2Done
-                }
+                },
                 _ => panic!(),
             },
             S2Done => old_state,
@@ -95,7 +95,7 @@ mod test {
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
                 assert_eq!(nameplate.to_string(), "123");
-            }
+            },
             _ => panic!(),
         }
     }
@@ -128,7 +128,7 @@ mod test {
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
                 assert_eq!(nameplate.to_string(), "123");
-            }
+            },
             _ => panic!(),
         }
     }
@@ -151,7 +151,7 @@ mod test {
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
                 assert_eq!(nameplate.to_string(), "123");
-            }
+            },
             _ => panic!(),
         }
     }
@@ -177,7 +177,7 @@ mod test {
         match e.events.remove(0) {
             Event::Code(CodeEvent::Allocated(nameplate, _code)) => {
                 assert_eq!(nameplate.to_string(), "123");
-            }
+            },
             _ => panic!(),
         }
     }

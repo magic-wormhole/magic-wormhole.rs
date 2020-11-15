@@ -42,32 +42,28 @@ impl SendMachine {
                 match event {
                     GotVerifiedKey(ref key) => {
                         for (phase, plaintext) in self.queue.drain(..) {
-                            let data_key =
-                                key::derive_phase_key(&self.side, &key, &phase);
-                            let (_nonce, encrypted) =
-                                key::encrypt_data(&data_key, &plaintext);
+                            let data_key = key::derive_phase_key(&self.side, &key, &phase);
+                            let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
                             actions.push(M_AddMessage(phase, encrypted));
                         }
                         S1HaveVerifiedKey(key.clone())
-                    }
+                    },
                     Send(phase, plaintext) => {
                         // we don't have a verified key, yet we got messages to
                         // send, so queue it up.
                         self.queue.push((phase, plaintext));
                         S0NoKey
-                    }
+                    },
                 }
-            }
+            },
             S1HaveVerifiedKey(ref key) => match event {
                 GotVerifiedKey(_) => panic!(),
                 Send(phase, plaintext) => {
-                    let data_key =
-                        key::derive_phase_key(&self.side, &key, &phase);
-                    let (_nonce, encrypted) =
-                        key::encrypt_data(&data_key, &plaintext);
+                    let data_key = key::derive_phase_key(&self.side, &key, &phase);
+                    let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
                     actions.push(M_AddMessage(phase, encrypted));
                     S1HaveVerifiedKey(key.clone())
-                }
+                },
             },
         });
 
@@ -106,13 +102,13 @@ mod test {
         match e3.events.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
                 assert_eq!(p, p1);
-            }
+            },
             _ => panic!(),
         };
         match e3.events.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
                 assert_eq!(p, p2);
-            }
+            },
             _ => panic!(),
         };
 
@@ -125,7 +121,7 @@ mod test {
         match e4.events.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
                 assert_eq!(p, p3);
-            }
+            },
             _ => panic!(),
         };
     }
@@ -148,7 +144,7 @@ mod test {
         match e2.events.remove(0) {
             Event::Mailbox(MailboxEvent::AddMessage(p, _ct1)) => {
                 assert_eq!(p, p1);
-            }
+            },
             _ => panic!(),
         };
     }

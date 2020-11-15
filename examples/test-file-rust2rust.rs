@@ -47,7 +47,8 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::SetCode(code),
     )
-    .await.unwrap();
+    .await
+    .unwrap();
     info!("Got welcome: {}", &welcome.welcome);
 
     let mut w = connector.connect_to_client().await.unwrap();
@@ -73,7 +74,8 @@ async fn send(code_tx: mpsc::Sender<String>) {
         magic_wormhole::DEFAULT_MAILBOX_SERVER,
         CodeProvider::AllocateCode(2),
     )
-    .await.unwrap();
+    .await
+    .unwrap();
     info!("Got welcome: {}", &welcome.welcome);
     info!("This wormhole's code is: {}", &welcome.code);
     code_tx.send(welcome.code.0).unwrap();

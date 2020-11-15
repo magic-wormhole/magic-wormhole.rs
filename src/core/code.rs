@@ -35,7 +35,7 @@ impl CodeMachine {
                 AllocateCode(wordlist) => {
                     actions.push(A_Allocate(wordlist));
                     Allocating
-                }
+                },
                 SetCode(code) => {
                     // TODO: try!(validate_code(code))
                     let code_string = code.to_string();
@@ -45,7 +45,7 @@ impl CodeMachine {
                     actions.push(B_GotCode(code.clone()));
                     actions.push(K_GotCode(code));
                     Known
-                }
+                },
                 _ => panic!(),
             },
 
@@ -57,7 +57,7 @@ impl CodeMachine {
                     actions.push(B_GotCode(code.clone()));
                     actions.push(K_GotCode(code));
                     Known
-                }
+                },
                 _ => panic!(),
             },
             Known => panic!(),
@@ -69,9 +69,7 @@ impl CodeMachine {
 #[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
-    use super::super::events::{
-        BossEvent, Code, Event, KeyEvent, NameplateEvent,
-    };
+    use super::super::events::{BossEvent, Code, Event, KeyEvent, NameplateEvent};
     use super::CodeEvent::*;
     use super::CodeMachine;
 
@@ -81,13 +79,13 @@ mod test {
         match e.remove(0) {
             Event::Boss(BossEvent::GotCode(c2)) => {
                 assert_eq!(c2.to_string(), "4-purple-sausages");
-            }
+            },
             _ => panic!(),
         }
         match e.remove(0) {
             Event::Key(KeyEvent::GotCode(c2)) => {
                 assert_eq!(c2.to_string(), "4-purple-sausages");
-            }
+            },
             _ => panic!(),
         }
         assert_eq!(e.len(), 0);
@@ -102,7 +100,7 @@ mod test {
         match e.remove(0) {
             Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
                 assert_eq!(n.to_string(), "4");
-            }
+            },
             _ => panic!(),
         }
         assert_keyboss(e);
@@ -120,7 +118,7 @@ mod test {
         match e.remove(0) {
             Event::Allocator(AllocatorEvent::Allocate(w2)) => {
                 assert_eq!(w2, w);
-            }
+            },
             _ => panic!(),
         }
         assert_eq!(e.len(), 0);
@@ -134,7 +132,7 @@ mod test {
         match e.remove(0) {
             Event::Nameplate(NameplateEvent::SetNameplate(n)) => {
                 assert_eq!(n.to_string(), "4");
-            }
+            },
             _ => panic!(),
         }
         assert_keyboss(e);

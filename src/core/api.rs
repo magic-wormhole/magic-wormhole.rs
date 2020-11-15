@@ -20,9 +20,7 @@ impl fmt::Debug for APIEvent {
         use self::APIEvent::*;
         let t = match *self {
             Start => String::from("Start"),
-            AllocateCode(ref num_words) => {
-                format!("AllocateCode({})", num_words)
-            }
+            AllocateCode(ref num_words) => format!("AllocateCode({})", num_words),
             SetCode(ref code) => format!("SetCode({:?})", code),
             Close => String::from("Close"),
             Send(ref msg) => format!("Send({})", maybe_utf8(msg)),
@@ -65,9 +63,7 @@ impl fmt::Debug for APIAction {
         let t = match *self {
             GotWelcome(ref welcome) => format!("GotWelcome({:?})", welcome),
             GotCode(ref code) => format!("GotCode({:?})", code),
-            GotUnverifiedKey(ref _key) => {
-                String::from("GotUnverifiedKey(REDACTED)")
-            }
+            GotUnverifiedKey(ref _key) => String::from("GotUnverifiedKey(REDACTED)"),
             GotVerifier(ref v) => format!("GotVerifier({})", hex::encode(v)),
             GotVersions(ref versions) => format!("GotVersions({:?})", versions),
             GotMessage(ref msg) => format!("GotMessage({})", maybe_utf8(msg)),

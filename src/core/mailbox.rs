@@ -73,12 +73,12 @@ impl MailboxMachine {
                     self.pending_outbound.clear();
                     actions.push(T_MailboxDone);
                     S4A
-                }
+                },
                 GotMailbox(mailbox) => S1A(mailbox),
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase, body);
                     S0A
-                }
+                },
                 _ => panic!(),
             },
 
@@ -87,15 +87,15 @@ impl MailboxMachine {
                     self.pending_outbound.clear();
                     actions.push(T_MailboxDone);
                     S4B
-                }
+                },
                 GotMailbox(mailbox) => {
                     self.send_open_and_queue(&mut actions, &mailbox);
                     S2B(mailbox)
-                }
+                },
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase, body);
                     S0B
-                }
+                },
                 _ => panic!(),
             },
 
@@ -103,16 +103,16 @@ impl MailboxMachine {
                 Connected => {
                     self.send_open_and_queue(&mut actions, &mailbox);
                     S2B(mailbox)
-                }
+                },
                 Close(_) => {
                     self.pending_outbound.clear();
                     actions.push(T_MailboxDone);
                     S4A
-                }
+                },
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase, body);
                     S1A(mailbox)
-                }
+                },
                 _ => panic!(),
             },
 
@@ -130,17 +130,17 @@ impl MailboxMachine {
                         self.pending_outbound.remove(&phase);
                     }
                     S2B(mailbox)
-                }
+                },
                 Close(mood) => {
                     self.pending_outbound.clear();
                     actions.push(RC_TxClose(mailbox.clone(), mood));
                     S3B(mailbox, mood)
-                }
+                },
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase.clone(), body.to_vec());
                     actions.push(RC_TxAdd(phase, body));
                     S2B(mailbox)
-                }
+                },
                 _ => panic!(),
             },
 
@@ -151,7 +151,7 @@ impl MailboxMachine {
                 RxClosed => {
                     actions.push(T_MailboxDone);
                     S4B
-                }
+                },
                 Close(close_mood) => S3B(mailbox, close_mood),
                 AddMessage(..) => S3B(mailbox, mood),
                 _ => panic!(),
@@ -178,8 +178,8 @@ mod test {
     use super::*;
     use crate::core::api::Mood;
     use crate::core::events::{
-        MailboxEvent::*, MySide, NameplateEvent, OrderEvent, RendezvousEvent,
-        TerminatorEvent, TheirSide,
+        MailboxEvent::*, MySide, NameplateEvent, OrderEvent, RendezvousEvent, TerminatorEvent,
+        TheirSide,
     };
 
     #[test]
@@ -217,10 +217,7 @@ mod test {
         );
 
         e = m.process(Close(Mood::Happy));
-        assert_eq!(
-            e,
-            events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]
-        );
+        assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
 
         e = m.process(RxClosed);
         assert_eq!(e, events![TerminatorEvent::MailboxDone]);
@@ -261,10 +258,7 @@ mod test {
         );
 
         e = m.process(Close(Mood::Happy));
-        assert_eq!(
-            e,
-            events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]
-        );
+        assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
 
         e = m.process(RxClosed);
         assert_eq!(e, events![TerminatorEvent::MailboxDone]);
@@ -294,10 +288,7 @@ mod test {
         );
 
         e = m.process(Close(Mood::Happy));
-        assert_eq!(
-            e,
-            events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]
-        );
+        assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
 
         e = m.process(RxClosed);
         assert_eq!(e, events![TerminatorEvent::MailboxDone]);
@@ -344,11 +335,7 @@ mod test {
             e,
             events![
                 NameplateEvent::Release,
-                OrderEvent::GotMessage(
-                    t2.clone(),
-                    phase1.clone(),
-                    body1.clone()
-                ),
+                OrderEvent::GotMessage(t2.clone(), phase1.clone(), body1.clone()),
             ]
         );
 

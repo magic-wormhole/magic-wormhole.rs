@@ -18,7 +18,7 @@ pub use super::wordlist::Wordlist;
 pub struct AppID(pub Arc<String>);
 
 impl std::ops::Deref for AppID {
-    type Target=String;
+    type Target = String;
 
     /// Dereferences the value.
     fn deref(&self) -> &Self::Target {
@@ -218,7 +218,7 @@ impl fmt::Debug for BossEvent {
             GotVerifier(ref v) => format!("GotVerifier({})", maybe_utf8(v)),
             GotMessage(ref phase, ref msg) => {
                 format!("GotMessage({:?}, {})", phase, maybe_utf8(msg))
-            }
+            },
         };
         write!(f, "BossEvent::{}", t)
     }
@@ -276,7 +276,7 @@ impl fmt::Debug for MailboxEvent {
             GotMailbox(ref mailbox) => format!("GotMailbox({:?})", mailbox),
             AddMessage(ref phase, ref body) => {
                 format!("AddMessage({:?}, {})", phase, maybe_utf8(body))
-            }
+            },
         };
         write!(f, "MailboxEvent::{}", t)
     }
@@ -353,16 +353,10 @@ impl fmt::Debug for RendezvousEvent {
         use self::RendezvousEvent::*;
         let t = match *self {
             Start => String::from("Start"),
-            TxBind(ref appid, ref side) => {
-                format!("TxBind(appid={:?}, side={:?})", appid, side)
-            }
+            TxBind(ref appid, ref side) => format!("TxBind(appid={:?}, side={:?})", appid, side),
             TxOpen(ref mailbox) => format!("TxOpen({:?})", mailbox),
-            TxAdd(ref phase, ref body) => {
-                format!("TxAdd({:?}, {})", phase, maybe_utf8(body))
-            }
-            TxClose(ref mailbox, ref mood) => {
-                format!("TxClose({:?}, {:?})", mailbox, mood)
-            }
+            TxAdd(ref phase, ref body) => format!("TxAdd({:?}, {})", phase, maybe_utf8(body)),
+            TxClose(ref mailbox, ref mood) => format!("TxClose({:?}, {:?})", mailbox, mood),
             Stop => String::from("Stop"),
             TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
             TxRelease(ref nameplate) => format!("TxRelease({:?})", nameplate),
@@ -384,7 +378,7 @@ impl fmt::Debug for SendEvent {
         match self {
             SendEvent::Send(ref phase, ref plaintext) => {
                 write!(f, "Send({:?}, {})", phase, maybe_utf8(plaintext))
-            }
+            },
             SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
         }
     }
