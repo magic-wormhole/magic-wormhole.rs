@@ -85,10 +85,7 @@ impl RendezvousMachine {
                 },
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost(h) => {
-                    assert!(wsh == h);
-                    let e = BossEvent::Error(String::from("initial WebSocket connection lost"));
-                    actions.push(e);
-                    Stopped
+                    anyhow::bail!("initial WebSocket connection lost");
                 },
             },
             Connected(wsh) => match event {
@@ -99,10 +96,7 @@ impl RendezvousMachine {
                     old_state
                 },
                 WebSocketConnectionLost(h) => {
-                    assert!(wsh == h);
-                    let e = BossEvent::Error(String::from("initial WebSocket connection lost"));
-                    actions.push(e);
-                    Stopped
+                    anyhow::bail!("initial WebSocket connection lost");
                 },
             },
             Disconnecting(wsh) => match event {
@@ -388,27 +382,5 @@ mod test {
         // actions =
         //     filt(r.process_io(IOEvent::WebSocketConnectionLost(wsh2)).unwrap()).events;
         assert_eq!(actions, vec![Terminator(T_Stopped)]);
-    }
-
-    #[test]
-    fn first_connect_fails() {
-        let side = MySide::unchecked_from_string(String::from("side1"));
-        let mut r = super::RendezvousMachine::new(&AppID::new("appid"), "url", &side, 5.0);
-        let wsh: WSHandle;
-        let mut actions = r.process(RC_Start).events;
-        if let IO(IOAction::WebSocketOpen(wsh0, ..)) = actions.remove(0) {
-            wsh = wsh0;
-        } else {
-            panic!();
-        }
-        assert!(actions.is_empty());
-
-        let actions = r.process_io(IOEvent::WebSocketConnectionLost(wsh)).unwrap();
-        assert_eq!(
-            actions,
-            events![BossEvent::Error(String::from(
-                "initial WebSocket connection lost"
-            ))]
-        );
     }
 }

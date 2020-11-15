@@ -58,17 +58,18 @@ pub fn run(
                 },
                 action = rx_io_to_core.select_next_some() => {
                     debug!("Doing IO {:?}", action);
-                    match core.do_io(action) {
-                        Ok(events) => events,
-                        Err(e) => {
-                            // TODO propagate that error to the outside
-                            log::error!("Got error from core: {}", e);
-                            tx_api_from_core.close_channel();
-                            rx_api_to_core.close();
-                            rx_io_to_core.close();
-                            break 'outer;
-                        },
-                    }
+                    core.do_io(action)
+                },
+            };
+            let actions = match actions {
+                Ok(events) => events,
+                Err(e) => {
+                    // TODO propagate that error to the outside
+                    log::error!("Got error from core: {}", e);
+                    tx_api_from_core.close_channel();
+                    rx_api_to_core.close();
+                    rx_io_to_core.close();
+                    break 'outer;
                 },
             };
             debug!("Done API/IO {:?}", &actions);
@@ -142,7 +143,7 @@ impl WormholeCore {
     }
 
     #[must_use = "You must execute these actions to make things work"]
-    pub fn do_api(&mut self, event: APIEvent) -> Vec<APIAction> {
+    pub fn do_api(&mut self, event: APIEvent) -> anyhow::Result<Vec<APIAction>> {
         // run with RUST_LOG=magic_wormhole=trace to see these
         trace!("  api: {:?}", event);
         let events = self.boss.process_api(event);
@@ -153,10 +154,10 @@ impl WormholeCore {
     pub fn do_io(&mut self, event: IOEvent) -> anyhow::Result<Vec<APIAction>> {
         trace!("   io: {:?}", event);
         let events = self.rendezvous.process_io(event)?;
-        Ok(self._execute(events))
+        self._execute(events)
     }
 
-    fn _execute(&mut self, events: Events) -> Vec<APIAction> {
+    fn _execute(&mut self, events: Events) -> anyhow::Result<Vec<APIAction>> {
         let mut action_queue: Vec<APIAction> = Vec::new(); // returned
         let mut event_queue: VecDeque<Event> = VecDeque::new();
 
@@ -181,18 +182,14 @@ impl WormholeCore {
                 Mailbox(e) => self.mailbox.process(e),
                 Nameplate(e) => self.nameplate.process(e),
                 Order(e) => self.order.process(e),
-                Receive(e) => self.receive.process(e),
+                Receive(e) => self.receive.process(e)?,
                 Rendezvous(e) => self.rendezvous.process(e),
                 Send(e) => self.send.process(e),
                 Terminator(e) => self.terminator.process(e),
             };
 
-            for a in actions.events {
-                // TODO use iter
-                // TODO: insert in front of queue: depth-first processing
-                event_queue.push_back(a);
-            }
+            event_queue.extend(actions);
         }
-        action_queue
+        Ok(action_queue)
     }
 }
