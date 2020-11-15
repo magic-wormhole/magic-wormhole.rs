@@ -1,6 +1,4 @@
 use super::events::{Events, Nameplate};
-use super::wordlist::default_wordlist;
-use std::sync::Arc;
 // we process these
 use super::events::NameplateEvent;
 // we emit these
@@ -13,10 +11,7 @@ use super::events::TerminatorEvent::NameplateDone as T_NameplateDone;
 #[derive(Debug, PartialEq)]
 enum State {
     // S0: we know nothing
-    S0A,
     S0B,
-    // S1: nameplate known, but never claimed
-    S1A(Nameplate),
     // S2: nameplate known, maybe claimed
     S2B(Nameplate),
     // S3: nameplate claimed
@@ -34,7 +29,7 @@ pub(crate) struct NameplateMachine {
 impl NameplateMachine {
     pub fn new() -> NameplateMachine {
         NameplateMachine {
-            state: Some(State::S0A),
+            state: Some(State::S0B),
         }
     }
 
@@ -44,33 +39,9 @@ impl NameplateMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            S0A => match event {
-                Connected => S0B,
-                SetNameplate(nameplate) => {
-                    // TODO: validate_nameplate(nameplate)
-                    S1A(nameplate)
-                },
-                Close => {
-                    actions.push(T_NameplateDone);
-                    S5
-                },
-                _ => panic!(),
-            },
             S0B => match event {
-                // Lost => S0A,
                 SetNameplate(nameplate) => {
                     // TODO: validate_nameplate(nameplate)
-                    actions.push(RC_TxClaim(nameplate.clone()));
-                    S2B(nameplate)
-                },
-                Close => {
-                    actions.push(T_NameplateDone);
-                    S5
-                },
-                _ => panic!(),
-            },
-            S1A(nameplate) => match event {
-                Connected => {
                     actions.push(RC_TxClaim(nameplate.clone()));
                     S2B(nameplate)
                 },

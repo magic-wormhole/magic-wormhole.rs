@@ -14,9 +14,7 @@ pub struct AllocatorMachine {
 
 #[derive(Debug, PartialEq, Clone)]
 enum State {
-    S0AIdleDisconnected,
     S0BIdleConnected,
-    S1AAllocatingDisconnected(Arc<Wordlist>),
     S1BAllocatingConnected(Arc<Wordlist>),
     S2Done,
 }
@@ -24,7 +22,7 @@ enum State {
 impl AllocatorMachine {
     pub fn new() -> AllocatorMachine {
         AllocatorMachine {
-            state: Some(State::S0AIdleDisconnected),
+            state: Some(State::S0BIdleConnected),
         }
     }
 
@@ -34,20 +32,8 @@ impl AllocatorMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            S0AIdleDisconnected => match event {
-                Connected => S0BIdleConnected,
-                Allocate(wordlist) => S1AAllocatingDisconnected(wordlist),
-                _ => panic!(),
-            },
             S0BIdleConnected => match event {
                 Allocate(wordlist) => {
-                    actions.push(RC_TxAllocate);
-                    S1BAllocatingConnected(wordlist)
-                },
-                _ => panic!(),
-            },
-            S1AAllocatingDisconnected(wordlist) => match event {
-                Connected => {
                     actions.push(RC_TxAllocate);
                     S1BAllocatingConnected(wordlist)
                 },

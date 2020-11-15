@@ -27,13 +27,13 @@ pub use self::events::{AppID, Code};
 use self::events::{Event, Events, MySide};
 use log::*;
 
-pub use self::api::{APIAction, APIEvent, IOAction, IOEvent, Mood, WSHandle};
+pub use self::api::{APIAction, APIEvent, IOAction, IOEvent, Mood};
 
 /// Set up a WormholeCore and run it
 ///
 /// This will create a new WormholeCore, connect its IO and API interfaces together
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
-pub fn run(
+pub async fn run(
     appid: AppID,
     versions: serde_json::Value,
     relay_url: &str,
@@ -46,7 +46,7 @@ pub fn run(
     let (tx_io_to_core, mut rx_io_to_core) = unbounded();
     let (tx_api_to_core, mut rx_api_to_core) = unbounded();
     let (mut tx_api_from_core, rx_api_from_core) = unbounded();
-    let mut core = WormholeCore::new(appid, versions, relay_url, tx_io_to_core);
+    let mut core = WormholeCore::new(appid, versions, relay_url, tx_io_to_core).await;
 
     #[allow(unused_variables)]
     let join_handle = async_std::task::spawn(async move {
@@ -119,14 +119,14 @@ struct WormholeCore {
 }
 
 impl WormholeCore {
-    fn new(
+    async fn new(
         appid: AppID,
         versions: serde_json::Value,
         relay_url: &str,
         io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
     ) -> Self {
         let side = MySide::generate();
-        WormholeCore {
+        let mut core = WormholeCore {
             allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
             code: code::CodeMachine::new(),
@@ -135,11 +135,20 @@ impl WormholeCore {
             nameplate: nameplate::NameplateMachine::new(),
             order: order::OrderMachine::new(),
             receive: receive::ReceiveMachine::new(),
-            rendezvous: rendezvous::RendezvousMachine::new(&appid, relay_url, &side, 5.0),
+            rendezvous: rendezvous::RendezvousMachine::new(),
             send: send::SendMachine::new(&side),
             terminator: terminator::TerminatorMachine::new(),
-            io: io::WormholeIO::new(io_to_core),
-        }
+            io: io::WormholeIO::new(relay_url.to_string(), io_to_core).await,
+        };
+        // TODO: Okay, that's a hack. Move this to where it fits
+        let tmp = core
+            ._execute(events![events::RendezvousEvent::TxBind(
+                appid.clone(),
+                side.clone()
+            )])
+            .unwrap();
+        assert!(tmp.is_empty());
+        core
     }
 
     #[must_use = "You must execute these actions to make things work"]
