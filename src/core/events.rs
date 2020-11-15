@@ -192,12 +192,9 @@ pub enum AllocatorEvent {
 #[derive(PartialEq)]
 pub enum BossEvent {
     RxWelcome(Value),
-    RxError(String),
-    Error(String),
     Closed,
     GotCode(Code),
     GotKey(Key), // TODO: fixed length?
-    Scared,
     Happy,
     GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
     GotMessage(Phase, Vec<u8>),
@@ -208,12 +205,9 @@ impl fmt::Debug for BossEvent {
         use self::BossEvent::*;
         let t = match *self {
             RxWelcome(ref v) => format!("RxWelcome({:?})", v),
-            RxError(ref s) => format!("RxError({})", s),
-            Error(ref s) => format!("Error({})", s),
             Closed => String::from("Closed"),
             GotCode(ref code) => format!("GotCode({:?})", code),
             GotKey(ref _key) => String::from("GotKey(REDACTED)"),
-            Scared => String::from("Scared"),
             Happy => String::from("Happy"),
             GotVerifier(ref v) => format!("GotVerifier({})", maybe_utf8(v)),
             GotMessage(ref phase, ref msg) => {
