@@ -1,7 +1,7 @@
 #![cfg_attr(tarpaulin, skip)]
 
 use super::api::Mood;
-use super::events::{Event, Events, Phase};
+use super::events::Phase;
 use crate::CodeProvider;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
@@ -75,7 +75,6 @@ pub async fn test_eventloop_exit1() {
 pub async fn test_eventloop_exit2() {
     init_logger();
 
-    use futures::SinkExt;
     use futures::StreamExt;
     use std::time::Duration;
 

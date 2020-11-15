@@ -66,18 +66,17 @@ pub struct WormholeIO {
 }
 
 impl WormholeIO {
-    pub async fn new(relay_url: String, tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
+    pub async fn new(
+        relay_url: String,
+        tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
+    ) -> Self {
         let (ws_tx, ws_rx) = futures::channel::mpsc::unbounded();
         ws_connector(&relay_url, tx_to_core, ws_rx).await;
 
-        WormholeIO {
-            websocket: ws_tx,
-        }
+        WormholeIO { websocket: ws_tx }
     }
 
     pub fn process(&mut self, action: IOAction) {
-        self.websocket
-            .unbounded_send(action)
-            .unwrap();
+        self.websocket.unbounded_send(action).unwrap();
     }
 }

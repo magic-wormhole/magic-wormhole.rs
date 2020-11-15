@@ -181,18 +181,13 @@ impl fmt::Display for Code {
 
 // machines (or IO, or the API) emit these events, and each is routed to a
 // specific machine (or IO or the API)
-#[derive(Debug, PartialEq)]
-pub enum AllocatorEvent {
-    Allocate(Arc<Wordlist>),
-    Connected,
-    RxAllocated(Nameplate),
-}
 
 #[allow(dead_code)] // TODO: drop dead code directive once core is complete
 #[derive(PartialEq)]
 pub enum BossEvent {
     RxWelcome(Value),
     Closed,
+    Allocated(Nameplate),
     GotCode(Code),
     GotKey(Key), // TODO: fixed length?
     Happy,
@@ -203,9 +198,10 @@ pub enum BossEvent {
 impl fmt::Debug for BossEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::BossEvent::*;
-        let t = match *self {
+        let t = match self {
             RxWelcome(ref v) => format!("RxWelcome({:?})", v),
             Closed => String::from("Closed"),
+            Allocated(nameplate) => format!("Allocated({:?})", nameplate),
             GotCode(ref code) => format!("GotCode({:?})", code),
             GotKey(ref _key) => String::from("GotKey(REDACTED)"),
             Happy => String::from("Happy"),
@@ -216,14 +212,6 @@ impl fmt::Debug for BossEvent {
         };
         write!(f, "BossEvent::{}", t)
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum CodeEvent {
-    AllocateCode(Arc<Wordlist>),
-    SetCode(Code),
-    Allocated(Nameplate, Code),
-    GotNameplate(Nameplate),
 }
 
 #[derive(PartialEq)]
@@ -278,32 +266,11 @@ impl fmt::Debug for MailboxEvent {
 
 #[derive(Debug, PartialEq)]
 pub enum NameplateEvent {
-    Connected,
     RxClaimed(Mailbox),
     RxReleased,
     SetNameplate(Nameplate),
     Release,
     Close,
-}
-
-#[derive(PartialEq)]
-pub enum OrderEvent {
-    GotMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
-}
-
-impl fmt::Debug for OrderEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::OrderEvent::*;
-        let t = match *self {
-            GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={:?}, body={})",
-                side,
-                phase,
-                maybe_utf8(body)
-            ),
-        };
-        write!(f, "OrderEvent::{}", t)
-    }
 }
 
 #[derive(PartialEq)]
@@ -376,29 +343,17 @@ impl fmt::Debug for SendEvent {
     }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum TerminatorEvent {
-    Close(Mood),
-    MailboxDone,
-    NameplateDone,
-    Stopped,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum Event {
     API(APIAction),
     IO(IOAction),
-    Allocator(AllocatorEvent),
     Boss(BossEvent),
-    Code(CodeEvent),
     Key(KeyEvent),
     Mailbox(MailboxEvent),
     Nameplate(NameplateEvent),
-    Order(OrderEvent),
     Receive(ReceiveEvent),
     Rendezvous(RendezvousEvent),
     Send(SendEvent),
-    Terminator(TerminatorEvent),
 }
 
 // conversion from specific event types to the generic Event
@@ -415,21 +370,9 @@ impl From<IOAction> for Event {
     }
 }
 
-impl From<AllocatorEvent> for Event {
-    fn from(r: AllocatorEvent) -> Self {
-        Event::Allocator(r)
-    }
-}
-
 impl From<BossEvent> for Event {
     fn from(r: BossEvent) -> Self {
         Event::Boss(r)
-    }
-}
-
-impl From<CodeEvent> for Event {
-    fn from(r: CodeEvent) -> Self {
-        Event::Code(r)
     }
 }
 
@@ -451,12 +394,6 @@ impl From<NameplateEvent> for Event {
     }
 }
 
-impl From<OrderEvent> for Event {
-    fn from(r: OrderEvent) -> Self {
-        Event::Order(r)
-    }
-}
-
 impl From<ReceiveEvent> for Event {
     fn from(r: ReceiveEvent) -> Self {
         Event::Receive(r)
@@ -472,12 +409,6 @@ impl From<RendezvousEvent> for Event {
 impl From<SendEvent> for Event {
     fn from(r: SendEvent) -> Self {
         Event::Send(r)
-    }
-}
-
-impl From<TerminatorEvent> for Event {
-    fn from(r: TerminatorEvent) -> Self {
-        Event::Terminator(r)
     }
 }
 

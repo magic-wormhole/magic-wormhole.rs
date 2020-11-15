@@ -4,20 +4,17 @@ use super::events::NameplateEvent;
 // we emit these
 use super::events::MailboxEvent::GotMailbox as M_GotMailbox;
 use super::events::RendezvousEvent::{TxClaim as RC_TxClaim, TxRelease as RC_TxRelease};
-use super::events::TerminatorEvent::NameplateDone as T_NameplateDone;
 
-// all -A states are not-connected, while -B states are yes-connected
-// B states serialize as A, so we wake up disconnected
 #[derive(Debug, PartialEq)]
 enum State {
     // S0: we know nothing
-    S0B,
+    S0,
     // S2: nameplate known, maybe claimed
-    S2B(Nameplate),
+    S2(Nameplate),
     // S3: nameplate claimed
-    S3B(Nameplate),
+    S3(Nameplate),
     // S4: maybe released
-    S4B(Nameplate),
+    S4,
     // S5: released. we no longer care whether we're connected or not
     S5,
 }
@@ -29,7 +26,7 @@ pub(crate) struct NameplateMachine {
 impl NameplateMachine {
     pub fn new() -> NameplateMachine {
         NameplateMachine {
-            state: Some(State::S0B),
+            state: Some(State::S0),
         }
     }
 
@@ -39,60 +36,43 @@ impl NameplateMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            S0B => match event {
+            S0 => match event {
                 SetNameplate(nameplate) => {
                     // TODO: validate_nameplate(nameplate)
                     actions.push(RC_TxClaim(nameplate.clone()));
-                    S2B(nameplate)
+                    S2(nameplate)
                 },
-                Close => {
-                    actions.push(T_NameplateDone);
-                    S5
-                },
+                Close => S5,
                 _ => panic!(),
             },
-            S2B(nameplate) => match event {
-                // Lost => S2A(nameplate),
+            S2(nameplate) => match event {
                 RxClaimed(mailbox) => {
                     // TODO: use nameplate attributes to pick which wordlist we use
                     actions.push(M_GotMailbox(mailbox));
-                    S3B(nameplate)
+                    S3(nameplate)
                 },
                 Close => {
-                    actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate)
+                    actions.push(RC_TxRelease(nameplate));
+                    S4
                 },
                 _ => panic!(),
             },
-            S3B(nameplate) => match event {
-                Release => {
-                    actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate)
-                },
-                Close => {
-                    actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate)
+            S3(nameplate) => match event {
+                Release | Close => {
+                    actions.push(RC_TxRelease(nameplate));
+                    S4
                 },
                 _ => panic!(),
             },
-            S4B(ref nameplate) => match event {
-                Connected => {
-                    actions.push(RC_TxRelease(nameplate.clone()));
-                    S4B(nameplate.clone())
-                },
+            S4 => match event {
                 RxClaimed(_mailbox) => old_state,
-                RxReleased => {
-                    actions.push(T_NameplateDone);
-                    S5
-                },
+                RxReleased => S5,
                 Release => old_state,
                 Close => old_state,
                 _ => panic!(),
             },
             S5 => match event {
-                Connected => old_state,
-                Release => old_state,
-                Close => old_state,
+                Release | Close => old_state,
                 _ => panic!(),
             },
         });

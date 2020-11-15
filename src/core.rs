@@ -4,20 +4,16 @@ use std::collections::VecDeque;
 
 #[macro_use]
 mod events;
-mod allocator;
 mod api;
 mod boss;
-mod code;
 mod io;
 pub mod key;
 mod mailbox;
 mod nameplate;
-mod order;
 mod receive;
 mod rendezvous;
 mod send;
 mod server_messages;
-mod terminator;
 #[cfg(test)]
 mod test;
 mod util;
@@ -104,17 +100,13 @@ pub async fn run(
 /// Due to the inherent asynchronous nature of IO together with these synchronous blocking state machines, generated IOEvents
 /// are sent to a channel. The holder of the struct must then take care of letting the core process these by calling `do_io`.
 struct WormholeCore {
-    allocator: allocator::AllocatorMachine,
     boss: boss::BossMachine,
-    code: code::CodeMachine,
     key: key::KeyMachine,
     mailbox: mailbox::MailboxMachine,
     nameplate: nameplate::NameplateMachine,
-    order: order::OrderMachine,
     receive: receive::ReceiveMachine,
     rendezvous: rendezvous::RendezvousMachine,
     send: send::SendMachine,
-    terminator: terminator::TerminatorMachine,
     io: io::WormholeIO,
 }
 
@@ -127,17 +119,13 @@ impl WormholeCore {
     ) -> Self {
         let side = MySide::generate();
         let mut core = WormholeCore {
-            allocator: allocator::AllocatorMachine::new(),
             boss: boss::BossMachine::new(),
-            code: code::CodeMachine::new(),
             key: key::KeyMachine::new(&appid, &side, versions),
             mailbox: mailbox::MailboxMachine::new(&side),
             nameplate: nameplate::NameplateMachine::new(),
-            order: order::OrderMachine::new(),
             receive: receive::ReceiveMachine::new(),
             rendezvous: rendezvous::RendezvousMachine::new(),
             send: send::SendMachine::new(&side),
-            terminator: terminator::TerminatorMachine::new(),
             io: io::WormholeIO::new(relay_url.to_string(), io_to_core).await,
         };
         // TODO: Okay, that's a hack. Move this to where it fits
@@ -156,6 +144,7 @@ impl WormholeCore {
         // run with RUST_LOG=magic_wormhole=trace to see these
         trace!("  api: {:?}", event);
         let events = self.boss.process_api(event);
+        trace!(" --> {:?}", events);
         self._execute(events)
     }
 
@@ -163,6 +152,7 @@ impl WormholeCore {
     pub fn do_io(&mut self, event: IOEvent) -> anyhow::Result<Vec<APIAction>> {
         trace!("   io: {:?}", event);
         let events = self.rendezvous.process_io(event)?;
+        trace!(" --> {:?}", events);
         self._execute(events)
     }
 
@@ -184,18 +174,15 @@ impl WormholeCore {
                     self.io.process(a);
                     events![]
                 },
-                Allocator(e) => self.allocator.process(e),
                 Boss(e) => self.boss.process(e),
-                Code(e) => self.code.process(e),
                 Key(e) => self.key.process(e),
                 Mailbox(e) => self.mailbox.process(e),
                 Nameplate(e) => self.nameplate.process(e),
-                Order(e) => self.order.process(e),
                 Receive(e) => self.receive.process(e)?,
                 Rendezvous(e) => self.rendezvous.process(e),
                 Send(e) => self.send.process(e),
-                Terminator(e) => self.terminator.process(e),
             };
+            trace!(" --> {:?}", actions);
 
             event_queue.extend(actions);
         }
