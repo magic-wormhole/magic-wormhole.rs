@@ -1,3 +1,6 @@
+use crate::core::events::KeyEvent;
+use crate::core::events::NameplateEvent;
+use crate::core::events::Nameplate;
 use super::api::Mood;
 use super::events::{Events, Phase};
 use super::wordlist::default_wordlist;
@@ -9,15 +12,17 @@ use super::api::APIEvent;
 use super::events::BossEvent;
 // we emit these
 use super::api::APIAction;
-use super::events::CodeEvent::{AllocateCode as C_AllocateCode, SetCode as C_SetCode};
+use super::events::MailboxEvent::Close as M_Close;
+use super::events::NameplateEvent::Close as N_Close;
+use super::events::RendezvousEvent::Stop as RC_Stop;
 use super::events::SendEvent::Send as S_Send;
-use super::events::TerminatorEvent::Close as T_Close;
+use super::events::RendezvousEvent::TxAllocate as RC_TxAllocate;
+use super::events::{Code, Wordlist};
 
-#[derive(Debug, PartialEq, Copy, Clone)]
 enum State {
-    Empty(u64),
-    Coding(u64),
-    Lonely(u64),
+    Empty,
+    Coding(Arc<Wordlist>),
+    Lonely,
     Happy(u64),
     Closing(Mood),
     Closed(Mood),
@@ -30,7 +35,7 @@ pub struct BossMachine {
 impl BossMachine {
     pub fn new() -> BossMachine {
         BossMachine {
-            state: Some(State::Empty(0)),
+            state: Some(State::Empty),
         }
     }
 
@@ -41,51 +46,54 @@ impl BossMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            Empty(i) => match event {
+            Empty => match event {
                 AllocateCode(num_words) => {
                     // TODO: provide choice of wordlists
                     let wordlist = Arc::new(default_wordlist(num_words));
-                    actions.push(C_AllocateCode(wordlist));
-                    Coding(i)
+
+                    actions.push(RC_TxAllocate);
+
+                    Coding(wordlist)
                 },
                 SetCode(code) => {
                     // TODO: validate code, maybe signal KeyFormatError
-                    // We move to Coding instead of directly to Lonely
-                    // because Code::SetCode will signal us with Boss:GotCode
-                    // in just a moment, and by not special-casing set_code
-                    // we get to use the same flow for allocate_code and
-                    // input_code
-                    actions.push(C_SetCode(code));
-                    Coding(i)
+                    let code_string = code.to_string();
+                    let nc: Vec<&str> = code_string.splitn(2, '-').collect();
+                    let nameplate = Nameplate::new(nc[0]);
+                    actions.push(NameplateEvent::SetNameplate(nameplate));
+                    actions.push(KeyEvent::GotCode(code.clone()));
+                    actions.push(APIAction::GotCode(code));
+
+                    Lonely
                 },
-                Send(plaintext) => {
-                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
-                    Empty(i + 1)
-                },
+                Send(_) => unreachable!("Sending messages before after PAKE should be prohibited by outer API layers"),
                 Close => {
-                    actions.push(T_Close(Mood::Lonely));
+                    actions.push(N_Close);
+                    actions.push(M_Close(Mood::Lonely));
+                    actions.push(RC_Stop);
+
                     Closing(Mood::Lonely)
                 },
             },
-            Coding(i) => match event {
+            Coding(_) => match event {
                 // TODO: allocate/input/set-code: signal AlreadyStartedCodeError
-                Send(plaintext) => {
-                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
-                    Coding(i + 1)
-                },
+                Send(_) => unreachable!("Sending messages before after PAKE should be prohibited by outer API layers"),
                 Close => {
-                    actions.push(T_Close(Mood::Lonely));
+                    actions.push(N_Close);
+                    actions.push(M_Close(Mood::Lonely));
+                    actions.push(RC_Stop);
+
                     Closing(Mood::Lonely)
                 },
                 _ => panic!(),
             },
-            Lonely(i) => match event {
-                Send(plaintext) => {
-                    actions.push(S_Send(Phase(format!("{}", i)), plaintext));
-                    Lonely(i + 1)
-                },
+            Lonely => match event {
+                Send(_) => unreachable!("Sending messages before after PAKE should be prohibited by outer API layers"),
                 Close => {
-                    actions.push(T_Close(Mood::Lonely));
+                    actions.push(N_Close);
+                    actions.push(M_Close(Mood::Lonely));
+                    actions.push(RC_Stop);
+
                     Closing(Mood::Lonely)
                 },
                 _ => panic!(),
@@ -96,7 +104,10 @@ impl BossMachine {
                     Happy(i + 1)
                 },
                 Close => {
-                    actions.push(T_Close(Mood::Happy));
+                    actions.push(N_Close);
+                    actions.push(M_Close(Mood::Happy));
+                    actions.push(RC_Stop);
+
                     Closing(Mood::Happy)
                 },
                 _ => panic!(),
@@ -113,25 +124,32 @@ impl BossMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            Empty(_) => match event {
+            Empty => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
                 },
                 _ => panic!(),
             },
-            Coding(i) => match event {
+            Coding(wordlist) => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
-                    old_state
+                    Coding(wordlist)
                 },
-                GotCode(code) => {
+                Allocated(nameplate) => {
+                    let words = wordlist.choose_words();
+                    let code = Code(nameplate.to_string() + "-" + &words);
+
+                    // TODO: assert code.startswith(nameplate+"-")
+                    actions.push(NameplateEvent::SetNameplate(nameplate));
+                    actions.push(KeyEvent::GotCode(code.clone()));
                     actions.push(APIAction::GotCode(code));
-                    Lonely(i)
+
+                    Lonely
                 },
                 _ => panic!(),
             },
-            Lonely(i) => match event {
+            Lonely => match event {
                 RxWelcome(v) => {
                     actions.push(APIAction::GotWelcome(v));
                     old_state
@@ -140,7 +158,7 @@ impl BossMachine {
                     actions.push(APIAction::GotUnverifiedKey(key));
                     old_state
                 },
-                BossEvent::Happy => State::Happy(i),
+                BossEvent::Happy => State::Happy(0),
                 _ => panic!(),
             },
             State::Happy(_) => match event {
@@ -171,7 +189,6 @@ impl BossMachine {
                     }
                     old_state
                 },
-                // Scared: TODO
                 _ => panic!(),
             },
             Closing(mood) => match event {
@@ -193,8 +210,8 @@ impl BossMachine {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::api::{APIEvent, Mood};
-    use crate::core::events::{Code, Key, TerminatorEvent};
+    use crate::core::api::APIEvent;
+    use crate::core::events::{Code, Key};
 
     #[test]
     fn create() {
@@ -202,27 +219,18 @@ mod test {
     }
 
     #[test]
-    fn process_api() {
-        let mut b = BossMachine::new();
-
-        let actions = b.process_api(APIEvent::Close);
-        assert_eq!(actions, events![TerminatorEvent::Close(Mood::Lonely)]);
-    }
-
-    #[test]
     fn versions() {
         let mut b = BossMachine::new();
-        use self::BossEvent::*;
         b.process_api(APIEvent::SetCode(Code(String::from("4-foo")))); // -> Coding
-        b.process(GotCode(Code(String::from("4-foo")))); // -> Lonely
-        b.process(GotKey(Key(b"".to_vec()))); // not actually necessary
-        b.process(Happy);
+        b.process(BossEvent::GotCode(Code(String::from("4-foo")))); // -> Lonely
+        b.process(BossEvent::GotKey(Key(b"".to_vec()))); // not actually necessary
+        b.process(BossEvent::Happy);
         let v = json!({"for_wormhole": 123,
         "app_versions": {
             "hello_app": 456,
         }})
         .to_string();
-        let actions = b.process(GotMessage(
+        let actions = b.process(BossEvent::GotMessage(
             Phase(String::from("version")),
             v.as_bytes().to_vec(),
         ));

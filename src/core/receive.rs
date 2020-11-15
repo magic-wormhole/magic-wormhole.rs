@@ -8,13 +8,15 @@ use super::events::ReceiveEvent;
 use super::events::BossEvent::{
     GotMessage as B_GotMessage, GotVerifier as B_GotVerifier, Happy as B_Happy,
 };
+use super::events::KeyEvent::GotPake as K_GotPake;
 use super::events::SendEvent::GotVerifiedKey as S_GotVerifiedKey;
 
 #[derive(Debug, PartialEq)]
 enum State {
-    S0Unknown,
-    S1Unverified(Key),
-    S2Verified(Key),
+    S0NoPake(Vec<(TheirSide, Phase, Vec<u8>)>), // Message queue
+    S1YesPake,
+    S2Unverified(Key),
+    S3Verified(Key),
 }
 
 pub struct ReceiveMachine {
@@ -24,7 +26,7 @@ pub struct ReceiveMachine {
 impl ReceiveMachine {
     pub fn new() -> ReceiveMachine {
         ReceiveMachine {
-            state: Some(State::S0Unknown),
+            state: Some(State::S0NoPake(Vec::new())),
         }
     }
 
@@ -42,11 +44,28 @@ impl ReceiveMachine {
         let mut actions = Events::new();
 
         self.state = Some(match old_state {
-            S0Unknown => match event {
-                GotMessage(..) => panic!(),
-                GotKey(key) => S1Unverified(key),
+            S0NoPake(mut queue) => match event {
+                GotMessage(side, phase, body) => {
+                    if phase.is_pake() {
+                        // got a pake message
+                        actions.push(K_GotPake(body));
+                        for (side, phase, body) in queue {
+                            actions.push(ReceiveEvent::GotMessage(side, phase, body));
+                        }
+                        S1YesPake
+                    } else {
+                        // not a  pake message, queue it.
+                        queue.push((side, phase, body));
+                        S0NoPake(queue)
+                    }
+                },
+                GotKey(_) => unreachable!(),
             },
-            S1Unverified(ref key) => match event {
+            S1YesPake => match event {
+                GotMessage(..) => panic!(), // TODO not sure if this is correct
+                GotKey(key) => S2Unverified(key),
+            },
+            S2Unverified(ref key) => match event {
                 GotKey(_) => panic!(),
                 GotMessage(side, phase, body) => {
                     match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
@@ -57,7 +76,7 @@ impl ReceiveMachine {
                             actions.push(B_Happy);
                             actions.push(B_GotVerifier(msg));
                             actions.push(B_GotMessage(phase, plaintext));
-                            S2Verified(key.clone())
+                            S3Verified(key.clone())
                         },
                         None => {
                             // got_message_bad
@@ -66,14 +85,14 @@ impl ReceiveMachine {
                     }
                 },
             },
-            S2Verified(ref key) => match event {
+            S3Verified(ref key) => match event {
                 GotKey(_) => panic!(),
                 GotMessage(side, phase, body) => {
                     match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
                         Some(plaintext) => {
                             // got_message_good
                             actions.push(B_GotMessage(phase, plaintext));
-                            S2Verified(key.clone())
+                            S3Verified(key.clone())
                         },
                         None => {
                             // got_message_bad
@@ -123,7 +142,7 @@ mod test {
         let mut e = r.process(GotKey(masterkey.clone()));
         assert_eq!(e, events![]);
 
-        if let Some(S1Unverified(ref key)) = r.state {
+        if let Some(S2Unverified(ref key)) = r.state {
             assert_eq!(key.0, masterkey.0);
         } else {
             panic!();
@@ -192,7 +211,7 @@ mod test {
         let mut e = r.process(GotKey(masterkey.clone()));
         assert_eq!(e, events![]);
 
-        if let Some(S1Unverified(ref key)) = r.state {
+        if let Some(S2Unverified(ref key)) = r.state {
             assert_eq!(key.0, masterkey.0);
         } else {
             panic!();

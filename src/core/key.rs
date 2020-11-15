@@ -28,8 +28,6 @@ enum State {
     S1KnowCode(SPAKE2<Ed25519Group>), // pake_state
     S2KnowPake(Vec<u8>),              // their_pake
     S3KnowBoth(Key),                  // key
-    #[allow(dead_code)] // TODO: if PAKE is somehow bad, land here
-    S4Scared,
 }
 
 pub struct KeyMachine {
@@ -124,7 +122,6 @@ impl KeyMachine {
                 GotCode(_) => panic!("already got code"),
                 GotPake(_) => panic!("already got pake"),
             },
-            S4Scared => panic!("already scared"),
         });
 
         actions

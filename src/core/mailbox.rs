@@ -5,23 +5,21 @@ use std::collections::HashSet;
 use super::api::Mood;
 use super::events::{Events, Mailbox, MySide, Phase};
 // we process these
-use super::events::MailboxEvent;
+use super::events::{MailboxEvent, ReceiveEvent};
+// we emit these
 use super::events::NameplateEvent::Release as N_Release;
-use super::events::OrderEvent::GotMessage as O_GotMessage;
 use super::events::RendezvousEvent::{
     TxAdd as RC_TxAdd, TxClose as RC_TxClose, TxOpen as RC_TxOpen,
 };
-use super::events::TerminatorEvent::MailboxDone as T_MailboxDone;
-// we emit these
 
 #[derive(Debug, PartialEq)]
 enum State {
     // S0: We know nothing
-    S0B,
+    S0,
     // S2: mailbox known and opened
-    S2B(Mailbox),
+    S2(Mailbox),
     // S3: closing
-    S3B(Mailbox, Mood),
+    S3(Mailbox, Mood),
     // S4: closed
     S4,
 }
@@ -36,7 +34,7 @@ pub struct MailboxMachine {
 impl MailboxMachine {
     pub fn new(side: &MySide) -> MailboxMachine {
         MailboxMachine {
-            state: Some(State::S0B),
+            state: Some(State::S0),
             side: side.clone(),
             pending_outbound: HashMap::new(),
             processed: HashSet::new(),
@@ -63,61 +61,57 @@ impl MailboxMachine {
         let old_state = self.state.take().unwrap();
         let mut actions = Events::new();
         self.state = Some(match old_state {
-            S0B => match event {
+            S0 => match event {
                 Close(_) => {
                     self.pending_outbound.clear();
-                    actions.push(T_MailboxDone);
                     S4
                 },
                 GotMailbox(mailbox) => {
                     self.send_open_and_queue(&mut actions, &mailbox);
-                    S2B(mailbox)
+                    S2(mailbox)
                 },
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase, body);
-                    S0B
+                    S0
                 },
                 _ => panic!(),
             },
 
-            S2B(mailbox) => match event {
+            S2(mailbox) => match event {
                 RxMessage(side, phase, body) => {
                     if *side != *self.side {
                         // theirs
                         actions.push(N_Release);
                         if !self.processed.contains(&phase) {
                             self.processed.insert(phase.clone());
-                            actions.push(O_GotMessage(side, phase, body));
+                            actions.push(ReceiveEvent::GotMessage(side, phase, body));
                         }
                     } else {
                         // ours
                         self.pending_outbound.remove(&phase);
                     }
-                    S2B(mailbox)
+                    S2(mailbox)
                 },
                 Close(mood) => {
                     self.pending_outbound.clear();
                     actions.push(RC_TxClose(mailbox.clone(), mood));
-                    S3B(mailbox, mood)
+                    S3(mailbox, mood)
                 },
                 AddMessage(phase, body) => {
                     self.pending_outbound.insert(phase.clone(), body.to_vec());
                     actions.push(RC_TxAdd(phase, body));
-                    S2B(mailbox)
+                    S2(mailbox)
                 },
                 _ => panic!(),
             },
 
-            S3B(mailbox, mood) => match event {
+            S3(mailbox, mood) => match event {
                 // irrespective of the side, enter into S3B, do nothing,
                 // generate no events
-                RxMessage(..) => S3B(mailbox, mood),
-                RxClosed => {
-                    actions.push(T_MailboxDone);
-                    S4
-                },
-                Close(close_mood) => S3B(mailbox, close_mood),
-                AddMessage(..) => S3B(mailbox, mood),
+                RxMessage(..) => S3(mailbox, mood),
+                RxClosed => S4,
+                Close(close_mood) => S3(mailbox, close_mood),
+                AddMessage(..) => S3(mailbox, mood),
                 _ => panic!(),
             },
 
@@ -134,8 +128,7 @@ mod test {
     use super::*;
     use crate::core::api::Mood;
     use crate::core::events::{
-        MailboxEvent::*, MySide, NameplateEvent, OrderEvent, RendezvousEvent, TerminatorEvent,
-        TheirSide,
+        MailboxEvent::*, MySide, NameplateEvent, ReceiveEvent, RendezvousEvent, TheirSide,
     };
 
     #[test]
@@ -176,7 +169,6 @@ mod test {
         assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
 
         e = m.process(RxClosed);
-        assert_eq!(e, events![TerminatorEvent::MailboxDone]);
     }
 
     #[test]
@@ -217,7 +209,6 @@ mod test {
         assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
 
         e = m.process(RxClosed);
-        assert_eq!(e, events![TerminatorEvent::MailboxDone]);
     }
 
     #[test]
@@ -247,7 +238,6 @@ mod test {
         assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
 
         e = m.process(RxClosed);
-        assert_eq!(e, events![TerminatorEvent::MailboxDone]);
     }
 
     #[test]
@@ -291,7 +281,7 @@ mod test {
             e,
             events![
                 NameplateEvent::Release,
-                OrderEvent::GotMessage(t2.clone(), phase1.clone(), body1.clone()),
+                ReceiveEvent::GotMessage(t2.clone(), phase1.clone(), body1.clone()),
             ]
         );
 

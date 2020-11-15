@@ -7,14 +7,14 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use super::events::{AppID, Events, MySide, Nameplate, Phase};
+use super::events::{Events, Nameplate, Phase};
 use log::trace;
 // we process these
 use super::api::IOEvent;
 use super::events::RendezvousEvent;
 // we emit these
 use super::api::IOAction;
-use super::events::{AllocatorEvent, BossEvent, MailboxEvent, NameplateEvent, TerminatorEvent};
+use super::events::{BossEvent, MailboxEvent, NameplateEvent};
 
 #[derive(Debug, PartialEq)]
 enum State {
@@ -53,7 +53,7 @@ impl RendezvousMachine {
             Disconnecting => match event {
                 WebSocketMessageReceived(..) => panic!(),
                 WebSocketConnectionLost => {
-                    actions.push(TerminatorEvent::Stopped);
+                    actions.push(BossEvent::Closed);
                     Stopped
                 },
             },
@@ -82,7 +82,7 @@ impl RendezvousMachine {
             },
             Disconnecting => match event {
                 Stop => old_state,
-                _ => panic!(),
+                e => panic!("Got invalid message: {:?}", e),
             },
             Stopped => match event {
                 Stop => Stopped,
@@ -111,7 +111,7 @@ impl RendezvousMachine {
                 hex::decode(body).unwrap(),
             )),
             Allocated { nameplate } => {
-                actions.push(AllocatorEvent::RxAllocated(Nameplate(nameplate)))
+                actions.push(BossEvent::Allocated(Nameplate(nameplate)))
             },
             Nameplates { nameplates: _ } => {
                 // TODO what does this event do?
