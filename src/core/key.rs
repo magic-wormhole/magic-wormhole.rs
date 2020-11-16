@@ -1,9 +1,17 @@
+use crate::core::server_messages::OutboundMessage;
+use crate::core::EncryptedMessage;
+use crate::core::Event;
+use crate::core::Mailbox;
+use crate::core::Mood;
+use crate::core::Nameplate;
+use crate::APIEvent;
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::{self, Value};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
+use std::collections::VecDeque;
 use xsalsa20poly1305::{
     aead::{
         generic_array::{typenum::Unsigned, GenericArray},
@@ -13,33 +21,162 @@ use xsalsa20poly1305::{
 };
 use zeroize::Zeroizing;
 
-use super::events::{AppID, Code, EitherSide, Events, Key, MySide, Phase};
+use super::events::{AppID, Code, EitherSide, Key, MySide, Phase};
+use super::mailbox;
 use super::util;
-// we process these
-use super::events::KeyEvent;
-// we emit these
-use super::events::BossEvent::GotKey as B_GotKey;
-use super::events::MailboxEvent::AddMessage as M_AddMessage;
-use super::events::ReceiveEvent::GotKey as R_GotKey;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 enum State {
-    S0KnowNothing,
-    S1KnowCode(SPAKE2<Ed25519Group>), // pake_state
-    S2KnowPake(Vec<u8>),              // their_pake
-    S3KnowBoth(Key),                  // key
+    S1NoPake(SPAKE2<Ed25519Group>, Vec<EncryptedMessage>), // pake_state, message queue
+    S2Unverified(Key, Vec<EncryptedMessage>),              // key, another message queue
 }
 
-pub struct KeyMachine {
-    appid: AppID,
-    versions: serde_json::Value,
+pub(super) struct KeyMachine {
     side: MySide,
-    state: Option<State>,
+    versions: serde_json::Value,
+    pub nameplate: Option<Nameplate>,
+    mailbox_machine: mailbox::MailboxMachine,
+    state: State,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PhaseMessage {
     pake_v1: String,
+}
+
+impl KeyMachine {
+    pub fn start(
+        actions: &mut VecDeque<Event>,
+        appid: &AppID,
+        side: MySide,
+        versions: serde_json::Value,
+        nameplate: Nameplate,
+        mailbox: Mailbox,
+        code: &Code,
+    ) -> KeyMachine {
+        let (pake_state, pake_msg_ser) = make_pake(code, &appid);
+        let mut mailbox_machine = mailbox::MailboxMachine::new(&side, mailbox);
+        mailbox_machine.send_message(actions, Phase(String::from("pake")), pake_msg_ser);
+
+        KeyMachine {
+            versions,
+            state: State::S1NoPake(pake_state, Vec::new()),
+            side,
+            mailbox_machine,
+            nameplate: Some(nameplate),
+        }
+    }
+
+    pub(super) fn receive_message(
+        mut self: Box<Self>,
+        actions: &mut VecDeque<Event>,
+        message: EncryptedMessage,
+    ) -> super::State {
+        if !self.mailbox_machine.receive_message(&message) {
+            return super::State::Keying(self);
+        }
+
+        match self.state {
+            State::S1NoPake(pake_state, mut queue) => {
+                if message.phase.is_pake() {
+                    // got a pake message, derive key
+                    // TODO error handling
+                    let pake_message = extract_pake_msg(&message.body).unwrap();
+                    let key = Key(pake_state
+                        .finish(&hex::decode(pake_message).unwrap())
+                        .unwrap());
+
+                    // Send versions message
+                    let versions = json!({"app_versions": self.versions});
+                    let (version_phase, version_msg) =
+                        build_version_msg(&self.side, &key, &versions);
+                    self.mailbox_machine
+                        .send_message(actions, version_phase, version_msg);
+
+                    // Release all queued messages
+                    for message in queue {
+                        actions.push_back(Event::BounceMessage(message));
+                    }
+
+                    self.state = State::S2Unverified(key, Vec::new());
+                } else {
+                    // not a  pake message, queue it.
+                    queue.push(message);
+                    self.state = State::S1NoPake(pake_state, queue);
+                }
+            },
+            State::S2Unverified(key, mut queue) => {
+                if message.phase.is_version() {
+                    match message.decrypt(&key) {
+                        Ok(plaintext) => {
+                            // Handle received message
+                            // TODO handle error conditions
+                            let version_str = String::from_utf8(plaintext).unwrap();
+                            let v: Value = serde_json::from_str(&version_str).unwrap();
+                            let app_versions = match v.get("app_versions") {
+                                Some(versions) => versions.clone(),
+                                None => serde_json::json!({}),
+                            };
+
+                            // Release old things
+                            if let Some(nameplate) = self.nameplate {
+                                actions.push_back(OutboundMessage::release(nameplate).into());
+                            }
+                            for message in queue {
+                                actions.push_back(Event::BounceMessage(message));
+                            }
+
+                            // We are now fully initialized! Up and running! :tada:
+                            actions.push_back(
+                                APIEvent::ConnectedToClient {
+                                    verifier: derive_verifier(&key),
+                                    key: key.clone(),
+                                    versions: app_versions,
+                                }
+                                .into(),
+                            );
+                            return super::State::Running(super::running::RunningMachine {
+                                phase: 0,
+                                key,
+                                side: self.side,
+                                mailbox_machine: self.mailbox_machine,
+                                await_nameplate_release: true,
+                            });
+                        },
+                        Err(error) => {
+                            actions.push_back(Event::ShutDown(Err(error)));
+                            self.state = State::S2Unverified(key, queue);
+                        },
+                    }
+                } else {
+                    queue.push(message);
+                    self.state = State::S2Unverified(key, queue);
+                }
+            },
+        }
+
+        super::State::Keying(self)
+    }
+
+    pub(super) fn shutdown(
+        self,
+        actions: &mut VecDeque<Event>,
+        result: anyhow::Result<()>,
+    ) -> super::State {
+        self.mailbox_machine.close(
+            actions,
+            if result.is_ok() {
+                Mood::Lonely
+            } else {
+                Mood::Errory
+            },
+        );
+        super::State::Closing {
+            await_nameplate_release: self.nameplate.is_some(),
+            await_mailbox_close: true,
+            result,
+        }
+    }
 }
 
 fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
@@ -51,81 +188,6 @@ fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     let pake_msg = PhaseMessage { pake_v1: payload };
     let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
     (pake_state, pake_msg_ser)
-}
-
-impl KeyMachine {
-    pub fn new(appid: &AppID, side: &MySide, versions: serde_json::Value) -> KeyMachine {
-        KeyMachine {
-            appid: appid.clone(),
-            versions,
-            state: Some(State::S0KnowNothing),
-            side: side.clone(),
-        }
-    }
-
-    fn start(&self, code: Code, actions: &mut Events) -> SPAKE2<Ed25519Group> {
-        let (pake_state, pake_msg_ser) = make_pake(&code, &self.appid);
-        actions.push(M_AddMessage(Phase(String::from("pake")), pake_msg_ser));
-        pake_state
-    }
-
-    fn finish(
-        &self,
-        pake_state: SPAKE2<Ed25519Group>,
-        their_pake_msg: &[u8],
-        actions: &mut Events,
-    ) -> Key {
-        let msg2 = extract_pake_msg(&their_pake_msg).unwrap();
-        let key = Key(pake_state.finish(&hex::decode(msg2).unwrap()).unwrap());
-        let versions = json!({"app_versions": self.versions});
-        let (version_phase, version_msg) = build_version_msg(&self.side, &key, &versions);
-        actions.push(M_AddMessage(version_phase, version_msg));
-        actions.push(B_GotKey(key.clone()));
-        actions.push(R_GotKey(key.clone()));
-        key
-    }
-
-    pub fn process(&mut self, event: KeyEvent) -> Events {
-        /*trace!(
-            "key: current state = {:?}, got event = {:?}",
-            self.state, event
-        );*/
-
-        use self::KeyEvent::*;
-        use self::State::*;
-        let old_state = self.state.take().unwrap();
-        let mut actions = Events::new();
-        self.state = Some(match old_state {
-            S0KnowNothing => match event {
-                GotCode(code) => {
-                    let pake_state = self.start(code, &mut actions);
-                    S1KnowCode(pake_state)
-                },
-                GotPake(pake) => S2KnowPake(pake),
-            },
-            S1KnowCode(pake_state) => match event {
-                GotCode(_) => panic!("already got code"),
-                GotPake(their_pake_msg) => {
-                    let key = self.finish(pake_state, &their_pake_msg, &mut actions);
-                    S3KnowBoth(key)
-                },
-            },
-            S2KnowPake(ref their_pake_msg) => match event {
-                GotCode(code) => {
-                    let pake_state = self.start(code, &mut actions);
-                    let key = self.finish(pake_state, &their_pake_msg, &mut actions);
-                    S3KnowBoth(key)
-                },
-                GotPake(_) => panic!("already got pake"),
-            },
-            S3KnowBoth(_) => match event {
-                GotCode(_) => panic!("already got code"),
-                GotPake(_) => panic!("already got pake"),
-            },
-        });
-
-        actions
-    }
 }
 
 fn build_version_msg(side: &MySide, key: &Key, versions: &Value) -> (Phase, Vec<u8>) {
@@ -207,15 +269,15 @@ pub fn derive_verifier(key: &Key) -> Vec<u8> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::events::{AppID, EitherSide, Event, KeyEvent};
+    use crate::core::events::EitherSide;
 
     #[test]
     fn test_extract_pake_msg() {
-        let _key = super::KeyMachine::new(
-            &AppID::new("appid"),
-            &MySide::unchecked_from_string(String::from("side1")),
-            json!({}),
-        );
+        // let _key = super::KeyMachine::new(
+        //     &AppID::new("appid"),
+        //     &MySide::unchecked_from_string(String::from("side1")),
+        //     json!({}),
+        // );
 
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = super::extract_pake_msg(&hex::decode(s1).unwrap());
@@ -294,11 +356,11 @@ mod test {
         // output of derive_phase_key is:
         // "\xfe\x93\x15r\x96h\xa6'\x8a\x97D\x9d\xc9\x9a_L!\x02\xa6h\xc6\x8538\x15)\x06\xbbuRj\x96"
         // hexlified output: fe9315729668a6278a97449dc99a5f4c2102a668c6853338152906bb75526a96
-        let _k = KeyMachine::new(
-            &AppID::new("appid1"),
-            &MySide::unchecked_from_string(String::from("side")),
-            json!({}),
-        );
+        // let _k = KeyMachine::new(
+        //     &AppID::new("appid1"),
+        //     &MySide::unchecked_from_string(String::from("side")),
+        //     json!({}),
+        // );
 
         let key = Key(b"key".to_vec());
         let side = "side";
@@ -354,161 +416,5 @@ mod test {
             },
             None => panic!(),
         }
-    }
-
-    #[test]
-    fn test_code_first() {
-        use super::super::events::{BossEvent, MailboxEvent, Phase, ReceiveEvent};
-
-        let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID::new("appid1");
-        let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side, json!({}));
-
-        // we set our own code first, which generates+sends a PAKE message
-        let mut e = k.process(KeyEvent::GotCode(code.clone())).events;
-
-        match e.remove(0) {
-            Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
-                assert_eq!(phase, Phase(String::from("pake")));
-                assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            },
-            _ => panic!(),
-        }
-        assert_eq!(e.len(), 0);
-
-        // build a PAKE message to simulate our peer
-        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
-
-        // deliver it, which should finish the key-agreement process
-        let mut e = k.process(KeyEvent::GotPake(pake_msg_ser)).events;
-        match e.remove(0) {
-            Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
-                assert_eq!(phase, Phase(String::from("version")));
-                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            },
-            _ => panic!(),
-        }
-        let shared_key = match e.remove(0) {
-            Event::Boss(BossEvent::GotKey(key)) => {
-                //assert_eq!(phase, Phase(String::from("version")));
-                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-                key
-            },
-            _ => panic!(),
-        };
-        match e.remove(0) {
-            Event::Receive(ReceiveEvent::GotKey(rkey)) => {
-                assert_eq!(shared_key, rkey);
-                //assert_eq!(phase, Phase(String::from("version")));
-                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            },
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn test_pake_first() {
-        use super::super::events::{BossEvent, MailboxEvent, Phase, ReceiveEvent};
-
-        let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID::new("appid1");
-        let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side, json!({}));
-
-        // build a PAKE message to simulate our peer
-        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
-
-        // we receive the PAKE from our peer before the user finishes
-        // providing our code, so we emit no messages
-        let e = k.process(KeyEvent::GotPake(pake_msg_ser)).events;
-        assert_eq!(e.len(), 0);
-
-        // setting our own code should both start and finish the process
-        let mut e = k.process(KeyEvent::GotCode(code)).events;
-
-        match e.remove(0) {
-            Event::Mailbox(MailboxEvent::AddMessage(phase, body)) => {
-                assert_eq!(phase, Phase(String::from("pake")));
-                assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            },
-            _ => panic!(),
-        }
-        match e.remove(0) {
-            Event::Mailbox(MailboxEvent::AddMessage(phase, _body)) => {
-                assert_eq!(phase, Phase(String::from("version")));
-                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            },
-            _ => panic!(),
-        }
-        let shared_key = match e.remove(0) {
-            Event::Boss(BossEvent::GotKey(key)) => {
-                //assert_eq!(phase, Phase(String::from("version")));
-                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-                key
-            },
-            _ => panic!(),
-        };
-        match e.remove(0) {
-            Event::Receive(ReceiveEvent::GotKey(rkey)) => {
-                assert_eq!(shared_key, rkey);
-                //assert_eq!(phase, Phase(String::from("version")));
-                //assert!(String::from_utf8(body).unwrap().contains("{\"pake_v1\":"));
-            },
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_pake_pake() {
-        let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID::new("appid1");
-        let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side, json!({}));
-
-        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
-        k.process(KeyEvent::GotPake(pake_msg_ser.clone()));
-        k.process(KeyEvent::GotPake(pake_msg_ser));
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_code_code() {
-        let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID::new(String::from("appid1"));
-        let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side, json!({}));
-
-        k.process(KeyEvent::GotCode(code.clone()));
-        k.process(KeyEvent::GotCode(code));
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_code_pake_code() {
-        let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID::new(String::from("appid1"));
-        let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side, json!({}));
-        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
-
-        k.process(KeyEvent::GotCode(code.clone()));
-        k.process(KeyEvent::GotPake(pake_msg_ser));
-        k.process(KeyEvent::GotCode(code));
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_pake_code_pake() {
-        let code = Code(String::from("4-purple-sausages"));
-        let appid = AppID::new("appid1");
-        let side = MySide::unchecked_from_string(String::from("side"));
-        let mut k = KeyMachine::new(&appid, &side, json!({}));
-        let (_pake_state, pake_msg_ser) = make_pake(&code, &appid);
-
-        k.process(KeyEvent::GotPake(pake_msg_ser.clone()));
-        k.process(KeyEvent::GotCode(code));
-        k.process(KeyEvent::GotPake(pake_msg_ser));
     }
 }

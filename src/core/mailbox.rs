@@ -1,292 +1,51 @@
-use log::trace;
+use crate::core::server_messages::OutboundMessage;
+use crate::core::EncryptedMessage;
+use crate::core::Event;
+use crate::core::Mood;
 use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
-use super::api::Mood;
-use super::events::{Events, Mailbox, MySide, Phase};
-// we process these
-use super::events::{MailboxEvent, ReceiveEvent};
-// we emit these
-use super::events::NameplateEvent::Release as N_Release;
-use super::events::RendezvousEvent::{
-    TxAdd as RC_TxAdd, TxClose as RC_TxClose, TxOpen as RC_TxOpen,
-};
-
-#[derive(Debug, PartialEq)]
-enum State {
-    // S0: We know nothing
-    S0,
-    // S2: mailbox known and opened
-    S2(Mailbox),
-    // S3: closing
-    S3(Mailbox, Mood),
-    // S4: closed
-    S4,
-}
+use super::events::{Mailbox, MySide, Phase};
 
 pub struct MailboxMachine {
-    state: Option<State>,
-    side: MySide,
-    pending_outbound: HashMap<Phase, Vec<u8>>, // HashMap<phase, body>
+    mailbox: Mailbox,
     processed: HashSet<Phase>,
+    // TODO what do we track these for, as we're never actually reading that hashmap?
+    // Maybe it was used for some reconnection logic. Do we still need that?
+    pending_outbound: HashMap<Phase, Vec<u8>>,
+    side: MySide,
 }
 
 impl MailboxMachine {
-    pub fn new(side: &MySide) -> MailboxMachine {
+    pub fn new(side: &MySide, mailbox: Mailbox) -> MailboxMachine {
         MailboxMachine {
-            state: Some(State::S0),
-            side: side.clone(),
-            pending_outbound: HashMap::new(),
+            mailbox,
             processed: HashSet::new(),
+            pending_outbound: HashMap::new(),
+            side: side.clone(),
         }
     }
 
-    fn send_open_and_queue(&mut self, actions: &mut Events, mailbox: &Mailbox) {
-        actions.push(RC_TxOpen(mailbox.clone()));
-        for (ph, body) in &self.pending_outbound {
-            actions.push(RC_TxAdd(ph.clone(), body.to_vec()));
+    pub fn send_message(&mut self, actions: &mut VecDeque<Event>, phase: Phase, body: Vec<u8>) {
+        actions.push_back(OutboundMessage::add(phase.clone(), &body).into());
+        self.pending_outbound.insert(phase, body);
+    }
+
+    pub fn receive_message(&mut self, message: &EncryptedMessage) -> bool {
+        if *message.side != *self.side {
+            // Got a message from them
+            if !self.processed.contains(&message.phase) {
+                self.processed.insert(message.phase.clone());
+                return true;
+            }
+        } else {
+            // Echo of ours. Ignore
+            self.pending_outbound.remove(&message.phase);
         }
+        false
     }
 
-    pub fn process(&mut self, event: MailboxEvent) -> Events {
-        use self::State::*;
-        use MailboxEvent::*;
-
-        trace!(
-            "mailbox: current state = {:?}, got event = {:?}",
-            self.state,
-            event
-        );
-
-        let old_state = self.state.take().unwrap();
-        let mut actions = Events::new();
-        self.state = Some(match old_state {
-            S0 => match event {
-                Close(_) => {
-                    self.pending_outbound.clear();
-                    S4
-                },
-                GotMailbox(mailbox) => {
-                    self.send_open_and_queue(&mut actions, &mailbox);
-                    S2(mailbox)
-                },
-                AddMessage(phase, body) => {
-                    self.pending_outbound.insert(phase, body);
-                    S0
-                },
-                _ => panic!(),
-            },
-
-            S2(mailbox) => match event {
-                RxMessage(side, phase, body) => {
-                    if *side != *self.side {
-                        // theirs
-                        actions.push(N_Release);
-                        if !self.processed.contains(&phase) {
-                            self.processed.insert(phase.clone());
-                            actions.push(ReceiveEvent::GotMessage(side, phase, body));
-                        }
-                    } else {
-                        // ours
-                        self.pending_outbound.remove(&phase);
-                    }
-                    S2(mailbox)
-                },
-                Close(mood) => {
-                    self.pending_outbound.clear();
-                    actions.push(RC_TxClose(mailbox.clone(), mood));
-                    S3(mailbox, mood)
-                },
-                AddMessage(phase, body) => {
-                    self.pending_outbound.insert(phase.clone(), body.to_vec());
-                    actions.push(RC_TxAdd(phase, body));
-                    S2(mailbox)
-                },
-                _ => panic!(),
-            },
-
-            S3(mailbox, mood) => match event {
-                // irrespective of the side, enter into S3B, do nothing,
-                // generate no events
-                RxMessage(..) => S3(mailbox, mood),
-                RxClosed => S4,
-                Close(close_mood) => S3(mailbox, close_mood),
-                AddMessage(..) => S3(mailbox, mood),
-                _ => panic!(),
-            },
-
-            S4 => old_state,
-        });
-
-        actions
-    }
-}
-
-#[cfg_attr(tarpaulin, skip)]
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::core::api::Mood;
-    use crate::core::events::{
-        MailboxEvent::*, MySide, NameplateEvent, ReceiveEvent, RendezvousEvent, TheirSide,
-    };
-
-    #[test]
-    fn test_mgc() {
-        // add_M_essage, _G_otmailbox, then _C_onnected
-        let s = MySide::unchecked_from_string(String::from("side1"));
-        let phase1 = Phase(String::from("p1"));
-        let body1 = b"body1".to_vec();
-        let mbox1 = Mailbox(String::from("mbox1"));
-        let mut m = MailboxMachine::new(&s);
-
-        let mut e = m.process(AddMessage(phase1.clone(), body1.clone()));
-        assert_eq!(e, events![]);
-        e = m.process(GotMailbox(mbox1.clone()));
-        assert_eq!(e, events![]);
-
-        e = m.process(Connected);
-        assert_eq!(
-            e,
-            events![
-                RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
-            ]
-        );
-
-        // e = m.process(Lost);
-        assert_eq!(e, events![]);
-        e = m.process(Connected);
-        assert_eq!(
-            e,
-            events![
-                RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1, body1),
-            ]
-        );
-
-        e = m.process(Close(Mood::Happy));
-        assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
-
-        e = m.process(RxClosed);
-    }
-
-    #[test]
-    fn test_gmc() {
-        // _G_otmailbox, add_M_essage, then _C_onnected
-        let s = MySide::unchecked_from_string(String::from("side1"));
-        let phase1 = Phase(String::from("p1"));
-        let body1 = b"body1".to_vec();
-        let mbox1 = Mailbox(String::from("mbox1"));
-        let mut m = MailboxMachine::new(&s);
-
-        let mut e = m.process(GotMailbox(mbox1.clone()));
-        assert_eq!(e, events![]);
-        e = m.process(AddMessage(phase1.clone(), body1.clone()));
-        assert_eq!(e, events![]);
-
-        e = m.process(Connected);
-        assert_eq!(
-            e,
-            events![
-                RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
-            ]
-        );
-
-        // e = m.process(Lost);
-        assert_eq!(e, events![]);
-        e = m.process(Connected);
-        assert_eq!(
-            e,
-            events![
-                RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1, body1),
-            ]
-        );
-
-        e = m.process(Close(Mood::Happy));
-        assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
-
-        e = m.process(RxClosed);
-    }
-
-    #[test]
-    fn test_cmg() {
-        // _C_onnected, add_M_essage, then _G_otmailbox
-        let s = MySide::unchecked_from_string(String::from("side1"));
-        let phase1 = Phase(String::from("p1"));
-        let body1 = b"body1".to_vec();
-        let mbox1 = Mailbox(String::from("mbox1"));
-        let mut m = MailboxMachine::new(&s);
-
-        let mut e = m.process(Connected);
-        assert_eq!(e, events![]);
-        e = m.process(AddMessage(phase1.clone(), body1.clone()));
-        assert_eq!(e, events![]);
-
-        e = m.process(GotMailbox(mbox1.clone()));
-        assert_eq!(
-            e,
-            events![
-                RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1, body1),
-            ]
-        );
-
-        e = m.process(Close(Mood::Happy));
-        assert_eq!(e, events![RendezvousEvent::TxClose(mbox1, Mood::Happy)]);
-
-        e = m.process(RxClosed);
-    }
-
-    #[test]
-    fn test_messages() {
-        let s = MySide::unchecked_from_string(String::from("side1"));
-        let phase1 = Phase(String::from("p1"));
-        let body1 = b"body1".to_vec();
-        let mbox1 = Mailbox(String::from("mbox1"));
-        let mut m = MailboxMachine::new(&s);
-
-        let mut e = m.process(Connected);
-        assert_eq!(e, events![]);
-        e = m.process(AddMessage(phase1.clone(), body1.clone()));
-        assert_eq!(e, events![]);
-
-        e = m.process(GotMailbox(mbox1.clone()));
-        assert_eq!(
-            e,
-            events![
-                RendezvousEvent::TxOpen(mbox1.clone()),
-                RendezvousEvent::TxAdd(phase1.clone(), body1.clone()),
-            ]
-        );
-
-        // receiving an echo of our own message is an ack, so we don't need
-        // to re-send it after a Lost/Connected cycle. We do re-open the
-        // mailbox though.
-        let t1 = TheirSide::from(String::from("side1"));
-        e = m.process(RxMessage(t1, phase1.clone(), body1.clone()));
-        assert_eq!(e, events![]);
-        // e = m.process(Lost);
-        assert_eq!(e, events![]);
-        e = m.process(Connected);
-        assert_eq!(e, events![RendezvousEvent::TxOpen(mbox1)]);
-
-        // now a message from the other side means we don't need the
-        // Nameplate anymore
-        let t2 = TheirSide::from(String::from("side2"));
-        e = m.process(RxMessage(t2.clone(), phase1.clone(), body1.clone()));
-        assert_eq!(
-            e,
-            events![
-                NameplateEvent::Release,
-                ReceiveEvent::GotMessage(t2.clone(), phase1.clone(), body1.clone()),
-            ]
-        );
-
-        // receiving a duplicate message should not be forwarded to Order
-        e = m.process(RxMessage(t2, phase1, body1));
-        assert_eq!(e, events![NameplateEvent::Release]);
+    pub fn close(self, actions: &mut VecDeque<Event>, mood: Mood) {
+        actions.push_back(OutboundMessage::close(self.mailbox, mood).into());
     }
 }
