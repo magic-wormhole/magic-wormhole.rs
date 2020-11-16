@@ -1,191 +1,409 @@
+use crate::core::server_messages::OutboundMessage;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 #[macro_use]
 mod events;
-mod api;
-mod boss;
 mod io;
 pub mod key;
 mod mailbox;
-mod nameplate;
-mod receive;
-mod rendezvous;
-mod send;
+mod running;
 mod server_messages;
 #[cfg(test)]
 mod test;
 mod util;
 mod wordlist;
 
+use self::events::*;
 pub use self::events::{AppID, Code};
-use self::events::{Event, Events, MySide};
+use super::CodeProvider;
 use log::*;
 
-pub use self::api::{APIAction, APIEvent, IOAction, IOEvent, Mood};
+use serde_derive::{Deserialize, Serialize};
 
+/// Send an API event to the outside
+// TODO manually implement Debug again to display some Vec<u8> as string and others as hex
+#[derive(Debug)]
+pub enum APIEvent {
+    ConnectedToServer {
+        /// A little welcome message from the server (message of the day and such)
+        // TODO we can actually provide more structure than a "value", see the protocol
+        welcome: serde_json::Value,
+        /// Share this with your peer so they can connect
+        code: Code,
+    },
+
+    /// The wormhole is now up and running
+    ConnectedToClient {
+        key: Key,
+        verifier: Vec<u8>,
+        versions: serde_json::Value,
+    },
+
+    GotMessage(Vec<u8>),
+    /// If this message is sent, it always is the last before the channel closes
+    GotError(anyhow::Error),
+}
+
+// the serialized forms of these variants are part of the wire protocol, so
+// they must be spelled exactly as shown
+#[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize)]
+pub enum Mood {
+    #[serde(rename = "happy")]
+    Happy,
+    #[serde(rename = "lonely")]
+    Lonely,
+    #[serde(rename = "errory")]
+    Errory,
+    #[serde(rename = "scary")]
+    Scared,
+    #[serde(rename = "unwelcome")]
+    Unwelcome,
+}
+
+enum State {
+    AllocatingNameplate {
+        wordlist: Arc<Wordlist>,
+
+        /* Propagate to later states */
+        side: MySide,
+        versions: serde_json::Value,
+    },
+    ClaimingNameplate {
+        nameplate: Nameplate,
+        code: Code,
+
+        /* Propagate to later states */
+        side: MySide,
+        versions: serde_json::Value,
+    },
+    Keying(Box<key::KeyMachine>),
+    Running(running::RunningMachine),
+    Closing {
+        await_nameplate_release: bool,
+        await_mailbox_close: bool,
+        result: anyhow::Result<()>,
+    },
+}
+
+// TODO update docs
+/** The core implementation of the protocol(s)
+ *
+ * This is a big composite state machine that implements the Client-Server and Client-Client protocols
+ * in a rather weird way. All state machines communicate with each other by sending events and actions around
+ * like crazy. The wormhole is driven by processing APIActions that generate APIEvents.
+ *
+ * Due to the inherent asynchronous nature of IO together with these synchronous blocking state machines, generated IOEvents
+ * are sent to a channel. The holder of the struct must then take care of letting the core process these by calling `do_io`.
+ * */
 /// Set up a WormholeCore and run it
 ///
 /// This will create a new WormholeCore, connect its IO and API interfaces together
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
+
 pub async fn run(
     appid: AppID,
     versions: serde_json::Value,
     relay_url: &str,
-    #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
-) -> (UnboundedSender<APIEvent>, UnboundedReceiver<APIAction>) {
-    use futures::channel::mpsc::unbounded;
-    use futures::SinkExt;
-    use futures::StreamExt;
+    code_provider: CodeProvider,
+    to_api: UnboundedSender<APIEvent>,
+    mut to_core: UnboundedReceiver<Vec<u8>>,
+) {
+    let side = MySide::generate();
+    let mut io = io::WormholeIO::new(relay_url).await;
 
-    let (tx_io_to_core, mut rx_io_to_core) = unbounded();
-    let (tx_api_to_core, mut rx_api_to_core) = unbounded();
-    let (mut tx_api_from_core, rx_api_from_core) = unbounded();
-    let mut core = WormholeCore::new(appid, versions, relay_url, tx_io_to_core).await;
+    use futures::stream::StreamExt;
 
-    #[allow(unused_variables)]
-    let join_handle = async_std::task::spawn(async move {
-        'outer: loop {
-            let actions = futures::select! {
-                action = rx_api_to_core.next() => {
-                    debug!("Doing API {:?}", action);
-                    core.do_api(action.unwrap_or(APIEvent::Close))
-                },
-                action = rx_io_to_core.select_next_some() => {
-                    debug!("Doing IO {:?}", action);
-                    core.do_io(action)
-                },
+    let mut actions: VecDeque<Event> = VecDeque::new();
+
+    /* Bootstrapping code */
+    let mut state;
+    actions.push_back(OutboundMessage::bind(appid.clone(), side.clone()).into());
+    /* A mini state machine to track that messaage. It's okay for now, but modularize if it starts growing. */
+    let mut welcome_message = None;
+
+    match code_provider {
+        CodeProvider::AllocateCode(num_words) => {
+            // TODO: provide choice of wordlists
+            let wordlist = Arc::new(wordlist::default_wordlist(num_words));
+            actions.push_back(OutboundMessage::Allocate.into());
+
+            state = State::AllocatingNameplate {
+                wordlist,
+                side,
+                versions,
             };
-            let actions = match actions {
-                Ok(events) => events,
-                Err(e) => {
-                    // TODO propagate that error to the outside
-                    log::error!("Got error from core: {}", e);
-                    tx_api_from_core.close_channel();
-                    rx_api_to_core.close();
-                    rx_io_to_core.close();
-                    break 'outer;
-                },
+        },
+        CodeProvider::SetCode(code) => {
+            let code_string = code.to_string();
+            let nc: Vec<&str> = code_string.splitn(2, '-').collect();
+            let nameplate = Nameplate::new(nc[0]);
+            actions.push_back(OutboundMessage::claim(nameplate.clone()).into());
+
+            state = State::ClaimingNameplate {
+                nameplate,
+                code: Code(code),
+                side,
+                versions,
             };
-            debug!("Done API/IO {:?}", &actions);
-            for action in actions {
-                if let APIAction::GotClosed(_) = action {
-                    tx_api_from_core.close_channel();
-                    debug!("Stopping wormhole event loop");
-                    break 'outer;
-                } else {
-                    tx_api_from_core
-                        .send(action)
-                        .await
-                        .expect("Don't close the receiver before shutting down the wormhole!");
-                }
-            }
-        }
-    });
-    #[cfg(test)]
-    {
-        *eventloop_task = Some(join_handle);
+        },
     }
 
-    (tx_api_to_core, rx_api_from_core)
-}
-
-/// The core implementation of the protocol(s)
-///
-/// This is a big composite state machine that implements the Client-Server and Client-Client protocols
-/// in a rather weird way. All state machines communicate with each other by sending events and actions around
-/// like crazy. The wormhole is driven by processing APIActions that generate APIEvents.
-///
-/// Due to the inherent asynchronous nature of IO together with these synchronous blocking state machines, generated IOEvents
-/// are sent to a channel. The holder of the struct must then take care of letting the core process these by calling `do_io`.
-struct WormholeCore {
-    boss: boss::BossMachine,
-    key: key::KeyMachine,
-    mailbox: mailbox::MailboxMachine,
-    nameplate: nameplate::NameplateMachine,
-    receive: receive::ReceiveMachine,
-    rendezvous: rendezvous::RendezvousMachine,
-    send: send::SendMachine,
-    io: io::WormholeIO,
-}
-
-impl WormholeCore {
-    async fn new(
-        appid: AppID,
-        versions: serde_json::Value,
-        relay_url: &str,
-        io_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
-    ) -> Self {
-        let side = MySide::generate();
-        let mut core = WormholeCore {
-            boss: boss::BossMachine::new(),
-            key: key::KeyMachine::new(&appid, &side, versions),
-            mailbox: mailbox::MailboxMachine::new(&side),
-            nameplate: nameplate::NameplateMachine::new(),
-            receive: receive::ReceiveMachine::new(),
-            rendezvous: rendezvous::RendezvousMachine::new(),
-            send: send::SendMachine::new(&side),
-            io: io::WormholeIO::new(relay_url.to_string(), io_to_core).await,
+    loop {
+        let e = match actions.pop_front() {
+            Some(event) => Ok(event),
+            None => futures::select_biased! {
+                event = io.ws_rx.select_next_some() => {
+                    event.map_err(anyhow::Error::from)
+                        .and_then(|event| io.process_io(event))
+                },
+                event = to_core.next() => {
+                    /* If to_core closes ends, we shut down */
+                    Ok(event.map(Event::FromAPI).unwrap_or(Event::ShutDown(Ok(()))))
+                },
+                complete => Err(anyhow::format_err!("IO channel closed prematurely")),
+            },
         };
-        // TODO: Okay, that's a hack. Move this to where it fits
-        let tmp = core
-            ._execute(events![events::RendezvousEvent::TxBind(
-                appid.clone(),
-                side.clone()
-            )])
-            .unwrap();
-        assert!(tmp.is_empty());
-        core
-    }
+        /* If there's an error here the connection got down the hill so we don't do full "close". */
+        let e = match e {
+            Ok(e) => e,
+            Err(error) => {
+                to_api
+                    .unbounded_send(APIEvent::GotError(error))
+                    .expect("Don't close the receiver before shutting down the wormhole!");
+                break;
+            },
+        };
 
-    #[must_use = "You must execute these actions to make things work"]
-    pub fn do_api(&mut self, event: APIEvent) -> anyhow::Result<Vec<APIAction>> {
-        // run with RUST_LOG=magic_wormhole=trace to see these
-        trace!("  api: {:?}", event);
-        let events = self.boss.process_api(event);
-        trace!(" --> {:?}", events);
-        self._execute(events)
-    }
+        trace!("Processing: {:?}", e);
+        use self::events::Event::*;
+        use self::server_messages::InboundMessage;
+        match e {
+            FromIO(InboundMessage::Welcome { welcome }) => {
+                welcome_message = Some(welcome);
+            },
+            FromIO(InboundMessage::Claimed { mailbox }) => {
+                match state {
+                    State::ClaimingNameplate {
+                        nameplate,
+                        code,
+                        side,
+                        versions,
+                    } => {
+                        actions.push_back(OutboundMessage::open(mailbox.clone()).into());
 
-    #[must_use = "You must execute these actions to make things work"]
-    pub fn do_io(&mut self, event: IOEvent) -> anyhow::Result<Vec<APIAction>> {
-        trace!("   io: {:?}", event);
-        let events = self.rendezvous.process_io(event)?;
-        trace!(" --> {:?}", events);
-        self._execute(events)
-    }
+                        state = State::Keying(Box::new(key::KeyMachine::start(
+                            &mut actions,
+                            &appid,
+                            side,
+                            versions,
+                            nameplate,
+                            mailbox,
+                            &code,
+                        )));
 
-    fn _execute(&mut self, events: Events) -> anyhow::Result<Vec<APIAction>> {
-        let mut action_queue: Vec<APIAction> = Vec::new(); // returned
-        let mut event_queue: VecDeque<Event> = VecDeque::new();
-
-        event_queue.append(&mut VecDeque::from(events.events));
-
-        while let Some(e) = event_queue.pop_front() {
-            trace!("event: {:?}", e);
-            use self::events::Event::*; // machine names
-            let actions: Events = match e {
-                API(a) => {
-                    action_queue.push(a);
-                    events![]
+                        actions.push_back(
+                            APIEvent::ConnectedToServer {
+                                /* TODO Is the welcome message mandatory or optional? */
+                                welcome: welcome_message
+                                    .take()
+                                    .ok_or_else(|| {
+                                        anyhow::format_err!("Didn't get a welcome message")
+                                    })
+                                    .unwrap(),
+                                code,
+                            }
+                            .into(),
+                        );
+                    },
+                    State::Closing { .. } => { /* This may happen. Ignore it. */ },
+                    _ => {
+                        actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                            "Protocol error: received message without requesting it"
+                        ))));
+                    },
+                }
+            },
+            FromIO(InboundMessage::Released { .. }) => match &mut state {
+                State::Keying(machine) => {
+                    // TODO make more elegant with boxed patterns (once stable)
+                    machine.nameplate = None;
                 },
-                IO(a) => {
-                    self.io.process(a);
-                    events![]
+                State::Running(running::RunningMachine {
+                    await_nameplate_release,
+                    ..
+                }) => {
+                    *await_nameplate_release = false;
                 },
-                Boss(e) => self.boss.process(e),
-                Key(e) => self.key.process(e),
-                Mailbox(e) => self.mailbox.process(e),
-                Nameplate(e) => self.nameplate.process(e),
-                Receive(e) => self.receive.process(e)?,
-                Rendezvous(e) => self.rendezvous.process(e),
-                Send(e) => self.send.process(e),
-            };
-            trace!(" --> {:?}", actions);
-
-            event_queue.extend(actions);
+                State::Closing {
+                    await_nameplate_release,
+                    await_mailbox_close,
+                    ..
+                } => {
+                    *await_nameplate_release = false;
+                    if !*await_mailbox_close && !*await_nameplate_release {
+                        actions.push_back(Event::CloseWebsocket);
+                    }
+                },
+                _ => {
+                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                        "Protocol error: received message without requesting it"
+                    ))));
+                },
+            },
+            FromIO(InboundMessage::Closed) => match &mut state {
+                State::Closing {
+                    await_mailbox_close,
+                    await_nameplate_release,
+                    ..
+                } => {
+                    *await_mailbox_close = false;
+                    if !*await_mailbox_close && !*await_nameplate_release {
+                        actions.push_back(Event::CloseWebsocket);
+                    }
+                },
+                _ => {
+                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                        "Protocol error: received message in invalid state"
+                    ))));
+                },
+            },
+            FromIO(InboundMessage::Message { side, phase, body }) => {
+                let message = EncryptedMessage {
+                    side,
+                    phase: Phase(phase),
+                    body: hex::decode(body).unwrap(),
+                };
+                actions.push_back(Event::BounceMessage(message));
+            },
+            FromIO(InboundMessage::Allocated { nameplate }) => {
+                if let State::AllocatingNameplate {
+                    wordlist,
+                    side,
+                    versions,
+                } = state
+                {
+                    let nameplate = Nameplate(nameplate);
+                    let words = wordlist.choose_words();
+                    // TODO: assert code.startswith(nameplate+"-")
+                    let code = Code(format!("{}-{}", &nameplate, &words));
+                    actions.push_back(OutboundMessage::claim(nameplate.clone()).into());
+                    state = State::ClaimingNameplate {
+                        nameplate,
+                        code,
+                        side,
+                        versions,
+                    };
+                } else {
+                    // TODO protocol error
+                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                        "Protocol error: received message without requesting it"
+                    ))));
+                }
+            },
+            FromIO(InboundMessage::Nameplates { nameplates: _ }) => {
+                /* We do not implement the "list" command at the moment. */
+                // TODO protocol error
+                actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                    "Protocol error: received message without requesting it"
+                ))));
+            },
+            FromIO(InboundMessage::Error {
+                error: message,
+                orig: _,
+            }) => {
+                // TODO maybe hanlde orig field for better messages
+                actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                    "Received error message from server: {}",
+                    message
+                ))));
+            },
+            FromIO(InboundMessage::Pong { .. }) | FromIO(InboundMessage::Ack { .. }) => (), /* we ignore this, it's only for the timing log */
+            FromIO(InboundMessage::Unknown) => {
+                // TODO add more information once serde gets it's […] done
+                log::warn!("Received unknown message type from server");
+            },
+            FromAPI(plaintext) => {
+                if let State::Running(machine) = state {
+                    state = machine.send_message(&mut actions, plaintext);
+                } else {
+                    // TODO print current state's name
+                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                        "Cannot call Send outside of State::Running"
+                    ))));
+                }
+            },
+            ShutDown(result) => match state {
+                State::AllocatingNameplate { .. } => {
+                    state = State::Closing {
+                        await_nameplate_release: false,
+                        await_mailbox_close: false,
+                        result,
+                    };
+                },
+                State::ClaimingNameplate { nameplate, .. } => {
+                    // TODO do we need to send "close" to the server before having opened the mailbox?
+                    actions.push_back(OutboundMessage::release(nameplate).into());
+                    state = State::Closing {
+                        await_nameplate_release: true,
+                        await_mailbox_close: false,
+                        result,
+                    };
+                },
+                State::Keying(machine) => {
+                    state = machine.shutdown(&mut actions, result);
+                },
+                State::Running(machine) => {
+                    state = machine.shutdown(&mut actions, result);
+                },
+                State::Closing { .. } => {
+                    // May somehow keep the state but somehow chain the error with another message?
+                    // Or log it and do nothing?
+                    todo!("I don't know how to handle this");
+                },
+            },
+            BounceMessage(message) => match state {
+                State::Keying(machine) => {
+                    state = machine.receive_message(&mut actions, message);
+                },
+                State::Running(machine) => {
+                    state = machine.receive_message(&mut actions, message);
+                },
+                _ => {
+                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
+                        "Protocol error: received message in invalid state"
+                    ))));
+                },
+            },
+            WebsocketClosed => match state {
+                State::Closing { result, .. } => {
+                    if let Err(error) = result {
+                        /* We cannot use the usual way of queueing it up as event because we're about to quit */
+                        to_api
+                            .unbounded_send(APIEvent::GotError(error))
+                            .expect("Don't close the receiver before shutting down the wormhole!");
+                    }
+                    // Don't assign a new state here
+                    break;
+                },
+                _ => unreachable!(),
+            },
+            ToAPI(action) => {
+                to_api
+                    .unbounded_send(action)
+                    .expect("Don't close the receiver before shutting down the wormhole!");
+            },
+            ToIO(message) => {
+                io.send(message).await;
+            },
+            CloseWebsocket => {
+                io.stop().await;
+            },
         }
-        Ok(action_queue)
     }
+    to_api.close_channel();
+    to_core.close();
+    debug!("Stopped wormhole event loop");
 }

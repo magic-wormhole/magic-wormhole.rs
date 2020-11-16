@@ -1,7 +1,7 @@
 #![cfg_attr(tarpaulin, skip)]
 
-use super::api::Mood;
 use super::events::Phase;
+use super::Mood;
 use crate::CodeProvider;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
@@ -142,7 +142,7 @@ pub async fn test_eventloop_exit3() {
         let eventloop_task = eventloop_task.unwrap();
 
         log::info!("Connected.");
-        std::mem::drop(connector);
+        connector.cancel().await;
         eventloop_task.await;
         log::info!("Closed.");
     })
@@ -182,64 +182,4 @@ fn test_mood() {
         String::from(r#""unwelcome""#),
         serde_json::to_string(&Mood::Unwelcome).unwrap()
     );
-}
-
-// use super::{IOAction, IOEvent, TimerHandle, WSHandle, WormholeCore};
-// use crate::core::server_messages::{deserialize_outbound, OutboundMessage};
-
-#[test]
-fn create() {
-    // TODO fix this test and make it work again
-
-    // env_logger::try_init().unwrap();
-    // let url: &str = "url";
-    // let mut w = WormholeCore::new("appid", url);
-
-    // let wsh = WSHandle::new(1);
-    // let th = TimerHandle::new(1);
-    // let mut _got_side: &str;
-
-    // let ios = w.start();
-    // assert_eq!(ios.len(), 1);
-    // assert_eq!(
-    //     ios,
-    //     vec![Action::IO(IOAction::WebSocketOpen(wsh, url.to_string()))]
-    // );
-
-    // let actions = w.do_io(IOEvent::WebSocketConnectionMade(wsh));
-    // assert_eq!(actions.len(), 1);
-    // match &actions[0] {
-    //     Action::IO(IOAction::WebSocketSendMessage(handle, m)) => {
-    //         assert_eq!(handle, &wsh);
-    //         if let OutboundMessage::Bind { appid, side } =
-    //             deserialize_outbound(&m)
-    //         {
-    //             assert_eq!(&appid.0, "appid");
-    //             _got_side = &side.0; // random
-    //         } else {
-    //             panic!();
-    //         }
-    //     }
-    //     _ => panic!(),
-    // }
-
-    // let actions = w.do_io(IOEvent::WebSocketConnectionLost(wsh));
-    // assert_eq!(actions.len(), 1);
-    // match &actions[0] {
-    //     Action::IO(IOAction::StartTimer(handle, delay)) => {
-    //         assert_eq!(handle, &th);
-    //         assert_eq!(delay, &5.0);
-    //     }
-    //     _ => panic!(),
-    // }
-
-    // let actions = w.do_io(IOEvent::TimerExpired(th));
-    // assert_eq!(actions.len(), 1);
-    // assert_eq!(
-    //     actions,
-    //     vec![Action::IO(IOAction::WebSocketOpen(
-    //         WSHandle::new(2),
-    //         url.to_string()
-    //     ))]
-    // );
 }

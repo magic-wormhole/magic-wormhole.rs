@@ -16,19 +16,18 @@
 use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
-use anyhow::{bail, ensure, format_err, Context, Error, Result};
+use anyhow::{ensure, format_err, Context, Error, Result};
 use async_std::io::prelude::WriteExt;
 use async_std::io::Read;
 use async_std::io::ReadExt;
 use async_std::net::{TcpListener, TcpStream};
 use futures::future::TryFutureExt;
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::StreamExt;
 use log::*;
 use pnet::datalink;
 use pnet::ipnetwork::IpNetwork;
 use sodiumoxide::crypto::secretbox;
-use std::net::{IpAddr, Ipv4Addr};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use std::sync::Arc;
 

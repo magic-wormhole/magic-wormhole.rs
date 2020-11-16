@@ -1,6 +1,6 @@
-use super::api::Mood;
 use super::events::{AppID, Mailbox, MySide, Phase, TheirSide};
 use super::util;
+use super::Mood;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{self, Value};
 
@@ -61,17 +61,6 @@ impl OutboundMessage {
     }
 }
 
-// we only parse our own outbound messages in unit tests
-#[cfg(test)]
-pub fn deserialize_outbound(s: &str) -> OutboundMessage {
-    serde_json::from_str(&s).unwrap()
-}
-
-#[allow(dead_code)]
-pub fn ping(ping: u64) -> OutboundMessage {
-    OutboundMessage::Ping { ping }
-}
-
 // Server sends only these
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -117,7 +106,6 @@ pub fn deserialize(s: &str) -> InboundMessage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::api::Mood;
     use serde_json::from_str;
     use serde_json::json;
 
@@ -222,14 +210,6 @@ mod test {
             json!({"type": "close", "mailbox": "mailbox1",
                    "mood": "scary"})
         );
-    }
-
-    #[test]
-    fn test_ping() {
-        let m1 = ping(123);
-        let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
-        assert_eq!(m2, json!({"type": "ping", "ping": 123}));
     }
 
     #[test]
