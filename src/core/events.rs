@@ -1,47 +1,35 @@
-use serde_derive::{Deserialize, Serialize};
-use serde_json::Value;
-use std::fmt;
-use std::iter::FromIterator;
-use std::ops::Deref;
-use std::sync::Arc;
-// Events come into the core, Actions go out of it (to the IO glue layer)
-use super::api::{APIAction, IOAction, Mood};
-use super::timing::TimingLogEvent;
-use super::util::maybe_utf8;
+use crate::core::server_messages::InboundMessage;
+use crate::core::server_messages::OutboundMessage;
 use crate::core::util::random_bytes;
+use crate::APIEvent;
+use serde_derive::{Deserialize, Serialize};
+use std::fmt;
+use std::ops::Deref;
 use zeroize::Zeroize;
 
 pub use super::wordlist::Wordlist;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-#[serde(from = "String")]
-#[serde(into = "String")]
-pub struct AppID(pub Arc<String>);
+pub struct AppID(pub String);
 
 impl std::ops::Deref for AppID {
-    type Target=String;
+    type Target = String;
 
     /// Dereferences the value.
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
 impl AppID {
     pub fn new(id: impl Into<String>) -> Self {
-        AppID(Arc::new(id.into()))
-    }
-}
-
-impl Into<String> for &AppID {
-    fn into(self) -> String {
-        (*self.0).clone()
+        AppID(id.into())
     }
 }
 
 impl Into<String> for AppID {
     fn into(self) -> String {
-        (*self.0).clone()
+        self.0
     }
 }
 
@@ -158,6 +146,11 @@ impl Deref for Nameplate {
         &self.0
     }
 }
+impl Into<String> for Nameplate {
+    fn into(self) -> String {
+        self.0
+    }
+}
 
 impl fmt::Display for Nameplate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -180,430 +173,52 @@ impl fmt::Display for Code {
     }
 }
 
-// machines (or IO, or the API) emit these events, and each is routed to a
-// specific machine (or IO or the API)
-#[derive(Debug, PartialEq)]
-pub enum AllocatorEvent {
-    Allocate(Arc<Wordlist>),
-    Connected,
-    Lost,
-    RxAllocated(Nameplate),
+#[derive(Debug, PartialEq, Clone)]
+pub struct EncryptedMessage {
+    pub side: TheirSide,
+    pub phase: Phase,
+    pub body: Vec<u8>,
 }
 
-#[allow(dead_code)] // TODO: drop dead code directive once core is complete
-#[derive(PartialEq)]
-pub enum BossEvent {
-    RxWelcome(Value),
-    RxError(String),
-    Error(String),
-    Closed,
-    GotCode(Code),
-    GotKey(Key), // TODO: fixed length?
-    Scared,
-    Happy,
-    GotVerifier(Vec<u8>), // TODO: fixed length (sha256)
-    GotMessage(Phase, Vec<u8>),
-}
-
-impl fmt::Debug for BossEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::BossEvent::*;
-        let t = match *self {
-            RxWelcome(ref v) => format!("RxWelcome({:?})", v),
-            RxError(ref s) => format!("RxError({})", s),
-            Error(ref s) => format!("Error({})", s),
-            Closed => String::from("Closed"),
-            GotCode(ref code) => format!("GotCode({:?})", code),
-            GotKey(ref _key) => String::from("GotKey(REDACTED)"),
-            Scared => String::from("Scared"),
-            Happy => String::from("Happy"),
-            GotVerifier(ref v) => format!("GotVerifier({})", maybe_utf8(v)),
-            GotMessage(ref phase, ref msg) => {
-                format!("GotMessage({:?}, {})", phase, maybe_utf8(msg))
-            }
-        };
-        write!(f, "BossEvent::{}", t)
+impl EncryptedMessage {
+    pub fn decrypt(&self, key: &Key) -> anyhow::Result<Vec<u8>> {
+        use super::key;
+        let data_key = key::derive_phase_key(&self.side, key, &self.phase);
+        key::decrypt_data(&data_key, &self.body)
+            .ok_or_else(|| anyhow::format_err!("Got bad message that could not be decrypted"))
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum CodeEvent {
-    AllocateCode(Arc<Wordlist>),
-    InputCode,
-    SetCode(Code),
-    Allocated(Nameplate, Code),
-    GotNameplate(Nameplate),
-    FinishedInput(Code),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum InputEvent {
-    Start,
-    ChooseNameplate(Nameplate),
-    ChooseWords(String),
-    GotNameplates(Vec<Nameplate>),
-    GotWordlist(Arc<Wordlist>),
-    RefreshNameplates,
-}
-
-#[derive(PartialEq)]
-pub enum KeyEvent {
-    GotCode(Code),
-    GotPake(Vec<u8>),
-}
-
-impl fmt::Debug for KeyEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::KeyEvent::*;
-        let t = match *self {
-            GotCode(ref code) => format!("GotCode({:?})", code),
-            GotPake(ref pake) => format!("GotPake({})", hex::encode(pake)),
-        };
-        write!(f, "KeyEvent::{}", t)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ListerEvent {
-    Connected,
-    Lost,
-    RxNameplates(Vec<Nameplate>),
-    Refresh,
-}
-
-#[derive(PartialEq)]
-pub enum MailboxEvent {
-    Connected,
-    Lost,
-    RxMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
-    RxClosed,
-    Close(Mood),
-    GotMailbox(Mailbox),
-    AddMessage(Phase, Vec<u8>), // PAKE+VERSION from Key, PHASE from Send
-}
-
-impl fmt::Debug for MailboxEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::MailboxEvent::*;
-        let t = match *self {
-            Connected => String::from("Connected"),
-            Lost => String::from("Lost"),
-            RxMessage(ref side, ref phase, ref body) => format!(
-                "RxMessage(side={:?}, phase={:?}, body={})",
-                side,
-                phase,
-                maybe_utf8(body)
-            ),
-            RxClosed => String::from("RxClosed"),
-            Close(ref mood) => format!("Close({:?})", mood),
-            GotMailbox(ref mailbox) => format!("GotMailbox({:?})", mailbox),
-            AddMessage(ref phase, ref body) => {
-                format!("AddMessage({:?}, {})", phase, maybe_utf8(body))
-            }
-        };
-        write!(f, "MailboxEvent::{}", t)
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum NameplateEvent {
-    Connected,
-    Lost,
-    RxClaimed(Mailbox),
-    RxReleased,
-    SetNameplate(Nameplate),
-    Release,
-    Close,
-}
-
-#[derive(PartialEq)]
-pub enum OrderEvent {
-    GotMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
-}
-
-impl fmt::Debug for OrderEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::OrderEvent::*;
-        let t = match *self {
-            GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={:?}, body={})",
-                side,
-                phase,
-                maybe_utf8(body)
-            ),
-        };
-        write!(f, "OrderEvent::{}", t)
-    }
-}
-
-#[derive(PartialEq)]
-pub enum ReceiveEvent {
-    GotMessage(TheirSide, Phase, Vec<u8>), // side, phase, body
-    GotKey(Key),
-}
-
-impl fmt::Debug for ReceiveEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::ReceiveEvent::*;
-        let t = match *self {
-            GotMessage(ref side, ref phase, ref body) => format!(
-                "GotMessage(side={:?}, phase={:?}, body={})",
-                side,
-                phase,
-                maybe_utf8(body)
-            ),
-            GotKey(ref _key) => String::from("GotKey(REDACTED)"),
-        };
-        write!(f, "ReceiveEvent::{}", t)
-    }
-}
-
-#[derive(PartialEq)]
-pub enum RendezvousEvent {
-    Start,
-    TxBind(AppID, MySide),
-    TxOpen(Mailbox),
-    TxAdd(Phase, Vec<u8>), // phase, body
-    TxClose(Mailbox, Mood),
-    Stop,
-    TxClaim(Nameplate),   // nameplate
-    TxRelease(Nameplate), // nameplate
-    TxAllocate,
-    TxList,
-}
-
-impl fmt::Debug for RendezvousEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use self::RendezvousEvent::*;
-        let t = match *self {
-            Start => String::from("Start"),
-            TxBind(ref appid, ref side) => {
-                format!("TxBind(appid={:?}, side={:?})", appid, side)
-            }
-            TxOpen(ref mailbox) => format!("TxOpen({:?})", mailbox),
-            TxAdd(ref phase, ref body) => {
-                format!("TxAdd({:?}, {})", phase, maybe_utf8(body))
-            }
-            TxClose(ref mailbox, ref mood) => {
-                format!("TxClose({:?}, {:?})", mailbox, mood)
-            }
-            Stop => String::from("Stop"),
-            TxClaim(ref nameplate) => format!("TxClaim({:?})", nameplate),
-            TxRelease(ref nameplate) => format!("TxRelease({:?})", nameplate),
-            TxAllocate => String::from("TxAllocate"),
-            TxList => String::from("TxList"),
-        };
-        write!(f, "RendezvousEvent::{}", t)
-    }
-}
-
-#[derive(PartialEq)]
-pub enum SendEvent {
-    Send(Phase, Vec<u8>), // phase, plaintext
-    GotVerifiedKey(Key),
-}
-
-impl fmt::Debug for SendEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SendEvent::Send(ref phase, ref plaintext) => {
-                write!(f, "Send({:?}, {})", phase, maybe_utf8(plaintext))
-            }
-            SendEvent::GotVerifiedKey(_) => write!(f, "Send(GotVerifiedKey)"),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum TerminatorEvent {
-    Close(Mood),
-    MailboxDone,
-    NameplateDone,
-    Stopped,
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Event {
-    API(APIAction),
-    IO(IOAction),
-    Allocator(AllocatorEvent),
-    Boss(BossEvent),
-    Code(CodeEvent),
-    Input(InputEvent),
-    Key(KeyEvent),
-    Lister(ListerEvent),
-    Mailbox(MailboxEvent),
-    Nameplate(NameplateEvent),
-    Order(OrderEvent),
-    Receive(ReceiveEvent),
-    Rendezvous(RendezvousEvent),
-    Send(SendEvent),
-    Terminator(TerminatorEvent),
-    Timing(TimingLogEvent),
+    /** Got a message from the server */
+    FromIO(InboundMessage),
+    ToIO(OutboundMessage),
+    /** This is second to the last command issued by the core */
+    CloseWebsocket,
+    /** This is the last event received by the core. After this the event loop will exit. */
+    WebsocketClosed,
+    /** Sometimes we queue up messages and then release them */
+    BounceMessage(EncryptedMessage),
+    FromAPI(Vec<u8>),
+    ToAPI(APIEvent),
+    /** Close the connection to the server
+     *
+     * This might trigger a series of events to release all resources and end up with [`Event::WebsocketClosed`]
+     */
+    ShutDown(anyhow::Result<()>),
 }
 
 // conversion from specific event types to the generic Event
 
-impl From<APIAction> for Event {
-    fn from(r: APIAction) -> Self {
-        Event::API(r)
+impl From<APIEvent> for Event {
+    fn from(r: APIEvent) -> Self {
+        Event::ToAPI(r)
     }
 }
 
-impl From<IOAction> for Event {
-    fn from(r: IOAction) -> Self {
-        Event::IO(r)
+impl From<OutboundMessage> for Event {
+    fn from(r: OutboundMessage) -> Self {
+        Event::ToIO(r)
     }
-}
-
-impl From<AllocatorEvent> for Event {
-    fn from(r: AllocatorEvent) -> Self {
-        Event::Allocator(r)
-    }
-}
-
-impl From<BossEvent> for Event {
-    fn from(r: BossEvent) -> Self {
-        Event::Boss(r)
-    }
-}
-
-impl From<CodeEvent> for Event {
-    fn from(r: CodeEvent) -> Self {
-        Event::Code(r)
-    }
-}
-
-impl From<InputEvent> for Event {
-    fn from(r: InputEvent) -> Self {
-        Event::Input(r)
-    }
-}
-
-impl From<KeyEvent> for Event {
-    fn from(r: KeyEvent) -> Self {
-        Event::Key(r)
-    }
-}
-
-impl From<ListerEvent> for Event {
-    fn from(r: ListerEvent) -> Self {
-        Event::Lister(r)
-    }
-}
-
-impl From<MailboxEvent> for Event {
-    fn from(r: MailboxEvent) -> Self {
-        Event::Mailbox(r)
-    }
-}
-
-impl From<NameplateEvent> for Event {
-    fn from(r: NameplateEvent) -> Self {
-        Event::Nameplate(r)
-    }
-}
-
-impl From<OrderEvent> for Event {
-    fn from(r: OrderEvent) -> Self {
-        Event::Order(r)
-    }
-}
-
-impl From<ReceiveEvent> for Event {
-    fn from(r: ReceiveEvent) -> Self {
-        Event::Receive(r)
-    }
-}
-
-impl From<RendezvousEvent> for Event {
-    fn from(r: RendezvousEvent) -> Self {
-        Event::Rendezvous(r)
-    }
-}
-
-impl From<SendEvent> for Event {
-    fn from(r: SendEvent) -> Self {
-        Event::Send(r)
-    }
-}
-
-impl From<TerminatorEvent> for Event {
-    fn from(r: TerminatorEvent) -> Self {
-        Event::Terminator(r)
-    }
-}
-
-impl From<TimingLogEvent> for Event {
-    fn from(r: TimingLogEvent) -> Self {
-        Event::Timing(r)
-    }
-}
-
-// a Vec that can accept specific event types, used in each Machine to gather
-// their results
-
-#[derive(Debug, PartialEq)]
-pub struct Events {
-    pub events: Vec<Event>,
-}
-use std::convert::From;
-impl Events {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Events {
-        Events { events: vec![] }
-    }
-
-    //fn add<T>(&mut self, item: T) where T: Into<Event> {
-    pub fn push<T>(&mut self, item: T)
-    where
-        Event: From<T>,
-    {
-        self.events.push(Event::from(item));
-    }
-
-    //pub fn append(&mut self, other: &mut Events) {
-    //    self.events.append(&mut other.events);
-    //}
-}
-
-impl IntoIterator for Events {
-    type Item = Event;
-    type IntoIter = ::std::vec::IntoIter<Event>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.events.into_iter()
-    }
-}
-
-impl FromIterator<Event> for Events {
-    fn from_iter<I: IntoIterator<Item = Event>>(iter: I) -> Self {
-        let mut c = Events::new();
-
-        for i in iter {
-            c.events.push(i);
-        }
-
-        c
-    }
-}
-
-// macro to build a whole Events vector, instead of adding them one at a time
-macro_rules! events {
-    ( ) => {
-        {
-            use crate::core::events::Events;
-            Events::new()
-        }
-    };
-    ( $( $x:expr ),* $(,)*) => {
-        {
-            use crate::core::events::Events;
-            let mut temp_vec = Events::new();
-            $(
-                temp_vec.push($x);
-            )*
-            temp_vec
-        }
-    };
 }

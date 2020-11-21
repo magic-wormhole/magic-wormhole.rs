@@ -1,34 +1,33 @@
 //! Connect two sides via TCP, no matter where they are
-//! 
+//!
 //! This protocol is the second part where the Wormhole magic happens. It does not strictly require a Wormhole connection,
 //! but it depends on some kind of secure communication channel to talk to the other side. Conveniently, Wormhole provides
 //! exactly such a thing :)
-//! 
+//!
 //! Both clients exchange messages containing hints on how to find each other. These may be local IP Addresses for in case they
 //! are in the same network, or the URL to a relay server. In case a direct connection fails, both will connect to the relay server
 //! which will transparently glue the connections together.
-//! 
+//!
 //! Each side might implement (or use/enable) some [abilities](Ability).
-//! 
+//!
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "sender" side and one "receiver" side (doing the respectively correct part of the handshake).
 
 use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
-use anyhow::{bail, ensure, format_err, Context, Error, Result};
+use anyhow::{ensure, format_err, Context, Error, Result};
 use async_std::io::prelude::WriteExt;
 use async_std::io::Read;
 use async_std::io::ReadExt;
 use async_std::net::{TcpListener, TcpStream};
 use futures::future::TryFutureExt;
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::StreamExt;
 use log::*;
 use pnet::datalink;
 use pnet::ipnetwork::IpNetwork;
 use sodiumoxide::crypto::secretbox;
-use std::net::{IpAddr, Ipv4Addr};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -54,7 +53,7 @@ pub struct TransitType {
 
 /**
  * Defines a way to find the other side.
- * 
+ *
  * Each ability comes with a set of [hints](Hint) to encode how to meet up.
  */
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -62,7 +61,7 @@ pub struct TransitType {
 pub enum Ability {
     /**
      * Try to connect directly to the other side.
-     * 
+     *
      * This usually requires both participants to be in the same network. [`DirectHint`s](DirectHint) are sent,
      * which encode all local IP addresses for the other side to find us.
      */
@@ -147,7 +146,7 @@ impl FromStr for RelayUrl {
 
 /**
  * Initialize a relay handshake
- * 
+ *
  * Bind a port and generate our [`TransitType`]. This does not do any communication yet.
  */
 pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl) -> Result<TransitConnector> {
@@ -192,7 +191,7 @@ pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl) -> Result<Trans
 
 /**
  * A partially set up [`Transit`] connection.
- * 
+ *
  * For the transit handshake, each side generates a [ttype](`TransitType`) with all the hints to find the other. You need
  * to exchange it (as in: send yours, receive theirs) with them. This is outside of the transit protocol to be protocol
  * agnostic.
@@ -297,11 +296,11 @@ impl TransitConnector {
                     transit = transit2;
                     handshake_futures = remaining;
                     break;
-                }
+                },
                 (Err(e), _index, remaining) => {
                     debug!("Some handshake failed {:#}", e);
                     handshake_futures = remaining;
-                }
+                },
             }
         }
         let mut transit = transit;
@@ -408,11 +407,11 @@ impl TransitConnector {
                     transit = transit2;
                     handshake_futures = remaining;
                     break;
-                }
+                },
                 (Err(e), _index, remaining) => {
                     debug!("Some handshake failed {:#}", e);
                     handshake_futures = remaining;
-                }
+                },
             }
         }
 

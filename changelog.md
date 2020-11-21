@@ -2,9 +2,13 @@
 
 ## Unreleased changes
 
+- Implemented version and verifier in the API
 - Added API documentation \o/ (still a long way to go though)
 - Reworked Key API. It now uses type-level programming to distinguish key purposes, in the hope you'll never ever confuse them.
+- New features for file transfer
+	- File acks are not sent automatically anymore, the receiver has to accept an offer now.
 - Internal improvements in Transit implementation. Little API changed except for the Keys.
+- Internal rewrite of the `core`. This resulted in no public API changes except that the receiver is now `TryStream` instead of `Stream` (error handling, yay).
 
 ## Version 0.1.0
 

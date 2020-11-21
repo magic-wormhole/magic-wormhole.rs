@@ -1,10 +1,10 @@
 //! Client-to-Client protocol to organize file transfers
-//! 
+//!
 //! This gives you the actual capability to transfer files, that feature that Magic Wormhole got known and loved for.
-//! 
+//!
 //! It is bound to an [`APPID`](APPID). Only applications using that APPID (and thus this protocol) can interoperate with
 //! the original Python implementation (and other compliant implementations).
-//! 
+//!
 //! At its core, [`PeerMessage`s](PeerMessage) are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
@@ -19,11 +19,9 @@ use anyhow::{bail, ensure, format_err, Context, Result};
 use async_std::fs::File;
 use async_std::io::prelude::WriteExt;
 use async_std::io::BufReader;
-use async_std::io::Read;
 use async_std::io::ReadExt;
-use async_std::io::Write;
 use async_std::net::TcpStream;
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::{SinkExt, StreamExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use sodiumoxide::crypto::secretbox;
@@ -38,10 +36,9 @@ pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
  * The application specific version information for this protocol.
  *
  * At the moment, this always is an empty object, but this will likely change in the future.
- */ 
+ */
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct AppVersion {
-}
+pub struct AppVersion {}
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -60,12 +57,6 @@ impl TransitAck {
 
     pub fn serialize(&self) -> String {
         json!(self).to_string()
-    }
-
-    // TODO: This can error out so we should actually have error returning
-    // capability here
-    pub fn deserialize(msg: &str) -> Self {
-        serde_json::from_str(msg).unwrap()
     }
 }
 
@@ -131,12 +122,6 @@ impl PeerMessage {
 
     pub fn serialize(&self) -> String {
         json!(self).to_string()
-    }
-
-    // TODO: This can error out so we should actually have error returning
-    // capability here
-    pub fn deserialize(msg: &str) -> Self {
-        serde_json::from_str(msg).unwrap()
     }
 }
 
@@ -205,7 +190,7 @@ pub async fn send_file(
     // Wait for their transit response
     let other_side_ttype = {
         let maybe_transit =
-            PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
+            serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)?;
         debug!("received transit message: {:?}", maybe_transit);
 
         match maybe_transit {
@@ -217,7 +202,7 @@ pub async fn send_file(
     {
         // Wait for file_ack
         let fileack_msg =
-            PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
+            serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)?;
         debug!("received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
@@ -243,7 +228,7 @@ pub async fn send_file(
 
 /**
  * Wait for a file offer from the other side
- * 
+ *
  * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
  * It will also start building a TCP connection to the other side using the transit protocol.
  */
@@ -261,7 +246,7 @@ pub async fn request_file<'a>(
 
     // receive transit message
     let other_side_ttype =
-        match PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?) {
+        match serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)? {
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
                 transit
@@ -279,7 +264,7 @@ pub async fn request_file<'a>(
 
     // 3. receive file offer message from peer
     let maybe_offer =
-        PeerMessage::deserialize(std::str::from_utf8(&wormhole.rx.next().await.unwrap())?);
+        serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)?;
     debug!("Received offer message '{:?}'", &maybe_offer);
 
     let (filename, filesize) = match maybe_offer {
@@ -303,7 +288,7 @@ pub async fn request_file<'a>(
 
 /**
  * A pending files send offer from the other side
- * 
+ *
  * You *should* consume this object, either by calling [`accept`](ReceiveRequest::accept) or [`reject`](ReceiveRequest::reject).
  */
 #[must_use]
@@ -318,7 +303,7 @@ pub struct ReceiveRequest<'a> {
 impl<'a> ReceiveRequest<'a> {
     /**
      * Accept the file offer
-     * 
+     *
      * This will transfer the file and save it on disk.
      */
     pub async fn accept(self) -> Result<()> {
@@ -468,7 +453,7 @@ async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Res
     debug!("sent file. Waiting for ack");
     let enc_transit_ack = transit::receive_record(&mut BufReader::new(&mut transit.socket)).await?;
     let transit_ack = transit::decrypt_record(&enc_transit_ack, &transit.rkey)?;
-    let transit_ack_msg = TransitAck::deserialize(std::str::from_utf8(&transit_ack)?);
+    let transit_ack_msg = serde_json::from_str::<TransitAck>(std::str::from_utf8(&transit_ack)?)?;
     ensure!(
         transit_ack_msg.sha256 == hex::encode(checksum),
         "receive checksum error"
