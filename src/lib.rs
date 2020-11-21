@@ -1,18 +1,18 @@
 //! In reality, there is no "Magic Wormhole" protocol. What makes Wormhole work is a handful of different protocols
 //! and handshakes, layered on another and weaved together. This allows other applications to build upon the parts they want
 //! and then add new ones special to their needs.
-//! 
+//!
 //! At the core, there is a rendezvous server with a message box that allows clients to connect to and perform a PAKE.
 //! Protocol wise, this is split into the "client-server" part (connect to a server, allocate nameplates, send and receive messages)
 //! and a "client-client" part (do a key exchange). Code wise, both are implemented in the [`core`] module. There is a "sane" API
 //! wrapping them in the root module (see the methods below). Use it. It'll guide you through the handshakes and provide a channel pair
 //! to exchange encrypted messages with the other side.
-//! 
+//!
 //! Two clients that are connected to each other need to know beforehand how to communicate with each other once the connection is established.
 //! This why they have an [`AppID`]. The protocol they use to talk to each other is bound to the AppID. Clients with different AppIDs cannot communicate.
-//! 
+//!
 //! Magic wormhole is known for its ability to transfer files. This is implemented in the [`transfer`] module.
-//! 
+//!
 //! Transferring large amounts of data should not be done over the rendezvous server. Instead, you have to set up a [`transit`]
 //! connection. A transit is little more than an encrypted TcpConnection. If a direct connection between both clients is not possible,
 //! a relay server will transparently connect them together. Transit is used by the file transfer for example, but any other AppID protocol
@@ -21,12 +21,12 @@
 #![forbid(unsafe_code)]
 // #![deny(warnings)]
 
-pub mod core;
+mod core;
 pub mod transfer;
 pub mod transit;
 
 use crate::core::AppID;
-use crate::core::{APIAction, APIEvent, Code};
+use crate::core::{APIEvent, Code};
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
 use futures::Sink;
@@ -76,6 +76,7 @@ impl KeyPurpose for GenericKey {}
  * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
  */
 #[derive(Clone, Debug)]
+// TODO redact value for logs by manually deriving Debug
 pub struct Key<P: KeyPurpose>(pub Vec<u8>, std::marker::PhantomData<P>);
 
 impl<P: KeyPurpose> Display for Key<P> {
@@ -97,10 +98,10 @@ impl<P: KeyPurpose> std::ops::Deref for Key<P> {
 impl Key<WormholeKey> {
     /**
      * Derive the sub-key used for transit
-     * 
+     *
      * This one's a bit special, since the Wormhole's AppID is included in the purpose. Different kinds of applications
      * can't talk to each other, not even accidentally, by design.
-     * 
+     *
      * The new key is derived with the `"{appid}/transit-key"` purpose.
      */
     pub fn derive_transit_key(&self, appid: &AppID) -> Key<transit::TransitKey> {
@@ -132,23 +133,24 @@ impl<P: KeyPurpose> Key<P> {
 
 /**
  * A partial Wormhole connection
- * 
+ *
  * A value of this struct represents a Wormhole that has done the server handshake, but is not connected to any
  * "other side" client yet.
+ * 
+ * Use [`connect_to_client`](WormholeConnector::connect_to_client) to finish the setup and get a fully-initialized [`Wormhole`] object.
+ * Call [`cancel`](WormholeConnector::cancel) to cleanly disconnect from the server.
  */
+#[must_use]
 pub struct WormholeConnector {
-    queued_messages: Vec<APIAction>,
-    /* In case we got that too early */
-    key: Option<Vec<u8>>,
     appid: AppID,
-    tx_api_to_core: UnboundedSender<APIEvent>,
-    rx_api_from_core: UnboundedReceiver<APIAction>,
+    tx_api_to_core: UnboundedSender<Vec<u8>>,
+    rx_core_to_api: UnboundedReceiver<APIEvent>,
 }
 
 impl WormholeConnector {
     /**
      * Connect to the other side client
-     * 
+     *
      * This will perform the PAKE key exchange and all other necessary things to fully connect.
      * It returns a [`Wormhole`] struct over which you can send and receive byte messages with the other side.
      */
@@ -156,77 +158,61 @@ impl WormholeConnector {
         use futures::SinkExt;
         use futures::StreamExt;
 
-        let mut verifier = None;
-        let mut versions = None;
-        
-        loop {
-            use self::APIAction::*;
-            match self.rx_api_from_core.next().await  {
-                Some(GotUnverifiedKey(k)) => {
-                    debug!("Got key");
-                    self.key = Some(k.0.clone());
-                }
-                Some(GotVerifier(v)) => {
-                    debug!("Got verifier {:x?}", &v);
-                    verifier = Some(v);
-                }
-                Some(GotVersions(v)) => {
-                    debug!("Got version");
-                    versions = Some(v);
-                }
-                Some(action @ GotMessage(_)) => {
-                    warn!("Got message from other side during initialization. Will deliver it after initialization.");
-                    self.queued_messages.push(action);
-                }
-                Some(action @ GotWelcome(_)) | Some(action @ GotCode(_)) => {
-                    self.tx_api_to_core.unbounded_send(APIEvent::Close).unwrap();
-                    /* Drain remaining events. Don't handle errors as we don't want to shadow the actual one. */
-                    let _ = self.rx_api_from_core.map(Result::Ok).forward(futures::sink::drain()).await;
-                    anyhow::bail!("Invalid message from peer during client handshake! {:?}", action);
-                }
-                Some(GotClosed(_)) => {
-                    unreachable!("already handled in core");
-                }
-                None => {
-                    anyhow::bail!("Wormhole unexpectedly closed");
-                }
-            }
+        let key;
+        let verifier;
+        let peer_version;
 
-            if self.key.is_some() && versions.is_some() && verifier.is_some() {
-                /* We know enough */
-                break;
+        loop {
+            use self::APIEvent::*;
+            match self.rx_core_to_api.next().await {
+                Some(ConnectedToServer { .. }) | Some(GotMessage(_)) => unreachable!(),
+                Some(ConnectedToClient {
+                    key: k,
+                    verifier: v,
+                    versions,
+                }) => {
+                    /* TODO is there better way to avoid variable shadowing here? (And same below) */
+                    key = k;
+                    verifier = v;
+                    peer_version = versions;
+                    break;
+                },
+                Some(GotError(error)) => anyhow::bail!(error),
+                None => {
+                    /* TODO is this reachable code? */
+                    anyhow::bail!("Wormhole unexpectedly closed");
+                },
             }
         }
 
-        let tx_api_to_core = self.tx_api_to_core.with(|message| async {
-            Result::<_, futures::channel::mpsc::SendError>::Ok(APIEvent::Send(message))
+        let tx_api_to_core = self
+            .tx_api_to_core
+            .with(|message| async { Result::<_, futures::channel::mpsc::SendError>::Ok(message) });
+        let rx_core_to_api = self.rx_core_to_api.map(|action| match action {
+            APIEvent::GotMessage(m) => Ok(m),
+            APIEvent::GotError(err) => Err(err),
+            _ => unreachable!(),
         });
-        let rx_api_from_core = futures::stream::iter(self.queued_messages)
-            .chain(self.rx_api_from_core)
-            .filter_map(|action| async {
-                match action {
-                    APIAction::GotMessage(m) => Some(m),
-                    APIAction::GotClosed(_) => {
-                        unreachable!("already handled in core");
-                    },
-                    action => {
-                        warn!(
-                            "Received unexpected action after initialization: '{:?}'",
-                            action
-                        );
-                        None
-                    }
-                }
-            });
 
         Ok(Wormhole {
             tx: Box::pin(tx_api_to_core),
-            rx: Box::pin(rx_api_from_core),
-            key: Key(self.key.unwrap(), std::marker::PhantomData),
-            verifier: verifier.unwrap(),
-            peer_version: versions.unwrap(),
+            rx: Box::pin(rx_core_to_api),
+            key: Key(key.to_vec(), std::marker::PhantomData),
+            verifier,
+            peer_version,
             appid: self.appid,
         })
+    }
+
+    /// Cancel everything and close the connection
+    pub async fn cancel(self) {
+        use futures::StreamExt;
+        self.tx_api_to_core.close_channel();
+        let _ = self
+            .rx_core_to_api
+            .map(Result::Ok)
+            .forward(futures::sink::drain())
+            .await;
     }
 }
 
@@ -243,17 +229,17 @@ impl WormholeConnector {
  * will result in a panic on the event loop. You can also simply drop the struct as a whole, but you might miss
  * some pending events that way.
  */
-/* TODO 
+/* TODO
  * Maybe a better way to handle application level protocols is to create a trait for them and then
  * to paramterize over them.
  */
 pub struct Wormhole {
     pub tx:
         Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
-    pub rx: Pin<Box<dyn Stream<Item = Vec<u8>> + std::marker::Send>>,
+    pub rx: Pin<Box<dyn Stream<Item = anyhow::Result<Vec<u8>>> + std::marker::Send>>,
     pub key: Key<WormholeKey>,
     pub verifier: Vec<u8>,
-    /** 
+    /**
      * The `AppID` this wormhole is bound to.
      * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
      */
@@ -283,100 +269,76 @@ pub struct WormholeWelcome {
  * The `appid` and `versions` parameters are bound to the application level protocol (e.g. [`transfer`]).
  *
  * This method returns a [`WormholeWelcome`] containing the server initialization result and a [`WormholeConnector`]
- * that can be used to finish the other part of the handshake. Dropping the connector closes the connection.
+ * that can be used to finish the other part of the handshake.
  */
 pub async fn connect_to_server(
     appid: impl Into<String>,
     versions: impl serde::Serialize,
-    relay_url: &str,
+    relay_url: impl Into<String>,
     code_provider: CodeProvider,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
 ) -> anyhow::Result<(WormholeWelcome, WormholeConnector)> {
+    let relay_url = relay_url.into();
     let appid: AppID = AppID::new(appid);
     let versions = serde_json::to_value(versions).expect("Could not serialize versions");
-    let (tx_api_to_core, mut rx_api_from_core) = {
+    let (tx_core_to_api, mut rx_core_to_api) = futures::channel::mpsc::unbounded();
+    let (tx_api_to_core, rx_api_to_core) = futures::channel::mpsc::unbounded();
+
+    {
+        /* Spawn the main loop */
+        let appid = appid.clone();
+        #[allow(unused_variables)]
+        let task = async_std::task::spawn(async move {
+            crate::core::run(
+                &appid,
+                versions,
+                /* TODO if we do dependency injection on WormholeIO we can elide that to_string clone */
+                &relay_url,
+                code_provider,
+                tx_core_to_api,
+                rx_api_to_core,
+            ).await
+        });
         #[cfg(test)]
         {
-            crate::core::run(appid.clone(), versions, relay_url, eventloop_task)
-        }
-        #[cfg(not(test))]
-        {
-            crate::core::run(appid.clone(), versions, relay_url)
-        }
-    };
-
-    let mut code = None;
-    let mut welcome = None;
-    let mut key = None;
-    let mut queued_messages = Vec::new();
-
-    tx_api_to_core.unbounded_send(APIEvent::Start).unwrap();
-
-    match code_provider {
-        CodeProvider::AllocateCode(num_words) => {
-            tx_api_to_core
-                .unbounded_send(APIEvent::AllocateCode(num_words))
-                .unwrap();
-        }
-        CodeProvider::SetCode(code) => {
-            tx_api_to_core
-                .unbounded_send(APIEvent::SetCode(Code(code)))
-                .unwrap();
+            *eventloop_task = Some(task);
         }
     }
+
+    let code;
+    let welcome;
 
     use futures::StreamExt;
 
     loop {
-        use self::APIAction::*;
-        match rx_api_from_core.next().await {
-            Some(GotWelcome(w)) => {
+        use self::APIEvent::*;
+        match rx_core_to_api.next().await {
+            Some(ConnectedToServer {
+                welcome: w,
+                code: c,
+            }) => {
                 debug!("Got welcome");
-                welcome = Some(w.to_string());
-            }
-            Some(action @ GotMessage(_)) => {
-                warn!("Got message from other side during initialization. Will deliver it after initialization.");
-                queued_messages.push(action);
-            }
-            Some(GotCode(c)) => {
-                debug!("Got code");
-                code = Some(c.clone());
-            }
-            Some(GotUnverifiedKey(k)) => {
-                /* This shouldn't happen now, but it might */
-                debug!("Got key");
-                key = Some(k.0.clone());
-            }
-            /* If we failed, don't do anything. Wait for the close confirmation then bail out */
-            Some(action @ GotVerifier(_)) | Some(action @ GotVersions(_)) => {
-                tx_api_to_core.unbounded_send(APIEvent::Close).unwrap();
-                /* Drain remaining events. Don't handle errors as we don't want to shadow the actual one. */
-                let _ = rx_api_from_core.map(Result::Ok).forward(futures::sink::drain()).await;
-                anyhow::bail!("Invalid message from peer during client handshake! {:?}", action);
-            }
-            Some(GotClosed(_)) => {
-                unreachable!("already handled in core");
-            }
+                welcome = w;
+                code = c;
+                break;
+            },
+            Some(ConnectedToClient { .. }) | Some(GotMessage(_)) => unreachable!(),
+            Some(GotError(error)) => anyhow::bail!(error),
             None => {
+                /* TODO is this reachable code? */
                 anyhow::bail!("Wormhole unexpectedly closed");
-            }
-    }
-        if welcome.is_some() && code.is_some() {
-            /* We know enough */
-            break;
+            },
         }
     }
 
     Ok((
         WormholeWelcome {
-            code: code.unwrap(),
-            welcome: welcome.unwrap(),
+            code,
+            welcome: welcome.to_string(), // TODO don't do that
         },
         WormholeConnector {
-            queued_messages,
             tx_api_to_core,
-            rx_api_from_core,
-            key,
+            rx_core_to_api,
             appid,
         },
     ))

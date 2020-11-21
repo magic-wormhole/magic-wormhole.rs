@@ -180,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
         /* Explicitely close connection */
-        std::mem::drop(connector);
+        connector.cancel().await;
         let file = matches.value_of("file").unwrap();
 
         info!("Got welcome: {}", &welcome.welcome);
@@ -240,15 +240,6 @@ fn enter_code() -> anyhow::Result<String> {
     let mut code = String::new();
     std::io::stdin().read_line(&mut code)?;
     Ok(code)
-}
-
-async fn send(
-    mut w: Wormhole,
-    relay_server: &str,
-    filename: impl AsRef<Path>,
-) -> anyhow::Result<()> {
-    let result = transfer::send_file(&mut w, filename, &relay_server.parse().unwrap()).await;
-    result
 }
 
 async fn send_many(

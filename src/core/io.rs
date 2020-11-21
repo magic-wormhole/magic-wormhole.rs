@@ -1,138 +1,159 @@
-use crate::core::{IOAction, IOEvent, TimerHandle, WSHandle};
-use log::*;
-use std::collections::{HashMap, HashSet};
-use std::time;
+// Manage connections to the Mailbox Server (which used to be known as the
+// Rendezvous Server). The "Mailbox" machine specifically handles the mailbox
+// object within that server, whereas this module manages the websocket
+// connection (reconnecting after a delay when necessary), preliminary setup
+// messages, and message packing/unpacking/dispatch.
 
-#[derive(Debug, Clone)]
-enum WSControl {
-    Data(String),
-    Close,
+// in Twisted, we delegate all of this to a ClientService, so there's a lot
+// more code and more states here
+
+use crate::core::server_messages::OutboundMessage;
+use crate::core::Event;
+use log::*;
+use std::pin::Pin;
+
+/// Receive an event from the IO task loop
+#[derive(Debug, PartialEq)]
+pub enum IOEvent {
+    WebSocketMessageReceived(String),
+    WebSocketConnectionLost,
 }
 
-async fn ws_connector(
-    url: &str,
-    handle: WSHandle,
-    mut tx: futures::channel::mpsc::UnboundedSender<IOEvent>,
-    ws_rx: futures::channel::mpsc::UnboundedReceiver<WSControl>,
-) {
+/// Send an action to the IO task loop
+#[derive(Debug, PartialEq)]
+enum IOAction {
+    WebSocketSendMessage(String),
+    WebSocketClose,
+}
+
+#[derive(Debug, PartialEq)]
+enum State {
+    Connected,
+    Disconnecting, // -> Stopped
+    Stopped,
+}
+
+type WebsocketSender = Pin<
+    Box<
+        dyn futures::sink::Sink<IOAction, Error = async_tungstenite::tungstenite::Error>
+            + std::marker::Send,
+    >,
+>;
+type WebsocketReceiver = Pin<
+    Box<
+        dyn futures::stream::FusedStream<
+                Item = Result<IOEvent, async_tungstenite::tungstenite::Error>,
+            > + std::marker::Send,
+    >,
+>;
+
+pub struct WormholeIO {
+    state: State,
+    ws_tx: WebsocketSender,
+    pub ws_rx: WebsocketReceiver,
+}
+
+impl WormholeIO {
+    pub async fn new(relay_url: &str) -> Self {
+        let (ws_tx, ws_rx) = ws_connector(&relay_url).await;
+        WormholeIO {
+            state: State::Connected,
+            ws_tx,
+            ws_rx,
+        }
+    }
+
+    pub fn process_io(&mut self, event: IOEvent) -> anyhow::Result<Event> {
+        use State::*;
+        let action: Event;
+        self.state = match self.state {
+            Connected => match event {
+                IOEvent::WebSocketMessageReceived(message) => {
+                    action = Event::FromIO(super::server_messages::deserialize(&message));
+                    Connected
+                },
+                IOEvent::WebSocketConnectionLost => {
+                    anyhow::bail!("Initial WebSocket connection lost");
+                },
+            },
+            Disconnecting => match event {
+                IOEvent::WebSocketMessageReceived(message) => {
+                    log::warn!("Received message while closing: {:?}", message);
+                    action = Event::FromIO(super::server_messages::deserialize(&message));
+                    Disconnecting
+                },
+                IOEvent::WebSocketConnectionLost => {
+                    action = Event::WebsocketClosed;
+                    Stopped
+                },
+            },
+            Stopped => panic!("I don't accept events after having stopped"),
+        };
+        Ok(action)
+    }
+
+    pub async fn send(&mut self, m: OutboundMessage) {
+        if let State::Connected = self.state {
+            use futures::sink::SinkExt;
+            let message = serde_json::to_string(&m).unwrap();
+            self.ws_tx
+                .send(IOAction::WebSocketSendMessage(message))
+                .await
+                .unwrap();
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub async fn stop(&mut self) {
+        if let State::Connected = self.state {
+            use futures::sink::SinkExt;
+            self.ws_tx.send(IOAction::WebSocketClose).await.unwrap();
+            self.state = State::Disconnecting;
+        };
+    }
+}
+
+async fn ws_connector(url: &str) -> (WebsocketSender, WebsocketReceiver) {
     use async_tungstenite::async_std::*;
     use async_tungstenite::tungstenite as ws2;
     use futures::sink::SinkExt;
     use futures::stream::StreamExt;
     use futures::stream::TryStreamExt;
 
+    // TODO error handling here
     let (ws_stream, _) = connect_async(url).await.unwrap();
-    tx.send(IOEvent::WebSocketConnectionMade(handle))
-        .await
-        .unwrap();
     let (write, read) = ws_stream.split();
 
     /* Receive websockets event and forward them to the API */
-    async_std::task::spawn(async move {
-        read.try_filter_map(|message| async move {
-            debug!("Incoming websockets message '{:?}'", message);
-            Ok(match message {
-                ws2::Message::Text(text) => Some(IOEvent::WebSocketMessageReceived(handle, text)),
-                ws2::Message::Close(_) => Some(IOEvent::WebSocketConnectionLost(handle)),
-                ws2::Message::Ping(_) => {
-                    warn!("Not responding to pings for now");
-                    // TODO
-                    None
-                }
-                ws2::Message::Pong(_) => {
-                    warn!("Got a pong without ping?!");
-                    // TODO maybe send pings too?
-                    None
-                }
-                ws2::Message::Binary(_) => {
-                    error!("Someone is sending binary data, this is not part of the protocol!");
-                    None
-                }
-            })
+    let ws_rx = read.try_filter_map(|message| async move {
+        Ok(match message {
+            ws2::Message::Text(text) => Some(IOEvent::WebSocketMessageReceived(text)),
+            ws2::Message::Close(_) => Some(IOEvent::WebSocketConnectionLost),
+            ws2::Message::Ping(_) => {
+                warn!("Not responding to pings for now");
+                // TODO
+                None
+            },
+            ws2::Message::Pong(_) => {
+                warn!("Got a pong without ping?!");
+                // TODO maybe send pings too?
+                None
+            },
+            ws2::Message::Binary(_) => {
+                error!("Someone is sending binary data, this is not part of the protocol!");
+                None
+            },
         })
-        .map_err(anyhow::Error::from)
-        .forward(tx.sink_map_err(anyhow::Error::from))
-        .await
-        .unwrap()
     });
+
     /* Send events from the API to the other websocket side */
-    async_std::task::spawn(async move {
-        ws_rx
-            .map(|c| {
-                debug!("Outgoing websockets message '{:?}'", c);
-                match c {
-                    WSControl::Data(d) => ws2::Message::Text(d),
-                    WSControl::Close => ws2::Message::Close(None),
-                }
-            })
-            .map(Ok)
-            .forward(write)
-            .await
-            .unwrap();
+    let ws_tx = write.with(move |c| async {
+        match c {
+            IOAction::WebSocketSendMessage(d) => Ok(ws2::Message::Text(d)),
+            IOAction::WebSocketClose => Ok(ws2::Message::Close(None)),
+        }
     });
-}
 
-pub struct WormholeIO {
-    tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>,
-    timers: HashSet<TimerHandle>,
-    websockets: HashMap<WSHandle, futures::channel::mpsc::UnboundedSender<WSControl>>,
-}
-
-impl WormholeIO {
-    pub fn new(tx_to_core: futures::channel::mpsc::UnboundedSender<IOEvent>) -> Self {
-        WormholeIO {
-            tx_to_core,
-            timers: HashSet::new(),
-            websockets: HashMap::new(),
-        }
-    }
-
-    pub fn process(&mut self, action: IOAction) {
-        use self::IOAction::*;
-        use futures::SinkExt;
-        match action {
-            StartTimer(handle, duration) => {
-                let mut tx = self.tx_to_core.clone();
-                self.timers.insert(handle);
-                async_std::task::spawn(async move {
-                    // ugh, why can't this just take a float? ok ok,
-                    // Nan, negatives, fine fine
-                    let dur_ms = (duration * 1000.0) as u64;
-                    let dur = time::Duration::from_millis(dur_ms);
-                    async_std::task::sleep(dur).await;
-                    tx.send(IOEvent::TimerExpired(handle)).await.unwrap();
-                });
-            }
-            CancelTimer(handle) => {
-                self.timers.remove(&handle);
-            }
-            WebSocketOpen(handle, url) => {
-                let tx = self.tx_to_core.clone();
-                let (ws_tx, ws_rx) = futures::channel::mpsc::unbounded();
-                self.websockets.insert(handle, ws_tx);
-                async_std::task::block_on(async move {
-                    ws_connector(&url, handle, tx, ws_rx).await;
-                });
-            }
-            WebSocketSendMessage(handle, msg) => {
-                async_std::task::block_on(
-                    self.websockets
-                        .get_mut(&handle)
-                        .unwrap()
-                        .send(WSControl::Data(msg)),
-                )
-                .unwrap();
-            }
-            WebSocketClose(handle) => {
-                async_std::task::block_on(
-                    self.websockets
-                        .get_mut(&handle)
-                        .unwrap()
-                        .send(WSControl::Close),
-                )
-                .unwrap();
-                self.websockets.remove(&handle);
-            }
-        }
-    }
+    (Box::pin(ws_tx), Box::pin(ws_rx.fuse()))
 }
