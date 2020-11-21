@@ -20,6 +20,7 @@ impl Wordlist {
         Wordlist { num_words, words }
     }
 
+    #[allow(dead_code)] // TODO make this API public one day
     pub fn get_completions(&self, prefix: &str) -> Vec<String> {
         let count_dashes = prefix.matches('-').count();
         let mut completions = Vec::new();

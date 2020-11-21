@@ -136,6 +136,9 @@ impl<P: KeyPurpose> Key<P> {
  *
  * A value of this struct represents a Wormhole that has done the server handshake, but is not connected to any
  * "other side" client yet.
+ * 
+ * Use [`connect_to_client`](WormholeConnector::connect_to_client) to finish the setup and get a fully-initialized [`Wormhole`] object.
+ * Call [`cancel`](WormholeConnector::cancel) to cleanly disconnect from the server.
  */
 #[must_use]
 pub struct WormholeConnector {
@@ -201,6 +204,7 @@ impl WormholeConnector {
         })
     }
 
+    /// Cancel everything and close the connection
     pub async fn cancel(self) {
         use futures::StreamExt;
         self.tx_api_to_core.close_channel();
@@ -265,7 +269,7 @@ pub struct WormholeWelcome {
  * The `appid` and `versions` parameters are bound to the application level protocol (e.g. [`transfer`]).
  *
  * This method returns a [`WormholeWelcome`] containing the server initialization result and a [`WormholeConnector`]
- * that can be used to finish the other part of the handshake. Dropping the connector closes the connection.
+ * that can be used to finish the other part of the handshake.
  */
 pub async fn connect_to_server(
     appid: impl Into<String>,

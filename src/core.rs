@@ -88,21 +88,11 @@ enum State {
     },
 }
 
-// TODO update docs
 /** The core implementation of the protocol(s)
  *
- * This is a big composite state machine that implements the Client-Server and Client-Client protocols
- * in a rather weird way. All state machines communicate with each other by sending events and actions around
- * like crazy. The wormhole is driven by processing APIActions that generate APIEvents.
- *
- * Due to the inherent asynchronous nature of IO together with these synchronous blocking state machines, generated IOEvents
- * are sent to a channel. The holder of the struct must then take care of letting the core process these by calling `do_io`.
- * */
-/// Set up a WormholeCore and run it
-///
-/// This will create a new WormholeCore, connect its IO and API interfaces together
-/// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
-
+ * This runs the main event loop that will do all the work. The code is implemented as a state machine, sometimes with
+ * nested state (a state machine in a state machine).
+ */
 pub async fn run(
     appid: &AppID,
     versions: serde_json::Value,
