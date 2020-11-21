@@ -286,7 +286,7 @@ pub async fn connect_to_server(
         #[allow(unused_variables)]
         let task = async_std::task::spawn(async move {
             crate::core::run(
-                appid.clone(),
+                &appid,
                 versions,
                 /* TODO if we do dependency injection on WormholeIO we can elide that to_string clone */
                 &relay_url,

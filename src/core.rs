@@ -104,7 +104,7 @@ enum State {
 /// and spawn a new task that runs the event loop. A channel pair to make API calls is returned.
 
 pub async fn run(
-    appid: AppID,
+    appid: &AppID,
     versions: serde_json::Value,
     relay_url: &str,
     code_provider: CodeProvider,

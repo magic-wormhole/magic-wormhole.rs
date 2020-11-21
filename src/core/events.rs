@@ -5,40 +5,31 @@ use crate::APIEvent;
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 use std::ops::Deref;
-use std::sync::Arc;
 use zeroize::Zeroize;
 
 pub use super::wordlist::Wordlist;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
-#[serde(from = "String")]
-#[serde(into = "String")]
-pub struct AppID(pub Arc<String>);
+pub struct AppID(pub String);
 
 impl std::ops::Deref for AppID {
     type Target = String;
 
     /// Dereferences the value.
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
 impl AppID {
     pub fn new(id: impl Into<String>) -> Self {
-        AppID(Arc::new(id.into()))
-    }
-}
-
-impl Into<String> for &AppID {
-    fn into(self) -> String {
-        (*self.0).clone()
+        AppID(id.into())
     }
 }
 
 impl Into<String> for AppID {
     fn into(self) -> String {
-        (*self.0).clone()
+        self.0
     }
 }
 
