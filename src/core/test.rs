@@ -18,6 +18,74 @@ fn init_logger() {
         .try_init();
 }
 
+/** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
+#[async_std::test]
+pub async fn test_file_rust2rust() -> anyhow::Result<()> {
+    init_logger();
+    use crate as magic_wormhole;
+    use magic_wormhole::{transfer, CodeProvider};
+
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async_std::task::Builder::new()
+        .name("sender".to_owned())
+        .spawn(async {
+            let (welcome, connector) = magic_wormhole::connect_to_server(
+                magic_wormhole::transfer::APPID,
+                magic_wormhole::transfer::AppVersion::default(),
+                magic_wormhole::DEFAULT_MAILBOX_SERVER,
+                CodeProvider::AllocateCode(2),
+                &mut None,
+            )
+            .await?;
+            log::info!("Got welcome: {}", &welcome.welcome);
+            log::info!("This wormhole's code is: {}", &welcome.code);
+            code_tx.send(welcome.code.0).unwrap();
+            let mut w = connector.connect_to_client().await?;
+            log::info!("Got key: {}", &w.key);
+            transfer::send_file(
+                &mut w,
+                "examples/example-file.bin",
+                &magic_wormhole::transit::DEFAULT_RELAY_SERVER
+                    .parse().unwrap(),
+            )
+            .await
+        })?;
+    let receiver_task = async_std::task::Builder::new()
+        .name("receiver".to_owned())
+        .spawn(async {
+            let code = code_rx.await?;
+            log::info!("Got code over local: {}", &code);
+            let (welcome, connector) = magic_wormhole::connect_to_server(
+                magic_wormhole::transfer::APPID,
+                magic_wormhole::transfer::AppVersion::default(),
+                magic_wormhole::DEFAULT_MAILBOX_SERVER,
+                CodeProvider::SetCode(code),
+                &mut None,
+            )
+            .await?;
+            log::info!("Got welcome: {}", &welcome.welcome);
+        
+            let mut w = connector.connect_to_client().await?;
+            log::info!("Got key: {}", &w.key);
+            let req = transfer::request_file(
+                &mut w,
+                &magic_wormhole::transit::DEFAULT_RELAY_SERVER
+                    .parse().unwrap(),
+            )
+            .await?;
+        
+            req.accept().await
+        })?;
+    sender_task.await?;
+    receiver_task.await?;
+
+    let original = std::fs::read("examples/example-file.bin")?;
+    let received = std::fs::read("example-file.bin")?;
+    assert_eq!(original, received, "Files differ");
+    Ok(())
+}
+
 /** Start a connection from both sides, and then close one and check that the event loop stops. */
 #[async_std::test]
 pub async fn test_eventloop_exit1() {
@@ -27,17 +95,18 @@ pub async fn test_eventloop_exit1() {
     use futures::StreamExt;
     use std::time::Duration;
 
-    let code = "42-something-something"; // TODO dynamic code allocation
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(
+        let (welcome, connector) = crate::connect_to_server(
             APPID,
             serde_json::json!({}),
             MAILBOX_SERVER,
-            CodeProvider::SetCode(code.into()),
+            CodeProvider::default(),
             &mut None,
         )
         .await
         .unwrap();
+        code_tx.send(welcome.code).unwrap();
         let _wormhole = connector.connect_to_client().await.unwrap();
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
@@ -48,7 +117,7 @@ pub async fn test_eventloop_exit1() {
             APPID,
             serde_json::json!({}),
             MAILBOX_SERVER,
-            CodeProvider::SetCode(code.into()),
+            CodeProvider::SetCode(code_rx.await.unwrap().to_string()),
             &mut None,
         )
         .await
@@ -78,17 +147,18 @@ pub async fn test_eventloop_exit2() {
     use futures::StreamExt;
     use std::time::Duration;
 
-    let code = "41-something-something"; // TODO dynamic code allocation
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
     let dummy_task = async_std::task::spawn(async move {
-        let (_welcome, connector) = crate::connect_to_server(
+        let (welcome, connector) = crate::connect_to_server(
             APPID,
             serde_json::json!({}),
             MAILBOX_SERVER,
-            CodeProvider::SetCode(code.into()),
+            CodeProvider::default(),
             &mut None,
         )
         .await
         .unwrap();
+        code_tx.send(welcome.code).unwrap();
         let _wormhole = connector.connect_to_client().await;
         log::info!("A Connected.");
         async_std::task::sleep(Duration::from_secs(5)).await;
@@ -99,7 +169,7 @@ pub async fn test_eventloop_exit2() {
             APPID,
             serde_json::json!({}),
             MAILBOX_SERVER,
-            CodeProvider::SetCode(code.into()),
+            CodeProvider::SetCode(code_rx.await.unwrap().to_string()),
             &mut None,
         )
         .await
