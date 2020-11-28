@@ -47,7 +47,8 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
                 &mut w,
                 "examples/example-file.bin",
                 &magic_wormhole::transit::DEFAULT_RELAY_SERVER
-                    .parse().unwrap(),
+                    .parse()
+                    .unwrap(),
             )
             .await
         })?;
@@ -65,16 +66,17 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             )
             .await?;
             log::info!("Got welcome: {}", &welcome.welcome);
-        
+
             let mut w = connector.connect_to_client().await?;
             log::info!("Got key: {}", &w.key);
             let req = transfer::request_file(
                 &mut w,
                 &magic_wormhole::transit::DEFAULT_RELAY_SERVER
-                    .parse().unwrap(),
+                    .parse()
+                    .unwrap(),
             )
             .await?;
-        
+
             req.accept().await
         })?;
     sender_task.await?;

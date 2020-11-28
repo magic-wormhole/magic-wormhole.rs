@@ -11,14 +11,15 @@
 //! Each side might implement (or use/enable) some [abilities](Ability).
 //!
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
-//! "sender" side and one "receiver" side (doing the respectively correct part of the handshake).
+//! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
 use crate::{Key, KeyPurpose};
+use futures::task::Poll;
+use futures::Future;
 use serde_derive::{Deserialize, Serialize};
 
 use anyhow::{ensure, format_err, Context, Error, Result};
 use async_std::io::prelude::WriteExt;
-use async_std::io::Read;
 use async_std::io::ReadExt;
 use async_std::net::{TcpListener, TcpStream};
 use futures::future::TryFutureExt;
@@ -161,7 +162,6 @@ pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl) -> Result<Trans
                 .filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
                 .flat_map(|iface| iface.ips.iter())
                 .map(|n| n as &IpNetwork)
-                // .filter(|ip| ip.is_ipv4()) // TODO why was that there can we remove it?
                 .map(|ip| {
                     Hint::DirectTcpV1(DirectHint {
                         priority: 0.0,
@@ -211,7 +211,7 @@ impl TransitConnector {
     /**
      * Connect to the other side, as sender.
      */
-    pub async fn sender_connect(
+    pub async fn leader_connect(
         self,
         transit_key: Key<TransitKey>,
         other_side_ttype: TransitType,
@@ -252,7 +252,7 @@ impl TransitConnector {
 
                     TcpStream::connect(direct_host)
                         .err_into::<Error>()
-                        .and_then(|socket| tx_handshake_exchange(socket, host.0, &*transit_key))
+                        .and_then(|socket| leader_handshake_exchange(socket, host.0, &*transit_key))
                         .await
                 },
             ); //);
@@ -272,7 +272,7 @@ impl TransitConnector {
                     /* Pinning a future + moving some value from outer scope is a bit painful */
                     let transit_key = transit_key.clone();
                     Box::pin(async move {
-                        tx_handshake_exchange(socket, HostType::Direct, &*transit_key).await
+                        leader_handshake_exchange(socket, HostType::Direct, &*transit_key).await
                     })
                 }),
                 Result::is_err)
@@ -323,7 +323,7 @@ impl TransitConnector {
     /**
      * Connect to the other side, as receiver
      */
-    pub async fn receiver_connect(
+    pub async fn follower_connect(
         self,
         transit_key: Key<TransitKey>,
         other_side_ttype: TransitType,
@@ -363,7 +363,9 @@ impl TransitConnector {
 
                     TcpStream::connect(direct_host)
                         .err_into::<Error>()
-                        .and_then(|socket| rx_handshake_exchange(socket, host.0, &*transit_key))
+                        .and_then(|socket| {
+                            follower_handshake_exchange(socket, host.0, &*transit_key)
+                        })
                         .await
                 },
             ); //);
@@ -382,9 +384,10 @@ impl TransitConnector {
                 .and_then(move |socket| {
                     /* Pinning a future + moving some value from outer scope is a bit painful */
                     let transit_key = transit_key.clone();
-                    Box::pin(async move {
-                        rx_handshake_exchange(socket, HostType::Direct, &*transit_key).await
-                    })
+                    use futures::future::FutureExt;
+                    async move {
+                        follower_handshake_exchange(socket, HostType::Direct, &*transit_key).await
+                    }.boxed()
                 }),
                 Result::is_err)
                 /* We only care about the first that succeeds */
@@ -425,94 +428,137 @@ impl TransitConnector {
     }
 }
 
+/**
+ * An established Transit connection.
+ *
+ * While you can manually send and receive bytes over the TCP stream, this is not recommended as the transit protocol
+ * also specifies an encrypted record pipe that does all the hard work for you. See the provided methods.
+ */
 pub struct Transit {
+    /** Raw transit connection */
     pub socket: TcpStream,
+    /** Our key, used for sending */
     pub skey: Key<TransitTxKey>,
+    /** Their key, used for receiving */
     pub rkey: Key<TransitRxKey>,
+    /** Nonce for sending */
+    pub nonce: secretbox::Nonce,
 }
 
-pub fn make_transit_ack_msg(sha256: &str, key: &[u8]) -> Result<Vec<u8>> {
-    let plaintext = crate::transfer::TransitAck::new("ok", sha256).serialize();
+impl Transit {
+    /** Receive and decrypt one message from the other side. */
+    pub async fn receive_record(&mut self) -> anyhow::Result<Box<[u8]>> {
+        Transit::receive_record_inner(&mut self.socket, &self.rkey).await
+    }
 
-    let nonce_slice: [u8; sodiumoxide::crypto::secretbox::NONCEBYTES] =
-        [0; sodiumoxide::crypto::secretbox::NONCEBYTES];
-    let nonce = secretbox::Nonce::from_slice(&nonce_slice[..]).unwrap();
+    async fn receive_record_inner(
+        socket: &mut (impl futures::io::AsyncRead + Unpin),
+        rkey: &Key<TransitRxKey>,
+    ) -> anyhow::Result<Box<[u8]>> {
+        let enc_packet = {
+            // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
+            let length = {
+                let mut length_arr: [u8; 4] = [0; 4];
+                socket.read_exact(&mut length_arr[..]).await?;
+                u32::from_be_bytes(length_arr) as usize
+            };
 
-    encrypt_record(&plaintext.as_bytes(), nonce, &key)
+            // 2. read that many bytes into an array (or a vector?)
+            let mut buffer = Vec::with_capacity(length);
+            socket.take(length as u64).read_to_end(&mut buffer).await?;
+            buffer
+        };
+
+        // 3. decrypt the vector 'enc_packet' with the key.
+        let plaintext = {
+            let (nonce, ciphertext) =
+                enc_packet.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
+
+            secretbox::open(
+                &ciphertext,
+                &secretbox::Nonce::from_slice(nonce).context("nonce unwrap failed")?,
+                &secretbox::Key::from_slice(&rkey).context("key unwrap failed")?,
+            )
+            .map_err(|()| format_err!("decryption failed"))?
+        };
+
+        Ok(plaintext.into_boxed_slice())
+    }
+
+    /** Send an encrypted message to the other side */
+    pub async fn send_record(&mut self, plaintext: &[u8]) -> anyhow::Result<()> {
+        Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.nonce).await
+    }
+
+    async fn send_record_inner(
+        socket: &mut (impl futures::io::AsyncWrite + Unpin),
+        skey: &Key<TransitTxKey>,
+        plaintext: &[u8],
+        nonce: &mut secretbox::Nonce,
+    ) -> anyhow::Result<()> {
+        let ciphertext = {
+            let sodium_key = secretbox::Key::from_slice(&skey).unwrap();
+            // nonce in little endian (to interop with python client)
+            let mut nonce_vec = nonce.as_ref().to_vec();
+            nonce_vec.reverse();
+            let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref())
+                .ok_or_else(|| format_err!("encrypt_record: unable to create nonce"))?;
+
+            let ciphertext = secretbox::seal(plaintext, &nonce_le, &sodium_key);
+            let mut ciphertext_and_nonce = Vec::new();
+            trace!("nonce: {:?}", nonce_vec);
+            ciphertext_and_nonce.extend(nonce_vec);
+            ciphertext_and_nonce.extend(ciphertext);
+
+            ciphertext_and_nonce
+        };
+        nonce.increment_le_inplace();
+
+        // send the encrypted record
+        socket
+            .write_all(&(ciphertext.len() as u32).to_be_bytes())
+            .await?;
+        socket.write_all(&ciphertext).await?;
+        Ok(())
+    }
+
+    /** Convert the transit connection to a [`Stream`]/[`Sink`] pair */
+    pub fn split(
+        self,
+    ) -> (
+        impl futures::sink::Sink<Box<[u8]>>,
+        impl futures::stream::Stream<Item = anyhow::Result<Box<[u8]>>>,
+    ) {
+        use futures::io::AsyncReadExt;
+
+        let (reader, writer) = self.socket.split();
+        let skey: Key<TransitTxKey> = self.skey.clone();
+        (
+            futures::sink::unfold(
+                (writer, self.skey, self.snonce),
+                |(mut writer, skey, mut nonce), plaintext: Box<[u8]>| async move {
+                    Transit::send_record_inner(
+                        &mut writer,
+                        &skey as &Key<TransitTxKey>,
+                        &plaintext,
+                        &mut nonce,
+                    )
+                    .await
+                    .map(|()| (writer, skey, nonce))
+                },
+            ),
+            futures::stream::try_unfold((reader, self.rkey), |(mut reader, rkey)| async {
+                Transit::receive_record_inner(&mut reader, &rkey)
+                    .await
+                    .map(|record| Some((record, (reader, rkey))))
+            }),
+        )
+    }
 }
 
 fn generate_transit_side() -> String {
     let x: [u8; 8] = rand::random();
     hex::encode(x)
-}
-
-pub async fn send_record(stream: &mut TcpStream, buf: &[u8]) -> std::io::Result<()> {
-    let buf_length: u32 = buf.len() as u32;
-    trace!("record size: {:?}", buf_length);
-    let buf_length_array: [u8; 4] = buf_length.to_be_bytes();
-    stream.write_all(&buf_length_array[..]).await?;
-    stream.write_all(buf).await
-}
-
-/// receive a packet and return it (encrypted)
-pub async fn receive_record(stream: &mut (impl Read + Unpin)) -> Result<Vec<u8>> {
-    // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
-    let mut length_arr: [u8; 4] = [0; 4];
-    stream.read_exact(&mut length_arr[..]).await?;
-    let mut length = u32::from_be_bytes(length_arr);
-    trace!("encrypted packet length: {}", length);
-
-    // 2. read that many bytes into an array (or a vector?)
-    let enc_packet_length = length as usize;
-    let mut enc_packet = Vec::with_capacity(enc_packet_length);
-    let mut buf = [0u8; 1024];
-    while length > 0 {
-        let to_read = length.min(buf.len() as u32) as usize;
-        stream
-            .read_exact(&mut buf[..to_read])
-            .await
-            .context("cannot read from the tcp connection")?;
-        enc_packet.append(&mut buf.to_vec());
-        length -= to_read as u32;
-    }
-
-    enc_packet.truncate(enc_packet_length);
-    trace!("length of the ciphertext: {:?}", enc_packet.len());
-
-    Ok(enc_packet)
-}
-
-pub fn encrypt_record(plaintext: &[u8], nonce: secretbox::Nonce, key: &[u8]) -> Result<Vec<u8>> {
-    let sodium_key = secretbox::Key::from_slice(&key).unwrap();
-    // nonce in little endian (to interop with python client)
-    let mut nonce_vec = nonce.as_ref().to_vec();
-    nonce_vec.reverse();
-    let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref())
-        .ok_or_else(|| format_err!("encrypt_record: unable to create nonce"))?;
-
-    let ciphertext = secretbox::seal(plaintext, &nonce_le, &sodium_key);
-    let mut ciphertext_and_nonce = Vec::new();
-    trace!("nonce: {:?}", nonce_vec);
-    ciphertext_and_nonce.extend(nonce_vec);
-    ciphertext_and_nonce.extend(ciphertext);
-
-    Ok(ciphertext_and_nonce)
-}
-
-pub fn decrypt_record(enc_packet: &[u8], key: &[u8]) -> Result<Vec<u8>> {
-    // 3. decrypt the vector 'enc_packet' with the key.
-    let (nonce, ciphertext) = enc_packet.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
-
-    assert_eq!(nonce.len(), sodiumoxide::crypto::secretbox::NONCEBYTES);
-    let plaintext = secretbox::open(
-        &ciphertext,
-        &secretbox::Nonce::from_slice(nonce).context("nonce unwrap failed")?,
-        &secretbox::Key::from_slice(&key).context("key unwrap failed")?,
-    )
-    .map_err(|()| format_err!("decryption failed"))?;
-
-    trace!("decryption succeeded");
-    Ok(plaintext)
 }
 
 fn make_relay_handshake(key: &Key<TransitKey>, tside: &str) -> String {
@@ -524,14 +570,18 @@ fn make_relay_handshake(key: &Key<TransitKey>, tside: &str) -> String {
     )
 }
 
-async fn rx_handshake_exchange(
+async fn follower_handshake_exchange(
     mut socket: TcpStream,
     host_type: HostType,
     key: &Key<TransitKey>,
 ) -> Result<Transit> {
     // create record keys
-    let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
-    let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
+    /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
+     * "leader" and "follower" instead. As a follower, we use the leader key for receiving and our
+     * key for sending.
+     */
+    let rkey = key.derive_subkey_from_purpose("transit_record_sender_key");
+    let skey = key.derive_subkey_from_purpose("transit_record_receiver_key");
 
     // exchange handshake
     let tside = generate_transit_side();
@@ -579,10 +629,16 @@ async fn rx_handshake_exchange(
         );
     }
 
-    Ok(Transit { socket, skey, rkey })
+    Ok(Transit {
+        socket,
+        skey,
+        rkey,
+        nonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
+            .unwrap(),
+    })
 }
 
-async fn tx_handshake_exchange(
+async fn leader_handshake_exchange(
     mut socket: TcpStream,
     host_type: HostType,
     key: &Key<TransitKey>,
@@ -634,7 +690,13 @@ async fn tx_handshake_exchange(
         );
     }
 
-    Ok(Transit { socket, skey, rkey })
+    Ok(Transit {
+        socket,
+        skey,
+        rkey,
+        nonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
+            .unwrap(),
+    })
 }
 
 #[allow(clippy::type_complexity)]

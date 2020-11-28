@@ -35,13 +35,22 @@ sodiumoxide = "0.2.6"
 pnet = "0.26.0"
 byteorder = "1.3.4"
 anyhow = "1.0.33"
-futures = { version = "0.3.6"}
-async-std = { version = "1.6.5", features = ["attributes"] }
+futures = { version = "0.3.8" }
+async-std = { version = "1.8.0", features = ["attributes"] }
 async-tungstenite = { version = "0.10.0", features = ["async-std-runtime"] }
+pin-project = "1.0.2"
 
 # for "bin" feature
 clap = { version = "2.33.3", optional = true }
 env_logger = { version = "0.8.1", optional = true }
+
+[patch.crates-io]
+# Remove for 0.4.0
+futures = { rev = "d1acd71dcd2ae696036839c765f5c84e05b51c44", git = "https://github.com/rust-lang/futures-rs" }
+futures-core = { rev = "d1acd71dcd2ae696036839c765f5c84e05b51c44", git = "https://github.com/rust-lang/futures-rs" }
+futures-io = { rev = "d1acd71dcd2ae696036839c765f5c84e05b51c44", git = "https://github.com/rust-lang/futures-rs" }
+futures-util = { rev = "d1acd71dcd2ae696036839c765f5c84e05b51c44", git = "https://github.com/rust-lang/futures-rs" }
+futures-sink = { rev = "d1acd71dcd2ae696036839c765f5c84e05b51c44", git = "https://github.com/rust-lang/futures-rs" }
 
 # for some tests
 [dev-dependencies]
