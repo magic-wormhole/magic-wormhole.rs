@@ -75,9 +75,15 @@ impl KeyPurpose for GenericKey {}
  *
  * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
  */
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 // TODO redact value for logs by manually deriving Debug
 pub struct Key<P: KeyPurpose>(pub Vec<u8>, std::marker::PhantomData<P>);
+
+impl<P: KeyPurpose> Clone for Key<P> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), std::marker::PhantomData)
+    }
+}
 
 impl<P: KeyPurpose> Display for Key<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -136,7 +142,7 @@ impl<P: KeyPurpose> Key<P> {
  *
  * A value of this struct represents a Wormhole that has done the server handshake, but is not connected to any
  * "other side" client yet.
- * 
+ *
  * Use [`connect_to_client`](WormholeConnector::connect_to_client) to finish the setup and get a fully-initialized [`Wormhole`] object.
  * Call [`cancel`](WormholeConnector::cancel) to cleanly disconnect from the server.
  */

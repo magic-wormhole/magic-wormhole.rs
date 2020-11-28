@@ -18,13 +18,10 @@ use super::Wormhole;
 use anyhow::{bail, ensure, format_err, Context, Result};
 use async_std::fs::File;
 use async_std::io::prelude::WriteExt;
-use async_std::io::BufReader;
 use async_std::io::ReadExt;
-use async_std::net::TcpStream;
 use futures::{SinkExt, StreamExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
-use sodiumoxide::crypto::secretbox;
 use std::path::Path;
 use std::path::PathBuf;
 use transit::TransitConnector;
@@ -214,7 +211,7 @@ pub async fn send_file(
     }
 
     let mut transit = connector
-        .sender_connect(
+        .leader_connect(
             wormhole.key.derive_transit_key(&wormhole.appid),
             Arc::try_unwrap(other_side_ttype).unwrap(),
         )
@@ -321,7 +318,7 @@ impl<'a> ReceiveRequest<'a> {
 
         let mut transit = self
             .connector
-            .receiver_connect(
+            .follower_connect(
                 self.wormhole.key.derive_transit_key(&self.wormhole.appid),
                 Arc::try_unwrap(self.other_side_ttype).unwrap(),
             )
@@ -357,11 +354,7 @@ impl<'a> ReceiveRequest<'a> {
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-async fn send_records(
-    filepath: impl AsRef<Path>,
-    stream: &mut TcpStream,
-    skey: &[u8],
-) -> Result<Vec<u8>> {
+async fn send_records(filepath: impl AsRef<Path>, transit: &mut Transit) -> Result<Vec<u8>> {
     // rough plan:
     // 1. Open the file
     // 2. read a block of N bytes
@@ -378,32 +371,21 @@ async fn send_records(
 
     let mut hasher = Sha256::default();
 
-    let nonce_slice: [u8; sodiumoxide::crypto::secretbox::NONCEBYTES] =
-        [0; sodiumoxide::crypto::secretbox::NONCEBYTES];
-    let mut nonce = secretbox::Nonce::from_slice(&nonce_slice[..])
-        .ok_or(format_err!("Could not parse nonce".to_string()))?;
-
+    // Yeah, maybe don't allocate 4kiB on the stack…
+    let mut plaintext = Box::new([0u8; 4096]);
     loop {
         // read a block of 4096 bytes
-        let mut plaintext = [0u8; 4096];
         let n = file.read(&mut plaintext[..]).await?;
         debug!("sending {} bytes", n);
 
-        let ciphertext = transit::encrypt_record(&plaintext[0..n], nonce, &skey)?;
-
         // send the encrypted record
-        transit::send_record(stream, &ciphertext).await?;
-
-        // increment nonce
-        nonce.increment_le_inplace();
+        transit.send_record(&plaintext[0..n]).await?;
 
         // sha256 of the input
         hasher.update(&plaintext[..n]);
 
         if n < 4096 {
             break;
-        } else {
-            continue;
         }
     }
     Ok(hasher.finalize_fixed().to_vec())
@@ -412,26 +394,16 @@ async fn send_records(
 async fn receive_records(
     filepath: impl AsRef<Path>,
     filesize: u64,
-    tcp_conn: &mut TcpStream,
-    skey: &[u8],
+    transit: &mut Transit,
 ) -> Result<Vec<u8>> {
-    let mut stream = BufReader::new(tcp_conn);
     let mut hasher = Sha256::default();
     let mut f = File::create(filepath.as_ref()).await?; // TODO overwrite flags & checks & stuff
     let mut remaining_size = filesize as usize;
 
     while remaining_size > 0 {
-        debug!("remaining size: {:?}", remaining_size);
-
-        let enc_packet = transit::receive_record(&mut stream).await?;
-
-        // enc_packet.truncate(enc_packet_length);
-        debug!("length of the ciphertext: {:?}", enc_packet.len());
-
         // 3. decrypt the vector 'enc_packet' with the key.
-        let plaintext = transit::decrypt_record(&enc_packet, &skey)?;
+        let plaintext = transit.receive_record().await?;
 
-        debug!("decryption succeeded");
         f.write_all(&plaintext).await?;
 
         // 4. calculate a rolling sha256 sum of the decrypted output.
@@ -447,12 +419,11 @@ async fn receive_records(
 
 async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Result<()> {
     // 11. send the file as encrypted records.
-    let checksum = send_records(filepath, &mut transit.socket, &transit.skey).await?;
+    let checksum = send_records(filepath, transit).await?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
     debug!("sent file. Waiting for ack");
-    let enc_transit_ack = transit::receive_record(&mut BufReader::new(&mut transit.socket)).await?;
-    let transit_ack = transit::decrypt_record(&enc_transit_ack, &transit.rkey)?;
+    let transit_ack = transit.receive_record().await?;
     let transit_ack_msg = serde_json::from_str::<TransitAck>(std::str::from_utf8(&transit_ack)?)?;
     ensure!(
         transit_ack_msg.sha256 == hex::encode(checksum),
@@ -470,14 +441,14 @@ async fn tcp_file_receive(
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
-    let checksum = receive_records(filepath, filesize, &mut transit.socket, &transit.skey).await?;
+    let checksum = receive_records(filepath, filesize, transit).await?;
 
     let sha256sum = hex::encode(checksum.as_slice());
     debug!("sha256 sum: {:?}", sha256sum);
 
     // 6. verify sha256 sum by sending an ack message to peer along with checksum.
-    let ack_msg = transit::make_transit_ack_msg(&sha256sum, &transit.rkey)?;
-    transit::send_record(&mut transit.socket, &ack_msg).await?;
+    let plaintext = TransitAck::new("ok", &sha256sum).serialize();
+    transit.send_record(plaintext.as_bytes()).await?;
 
     // 7. close socket.
     // well, no need, it gets dropped when it goes out of scope.
