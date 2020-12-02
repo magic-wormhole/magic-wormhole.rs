@@ -442,18 +442,25 @@ pub struct Transit {
     /** Their key, used for receiving */
     pub rkey: Key<TransitRxKey>,
     /** Nonce for sending */
-    pub nonce: secretbox::Nonce,
+    pub snonce: secretbox::Nonce,
+    /**
+     * Nonce for receiving
+     * 
+     * We'll count as receiver and track if messages come in in order
+     */
+    pub rnonce: secretbox::Nonce,
 }
 
 impl Transit {
     /** Receive and decrypt one message from the other side. */
     pub async fn receive_record(&mut self) -> anyhow::Result<Box<[u8]>> {
-        Transit::receive_record_inner(&mut self.socket, &self.rkey).await
+        Transit::receive_record_inner(&mut self.socket, &self.rkey, &mut self.rnonce).await
     }
 
     async fn receive_record_inner(
         socket: &mut (impl futures::io::AsyncRead + Unpin),
         rkey: &Key<TransitRxKey>,
+        nonce: &mut secretbox::Nonce,
     ) -> anyhow::Result<Box<[u8]>> {
         let enc_packet = {
             // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
@@ -471,12 +478,20 @@ impl Transit {
 
         // 3. decrypt the vector 'enc_packet' with the key.
         let plaintext = {
-            let (nonce, ciphertext) =
+            let (received_nonce, ciphertext) =
                 enc_packet.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
+            { // Nonce check
+                // nonce in little endian (to interop with python client)
+                let mut nonce_vec = nonce.as_ref().to_vec();
+                nonce_vec.reverse();
+                anyhow::ensure!(nonce_vec == received_nonce, "Wrong nonce received, got {:x?} but expected {:x?}", received_nonce, nonce_vec);
+
+                nonce.increment_le_inplace();
+            }
 
             secretbox::open(
                 &ciphertext,
-                &secretbox::Nonce::from_slice(nonce).context("nonce unwrap failed")?,
+                &secretbox::Nonce::from_slice(received_nonce).context("nonce unwrap failed")?,
                 &secretbox::Key::from_slice(&rkey).context("key unwrap failed")?,
             )
             .map_err(|()| format_err!("decryption failed"))?
@@ -487,7 +502,7 @@ impl Transit {
 
     /** Send an encrypted message to the other side */
     pub async fn send_record(&mut self, plaintext: &[u8]) -> anyhow::Result<()> {
-        Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.nonce).await
+        Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.snonce).await
     }
 
     async fn send_record_inner(
@@ -496,29 +511,26 @@ impl Transit {
         plaintext: &[u8],
         nonce: &mut secretbox::Nonce,
     ) -> anyhow::Result<()> {
+        let sodium_key = secretbox::Key::from_slice(&skey).unwrap();
+        // nonce in little endian (to interop with python client)
+        let mut nonce_vec = nonce.as_ref().to_vec();
+        nonce_vec.reverse();
+
         let ciphertext = {
-            let sodium_key = secretbox::Key::from_slice(&skey).unwrap();
-            // nonce in little endian (to interop with python client)
-            let mut nonce_vec = nonce.as_ref().to_vec();
-            nonce_vec.reverse();
             let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref())
                 .ok_or_else(|| format_err!("encrypt_record: unable to create nonce"))?;
-
-            let ciphertext = secretbox::seal(plaintext, &nonce_le, &sodium_key);
-            let mut ciphertext_and_nonce = Vec::new();
-            trace!("nonce: {:?}", nonce_vec);
-            ciphertext_and_nonce.extend(nonce_vec);
-            ciphertext_and_nonce.extend(ciphertext);
-
-            ciphertext_and_nonce
+            secretbox::seal(plaintext, &nonce_le, &sodium_key)
         };
-        nonce.increment_le_inplace();
 
         // send the encrypted record
         socket
-            .write_all(&(ciphertext.len() as u32).to_be_bytes())
+            .write_all(&((ciphertext.len() + nonce_vec.len()) as u32).to_be_bytes())
             .await?;
+        socket.write_all(&nonce_vec).await?;
         socket.write_all(&ciphertext).await?;
+
+        nonce.increment_le_inplace();
+
         Ok(())
     }
 
@@ -532,7 +544,6 @@ impl Transit {
         use futures::io::AsyncReadExt;
 
         let (reader, writer) = self.socket.split();
-        let skey: Key<TransitTxKey> = self.skey.clone();
         (
             futures::sink::unfold(
                 (writer, self.skey, self.snonce),
@@ -547,10 +558,12 @@ impl Transit {
                     .map(|()| (writer, skey, nonce))
                 },
             ),
-            futures::stream::try_unfold((reader, self.rkey), |(mut reader, rkey)| async {
-                Transit::receive_record_inner(&mut reader, &rkey)
+            futures::stream::try_unfold(
+                (reader, self.rkey, self.rnonce),
+                |(mut reader, rkey, mut nonce)| async move {
+                Transit::receive_record_inner(&mut reader, &rkey, &mut nonce)
                     .await
-                    .map(|record| Some((record, (reader, rkey))))
+                    .map(|record| Some((record, (reader, rkey, nonce))))
             }),
         )
     }
@@ -633,7 +646,9 @@ async fn follower_handshake_exchange(
         socket,
         skey,
         rkey,
-        nonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
+        snonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
+            .unwrap(),
+        rnonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
             .unwrap(),
     })
 }
@@ -694,7 +709,9 @@ async fn leader_handshake_exchange(
         socket,
         skey,
         rkey,
-        nonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
+        snonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
+            .unwrap(),
+        rnonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
             .unwrap(),
     })
 }
