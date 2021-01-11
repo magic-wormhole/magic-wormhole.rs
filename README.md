@@ -24,33 +24,30 @@ However before diving into the `core` module, you should definitively read the [
 
 ----------
 
-[![Matrix][matrix-room-image]][matrix-room-url]
-<!-- ![Build Status][build-status-image] -->
-<!-- [![CircleCI Status][circleci-status-image]][circleci-status-url] -->
+![Build Status][build-status-image]
+[![CircleCI Status][circleci-status-image]][circleci-status-url]
 [![Deps][deps-status-image]][deps-status-url]
-<!-- [![Codecov][codecov-image]][codecov-url] -->
+[![Codecov][codecov-image]][codecov-url]
 [![Is-It-Maintained-Resolution-Time][iim-resolution-image]][iim-resolution-url]
 [![Is-It-Maintained-Open-Issues][iim-open-image]][iim-open-url]
-<!-- [![Crates.io][crates-io-image]][crates-io-url] -->
-<!-- [![Docs.rs][docs-image]][docs-url] -->
+[![Crates.io][crates-io-image]][crates-io-url]
+[![Docs.rs][docs-image]][docs-url]
 [![License][license-image]][license-url]
 
-[matrix-room-image]: https://img.shields.io/matrix/rusty-wormhole:matrix.org
-[matrix-room-url]: https://matrix.to/#/#rusty-wormhole:matrix.org
-[build-status-image]: https://github.com/piegamesde/magic-wormhole.rs/workflows/Rust/badge.svg
-[circleci-status-image]: https://circleci.com/gh/piegamesde/magic-wormhole.rs.svg?style=svg
-[circleci-status-url]: https://circleci.com/gh/piegamesde/magic-wormhole.rs
-[deps-status-image]: https://deps.rs/repo/github/piegamesde/magic-wormhole.rs/status.svg
-[deps-status-url]: https://deps.rs/repo/github/piegamesde/magic-wormhole.rs
-[codecov-image]: https://codecov.io/gh/piegamesde/magic-wormhole.rs/branch/master/graph/badge.svg
-[codecov-url]: https://codecov.io/gh/piegamesde/magic-wormhole.rs
+[build-status-image]: https://github.com/warner/magic-wormhole.rs/workflows/Rust/badge.svg
+[circleci-status-image]: https://circleci.com/gh/warner/magic-wormhole.rs.svg?style=svg
+[circleci-status-url]: https://circleci.com/gh/warner/magic-wormhole.rs
+[deps-status-image]: https://deps.rs/repo/github/warner/magic-wormhole.rs/status.svg
+[deps-status-url]: https://deps.rs/repo/github/warner/magic-wormhole.rs
+[codecov-image]: https://codecov.io/gh/warner/magic-wormhole.rs/branch/master/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/warner/magic-wormhole.rs
 [crates-io-image]: https://img.shields.io/crates/v/magic-wormhole.svg
 [crates-io-url]: https://crates.io/crates/magic-wormhole
 [docs-image]: https://docs.rs/magic-wormhole/badge.svg
 [docs-url]: https://docs.rs/magic-wormhole
 [license-image]: https://img.shields.io/crates/l/magic-wormhole.svg
 [license-url]: LICENSE
-[iim-resolution-image]: http://isitmaintained.com/badge/resolution/piegamesde/magic-wormhole.rs.svg
-[iim-resolution-url]: http://isitmaintained.com/project/piegamesde/magic-wormhole.rs
-[iim-open-image]: http://isitmaintained.com/badge/open/piegamesde/magic-wormhole.rs.svg
-[iim-open-url]: http://isitmaintained.com/project/piegamesde/magic-wormhole.rs
+[iim-resolution-image]: http://isitmaintained.com/badge/resolution/warner/magic-wormhole.rs.svg
+[iim-resolution-url]: http://isitmaintained.com/project/warner/magic-wormhole.rs
+[iim-open-image]: http://isitmaintained.com/badge/open/warner/magic-wormhole.rs.svg
+[iim-open-url]: http://isitmaintained.com/project/warner/magic-wormhole.rs
