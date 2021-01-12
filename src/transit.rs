@@ -14,23 +14,19 @@
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
 use crate::{Key, KeyPurpose};
-use futures::task::Poll;
-use futures::Future;
+use futures::{task::Poll, Future};
 use serde_derive::{Deserialize, Serialize};
 
 use anyhow::{ensure, format_err, Context, Error, Result};
-use async_std::io::prelude::WriteExt;
-use async_std::io::ReadExt;
-use async_std::net::{TcpListener, TcpStream};
-use futures::future::TryFutureExt;
-use futures::StreamExt;
+use async_std::{
+    io::{prelude::WriteExt, ReadExt},
+    net::{TcpListener, TcpStream},
+};
+use futures::{future::TryFutureExt, StreamExt};
 use log::*;
-use pnet::datalink;
-use pnet::ipnetwork::IpNetwork;
+use pnet::{datalink, ipnetwork::IpNetwork};
 use sodiumoxide::crypto::secretbox;
-use std::net::ToSocketAddrs;
-use std::str::FromStr;
-use std::sync::Arc;
+use std::{net::ToSocketAddrs, str::FromStr, sync::Arc};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
@@ -445,7 +441,7 @@ pub struct Transit {
     pub snonce: secretbox::Nonce,
     /**
      * Nonce for receiving
-     * 
+     *
      * We'll count as receiver and track if messages come in in order
      */
     pub rnonce: secretbox::Nonce,
@@ -480,11 +476,17 @@ impl Transit {
         let plaintext = {
             let (received_nonce, ciphertext) =
                 enc_packet.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
-            { // Nonce check
+            {
+                // Nonce check
                 // nonce in little endian (to interop with python client)
                 let mut nonce_vec = nonce.as_ref().to_vec();
                 nonce_vec.reverse();
-                anyhow::ensure!(nonce_vec == received_nonce, "Wrong nonce received, got {:x?} but expected {:x?}", received_nonce, nonce_vec);
+                anyhow::ensure!(
+                    nonce_vec == received_nonce,
+                    "Wrong nonce received, got {:x?} but expected {:x?}",
+                    received_nonce,
+                    nonce_vec
+                );
 
                 nonce.increment_le_inplace();
             }
@@ -561,10 +563,11 @@ impl Transit {
             futures::stream::try_unfold(
                 (reader, self.rkey, self.rnonce),
                 |(mut reader, rkey, mut nonce)| async move {
-                Transit::receive_record_inner(&mut reader, &rkey, &mut nonce)
-                    .await
-                    .map(|record| Some((record, (reader, rkey, nonce))))
-            }),
+                    Transit::receive_record_inner(&mut reader, &rkey, &mut nonce)
+                        .await
+                        .map(|record| Some((record, (reader, rkey, nonce))))
+                },
+            ),
         )
     }
 }
