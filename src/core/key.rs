@@ -1,14 +1,10 @@
-use crate::core::server_messages::OutboundMessage;
-use crate::core::EncryptedMessage;
-use crate::core::Event;
-use crate::core::Mailbox;
-use crate::core::Mood;
-use crate::core::Nameplate;
-use crate::APIEvent;
+use crate::{
+    core::{server_messages::OutboundMessage, EncryptedMessage, Event, Mailbox, Mood, Nameplate},
+    APIEvent,
+};
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
-use serde_json::json;
-use serde_json::{self, Value};
+use serde_json::{self, json, Value};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
 use std::collections::VecDeque;
@@ -21,9 +17,10 @@ use xsalsa20poly1305::{
 };
 use zeroize::Zeroizing;
 
-use super::events::{AppID, Code, EitherSide, Key, MySide, Phase};
-use super::mailbox;
-use super::util;
+use super::{
+    events::{AppID, Code, EitherSide, Key, MySide, Phase},
+    mailbox, util,
+};
 
 #[derive(Debug, PartialEq)]
 enum State {

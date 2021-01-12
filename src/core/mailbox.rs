@@ -1,9 +1,5 @@
-use crate::core::server_messages::OutboundMessage;
-use crate::core::EncryptedMessage;
-use crate::core::Event;
-use crate::core::Mood;
-use std::collections::HashMap;
-use std::collections::{HashSet, VecDeque};
+use crate::core::{server_messages::OutboundMessage, EncryptedMessage, Event, Mood};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::events::{Mailbox, MySide, Phase};
 

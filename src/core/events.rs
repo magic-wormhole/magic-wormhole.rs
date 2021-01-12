@@ -1,10 +1,12 @@
-use crate::core::server_messages::InboundMessage;
-use crate::core::server_messages::OutboundMessage;
-use crate::core::util::random_bytes;
-use crate::APIEvent;
+use crate::{
+    core::{
+        server_messages::{InboundMessage, OutboundMessage},
+        util::random_bytes,
+    },
+    APIEvent,
+};
 use serde_derive::{Deserialize, Serialize};
-use std::fmt;
-use std::ops::Deref;
+use std::{fmt, ops::Deref};
 use zeroize::Zeroize;
 
 pub use super::wordlist::Wordlist;

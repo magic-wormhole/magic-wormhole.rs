@@ -12,18 +12,20 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-use super::transit;
-use super::transit::{RelayUrl, Transit};
-use super::Wormhole;
+use super::{
+    transit,
+    transit::{RelayUrl, Transit},
+    Wormhole,
+};
 use anyhow::{bail, ensure, format_err, Context, Result};
-use async_std::fs::File;
-use async_std::io::prelude::WriteExt;
-use async_std::io::ReadExt;
+use async_std::{
+    fs::File,
+    io::{prelude::WriteExt, ReadExt},
+};
 use futures::{SinkExt, StreamExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use transit::TransitConnector;
 
 /// The App ID associated with this protocol.

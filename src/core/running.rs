@@ -1,12 +1,8 @@
-use super::key;
-use super::mailbox;
-use super::Key;
-use crate::core::EncryptedMessage;
-use crate::core::Event;
-use crate::core::Mood;
-use crate::core::MySide;
-use crate::core::Phase;
-use crate::APIEvent;
+use super::{key, mailbox, Key};
+use crate::{
+    core::{EncryptedMessage, Event, Mood, MySide, Phase},
+    APIEvent,
+};
 use std::collections::VecDeque;
 
 pub(super) struct RunningMachine {

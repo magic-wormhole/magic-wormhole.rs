@@ -25,14 +25,12 @@ mod core;
 pub mod transfer;
 pub mod transit;
 
-use crate::core::AppID;
-use crate::core::{APIEvent, Code};
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::channel::mpsc::UnboundedSender;
-use futures::Sink;
-use futures::Stream;
-use std::fmt::Display;
-use std::pin::Pin;
+use crate::core::{APIEvent, AppID, Code};
+use futures::{
+    channel::mpsc::{UnboundedReceiver, UnboundedSender},
+    Sink, Stream,
+};
+use std::{fmt::Display, pin::Pin};
 
 use crate::core::key::derive_key;
 use log::*;
@@ -161,8 +159,7 @@ impl WormholeConnector {
      * It returns a [`Wormhole`] struct over which you can send and receive byte messages with the other side.
      */
     pub async fn connect_to_client(mut self) -> anyhow::Result<Wormhole> {
-        use futures::SinkExt;
-        use futures::StreamExt;
+        use futures::{SinkExt, StreamExt};
 
         let key;
         let verifier;

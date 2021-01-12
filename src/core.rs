@@ -1,8 +1,6 @@
 use crate::core::server_messages::OutboundMessage;
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::channel::mpsc::UnboundedSender;
-use std::collections::VecDeque;
-use std::sync::Arc;
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use std::{collections::VecDeque, sync::Arc};
 
 #[macro_use]
 mod events;
@@ -168,8 +166,7 @@ pub async fn run(
         };
 
         trace!("Processing: {:?}", e);
-        use self::events::Event::*;
-        use self::server_messages::InboundMessage;
+        use self::{events::Event::*, server_messages::InboundMessage};
         match e {
             FromIO(InboundMessage::Welcome { welcome }) => {
                 welcome_message = Some(welcome);
