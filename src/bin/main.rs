@@ -2,10 +2,8 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
 };
 use log::*;
-use magic_wormhole::CodeProvider;
-use magic_wormhole::{transfer, Wormhole};
-use std::path::Path;
-use std::str;
+use magic_wormhole::{transfer, CodeProvider, Wormhole};
+use std::{path::Path, str};
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -273,8 +271,7 @@ async fn send_many(
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
-    use async_std::io;
-    use async_std::prelude::*;
+    use async_std::{io, prelude::*};
 
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 

@@ -7,8 +7,7 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use crate::core::server_messages::OutboundMessage;
-use crate::core::Event;
+use crate::core::{server_messages::OutboundMessage, Event};
 use log::*;
 use std::pin::Pin;
 
@@ -42,8 +41,8 @@ type WebsocketSender = Pin<
 type WebsocketReceiver = Pin<
     Box<
         dyn futures::stream::FusedStream<
-                Item = Result<IOEvent, async_tungstenite::tungstenite::Error>,
-            > + std::marker::Send,
+            Item = Result<IOEvent, async_tungstenite::tungstenite::Error>,
+        > + std::marker::Send,
     >,
 >;
 
@@ -115,11 +114,11 @@ impl WormholeIO {
 }
 
 async fn ws_connector(url: &str) -> (WebsocketSender, WebsocketReceiver) {
-    use async_tungstenite::async_std::*;
-    use async_tungstenite::tungstenite as ws2;
-    use futures::sink::SinkExt;
-    use futures::stream::StreamExt;
-    use futures::stream::TryStreamExt;
+    use async_tungstenite::{async_std::*, tungstenite as ws2};
+    use futures::{
+        sink::SinkExt,
+        stream::{StreamExt, TryStreamExt},
+    };
 
     // TODO error handling here
     let (ws_stream, _) = connect_async(url).await.unwrap();

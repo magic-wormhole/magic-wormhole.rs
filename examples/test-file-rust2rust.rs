@@ -1,6 +1,5 @@
 use log::*;
-use std::fs;
-use std::sync::mpsc;
+use std::{fs, sync::mpsc};
 
 fn main() {
     env_logger::builder()
