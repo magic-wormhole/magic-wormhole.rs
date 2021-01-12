@@ -1,6 +1,7 @@
-use super::events::{AppID, Mailbox, MySide, Phase, TheirSide};
-use super::util;
-use super::Mood;
+use super::{
+    events::{AppID, Mailbox, MySide, Phase, TheirSide},
+    util, Mood,
+};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{self, Value};
 
@@ -106,8 +107,7 @@ pub fn deserialize(s: &str) -> InboundMessage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use serde_json::from_str;
-    use serde_json::json;
+    use serde_json::{from_str, json};
 
     #[test]
     fn test_bind() {

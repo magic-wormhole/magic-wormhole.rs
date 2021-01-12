@@ -1,7 +1,6 @@
 #![cfg_attr(tarpaulin, skip)]
 
-use super::events::Phase;
-use super::Mood;
+use super::{events::Phase, Mood};
 use crate::CodeProvider;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
@@ -93,8 +92,7 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
 pub async fn test_eventloop_exit1() {
     init_logger();
 
-    use futures::SinkExt;
-    use futures::StreamExt;
+    use futures::{SinkExt, StreamExt};
     use std::time::Duration;
 
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
