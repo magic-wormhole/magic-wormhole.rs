@@ -1,6 +1,10 @@
 name: Rust
 
-on: [push]
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
 jobs:
   format:
@@ -14,6 +18,7 @@ jobs:
         override: true
     - name: Format
       run: cargo fmt -- --check
+
   clippy:
     name: clippy (stable)
     runs-on: ubuntu-latest
@@ -39,6 +44,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         args: --all-features
         name: clippy results
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -75,6 +81,7 @@ jobs:
       with:
         command: test
         args: --verbose
+
   coverage:
     runs-on: ubuntu-latest
     steps:
