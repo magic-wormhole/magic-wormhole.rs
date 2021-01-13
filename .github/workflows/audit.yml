@@ -2,10 +2,15 @@ name: Security Audit
 
 on:
   push:
-#    paths:
-#      - '**/Cargo.toml'
-#      - '**/Cargo.lock'
-#the 'push' trigger doesn't include paths
+    branches: [ master ]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+  pull_request:
+    branches: [ master ]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
   schedule:
     - cron: '32 10 * * *'
 
