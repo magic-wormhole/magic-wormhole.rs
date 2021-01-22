@@ -12,6 +12,8 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
+use crate::util::ask_user;
+
 use super::{
     transit,
     transit::{RelayUrl, Transit},
@@ -322,15 +324,33 @@ impl<'a> ReceiveRequest<'a> {
             .connector
             .follower_connect(
                 self.wormhole.key.derive_transit_key(&self.wormhole.appid),
-                Arc::try_unwrap(self.other_side_ttype).unwrap(),
+                Arc::try_unwrap(self.other_side_ttype.clone()).unwrap(),
             )
             .await?;
 
         debug!("Beginning file transfer");
         // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-        tcp_file_receive(&mut transit, &self.filename, self.filesize)
+        let accept = if self.filename.exists() {
+            let canonicalized = self
+                .filename
+                .clone()
+                .canonicalize()
+                .unwrap_or(self.filename.clone());
+            ask_user(format_args!(
+                "Override existing file {}? (y/n)",
+                canonicalized.to_string_lossy()
+            ))
             .await
-            .context("Could not receive file")
+        } else {
+            true
+        };
+        if accept {
+            tcp_file_receive(&mut transit, &self.filename, self.filesize)
+                .await
+                .context("Could not receive file")
+        } else {
+            self.reject().await
+        }
     }
 
     /**

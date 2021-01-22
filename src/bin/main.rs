@@ -2,7 +2,7 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
 };
 use log::*;
-use magic_wormhole::{transfer, CodeProvider, Wormhole};
+use magic_wormhole::{transfer, util::ask_user, CodeProvider, Wormhole};
 use std::{path::Path, str};
 
 #[async_std::main]
@@ -275,37 +275,11 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
 
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 
-    let mut stdout = io::stdout();
-    let stdin = io::stdin();
-
-    let answer = loop {
-        stdout
-            .write_fmt(format_args!(
-                "Receive file '{}' (size: {} bytes)? (y/N) ",
-                req.filename.display(),
-                req.filesize
-            ))
-            .await
-            .unwrap();
-
-        stdout.flush().await.unwrap();
-
-        let mut answer = String::new();
-        stdin.read_line(&mut answer).await.unwrap();
-
-        match answer.chars().next() {
-            Some('y') | Some('Y') => break true,
-            Some('n') | Some('N') => break false,
-            _ => {
-                stdout
-                    .write_fmt(format_args!("Please type y or n!\n"))
-                    .await
-                    .unwrap();
-                stdout.flush().await.unwrap();
-                continue;
-            },
-        };
-    };
+    let answer = ask_user(format_args!(
+        "Receive file '{}' (size: {} bytes)? (y/N) ",
+        req.filename.display(),
+        req.filesize
+    ));
 
     if answer {
         req.accept().await
