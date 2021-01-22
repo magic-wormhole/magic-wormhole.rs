@@ -19,24 +19,24 @@ readme = "README.md"
 travis-ci = { repository = "warner/magic-wormhole.rs" }
 
 [dependencies]
-serde = { version = "1.0", features = ["rc"] }
-serde_json = "1.0"
-serde_derive = "1.0"
-xsalsa20poly1305 = "0.6"
+serde = { version = "1.0.120", features = ["rc"] }
+serde_json = "1.0.61"
+serde_derive = "1.0.120"
+xsalsa20poly1305 = "0.6.0"
 spake2 = "0.2.0"
 sha2 = "0.9.2"
 hkdf = "0.10.0"
-hex = "0.4"
-rand = "0.8.1"
+hex = "0.4.2"
+rand = "0.8.2"
 regex = "1.4.3"
-log = "0.4"
-zeroize = { version = "1.2", features = ["zeroize_derive"] }
+log = "0.4.13"
+zeroize = { version = "1.2.0", features = ["zeroize_derive"] }
 sodiumoxide = "0.2.6"
-pnet = "0.27.0"
+pnet = "0.27.2"
 byteorder = "1.4.2"
-anyhow = "1.0.37"
-futures = { version = "0.3.9" }
-async-std = { version = "1.8.0", features = ["attributes"] }
+anyhow = "1.0.38"
+futures = "0.3.12"
+async-std = { version = "1.9.0", features = ["attributes"] }
 async-tungstenite = { version = "0.12.0", features = ["async-std-runtime"] }
 pin-project = "1.0.4"
 

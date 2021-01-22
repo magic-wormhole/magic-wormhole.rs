@@ -1,0 +1,63 @@
+targets = []
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "warn"
+notice = "warn"
+ignore = ["RUSTSEC-2018-0015"]
+
+[licenses]
+unlicensed = "deny"
+allow = ["MIT", "Apache-2.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "MPL-2.0"]
+deny = []
+copyleft = "deny"
+allow-osi-fsf-free = "neither"
+default = "deny"
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+ignore = false
+registries = []
+
+[bans]
+multiple-versions = "deny"
+wildcards = "allow"
+highlight = "all"
+allow = []
+deny = []
+skip = [
+    { name = "winapi", version = "=0.2.8" },
+    { name = "unicode-xid", version = "=0.0.3" },
+    { name = "subtle", version = "=1.0.0" },
+    { name = "sha2", version = "=0.8.2" },
+    { name = "rand_hc", version = "=0.1.0" },
+    { name = "rand_core", version = "=0.3.1" },
+    { name = "rand_core", version = "=0.4.2" },
+    { name = "rand_core", version = "=0.5.1" },
+    { name = "rand_chacha", version = "=0.3.0" },
+    { name = "rand", version = "0.6.5" },
+    { name = "opaque-debug", version = "=0.2.3" },
+    { name = "log", version = "=0.3.9" },
+    { name = "autocfg", version = "=0.1.7" },
+    { name = "bitflags", version = "=0.5.0" },
+    { name = "block-buffer", version = "=0.7.3" },
+    { name = "cfg-if", version = "=0.1.10" },
+    { name = "cpuid-bool", version = "=0.1.2" },
+    { name = "crypto-mac", version = "=0.7.0" },
+    { name = "digest", version = "=0.8.1" },
+    { name = "generic-array", version = "=0.12.3" },
+    { name = "hex", version = "=0.3.2" },
+    { name = "hkdf", version = "=0.7.1" },
+    { name = "hmac", version = "=0.7.1" },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
