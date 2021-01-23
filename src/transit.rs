@@ -14,7 +14,6 @@
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
 use crate::{Key, KeyPurpose};
-use futures::{task::Poll, Future};
 use serde_derive::{Deserialize, Serialize};
 
 use anyhow::{ensure, format_err, Context, Error, Result};
