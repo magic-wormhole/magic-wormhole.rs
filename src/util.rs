@@ -1,11 +1,11 @@
 use async_std::{io, io::prelude::*};
 
-pub async fn ask_user(message: String, default_yes: bool) -> bool {
+pub async fn ask_user(message: String, default_answer: bool) -> bool {
     let message = format!(
         "{} ({}/{}) ",
         message,
-        if default_yes { "Y" } else { "y" },
-        if default_yes { "n" } else { "N" }
+        if default_answer { "Y" } else { "y" },
+        if default_answer { "n" } else { "N" }
     );
 
     let mut stdout = io::stdout();
@@ -19,10 +19,10 @@ pub async fn ask_user(message: String, default_yes: bool) -> bool {
         let mut answer = String::new();
         stdin.read_line(&mut answer).await.unwrap();
 
-        match answer.chars().next().map(|c| c.to_ascii_lowercase()) {
-            Some('y') => break true,
-            Some('n') => break false,
-            None => break default_yes,
+        match &*answer.to_lowercase().trim() {
+            "y" | "yes" => break true,
+            "n" | "no" => break false,
+            "" => break default_answer,
             _ => {
                 stdout
                     .write("Please type y or n!\n".as_bytes())
