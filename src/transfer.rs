@@ -8,6 +8,7 @@
 //! At its core, [`PeerMessage`s](PeerMessage) are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
+use async_std::fs::OpenOptions;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -307,7 +308,7 @@ impl<'a> ReceiveRequest<'a> {
      *
      * This will transfer the file and save it on disk.
      */
-    pub async fn accept(self) -> Result<()> {
+    pub async fn accept(self, overwrite: bool) -> Result<()> {
         // send file ack.
         debug!("Sending ack");
         self.wormhole
@@ -330,36 +331,9 @@ impl<'a> ReceiveRequest<'a> {
 
         debug!("Beginning file transfer");
         // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-        let filename = self.filename.clone();
-        if !self.filename.exists()
-            || ask_user(
-                format!(
-                    "Override existing file {}?",
-                    self.filename
-                        .clone()
-                        .canonicalize()
-                        .unwrap_or(filename)
-                        .to_string_lossy()
-                ),
-                false,
-            )
+        tcp_file_receive(&mut transit, &self.filename, self.filesize, overwrite)
             .await
-        {
-            tcp_file_receive(&mut transit, &self.filename, self.filesize)
-                .await
-                .context("Could not receive file")
-        } else {
-            self.wormhole
-                .tx
-                .send(
-                    PeerMessage::new_error_message("transfer rejected")
-                        .serialize()
-                        .as_bytes()
-                        .to_vec(),
-                )
-                .await?;
-            Ok(())
-        }
+            .context("Could not receive file")
     }
 
     /**
@@ -426,9 +400,17 @@ async fn receive_records(
     filepath: impl AsRef<Path>,
     filesize: u64,
     transit: &mut Transit,
+    overwrite: bool,
 ) -> Result<Vec<u8>> {
     let mut hasher = Sha256::default();
-    let mut f = File::create(filepath.as_ref()).await?; // TODO overwrite flags & checks & stuff
+    let mut options = OpenOptions::new();
+    options.write(true);
+    if overwrite {
+        options.create(true).truncate(true)
+    } else {
+        options.create_new(true)
+    };
+    let mut f = options.open(filepath.as_ref()).await?; 
     let mut remaining_size = filesize as usize;
 
     while remaining_size > 0 {
@@ -468,11 +450,12 @@ async fn tcp_file_receive(
     transit: &mut Transit,
     filepath: impl AsRef<Path>,
     filesize: u64,
+    overwrite: bool,
 ) -> Result<()> {
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
-    let checksum = receive_records(filepath, filesize, transit).await?;
+    let checksum = receive_records(filepath, filesize, transit, overwrite).await?;
 
     let sha256sum = hex::encode(checksum.as_slice());
     debug!("sha256 sum: {:?}", sha256sum);

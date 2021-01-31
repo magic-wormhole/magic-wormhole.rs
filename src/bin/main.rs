@@ -283,8 +283,18 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
     )
     .await;
 
+    let overwrite = !req.filename.exists()
+        || ask_user(
+            format!(
+                "Override existing file {}?",
+                req.filename.display()
+            ),
+            false,
+        )
+        .await;
+
     if answer {
-        req.accept().await
+        req.accept(overwrite).await
     } else {
         req.reject().await
     }
