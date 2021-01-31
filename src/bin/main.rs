@@ -274,12 +274,12 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 
     let answer = ask_user(
-        format_args!(
-            "Receive file '{}' (size: {} bytes)? (y/N) ",
+        format!(
+            "Receive file '{}' (size: {} bytes)?",
             req.filename.display(),
             req.filesize
         ),
-        true,
+        false,
     )
     .await;
 

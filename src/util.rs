@@ -1,13 +1,18 @@
-use std::fmt::Arguments;
-
 use async_std::{io, io::prelude::*};
 
-pub async fn ask_user(message: Arguments<'_>, default_yes: bool) -> bool {
+pub async fn ask_user(message: String, default_yes: bool) -> bool {
+    let message = format!(
+        "{} ({}/{}) ",
+        message,
+        if default_yes { "Y" } else { "y" },
+        if default_yes { "n" } else { "N" }
+    );
+
     let mut stdout = io::stdout();
     let stdin = io::stdin();
 
     loop {
-        stdout.write_fmt(message).await.unwrap();
+        stdout.write(message.as_bytes()).await.unwrap();
 
         stdout.flush().await.unwrap();
 
@@ -20,7 +25,7 @@ pub async fn ask_user(message: Arguments<'_>, default_yes: bool) -> bool {
             None => break default_yes,
             _ => {
                 stdout
-                    .write_fmt(format_args!("Please type y or n!\n"))
+                    .write("Please type y or n!\n".as_bytes())
                     .await
                     .unwrap();
                 stdout.flush().await.unwrap();

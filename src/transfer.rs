@@ -330,24 +330,21 @@ impl<'a> ReceiveRequest<'a> {
 
         debug!("Beginning file transfer");
         // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-        let accept = if self.filename.exists() {
-            let canonicalized = self
-                .filename
-                .clone()
-                .canonicalize()
-                .unwrap_or(self.filename.clone());
-            ask_user(
-                format_args!(
-                    "Override existing file {}? (y/N)",
-                    canonicalized.to_string_lossy()
+        let filename = self.filename.clone();
+        if !self.filename.exists()
+            || ask_user(
+                format!(
+                    "Override existing file {}?",
+                    self.filename
+                        .clone()
+                        .canonicalize()
+                        .unwrap_or(filename)
+                        .to_string_lossy()
                 ),
-                true,
+                false,
             )
             .await
-        } else {
-            true
-        };
-        if accept {
+        {
             tcp_file_receive(&mut transit, &self.filename, self.filesize)
                 .await
                 .context("Could not receive file")
