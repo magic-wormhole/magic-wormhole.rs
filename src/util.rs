@@ -2,7 +2,7 @@ use std::fmt::Arguments;
 
 use async_std::{io, io::prelude::*};
 
-pub async fn ask_user(message: Arguments<'_>) -> bool {
+pub async fn ask_user(message: Arguments<'_>, default_yes: bool) -> bool {
     let mut stdout = io::stdout();
     let stdin = io::stdin();
 
@@ -17,6 +17,7 @@ pub async fn ask_user(message: Arguments<'_>) -> bool {
         match answer.chars().next().map(|c| c.to_ascii_lowercase()) {
             Some('y') => break true,
             Some('n') => break false,
+            None => break default_yes,
             _ => {
                 stdout
                     .write_fmt(format_args!("Please type y or n!\n"))

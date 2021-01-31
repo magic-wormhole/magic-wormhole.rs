@@ -336,10 +336,13 @@ impl<'a> ReceiveRequest<'a> {
                 .clone()
                 .canonicalize()
                 .unwrap_or(self.filename.clone());
-            ask_user(format_args!(
-                "Override existing file {}? (y/n)",
-                canonicalized.to_string_lossy()
-            ))
+            ask_user(
+                format_args!(
+                    "Override existing file {}? (y/N)",
+                    canonicalized.to_string_lossy()
+                ),
+                true,
+            )
             .await
         } else {
             true
@@ -349,7 +352,16 @@ impl<'a> ReceiveRequest<'a> {
                 .await
                 .context("Could not receive file")
         } else {
-            self.reject().await
+            self.wormhole
+                .tx
+                .send(
+                    PeerMessage::new_error_message("transfer rejected")
+                        .serialize()
+                        .as_bytes()
+                        .to_vec(),
+                )
+                .await?;
+            Ok(())
         }
     }
 

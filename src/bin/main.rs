@@ -271,15 +271,17 @@ async fn send_many(
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
-    use async_std::{io, prelude::*};
-
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 
-    let answer = ask_user(format_args!(
-        "Receive file '{}' (size: {} bytes)? (y/N) ",
-        req.filename.display(),
-        req.filesize
-    ));
+    let answer = ask_user(
+        format_args!(
+            "Receive file '{}' (size: {} bytes)? (y/N) ",
+            req.filename.display(),
+            req.filesize
+        ),
+        true,
+    )
+    .await;
 
     if answer {
         req.accept().await
