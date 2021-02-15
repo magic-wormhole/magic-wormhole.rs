@@ -291,11 +291,11 @@ impl TransitConnector {
                     transit = transit2;
                     handshake_futures = remaining;
                     break;
-                },
+                }
                 (Err(e), _index, remaining) => {
                     debug!("Some handshake failed {:#}", e);
                     handshake_futures = remaining;
-                },
+                }
             }
         }
         let mut transit = transit;
@@ -405,11 +405,11 @@ impl TransitConnector {
                     transit = transit2;
                     handshake_futures = remaining;
                     break;
-                },
+                }
                 (Err(e), _index, remaining) => {
                     debug!("Some handshake failed {:#}", e);
                     handshake_futures = remaining;
-                },
+                }
             }
         }
 
