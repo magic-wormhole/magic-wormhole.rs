@@ -8,9 +8,13 @@
 //! At its core, [`PeerMessage`s](PeerMessage) are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
+extern crate pbr;
+
+use kv::ToValue;
+use pbr::{ProgressBar, Units};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
+use std::{borrow::Borrow, io::Read, sync::Arc, usize};
 
 use super::{
     transit,
@@ -207,7 +211,7 @@ pub async fn send_file(
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
                 ensure!(msg == "ok", "file ack failed");
-            },
+            }
             _ => bail!("did not receive file ack"),
         }
     }
@@ -249,16 +253,16 @@ pub async fn request_file<'a>(
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
                 transit
-            },
+            }
             PeerMessage::Error(err) => {
                 anyhow::bail!("Something went wrong on the other side: {}", err);
-            },
+            }
             other => {
                 anyhow::bail!(
                     "Got an unexpected message type, is the other side all right? Got: '{:?}'",
                     other
                 );
-            },
+            }
         };
 
     // 3. receive file offer message from peer
@@ -369,19 +373,34 @@ async fn send_records(filepath: impl AsRef<Path>, transit: &mut Transit) -> Resu
     let mut file = File::open(&filepath.as_ref())
         .await
         .context(format!("Could not open {}", &filepath.as_ref().display()))?;
-    debug!("Sending file size {}", file.metadata().await?.len());
+    let file_size = file.metadata().await?.len();
+    debug!("Sending file size {}", file_size);
+
+    // Initiate the Progress bar and format in Terminal.
+    let mut pb = ProgressBar::new(file_size);
+    pb.format("╢▌▌░╟");
+    pb.set_units(Units::Bytes);
 
     let mut hasher = Sha256::default();
 
     // Yeah, maybe don't allocate 4kiB on the stack…
     let mut plaintext = Box::new([0u8; 4096]);
+    let mut count = 0;
     loop {
         // read a block of 4096 bytes
         let n = file.read(&mut plaintext[..]).await?;
-        debug!("sending {} bytes", n);
+        count += n;
+        // debug!("sending {} bytes", n);
 
         // send the encrypted record
         transit.send_record(&plaintext[0..n]).await?;
+
+        pb.set(
+            count
+                .to_value()
+                .to_u64()
+                .expect("Can't convert to usize to u64."),
+        );
 
         // sha256 of the input
         hasher.update(&plaintext[..n]);
@@ -390,6 +409,8 @@ async fn send_records(filepath: impl AsRef<Path>, transit: &mut Transit) -> Resu
             break;
         }
     }
+    // pb.finish_print("Transfer done");
+
     Ok(hasher.finalize_fixed().to_vec())
 }
 
@@ -402,17 +423,40 @@ async fn receive_records(
     let mut f = File::create(filepath.as_ref()).await?; // TODO overwrite flags & checks & stuff
     let mut remaining_size = filesize as usize;
 
+    // Initiate the Progress bar and format in Terminal.
+    let mut pb = ProgressBar::new(filesize);
+    pb.format("╢▌▌░╟");
+    pb.set_units(Units::Bytes);
+    let file_size_usize = filesize as usize;
+    let mut progress_counter = 0;
+
     while remaining_size > 0 {
         // 3. decrypt the vector 'enc_packet' with the key.
         let plaintext = transit.receive_record().await?;
 
         f.write_all(&plaintext).await?;
 
+        // Show progression of receiving files.
+        progress_counter += file_size_usize - plaintext.len();
+        // debug!(
+        //     "plaintext: {} - progress_counter: {} - remaining_size: {}",
+        //     plaintext.len(),
+        //     progress_counter,
+        //     remaining_size
+        // );
+        pb.set(
+            progress_counter
+                .to_value()
+                .to_u64()
+                .expect("Can't convert to usize to u64."),
+        );
+
         // 4. calculate a rolling sha256 sum of the decrypted output.
         hasher.update(&plaintext);
 
         remaining_size -= plaintext.len();
     }
+    // pb.finish_print("Receive done");
 
     debug!("done");
     // TODO: 5. write the buffer into a file.
