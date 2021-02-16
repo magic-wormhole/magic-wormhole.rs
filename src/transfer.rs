@@ -13,8 +13,6 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::util::ask_user;
-
 use super::{
     transit,
     transit::{RelayUrl, Transit},
@@ -410,7 +408,7 @@ async fn receive_records(
     } else {
         options.create_new(true)
     };
-    let mut f = options.open(filepath.as_ref()).await?; 
+    let mut f = options.open(filepath.as_ref()).await?;
     let mut remaining_size = filesize as usize;
 
     while remaining_size > 0 {
