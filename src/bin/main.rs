@@ -4,6 +4,8 @@ use clap::{
 use log::*;
 use magic_wormhole::{transfer, CodeProvider, Wormhole};
 use std::{path::Path, str};
+use anyhow::anyhow;
+use std::time::{SystemTime, Duration};
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -241,7 +243,9 @@ fn enter_code() -> anyhow::Result<String> {
 }
 
 async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
-    loop {
+    let time = SystemTime::now();
+    let one_hour = Duration::from_secs(3600);
+    while time.elapsed()? < one_hour {
         let (_welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
             magic_wormhole::transfer::AppVersion::default(),
@@ -249,13 +253,14 @@ async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -
             CodeProvider::SetCode(code.to_owned()),
         ).await?;
         let mut wormhole = connector.connect_to_client().await?;
-        let url = &relay_server.parse()?;
+        let url = &relay_server.parse().map_err(|e| anyhow!("{}", e))?;
         let result = transfer::send_file(&mut wormhole, &filename, url).await;
         match result {
             Ok(_) => info!("TODO success message"),
             Err(e) => warn!("Send failed, {}", e)
         }
     }
+    Ok(())
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
