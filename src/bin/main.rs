@@ -1,11 +1,16 @@
+use std::ops::Deref;
+use std::str;
+use std::time::{Duration, SystemTime};
+
+use anyhow::anyhow;
+use async_std::sync::Arc;
+use async_std::task;
 use clap::{
-    crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
+    App, AppSettings, Arg, crate_authors, crate_description, crate_name, crate_version, SubCommand,
 };
 use log::*;
-use magic_wormhole::{transfer, CodeProvider, Wormhole};
-use std::{path::Path, str};
-use anyhow::anyhow;
-use std::time::{SystemTime, Duration};
+
+use magic_wormhole::{CodeProvider, transfer, Wormhole};
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -242,9 +247,13 @@ fn enter_code() -> anyhow::Result<String> {
     Ok(code)
 }
 
-async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
+async fn send_many(relay_server: &str, code: &str, filename: &str) -> anyhow::Result<()> {
     let time = SystemTime::now();
     let one_hour = Duration::from_secs(3600);
+
+    let filename = Arc::new(filename.to_owned());
+    let url = Arc::new(relay_server.parse().map_err(|e| anyhow!("{}", e))?);
+
     while time.elapsed()? < one_hour {
         let (_welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
@@ -253,12 +262,15 @@ async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -
             CodeProvider::SetCode(code.to_owned()),
         ).await?;
         let mut wormhole = connector.connect_to_client().await?;
-        let url = &relay_server.parse().map_err(|e| anyhow!("{}", e))?;
-        let result = transfer::send_file(&mut wormhole, &filename, url).await;
-        match result {
-            Ok(_) => info!("TODO success message"),
-            Err(e) => warn!("Send failed, {}", e)
-        }
+        let url = Arc::clone(&url);
+        let filename = Arc::clone(&filename);
+        task::spawn(async move {
+            let result = transfer::send_file(&mut wormhole, filename.deref(), &url).await;
+            match result {
+                Ok(_) => info!("TODO success message"),
+                Err(e) => warn!("Send failed, {}", e)
+            }
+        });
     }
     Ok(())
 }
