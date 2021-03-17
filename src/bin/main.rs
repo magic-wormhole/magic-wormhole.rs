@@ -240,34 +240,22 @@ fn enter_code() -> anyhow::Result<String> {
     Ok(code)
 }
 
-async fn send_many(
-    relay_server: &str,
-    code: &str,
-    filename: impl AsRef<Path>,
-) -> anyhow::Result<()> {
+async fn send_many(relay_server: &str, code: &str, filename: impl AsRef<Path>) -> anyhow::Result<()> {
     loop {
-        match {
-            let (_welcome, connector) = magic_wormhole::connect_to_server(
-                magic_wormhole::transfer::APPID,
-                magic_wormhole::transfer::AppVersion::default(),
-                magic_wormhole::DEFAULT_MAILBOX_SERVER,
-                CodeProvider::SetCode(code.to_owned()),
-            )
-            .await?;
-            let mut wormhole = connector.connect_to_client().await?;
-            let result =
-                transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
-            result
-        } {
-            Ok(_) => {
-                info!("TOOD success message");
-            },
-            Err(e) => {
-                warn!("Send failed, {}", e);
-            },
+        let (_welcome, connector) = magic_wormhole::connect_to_server(
+            magic_wormhole::transfer::APPID,
+            magic_wormhole::transfer::AppVersion::default(),
+            magic_wormhole::DEFAULT_MAILBOX_SERVER,
+            CodeProvider::SetCode(code.to_owned()),
+        ).await?;
+        let mut wormhole = connector.connect_to_client().await?;
+        let url = &relay_server.parse()?;
+        let result = transfer::send_file(&mut wormhole, &filename, url).await;
+        match result {
+            Ok(_) => info!("TODO success message"),
+            Err(e) => warn!("Send failed, {}", e)
         }
     }
-    // Ok(())
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
