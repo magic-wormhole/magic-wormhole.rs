@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::str;
 use std::time::{Duration, SystemTime};
 
@@ -10,7 +9,8 @@ use clap::{
 };
 use log::*;
 
-use magic_wormhole::{CodeProvider, transfer, Wormhole};
+use magic_wormhole::{CodeProvider, transfer, Wormhole, WormholeConnector};
+use magic_wormhole::transit::RelayUrl;
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -261,17 +261,21 @@ async fn send_many(relay_server: &str, code: &str, filename: &str) -> anyhow::Re
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.to_owned()),
         ).await?;
-        let mut wormhole = connector.connect_to_client().await?;
-        let url = Arc::clone(&url);
-        let filename = Arc::clone(&filename);
-        task::spawn(async move {
-            let result = transfer::send_file(&mut wormhole, filename.deref(), &url).await;
-            match result {
-                Ok(_) => info!("TODO success message"),
-                Err(e) => warn!("Send failed, {}", e)
-            }
-        });
+        send_in_background(Arc::clone(&url), Arc::clone(&filename), connector).await?;
     }
+    Ok(())
+}
+
+async fn send_in_background(url: Arc<RelayUrl>, filename: Arc<String>,
+                            connector: WormholeConnector) -> anyhow::Result<()> {
+    let mut wormhole = connector.connect_to_client().await?;
+    task::spawn(async move {
+        let result = transfer::send_file(&mut wormhole, &*filename, &url).await;
+        match result {
+            Ok(_) => info!("TODO success message"),
+            Err(e) => warn!("Send failed, {}", e)
+        }
+    });
     Ok(())
 }
 
