@@ -2,7 +2,7 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
 };
 use log::*;
-use magic_wormhole::{transfer, CodeProvider, Wormhole};
+use magic_wormhole::{transfer, util, CodeProvider, Wormhole};
 use std::{path::Path, str};
 
 #[async_std::main]
@@ -271,44 +271,40 @@ async fn send_many(
 }
 
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
-    use async_std::{io, prelude::*};
-
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 
-    let mut stdout = io::stdout();
-    let stdin = io::stdin();
+    let answer = util::ask_user(
+        format!(
+            "Receive file '{}' (size: {} bytes)?",
+            req.filename.display(),
+            req.filesize
+        ),
+        false,
+    )
+    .await;
 
-    let answer = loop {
-        stdout
-            .write_fmt(format_args!(
-                "Receive file '{}' (size: {} bytes)? (y/N) ",
-                req.filename.display(),
-                req.filesize
-            ))
-            .await
-            .unwrap();
-
-        stdout.flush().await.unwrap();
-
-        let mut answer = String::new();
-        stdin.read_line(&mut answer).await.unwrap();
-
-        match answer.chars().next() {
-            Some('y') | Some('Y') => break true,
-            Some('n') | Some('N') => break false,
-            _ => {
-                stdout
-                    .write_fmt(format_args!("Please type y or n!\n"))
-                    .await
-                    .unwrap();
-                stdout.flush().await.unwrap();
-                continue;
-            },
-        };
-    };
-
+    /*
+     * Control flow is a bit tricky here:
+     * - First of all, we ask if we want to receive the file at all
+     * - Then, we check if the file already exists
+     * - If it exists, ask whether to overwrite and act accordingly
+     * - If it doesn't, directly accept, but DON'T overwrite any files
+     */
     if answer {
-        req.accept().await
+        if req.filename.exists() {
+            let overwrite = util::ask_user(
+                format!("Override existing file {}?", req.filename.display()),
+                false,
+            )
+            .await;
+            if overwrite {
+                req.accept(true).await
+            } else {
+                req.reject().await
+            }
+        } else {
+            req.accept(false).await
+        }
     } else {
         req.reject().await
     }

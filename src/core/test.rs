@@ -76,7 +76,7 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             )
             .await?;
 
-            req.accept().await
+            req.accept(false).await
         })?;
     sender_task.await?;
     receiver_task.await?;
