@@ -2,7 +2,7 @@ use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand,
 };
 use log::*;
-use magic_wormhole::{transfer, util::ask_user, CodeProvider, Wormhole};
+use magic_wormhole::{transfer, util, CodeProvider, Wormhole};
 use std::{path::Path, str};
 
 #[async_std::main]
@@ -273,7 +273,7 @@ async fn send_many(
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 
-    let answer = ask_user(
+    let answer = util::ask_user(
         format!(
             "Receive file '{}' (size: {} bytes)?",
             req.filename.display(),
@@ -283,18 +283,28 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
     )
     .await;
 
-    let overwrite = if req.filename.exists() {
-        ask_user(
-            format!("Override existing file {}?", req.filename.display()),
-            false,
-        )
-        .await
-    } else {
-        false
-    };
-
+    /*
+     * Control flow is a bit tricky here:
+     * - First of all, we ask if we want to receive the file at all
+     * - Then, we check if the file already exists
+     * - If it exists, ask whether to overwrite and act accordingly
+     * - If it doesn't, directly accept, but DON'T overwrite any files
+     */
     if answer {
-        req.accept(overwrite).await
+        if req.filename.exists() {
+            let overwrite = util::ask_user(
+                format!("Override existing file {}?", req.filename.display()),
+                false,
+            )
+            .await;
+            if overwrite {
+                req.accept(true).await
+            } else {
+                req.reject().await
+            }
+        } else {
+            req.accept(false).await
+        }
     } else {
         req.reject().await
     }

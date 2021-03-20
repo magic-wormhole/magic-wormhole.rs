@@ -323,7 +323,7 @@ impl<'a> ReceiveRequest<'a> {
             .connector
             .follower_connect(
                 self.wormhole.key.derive_transit_key(&self.wormhole.appid),
-                Arc::try_unwrap(self.other_side_ttype.clone()).unwrap(),
+                self.other_side_ttype.clone(),
             )
             .await?;
 
