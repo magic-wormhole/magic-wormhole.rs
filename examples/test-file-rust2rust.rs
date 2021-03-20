@@ -61,7 +61,7 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     .await
     .unwrap();
 
-    req.accept().await.unwrap();
+    req.accept(false).await.unwrap();
 }
 
 async fn send(code_tx: mpsc::Sender<String>) {
