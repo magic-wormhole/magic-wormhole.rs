@@ -321,7 +321,7 @@ impl TransitConnector {
     pub async fn follower_connect(
         self,
         transit_key: Key<TransitKey>,
-        other_side_ttype: TransitType,
+        other_side_ttype: Arc<TransitType>,
     ) -> Result<Transit> {
         let transit_key = Arc::new(transit_key);
         /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */

@@ -78,7 +78,7 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             )
             .await?;
 
-            req.accept(|received, total| {
+            req.accept(false, |received, total| {
                 log::info!("Received {} of {} bytes", received, total);
             }).await
         })?;
