@@ -3,8 +3,8 @@ use clap::{
 };
 use log::*;
 use magic_wormhole::{transfer, util, CodeProvider, Wormhole};
-use std::{path::Path, str};
 use pbr::{ProgressBar, Units};
+use std::{path::Path, str};
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -159,10 +159,21 @@ async fn main() -> anyhow::Result<()> {
         pb.set_units(Units::Bytes);
 
         let file = matches.value_of("file").unwrap();
-        transfer::send_file(&mut wormhole, file, &relay_server.parse().unwrap(), move |sent, total| match sent {
-            0 => { pb.total = total; },
-            progress => { pb.set(progress); }
-        }).await.unwrap();
+        transfer::send_file(
+            &mut wormhole,
+            file,
+            &relay_server.parse().unwrap(),
+            move |sent, total| match sent {
+                0 => {
+                    pb.total = total;
+                },
+                progress => {
+                    pb.set(progress);
+                },
+            },
+        )
+        .await
+        .unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let relay_server = matches
             .value_of("relay-server")
@@ -262,11 +273,16 @@ async fn send_many(
             )
             .await?;
             let mut wormhole = connector.connect_to_client().await?;
-            let result =
-                transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap(), |sent, total| {
+            let result = transfer::send_file(
+                &mut wormhole,
+                &filename,
+                &relay_server.parse().unwrap(),
+                |sent, total| {
                     // @TODO: Not sure what kind of experience is best here.
                     info!("Sent {} of {} bytes", sent, total);
-                }).await;
+                },
+            )
+            .await;
             result
         } {
             Ok(_) => {
@@ -304,11 +320,11 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
         let mut pb = ProgressBar::new(req.filesize);
         pb.format("╢▌▌░╟");
         pb.set_units(Units::Bytes);
-        
+
         let on_progress = move |received, _total| {
             pb.set(received);
         };
-        
+
         if req.filename.exists() {
             let overwrite = util::ask_user(
                 format!("Override existing file {}?", req.filename.display()),

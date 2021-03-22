@@ -50,8 +50,9 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
                     .unwrap(),
                 |sent, total| {
                     log::info!("Sent {} of {} bytes", sent, total);
-                })
-                .await
+                },
+            )
+            .await
         })?;
     let receiver_task = async_std::task::Builder::new()
         .name("receiver".to_owned())
@@ -80,7 +81,8 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
 
             req.accept(false, |received, total| {
                 log::info!("Received {} of {} bytes", received, total);
-            }).await
+            })
+            .await
         })?;
     sender_task.await?;
     receiver_task.await?;

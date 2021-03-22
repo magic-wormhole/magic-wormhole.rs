@@ -154,10 +154,10 @@ pub async fn send_file<F>(
     wormhole: &mut Wormhole,
     filepath: impl AsRef<Path>,
     relay_url: &RelayUrl,
-    progress_handler: F
+    progress_handler: F,
 ) -> Result<()>
 where
-    F: FnMut(u64, u64) + 'static
+    F: FnMut(u64, u64) + 'static,
 {
     let filename = filepath
         .as_ref()
@@ -312,7 +312,7 @@ impl<'a> ReceiveRequest<'a> {
      */
     pub async fn accept<F>(self, overwrite: bool, progress_handler: F) -> Result<()>
     where
-        F: FnMut(u64, u64) + 'static
+        F: FnMut(u64, u64) + 'static,
     {
         // send file ack.
         debug!("Sending ack");
@@ -336,9 +336,15 @@ impl<'a> ReceiveRequest<'a> {
 
         debug!("Beginning file transfer");
         // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-        tcp_file_receive(&mut transit, &self.filename, self.filesize, overwrite, progress_handler)
-            .await
-            .context("Could not receive file")
+        tcp_file_receive(
+            &mut transit,
+            &self.filename,
+            self.filesize,
+            overwrite,
+            progress_handler,
+        )
+        .await
+        .context("Could not receive file")
     }
 
     /**
@@ -367,10 +373,10 @@ impl<'a> ReceiveRequest<'a> {
 async fn send_records<F>(
     filepath: impl AsRef<Path>,
     transit: &mut Transit,
-    mut progress_handler: F
+    mut progress_handler: F,
 ) -> Result<Vec<u8>>
 where
-    F: FnMut(u64, u64) + 'static
+    F: FnMut(u64, u64) + 'static,
 {
     // rough plan:
     // 1. Open the file
@@ -421,14 +427,14 @@ async fn receive_records<F>(
     filesize: u64,
     transit: &mut Transit,
     overwrite: bool,
-    mut progress_handler: F
+    mut progress_handler: F,
 ) -> Result<Vec<u8>>
 where
-    F: FnMut(u64, u64) + 'static
+    F: FnMut(u64, u64) + 'static,
 {
     let mut hasher = Sha256::default();
     let total = filesize;
-    
+
     let mut options = OpenOptions::new();
     options.write(true);
     if overwrite {
@@ -466,10 +472,10 @@ where
 async fn tcp_file_send<F>(
     transit: &mut Transit,
     filepath: impl AsRef<Path>,
-    progress_handler: F
+    progress_handler: F,
 ) -> Result<()>
 where
-    F: FnMut(u64, u64) + 'static
+    F: FnMut(u64, u64) + 'static,
 {
     // 11. send the file as encrypted records.
     let checksum = send_records(filepath, transit, progress_handler).await?;
@@ -491,15 +497,16 @@ async fn tcp_file_receive<F>(
     filepath: impl AsRef<Path>,
     filesize: u64,
     overwrite: bool,
-    progress_handler: F
+    progress_handler: F,
 ) -> Result<()>
 where
-    F: FnMut(u64, u64) + 'static
+    F: FnMut(u64, u64) + 'static,
 {
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
-    let checksum = receive_records(filepath, filesize, transit, overwrite, progress_handler).await?;
+    let checksum =
+        receive_records(filepath, filesize, transit, overwrite, progress_handler).await?;
 
     let sha256sum = hex::encode(checksum.as_slice());
     debug!("sha256 sum: {:?}", sha256sum);
