@@ -8,6 +8,7 @@
 //! At its core, [`PeerMessage`s](PeerMessage) are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
+use async_std::fs::OpenOptions;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -149,11 +150,15 @@ pub enum AnswerType {
 }
 
 /// Send a file to the other side
-pub async fn send_file(
+pub async fn send_file<F>(
     wormhole: &mut Wormhole,
     filepath: impl AsRef<Path>,
     relay_url: &RelayUrl,
-) -> Result<()> {
+    progress_handler: F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64) + 'static,
+{
     let filename = filepath
         .as_ref()
         .file_name()
@@ -220,7 +225,7 @@ pub async fn send_file(
         .await?;
     debug!("Beginning file transfer");
 
-    tcp_file_send(&mut transit, &filepath)
+    tcp_file_send(&mut transit, &filepath, progress_handler)
         .await
         .context("Could not send file")
 }
@@ -305,7 +310,10 @@ impl<'a> ReceiveRequest<'a> {
      *
      * This will transfer the file and save it on disk.
      */
-    pub async fn accept(self) -> Result<()> {
+    pub async fn accept<F>(self, overwrite: bool, progress_handler: F) -> Result<()>
+    where
+        F: FnMut(u64, u64) + 'static,
+    {
         // send file ack.
         debug!("Sending ack");
         self.wormhole
@@ -322,15 +330,21 @@ impl<'a> ReceiveRequest<'a> {
             .connector
             .follower_connect(
                 self.wormhole.key.derive_transit_key(&self.wormhole.appid),
-                Arc::try_unwrap(self.other_side_ttype).unwrap(),
+                self.other_side_ttype.clone(),
             )
             .await?;
 
         debug!("Beginning file transfer");
         // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-        tcp_file_receive(&mut transit, &self.filename, self.filesize)
-            .await
-            .context("Could not receive file")
+        tcp_file_receive(
+            &mut transit,
+            &self.filename,
+            self.filesize,
+            overwrite,
+            progress_handler,
+        )
+        .await
+        .context("Could not receive file")
     }
 
     /**
@@ -356,7 +370,14 @@ impl<'a> ReceiveRequest<'a> {
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-async fn send_records(filepath: impl AsRef<Path>, transit: &mut Transit) -> Result<Vec<u8>> {
+async fn send_records<F>(
+    filepath: impl AsRef<Path>,
+    transit: &mut Transit,
+    mut progress_handler: F,
+) -> Result<Vec<u8>>
+where
+    F: FnMut(u64, u64) + 'static,
+{
     // rough plan:
     // 1. Open the file
     // 2. read a block of N bytes
@@ -369,19 +390,26 @@ async fn send_records(filepath: impl AsRef<Path>, transit: &mut Transit) -> Resu
     let mut file = File::open(&filepath.as_ref())
         .await
         .context(format!("Could not open {}", &filepath.as_ref().display()))?;
-    debug!("Sending file size {}", file.metadata().await?.len());
+    //debug!("Sending file size {}", file.metadata().await?.len());
+    let file_size = file.metadata().await?.len();
+
+    // Report at 0 to allow clients to configure as necessary.
+    progress_handler(0, file_size);
 
     let mut hasher = Sha256::default();
 
     // Yeah, maybe don't allocate 4kiB on the stack…
     let mut plaintext = Box::new([0u8; 4096]);
+    let mut sent_size = 0;
     loop {
         // read a block of 4096 bytes
         let n = file.read(&mut plaintext[..]).await?;
-        debug!("sending {} bytes", n);
 
         // send the encrypted record
         transit.send_record(&plaintext[0..n]).await?;
+        sent_size += n as u64;
+        debug!("sent {} bytes out of {} bytes", sent_size, file_size);
+        progress_handler(sent_size, file_size);
 
         // sha256 of the input
         hasher.update(&plaintext[..n]);
@@ -390,17 +418,36 @@ async fn send_records(filepath: impl AsRef<Path>, transit: &mut Transit) -> Resu
             break;
         }
     }
+
     Ok(hasher.finalize_fixed().to_vec())
 }
 
-async fn receive_records(
+async fn receive_records<F>(
     filepath: impl AsRef<Path>,
     filesize: u64,
     transit: &mut Transit,
-) -> Result<Vec<u8>> {
+    overwrite: bool,
+    mut progress_handler: F,
+) -> Result<Vec<u8>>
+where
+    F: FnMut(u64, u64) + 'static,
+{
     let mut hasher = Sha256::default();
-    let mut f = File::create(filepath.as_ref()).await?; // TODO overwrite flags & checks & stuff
+    let total = filesize;
+
+    let mut options = OpenOptions::new();
+    options.write(true);
+    if overwrite {
+        options.create(true).truncate(true)
+    } else {
+        options.create_new(true)
+    };
+    let mut f = options.open(filepath.as_ref()).await?;
     let mut remaining_size = filesize as usize;
+
+    // Might not need to do this here, since `accept()` is where they'd know the filesize
+    // already...
+    progress_handler(0, total);
 
     while remaining_size > 0 {
         // 3. decrypt the vector 'enc_packet' with the key.
@@ -412,6 +459,9 @@ async fn receive_records(
         hasher.update(&plaintext);
 
         remaining_size -= plaintext.len();
+
+        let remaining = remaining_size as u64;
+        progress_handler(total - remaining, total);
     }
 
     debug!("done");
@@ -419,9 +469,16 @@ async fn receive_records(
     Ok(hasher.finalize_fixed().to_vec())
 }
 
-async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Result<()> {
+async fn tcp_file_send<F>(
+    transit: &mut Transit,
+    filepath: impl AsRef<Path>,
+    progress_handler: F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64) + 'static,
+{
     // 11. send the file as encrypted records.
-    let checksum = send_records(filepath, transit).await?;
+    let checksum = send_records(filepath, transit, progress_handler).await?;
 
     // 13. wait for the transit ack with sha256 sum from the peer.
     debug!("sent file. Waiting for ack");
@@ -435,15 +492,21 @@ async fn tcp_file_send(transit: &mut Transit, filepath: impl AsRef<Path>) -> Res
     Ok(())
 }
 
-async fn tcp_file_receive(
+async fn tcp_file_receive<F>(
     transit: &mut Transit,
     filepath: impl AsRef<Path>,
     filesize: u64,
-) -> Result<()> {
+    overwrite: bool,
+    progress_handler: F,
+) -> Result<()>
+where
+    F: FnMut(u64, u64) + 'static,
+{
     // 5. receive encrypted records
     // now skey and rkey can be used. skey is used by the tx side, rkey is used
     // by the rx side for symmetric encryption.
-    let checksum = receive_records(filepath, filesize, transit).await?;
+    let checksum =
+        receive_records(filepath, filesize, transit, overwrite, progress_handler).await?;
 
     let sha256sum = hex::encode(checksum.as_slice());
     debug!("sha256 sum: {:?}", sha256sum);

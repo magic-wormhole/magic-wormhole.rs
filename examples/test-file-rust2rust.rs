@@ -61,7 +61,11 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     .await
     .unwrap();
 
-    req.accept().await.unwrap();
+    req.accept(false, |received, total| {
+        info!("Received {} of {}", received, total);
+    })
+    .await
+    .unwrap();
 }
 
 async fn send(code_tx: mpsc::Sender<String>) {
@@ -86,6 +90,9 @@ async fn send(code_tx: mpsc::Sender<String>) {
         &magic_wormhole::transit::DEFAULT_RELAY_SERVER
             .parse()
             .unwrap(),
+        |sent, total| {
+            info!("Sent {} of {}", sent, total);
+        },
     )
     .await
     .unwrap();

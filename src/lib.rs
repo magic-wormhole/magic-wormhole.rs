@@ -24,6 +24,7 @@
 mod core;
 pub mod transfer;
 pub mod transit;
+pub mod util;
 
 use crate::core::{APIEvent, AppID, Code};
 use futures::{

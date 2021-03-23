@@ -48,6 +48,9 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
                 &magic_wormhole::transit::DEFAULT_RELAY_SERVER
                     .parse()
                     .unwrap(),
+                |sent, total| {
+                    log::info!("Sent {} of {} bytes", sent, total);
+                },
             )
             .await
         })?;
@@ -76,7 +79,10 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             )
             .await?;
 
-            req.accept().await
+            req.accept(false, |received, total| {
+                log::info!("Received {} of {} bytes", received, total);
+            })
+            .await
         })?;
     sender_task.await?;
     receiver_task.await?;

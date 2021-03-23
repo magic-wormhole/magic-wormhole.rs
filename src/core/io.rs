@@ -41,8 +41,8 @@ type WebsocketSender = Pin<
 type WebsocketReceiver = Pin<
     Box<
         dyn futures::stream::FusedStream<
-            Item = Result<IOEvent, async_tungstenite::tungstenite::Error>,
-        > + std::marker::Send,
+                Item = Result<IOEvent, async_tungstenite::tungstenite::Error>,
+            > + std::marker::Send,
     >,
 >;
 
