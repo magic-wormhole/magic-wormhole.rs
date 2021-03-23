@@ -3,6 +3,7 @@ use clap::{
 };
 use log::*;
 use magic_wormhole::{transfer, util, CodeProvider, Wormhole};
+use pbr::{ProgressBar, Units};
 use std::{path::Path, str};
 
 #[async_std::main]
@@ -152,10 +153,27 @@ async fn main() -> anyhow::Result<()> {
         info!("wormhole receive {}\n", &welcome.code);
         let mut wormhole = connector.connect_to_client().await?;
         info!("Got key: {}", wormhole.key);
+
+        let mut pb = ProgressBar::new(0);
+        pb.format("╢▌▌░╟");
+        pb.set_units(Units::Bytes);
+
         let file = matches.value_of("file").unwrap();
-        transfer::send_file(&mut wormhole, file, &relay_server.parse().unwrap())
-            .await
-            .unwrap();
+        transfer::send_file(
+            &mut wormhole,
+            file,
+            &relay_server.parse().unwrap(),
+            move |sent, total| match sent {
+                0 => {
+                    pb.total = total;
+                },
+                progress => {
+                    pb.set(progress);
+                },
+            },
+        )
+        .await
+        .unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let relay_server = matches
             .value_of("relay-server")
@@ -255,12 +273,20 @@ async fn send_many(
             )
             .await?;
             let mut wormhole = connector.connect_to_client().await?;
-            let result =
-                transfer::send_file(&mut wormhole, &filename, &relay_server.parse().unwrap()).await;
+            let result = transfer::send_file(
+                &mut wormhole,
+                &filename,
+                &relay_server.parse().unwrap(),
+                |sent, total| {
+                    // @TODO: Not sure what kind of experience is best here.
+                    info!("Sent {} of {} bytes", sent, total);
+                },
+            )
+            .await;
             result
         } {
             Ok(_) => {
-                info!("TOOD success message");
+                info!("TODO success message");
             },
             Err(e) => {
                 warn!("Send failed, {}", e);
@@ -291,6 +317,14 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
      * - If it doesn't, directly accept, but DON'T overwrite any files
      */
     if answer {
+        let mut pb = ProgressBar::new(req.filesize);
+        pb.format("╢▌▌░╟");
+        pb.set_units(Units::Bytes);
+
+        let on_progress = move |received, _total| {
+            pb.set(received);
+        };
+
         if req.filename.exists() {
             let overwrite = util::ask_user(
                 format!("Override existing file {}?", req.filename.display()),
@@ -298,12 +332,12 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
             )
             .await;
             if overwrite {
-                req.accept(true).await
+                req.accept(true, on_progress).await
             } else {
                 req.reject().await
             }
         } else {
-            req.accept(false).await
+            req.accept(false, on_progress).await
         }
     } else {
         req.reject().await
