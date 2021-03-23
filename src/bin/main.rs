@@ -1,4 +1,4 @@
-use std::{path::Path, str};
+use std::str;
 use std::time::{Duration, SystemTime};
 
 use anyhow::anyhow;
@@ -12,6 +12,7 @@ use pbr::{ProgressBar, Units};
 
 use magic_wormhole::{CodeProvider, transfer, util, Wormhole, WormholeConnector};
 use magic_wormhole::transit::RelayUrl;
+use std::ops::Deref;
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -153,7 +154,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
-        .await?;
+            .await?;
         info!("Got welcome: {}", &welcome.welcome);
         info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
@@ -201,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
-        .await?;
+            .await?;
         /* Explicitely close connection */
         connector.cancel().await;
         let file = matches.value_of("file").unwrap();
@@ -226,7 +227,7 @@ async fn main() -> anyhow::Result<()> {
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.trim().to_owned()),
         )
-        .await?;
+            .await?;
         let w = connector.connect_to_client().await?;
 
         receive(w, relay_server).await?;
@@ -290,13 +291,13 @@ async fn send_in_background(url: Arc<RelayUrl>, filename: Arc<String>,
     task::spawn(async move {
         let result = transfer::send_file(
             &mut wormhole,
-            &filename,
+            filename.deref(),
             &url,
             |sent, total| {
                 // @TODO: Not sure what kind of experience is best here.
                 info!("Sent {} of {} bytes", sent, total);
             },
-        );
+        ).await;
         match result {
             Ok(_) => info!("TODO success message"),
             Err(e) => warn!("Send failed, {}", e)
