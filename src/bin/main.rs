@@ -1,18 +1,17 @@
+use std::ops::Deref;
 use std::str;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 
 use anyhow::anyhow;
 use async_std::sync::Arc;
 use async_std::task;
-use clap::{
-    App, AppSettings, Arg, crate_authors, crate_description, crate_name, crate_version, SubCommand,
-};
+use clap::{App, AppSettings, Arg, ArgMatches, crate_authors, crate_description, crate_name, crate_version, SubCommand};
 use log::*;
 use pbr::{ProgressBar, Units};
 
 use magic_wormhole::{CodeProvider, transfer, util, Wormhole, WormholeConnector};
 use magic_wormhole::transit::RelayUrl;
-use std::ops::Deref;
+use std::str::FromStr;
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
@@ -84,7 +83,12 @@ async fn main() -> anyhow::Result<()> {
                 .required(true)
                 .value_name("FILENAME|DIRNAME")
                 .help("The file or directory to send"),
-        );
+        )
+        .arg(Arg::with_name("timeout")
+            .required(false)
+            .default_value("3600")
+            .value_name("TIMEOUT")
+            .help("Timeout in seconds"));
     let receive_command = SubCommand::with_name("receive")
         .visible_alias("rx")
         .arg(
@@ -183,35 +187,7 @@ async fn main() -> anyhow::Result<()> {
             .await
             .unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let relay_server = matches
-            .value_of("relay-server")
-            .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
-        let (welcome, connector) = magic_wormhole::connect_to_server(
-            magic_wormhole::transfer::APPID,
-            magic_wormhole::transfer::AppVersion::default(),
-            magic_wormhole::DEFAULT_MAILBOX_SERVER,
-            match matches.value_of("code") {
-                None => {
-                    let numwords = matches
-                        .value_of("code-length")
-                        .unwrap()
-                        .parse()
-                        .expect("TODO error handling");
-                    CodeProvider::AllocateCode(numwords)
-                }
-                Some(code) => CodeProvider::SetCode(code.to_string()),
-            },
-        )
-            .await?;
-        /* Explicitely close connection */
-        connector.cancel().await;
-        let file = matches.value_of("file").unwrap();
-
-        info!("Got welcome: {}", &welcome.welcome);
-        info!("This wormhole's code is: {}", &welcome.code);
-        info!("On the other computer, please run:\n");
-        info!("wormhole receive {}\n", &welcome.code);
-        send_many(relay_server, &welcome.code, file).await?;
+        on_send_many_command(matches).await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let relay_server = matches
             .value_of("relay-server")
@@ -251,6 +227,41 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn on_send_many_command(matches: &ArgMatches<'_>) -> anyhow::Result<()> {
+    let relay_server = matches
+        .value_of("relay-server")
+        .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER);
+    let (welcome, connector) = magic_wormhole::connect_to_server(
+        magic_wormhole::transfer::APPID,
+        magic_wormhole::transfer::AppVersion::default(),
+        magic_wormhole::DEFAULT_MAILBOX_SERVER,
+        match matches.value_of("code") {
+            None => {
+                let numwords = matches
+                    .value_of("code-length")
+                    .unwrap()
+                    .parse()
+                    .expect("TODO error handling");
+                CodeProvider::AllocateCode(numwords)
+            }
+            Some(code) => CodeProvider::SetCode(code.to_string()),
+        },
+    )
+        .await?;
+    /* Explicitely close connection */
+    connector.cancel().await;
+    let file = matches.value_of("file").unwrap();
+    let timeout_secs = u64::from_str(matches.value_of("timeout")
+        .unwrap_or("3600"))?;
+    let timeout = Duration::from_secs(timeout_secs);
+
+    info!("Got welcome: {}", &welcome.welcome);
+    info!("This wormhole's code is: {}", &welcome.code);
+    info!("On the other computer, please run:\n");
+    info!("wormhole receive {}\n", &welcome.code);
+    send_many(relay_server, &welcome.code, file, timeout).await
+}
+
 fn _might_be_code(_code: Option<&str>) -> bool {
     // let re = Regex::new(r"\d+-\w+-\w+").unwrap();
     // if !re.is_match(&line) {
@@ -266,14 +277,14 @@ fn enter_code() -> anyhow::Result<String> {
     Ok(code)
 }
 
-async fn send_many(relay_server: &str, code: &str, filename: &str) -> anyhow::Result<()> {
-    let time = SystemTime::now();
-    let one_hour = Duration::from_secs(3600);
+async fn send_many(relay_server: &str, code: &str, filename: &str, timeout: Duration)
+                   -> anyhow::Result<()> {
+    let time = Instant::now();
 
     let filename = Arc::new(filename.to_owned());
     let url = Arc::new(relay_server.parse().map_err(|e| anyhow!("{}", e))?);
 
-    while time.elapsed()? < one_hour {
+    while time.elapsed() < timeout {
         let (_welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
             magic_wormhole::transfer::AppVersion::default(),
