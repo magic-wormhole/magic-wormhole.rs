@@ -1,16 +1,21 @@
-use std::ops::Deref;
-use std::str;
-use std::time::{Duration, Instant};
+use std::{
+    ops::Deref,
+    str,
+    time::{Duration, Instant},
+};
 
 use anyhow::anyhow;
-use async_std::sync::Arc;
-use async_std::task;
-use clap::{App, AppSettings, Arg, ArgMatches, crate_authors, crate_description, crate_name, crate_version, SubCommand};
+use async_std::{sync::Arc, task};
+use clap::{
+    crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, ArgMatches,
+    SubCommand,
+};
 use log::*;
 use pbr::{ProgressBar, Units};
 
-use magic_wormhole::{CodeProvider, transfer, util, Wormhole, WormholeConnector};
-use magic_wormhole::transit::RelayUrl;
+use magic_wormhole::{
+    transfer, transit::RelayUrl, util, CodeProvider, Wormhole, WormholeConnector,
+};
 use std::str::FromStr;
 
 #[async_std::main]
@@ -84,11 +89,12 @@ async fn main() -> anyhow::Result<()> {
                 .value_name("FILENAME|DIRNAME")
                 .help("The file or directory to send"),
         )
-        .arg(Arg::with_name("timeout")
-            .required(false)
-            .default_value("3600")
-            .value_name("TIMEOUT")
-            .help("Timeout in seconds"));
+        .arg(
+            Arg::with_name("timeout")
+                .required(false)
+                .value_name("TIMEOUT")
+                .help("Timeout in seconds"),
+        );
     let receive_command = SubCommand::with_name("receive")
         .visible_alias("rx")
         .arg(
@@ -154,11 +160,11 @@ async fn main() -> anyhow::Result<()> {
                         .parse()
                         .expect("TODO error handling");
                     CodeProvider::AllocateCode(numwords)
-                }
+                },
                 Some(code) => CodeProvider::SetCode(code.to_string()),
             },
         )
-            .await?;
+        .await?;
         info!("Got welcome: {}", &welcome.welcome);
         info!("This wormhole's code is: {}", &welcome.code);
         info!("On the other computer, please run:\n");
@@ -178,14 +184,14 @@ async fn main() -> anyhow::Result<()> {
             move |sent, total| match sent {
                 0 => {
                     pb.total = total;
-                }
+                },
                 progress => {
                     pb.set(progress);
-                }
+                },
             },
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         on_send_many_command(matches).await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
@@ -203,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.trim().to_owned()),
         )
-            .await?;
+        .await?;
         let w = connector.connect_to_client().await?;
 
         receive(w, relay_server).await?;
@@ -243,16 +249,15 @@ async fn on_send_many_command(matches: &ArgMatches<'_>) -> anyhow::Result<()> {
                     .parse()
                     .expect("TODO error handling");
                 CodeProvider::AllocateCode(numwords)
-            }
+            },
             Some(code) => CodeProvider::SetCode(code.to_string()),
         },
     )
-        .await?;
+    .await?;
     /* Explicitely close connection */
     connector.cancel().await;
     let file = matches.value_of("file").unwrap();
-    let timeout_secs = u64::from_str(matches.value_of("timeout")
-        .unwrap_or("3600"))?;
+    let timeout_secs = u64::from_str(matches.value_of("timeout").unwrap_or("3600"))?;
     let timeout = Duration::from_secs(timeout_secs);
 
     info!("Got welcome: {}", &welcome.welcome);
@@ -277,8 +282,12 @@ fn enter_code() -> anyhow::Result<String> {
     Ok(code)
 }
 
-async fn send_many(relay_server: &str, code: &str, filename: &str, timeout: Duration)
-                   -> anyhow::Result<()> {
+async fn send_many(
+    relay_server: &str,
+    code: &str,
+    filename: &str,
+    timeout: Duration,
+) -> anyhow::Result<()> {
     let time = Instant::now();
 
     let filename = Arc::new(filename.to_owned());
@@ -290,28 +299,28 @@ async fn send_many(relay_server: &str, code: &str, filename: &str, timeout: Dura
             magic_wormhole::transfer::AppVersion::default(),
             magic_wormhole::DEFAULT_MAILBOX_SERVER,
             CodeProvider::SetCode(code.to_owned()),
-        ).await?;
+        )
+        .await?;
         send_in_background(Arc::clone(&url), Arc::clone(&filename), connector).await?;
     }
     Ok(())
 }
 
-async fn send_in_background(url: Arc<RelayUrl>, filename: Arc<String>,
-                            connector: WormholeConnector) -> anyhow::Result<()> {
+async fn send_in_background(
+    url: Arc<RelayUrl>,
+    filename: Arc<String>,
+    connector: WormholeConnector,
+) -> anyhow::Result<()> {
     let mut wormhole = connector.connect_to_client().await?;
     task::spawn(async move {
-        let result = transfer::send_file(
-            &mut wormhole,
-            filename.deref(),
-            &url,
-            |sent, total| {
-                // @TODO: Not sure what kind of experience is best here.
-                info!("Sent {} of {} bytes", sent, total);
-            },
-        ).await;
+        let result = transfer::send_file(&mut wormhole, filename.deref(), &url, |sent, total| {
+            // @TODO: Not sure what kind of experience is best here.
+            info!("Sent {} of {} bytes", sent, total);
+        })
+        .await;
         match result {
             Ok(_) => info!("TODO success message"),
-            Err(e) => warn!("Send failed, {}", e)
+            Err(e) => warn!("Send failed, {}", e),
         };
     });
     Ok(())
@@ -328,7 +337,7 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
         ),
         false,
     )
-        .await;
+    .await;
 
     /*
      * Control flow is a bit tricky here:
@@ -351,7 +360,7 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
                 format!("Override existing file {}?", req.filename.display()),
                 false,
             )
-                .await;
+            .await;
             if overwrite {
                 req.accept(true, on_progress).await
             } else {
