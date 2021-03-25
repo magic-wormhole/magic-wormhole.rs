@@ -64,7 +64,6 @@ async fn main() -> anyhow::Result<()> {
                 .help("The file or directory to send"),
         );
     let send_many_command = SubCommand::with_name("send-many")
-        .help("Send a file to many people with the same code.")
         .arg(
             Arg::with_name("code-length")
                 .short("c")
@@ -91,9 +90,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .arg(
             Arg::with_name("timeout")
-                .required(false)
-                .value_name("TIMEOUT")
-                .help("Timeout in seconds"),
+                .long("timeout")
+                .takes_value(true)
+                .help("Suppress progress-bar display"),
         );
     let receive_command = SubCommand::with_name("receive")
         .visible_alias("rx")
