@@ -37,7 +37,7 @@ byteorder = "1.4.2"
 anyhow = "1.0.38"
 futures = "0.3.12"
 async-std = { version = "1.9.0", features = ["attributes"] }
-async-tungstenite = { version = "0.12.0", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.13.1", features = ["async-std-runtime"] }
 pin-project = "1.0.4"
 
 # for "bin" feature
