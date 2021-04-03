@@ -23,7 +23,6 @@ use async_std::{
 };
 use futures::{future::TryFutureExt, StreamExt};
 use log::*;
-use pnet::{datalink, ipnetwork::IpNetwork};
 use sodiumoxide::crypto::secretbox;
 use std::{net::ToSocketAddrs, str::FromStr, sync::Arc};
 
@@ -152,11 +151,9 @@ pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl) -> Result<Trans
     let mut our_hints: Vec<Hint> = Vec::new();
     if abilities.contains(&Ability::DirectTcpV1) {
         our_hints.extend(
-            datalink::interfaces()
+            get_if_addrs::get_if_addrs()?
                 .iter()
-                .filter(|iface| !datalink::NetworkInterface::is_loopback(iface))
-                .flat_map(|iface| iface.ips.iter())
-                .map(|n| n as &IpNetwork)
+                .filter(|iface| !iface.is_loopback())
                 .map(|ip| {
                     Hint::DirectTcpV1(DirectHint {
                         priority: 0.0,
