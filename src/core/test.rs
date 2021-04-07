@@ -79,9 +79,10 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             )
             .await?;
 
-            req.accept(false, |received, total| {
+            let mut file = async_std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(&req.filename).await?;
+            req.accept(|received, total| {
                 log::info!("Received {} of {} bytes", received, total);
-            })
+            }, &mut file)
             .await
         })?;
     sender_task.await?;
