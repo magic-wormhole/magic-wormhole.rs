@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use async_std::{sync::Arc, task};
+use async_std::{fs::OpenOptions, sync::Arc, task};
 use clap::{
     crate_authors, crate_description, crate_name, crate_version, App, AppSettings, Arg, ArgMatches,
     SubCommand,
@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
         info!("Got key: {}", wormhole.key);
 
         let mut pb = ProgressBar::new(0);
-        pb.format("╢▌▌░╟");
+        pb.format("╢█▌░╟");
         pb.set_units(Units::Bytes);
 
         let file = matches.value_of("file").unwrap();
@@ -328,7 +328,8 @@ async fn send_in_background(
 async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
     let req = transfer::request_file(&mut w, &relay_server.parse().unwrap()).await?;
 
-    let answer = util::ask_user(
+    /* First, check if the user wants to accept the file */
+    if !util::ask_user(
         format!(
             "Receive file '{}' (size: {} bytes)?",
             req.filename.display(),
@@ -336,7 +337,10 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
         ),
         false,
     )
-    .await;
+    .await
+    {
+        return req.reject().await;
+    }
 
     /*
      * Control flow is a bit tricky here:
@@ -345,30 +349,39 @@ async fn receive(mut w: Wormhole, relay_server: &str) -> anyhow::Result<()> {
      * - If it exists, ask whether to overwrite and act accordingly
      * - If it doesn't, directly accept, but DON'T overwrite any files
      */
-    if answer {
-        let mut pb = ProgressBar::new(req.filesize);
-        pb.format("╢▌▌░╟");
-        pb.set_units(Units::Bytes);
+    let mut pb = ProgressBar::new(req.filesize);
+    pb.format("╢█▌░╟");
+    pb.set_units(Units::Bytes);
 
-        let on_progress = move |received, _total| {
-            pb.set(received);
-        };
+    let on_progress = move |received, _total| {
+        pb.set(received);
+    };
 
-        if req.filename.exists() {
-            let overwrite = util::ask_user(
-                format!("Override existing file {}?", req.filename.display()),
-                false,
-            )
-            .await;
-            if overwrite {
-                req.accept(true, on_progress).await
-            } else {
-                req.reject().await
-            }
-        } else {
-            req.accept(false, on_progress).await
-        }
-    } else {
-        req.reject().await
+    /* Then, accept if the file exists */
+    if !req.filename.exists() {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&req.filename)
+            .await?;
+        return req.accept(on_progress, &mut file).await;
     }
+
+    /* If there is a collision, ask whether to overwrite */
+    if !util::ask_user(
+        format!("Override existing file {}?", req.filename.display()),
+        false,
+    )
+    .await
+    {
+        return req.reject().await;
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&req.filename)
+        .await?;
+    req.accept(on_progress, &mut file).await
 }

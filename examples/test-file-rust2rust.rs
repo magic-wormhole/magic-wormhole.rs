@@ -61,9 +61,10 @@ async fn receive(code_rx: mpsc::Receiver<String>) {
     .await
     .unwrap();
 
-    req.accept(false, |received, total| {
+    let mut file = async_std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(&req.filename).await.unwrap();
+    req.accept(|received, total| {
         info!("Received {} of {}", received, total);
-    })
+    }, &mut file)
     .await
     .unwrap();
 }
