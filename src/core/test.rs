@@ -79,17 +79,21 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             )
             .await?;
 
-            let mut file = async_std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(&req.filename).await?;
-            req.accept(|received, total| {
-                log::info!("Received {} of {} bytes", received, total);
-            }, &mut file)
-            .await
+            let mut buffer = Vec::<u8>::new();
+            req.accept(
+                |received, total| {
+                    log::info!("Received {} of {} bytes", received, total);
+                },
+                &mut buffer,
+            )
+            .await?;
+            Ok(buffer)
         })?;
-    sender_task.await?;
-    receiver_task.await?;
 
+    sender_task.await?;
     let original = std::fs::read("examples/example-file.bin")?;
-    let received = std::fs::read("example-file.bin")?;
+    let received: Vec<u8> = (receiver_task.await as anyhow::Result<Vec<u8>>)?;
+
     assert_eq!(original, received, "Files differ");
     Ok(())
 }
