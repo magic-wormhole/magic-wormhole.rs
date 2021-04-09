@@ -253,8 +253,6 @@ async fn on_send_many_command(matches: &ArgMatches<'_>) -> anyhow::Result<()> {
         },
     )
     .await?;
-    /* Explicitely close connection */
-    connector.cancel().await;
     let file = matches.value_of("file").unwrap();
     let timeout_secs = u64::from_str(matches.value_of("timeout").unwrap_or("3600"))?;
     let timeout = Duration::from_secs(timeout_secs);
@@ -263,7 +261,8 @@ async fn on_send_many_command(matches: &ArgMatches<'_>) -> anyhow::Result<()> {
     info!("This wormhole's code is: {}", &welcome.code);
     info!("On the other computer, please run:\n");
     info!("wormhole receive {}\n", &welcome.code);
-    send_many(relay_server, &welcome.code, file, timeout).await
+
+    send_many(relay_server, &welcome.code, file, timeout, connector).await
 }
 
 fn _might_be_code(_code: Option<&str>) -> bool {
@@ -286,11 +285,15 @@ async fn send_many(
     code: &str,
     filename: &str,
     timeout: Duration,
+    connector: WormholeConnector,
 ) -> anyhow::Result<()> {
     let time = Instant::now();
 
     let filename = Arc::new(filename.to_owned());
     let url = Arc::new(relay_server.parse().map_err(|e| anyhow!("{}", e))?);
+
+    /* Special-case the first send with reusing the existing connection */
+    send_in_background(Arc::clone(&url), Arc::clone(&filename), connector).await?;
 
     while time.elapsed() < timeout {
         let (_welcome, connector) = magic_wormhole::connect_to_server(
