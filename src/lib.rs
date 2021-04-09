@@ -26,7 +26,8 @@ pub mod transfer;
 pub mod transit;
 pub mod util;
 
-use crate::core::{APIEvent, AppID, Code};
+use crate::core::APIEvent;
+pub use crate::core::{AppID, Code};
 use futures::{
     channel::mpsc::{UnboundedReceiver, UnboundedSender},
     Sink, Stream,
