@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Improved user experience with better logging and messages
+- Cleaned up CLI args and implemented previous placeholders
+- Fixed `send-many` subcommand
+
 ## Version 0.2.0
 
 - Implemented version and verifier in the API
