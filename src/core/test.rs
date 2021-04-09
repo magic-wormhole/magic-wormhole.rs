@@ -44,10 +44,14 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             log::info!("Got key: {}", &w.key);
             transfer::send_file(
                 &mut w,
-                "examples/example-file.bin",
                 &magic_wormhole::transit::DEFAULT_RELAY_SERVER
                     .parse()
                     .unwrap(),
+                &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                "example-file.bin",
+                std::fs::metadata("examples/example-file.bin")
+                    .unwrap()
+                    .len(),
                 |sent, total| {
                     log::info!("Sent {} of {} bytes", sent, total);
                 },
@@ -266,8 +270,12 @@ pub async fn test_send_many() -> anyhow::Result<()> {
                 let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
                 crate::transfer::send_file(
                     &mut wormhole,
-                    "examples/example-file.bin",
                     &url,
+                    &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                    "example-file.bin",
+                    std::fs::metadata("examples/example-file.bin")
+                        .unwrap()
+                        .len(),
                     |_, _| {},
                 )
                 .await
@@ -289,8 +297,12 @@ pub async fn test_send_many() -> anyhow::Result<()> {
                 let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
                 crate::transfer::send_file(
                     &mut wormhole,
-                    "examples/example-file.bin",
                     &url,
+                    &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                    "example-file.bin",
+                    std::fs::metadata("examples/example-file.bin")
+                        .unwrap()
+                        .len(),
                     |_, _| {},
                 )
                 .await
