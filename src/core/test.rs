@@ -231,6 +231,107 @@ pub async fn test_eventloop_exit3() {
     .expect("Test failed");
 }
 
+/** Test the functionality used by the `send-many` subcommand. It logically builds upon the
+ * `test_eventloop_exit` tests. We send us a file five times, and check if it arrived.
+ */
+#[async_std::test]
+pub async fn test_send_many() -> anyhow::Result<()> {
+    init_logger();
+
+    let (welcome, connector) = crate::connect_to_server(
+        APPID,
+        serde_json::json!({}),
+        MAILBOX_SERVER,
+        CodeProvider::AllocateCode(2),
+        &mut None,
+    )
+    .await?;
+
+    let code = welcome.code.0;
+    log::info!("The code is {:?}", code);
+
+    let correct_data = std::fs::read("examples/example-file.bin")?;
+
+    /* Send many */
+    let sender_code = code.clone();
+    let senders = async_std::task::spawn(async move {
+        // let mut senders = Vec::<async_std::task::JoinHandle<std::result::Result<std::vec::Vec<u8>, anyhow::Error>>>::new();
+        let mut senders = Vec::new();
+
+        /* The first time, we reuse the current session for sending */
+        {
+            log::info!("Sending file #{}", 0);
+            let mut wormhole = connector.connect_to_client().await?;
+            senders.push(async_std::task::spawn(async move {
+                let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
+                crate::transfer::send_file(
+                    &mut wormhole,
+                    "examples/example-file.bin",
+                    &url,
+                    |_, _| {},
+                )
+                .await
+            }));
+        }
+
+        for i in 1..5usize {
+            log::info!("Sending file #{}", i);
+            let (_welcome, connector) = crate::connect_to_server(
+                APPID,
+                serde_json::json!({}),
+                MAILBOX_SERVER,
+                CodeProvider::SetCode(sender_code.clone()),
+                &mut None,
+            )
+            .await?;
+            let mut wormhole = connector.connect_to_client().await?;
+            senders.push(async_std::task::spawn(async move {
+                let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
+                crate::transfer::send_file(
+                    &mut wormhole,
+                    "examples/example-file.bin",
+                    &url,
+                    |_, _| {},
+                )
+                .await
+            }));
+        }
+        anyhow::Result::<_>::Ok(senders)
+    });
+
+    async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+
+    /* Receive many */
+    for i in 0..5usize {
+        log::info!("Receiving file #{}", i);
+        let (_welcome, connector) = crate::connect_to_server(
+            APPID,
+            serde_json::json!({}),
+            MAILBOX_SERVER,
+            CodeProvider::SetCode(code.clone()),
+            &mut None,
+        )
+        .await?;
+        let mut wormhole = connector.connect_to_client().await?;
+        log::info!("Got key: {}", &wormhole.key);
+        let req = crate::transfer::request_file(
+            &mut wormhole,
+            &crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+        )
+        .await?;
+
+        let mut buffer = Vec::<u8>::new();
+        req.accept(|_, _| {}, &mut buffer).await?;
+        assert_eq!(correct_data, buffer, "Files #{} differ", i);
+    }
+
+    for sender in senders.await? {
+        sender.await?;
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_phase() {
     let p = Phase(String::from("pake"));
