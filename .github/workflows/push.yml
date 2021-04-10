@@ -8,14 +8,16 @@ on:
 
 jobs:
   format:
-    name: cargo fmt (stable)
+    name: cargo fmt (nightly)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: nightly
           override: true
+          components: rustfmt
+          profile: minimal
       - name: Format
         run: cargo fmt -- --check
 
