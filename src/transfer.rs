@@ -308,6 +308,7 @@ pub async fn request_file<'a>(
 pub struct ReceiveRequest<'a> {
     wormhole: &'a mut Wormhole,
     connector: TransitConnector,
+    /// **Security warning:** this is untrusted and unverified input
     pub filename: PathBuf,
     pub filesize: u64,
     other_side_ttype: Arc<transit::TransitType>,
