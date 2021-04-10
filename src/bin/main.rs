@@ -92,11 +92,13 @@ async fn main() -> anyhow::Result<()> {
         .after_help(
             "This works by sending the file in a loop with the same code over \
             and over again. Note that this also gives an attacker multiple tries \
-            to guess the code, whereas normally they have only one. Only use this \
-            for non critical files. Alternatively, you can increase the code length \
-            to counter the attack.",
+            to guess the code, whereas normally they have only one. This can be \
+            countered by using a longer than usual code (default 4 bytes entropy).\n\n\
+            The application terminates on interruption, after a timeout or after a
+            number of sent files, whichever comes first. It will always try to send
+            at least one file, regardless of the limits.",
         )
-        .arg(code_length_arg)
+        .arg(code_length_arg.default_value("4"))
         .arg(
             Arg::with_name("code")
                 .long("code")
@@ -115,10 +117,22 @@ async fn main() -> anyhow::Result<()> {
                 .help("The file or directory to send"),
         )
         .arg(
+            Arg::with_name("tries")
+                .long("tries")
+                .short("n")
+                .takes_value(true)
+                .value_name("N")
+                .default_value("30")
+                .help("Only send the file up to n times, limiting the number of people that may receive it. \
+                       These are also the number of tries a potential attacker gets at guessing the password."),
+        )
+        .arg(
             Arg::with_name("timeout")
                 .long("timeout")
                 .takes_value(true)
-                .help("Suppress progress-bar display"),
+                .value_name("MINUTES")
+                .default_value("60")
+                .help("Automatically stop providing the file after a certain amount of time."),
         );
     let receive_command = SubCommand::with_name("receive")
         .visible_alias("rx")
@@ -200,8 +214,9 @@ async fn main() -> anyhow::Result<()> {
         send(wormhole, &relay_server, &file_path, &file_name).await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
-        let timeout_secs = u64::from_str(matches.value_of("timeout").unwrap_or("3600"))?;
-        let timeout = Duration::from_secs(timeout_secs);
+        let timeout =
+            Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
+        let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
 
         print_welcome(&mut term, &welcome)?;
         sender_print_code(&mut term, &welcome.code)?;
@@ -219,6 +234,7 @@ async fn main() -> anyhow::Result<()> {
             &welcome.code,
             file_path,
             file_name,
+            max_tries,
             timeout,
             connector,
             &mut term,
@@ -393,6 +409,7 @@ async fn send_many(
     code: &str,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
+    max_tries: u64,
     timeout: Duration,
     connector: WormholeConnector,
     term: &mut Term,
@@ -427,7 +444,23 @@ async fn send_many(
     )
     .await?;
 
-    while time.elapsed() < timeout {
+    for tries in 0.. {
+        if time.elapsed() >= timeout {
+            writeln!(
+                term,
+                "{:?} have elapsed, we won't accept any new connections now.",
+                timeout
+            )?;
+            break;
+        }
+        if tries > max_tries {
+            writeln!(
+                term,
+                "Max number of tries reached, we won't accept any new connections now."
+            )?;
+            break;
+        }
+
         let file = File::open(file_path)
             .await
             .context(format!("Could not open {:?}", file_path))?;
