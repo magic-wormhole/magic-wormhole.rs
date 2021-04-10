@@ -48,10 +48,13 @@ jobs:
           name: clippy results
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
         rust:
           - 1.46.0 # MSRV
           - stable
