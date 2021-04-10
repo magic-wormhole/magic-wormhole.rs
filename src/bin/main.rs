@@ -6,12 +6,9 @@ use std::{
 
 use anyhow::Context;
 use async_std::{fs::OpenOptions, sync::Arc};
-use clap::{
-    crate_description, crate_name, crate_version, App, AppSettings, Arg, ArgMatches,
-    SubCommand,
-};
-use console::{Term, style};
-use indicatif::{ProgressBar, MultiProgress};
+use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
+use console::{style, Term};
+use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 
 use magic_wormhole::{
@@ -217,7 +214,6 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::format_err!("You can't send a file without a name. Maybe try --rename")
             })?;
 
-        let mp = MultiProgress::new();
         send_many(
             relay_server,
             &welcome.code,
@@ -225,10 +221,9 @@ async fn main() -> anyhow::Result<()> {
             file_name,
             timeout,
             connector,
-            &mp,
+            &mut term,
         )
         .await?;
-        async_std::task::spawn_blocking(move || mp.join()).await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let (welcome, connector, relay_server) = parse_and_connect(&matches, false).await?;
         print_welcome(&mut term, &welcome)?;
@@ -325,6 +320,19 @@ fn _might_be_code(_code: Option<&str>) -> bool {
     unimplemented!()
 }
 
+fn create_progress_bar(file_size: u64) -> ProgressBar {
+    use indicatif::ProgressStyle;
+
+    let pb = ProgressBar::new(file_size);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .template("[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({eta})")
+            .progress_chars("#>-"),
+    );
+    pb
+}
+
 fn enter_code() -> anyhow::Result<String> {
     use dialoguer::Input;
 
@@ -359,11 +367,8 @@ async fn send(
         .context(format!("Could not open {:?}", file))?;
     let file_size = file.metadata().await?.len();
 
-    let pb = ProgressBar::new(0);
-    // pb.format("╢█▌░╟");
-    // pb.set_units(Units::Bytes);
-    pb.set_length(file_size);
-
+    let pb = create_progress_bar(file_size);
+    let pb2 = pb.clone();
     transfer::send_file(
         &mut wormhole,
         &relay_server,
@@ -371,10 +376,15 @@ async fn send(
         &std::path::Path::new(file_name),
         file_size,
         move |sent, _total| {
+            if sent == 0 {
+                pb.reset_elapsed();
+                pb.enable_steady_tick(250);
+            }
             pb.set_position(sent);
         },
     )
     .await?;
+    pb2.finish();
     Ok(())
 }
 
@@ -385,8 +395,15 @@ async fn send_many(
     file_name: &std::ffi::OsStr,
     timeout: Duration,
     connector: WormholeConnector,
-    mp: &MultiProgress,
+    term: &mut Term,
 ) -> anyhow::Result<()> {
+    /* Progress bar is commented out for now. See the issues about threading/async in
+     * the Indicatif repository for more information. Multiple progress bars are not usable
+     * for us at the moment, so we'll have to do without for now.
+     */
+    // let mp = MultiProgress::new();
+    // async_std::task::spawn_blocking(move || mp.join()).await?;
+
     let file_name = Arc::new(file_name.to_owned());
     let url = Arc::new(relay_server);
 
@@ -405,7 +422,8 @@ async fn send_many(
         Arc::clone(&file_name),
         file_size,
         connector,
-        &mp,
+        term.clone(),
+        // &mp,
     )
     .await?;
 
@@ -426,7 +444,8 @@ async fn send_many(
             Arc::clone(&file_name),
             file_size,
             connector,
-            &mp,
+            term.clone(),
+            // &mp,
         )
         .await?;
     }
@@ -438,35 +457,38 @@ async fn send_many(
         file_name: Arc<std::ffi::OsString>,
         file_size: u64,
         connector: WormholeConnector,
-        mp: &MultiProgress,
+        mut term: Term,
+        // mp: &MultiProgress,
     ) -> anyhow::Result<()> {
         let mut wormhole = connector.connect_to_client().await?;
-        let pb = ProgressBar::new(file_size);
-        let pb = mp.add(pb);
+        writeln!(&mut term, "Sending file to peer").unwrap();
+        // let pb = create_progress_bar(file_size);
+        // let pb = mp.add(pb);
         async_std::task::spawn(async move {
-            pb.enable_steady_tick(1000);
-
-            let pb2 = pb.clone();
+            // let pb2 = pb.clone();
             let result = transfer::send_file(
                 &mut wormhole,
                 &url,
                 &mut file,
                 file_name.deref(),
                 file_size,
-                move |sent, _total| {
-                    // @TODO: Not sure what kind of experience is best here.
-                    pb2.set_position(sent);
+                move |_sent, _total| {
+                    // if sent == 0 {
+                    //     pb2.reset_elapsed();
+                    //     pb2.enable_steady_tick(250);
+                    // }
+                    // pb2.set_position(sent);
                 },
             )
             .await;
             match result {
                 Ok(_) => {
-                    pb.finish();
-                    // info!("TODO success message") TODO
+                    // pb.finish();
+                    writeln!(&mut term, "Successfully sent file to peer").unwrap();
                 },
                 Err(e) => {
-                    pb.abandon();
-                    // warn!("Send failed, {}", e) TODO
+                    // pb.abandon();
+                    writeln!(&mut term, "Send failed, {}", e).unwrap();
                 },
             };
         });
@@ -510,10 +532,7 @@ async fn receive(
         .ok_or_else(|| anyhow::format_err!("The sender did not specify a valid file name, and neither did you. Try using --rename."))?;
     let file_path = std::path::Path::new(target_dir).join(file_name);
 
-    let pb = ProgressBar::new(req.filesize);
-    pb.enable_steady_tick(1000);
-    //pb.format("╢█▌░╟");
-    // pb.set_units(Units::Bytes);
+    let pb = create_progress_bar(req.filesize);
 
     let on_progress = move |received, _total| {
         pb.set_position(received);
