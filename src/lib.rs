@@ -129,9 +129,9 @@ impl<P: KeyPurpose> Key<P> {
      * Derive a new sub-key from this one
      */
     pub fn derive_subkey_from_purpose<NewP: KeyPurpose>(&self, purpose: &str) -> Key<NewP> {
-        let length = sodiumoxide::crypto::secretbox::KEYBYTES;
+        use xsalsa20poly1305 as secretbox;
         Key(
-            derive_key(&*self, &purpose.as_bytes(), length),
+            derive_key(&*self, &purpose.as_bytes(), secretbox::KEY_SIZE),
             std::marker::PhantomData,
         )
     }

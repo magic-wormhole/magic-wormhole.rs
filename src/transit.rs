@@ -23,8 +23,9 @@ use async_std::{
 };
 use futures::{future::TryFutureExt, StreamExt};
 use log::*;
-use sodiumoxide::crypto::secretbox;
 use std::{net::ToSocketAddrs, str::FromStr, sync::Arc};
+use xsalsa20poly1305 as secretbox;
+use xsalsa20poly1305::aead::{Aead, NewAead};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
@@ -470,12 +471,11 @@ impl Transit {
 
         // 3. decrypt the vector 'enc_packet' with the key.
         let plaintext = {
-            let (received_nonce, ciphertext) =
-                enc_packet.split_at(sodiumoxide::crypto::secretbox::NONCEBYTES);
+            let (received_nonce, ciphertext) = enc_packet.split_at(secretbox::NONCE_SIZE);
             {
                 // Nonce check
                 // nonce in little endian (to interop with python client)
-                let mut nonce_vec = nonce.as_ref().to_vec();
+                let mut nonce_vec = nonce.to_vec();
                 nonce_vec.reverse();
                 anyhow::ensure!(
                     nonce_vec == received_nonce,
@@ -484,15 +484,13 @@ impl Transit {
                     nonce_vec
                 );
 
-                nonce.increment_le_inplace();
+                crate::util::sodium_increment_le(nonce);
             }
 
-            secretbox::open(
-                &ciphertext,
-                &secretbox::Nonce::from_slice(received_nonce).context("nonce unwrap failed")?,
-                &secretbox::Key::from_slice(&rkey).context("key unwrap failed")?,
-            )
-            .map_err(|()| format_err!("decryption failed"))?
+            let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(&rkey));
+            cipher
+                .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
+                .context("Decryption failed")?
         };
 
         Ok(plaintext.into_boxed_slice())
@@ -509,15 +507,18 @@ impl Transit {
         plaintext: &[u8],
         nonce: &mut secretbox::Nonce,
     ) -> anyhow::Result<()> {
-        let sodium_key = secretbox::Key::from_slice(&skey).unwrap();
+        let sodium_key = secretbox::Key::from_slice(&skey);
         // nonce in little endian (to interop with python client)
-        let mut nonce_vec = nonce.as_ref().to_vec();
+        let mut nonce_vec = nonce.to_vec();
         nonce_vec.reverse();
 
         let ciphertext = {
-            let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref())
-                .ok_or_else(|| format_err!("encrypt_record: unable to create nonce"))?;
-            secretbox::seal(plaintext, &nonce_le, &sodium_key)
+            let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref());
+
+            let cipher = secretbox::XSalsa20Poly1305::new(sodium_key);
+            cipher
+                .encrypt(nonce_le, plaintext)
+                .context("Encryption failed")?
         };
 
         // send the encrypted record
@@ -527,7 +528,7 @@ impl Transit {
         socket.write_all(&nonce_vec).await?;
         socket.write_all(&ciphertext).await?;
 
-        nonce.increment_le_inplace();
+        crate::util::sodium_increment_le(nonce);
 
         Ok(())
     }
@@ -645,10 +646,8 @@ async fn follower_handshake_exchange(
         socket,
         skey,
         rkey,
-        snonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
-            .unwrap(),
-        rnonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
-            .unwrap(),
+        snonce: Default::default(),
+        rnonce: Default::default(),
     })
 }
 
@@ -708,10 +707,8 @@ async fn leader_handshake_exchange(
         socket,
         skey,
         rkey,
-        snonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
-            .unwrap(),
-        rnonce: secretbox::Nonce::from_slice(&[0; sodiumoxide::crypto::secretbox::NONCEBYTES])
-            .unwrap(),
+        snonce: Default::default(),
+        rnonce: Default::default(),
     })
 }
 
