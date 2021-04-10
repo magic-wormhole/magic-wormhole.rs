@@ -1,5 +1,3 @@
-#![cfg_attr(tarpaulin, skip)]
-
 use super::{events::Phase, Mood};
 use crate::CodeProvider;
 

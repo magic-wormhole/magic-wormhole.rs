@@ -104,7 +104,6 @@ pub fn default_wordlist(num_words: usize) -> Wordlist {
     }
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::*;
