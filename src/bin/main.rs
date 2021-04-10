@@ -180,22 +180,27 @@ async fn main() -> anyhow::Result<()> {
     /* Handling of the argument matches (one branch per subcommand) */
 
     if let Some(matches) = matches.subcommand_matches("send") {
+        let file_path = matches.value_of_os("file").unwrap();
+        let file_name = matches
+            .value_of_os("file-name")
+            .or_else(|| std::path::Path::new(file_path).file_name())
+            .ok_or_else(|| {
+                anyhow::format_err!("You can't send a file without a name. Maybe try --rename")
+            })?;
+
+        anyhow::ensure!(
+            std::path::Path::new(file_path).exists(),
+            "{:?} does not exist",
+            file_path
+        );
+
         let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
         print_welcome(&mut term, &welcome)?;
         sender_print_code(&mut term, &welcome.code)?;
         let wormhole = connector.connect_to_client().await?;
         writeln!(&term, "Successfully connected to peer.")?;
 
-        let file_path = matches.value_of_os("file").unwrap();
-        let file_name = matches.value_of_os("file-name")
-            .or_else(|| std::path::Path::new(file_path).file_name())
-            .ok_or_else(|| anyhow::format_err!("You can't send a file without a name. Maybe try --rename"))?;
-
-        send(wormhole,
-            &relay_server,
-            &file_path,
-            &file_name,
-        ).await?;
+        send(wormhole, &relay_server, &file_path, &file_name).await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
         let timeout_secs = u64::from_str(matches.value_of("timeout").unwrap_or("3600"))?;
@@ -205,9 +210,12 @@ async fn main() -> anyhow::Result<()> {
         sender_print_code(&mut term, &welcome.code)?;
 
         let file_path = matches.value_of_os("file").unwrap();
-        let file_name = matches.value_of_os("file-name")
+        let file_name = matches
+            .value_of_os("file-name")
             .or_else(|| std::path::Path::new(file_path).file_name())
-            .ok_or_else(|| anyhow::format_err!("You can't send a file without a name. Maybe try --rename"))?;
+            .ok_or_else(|| {
+                anyhow::format_err!("You can't send a file without a name. Maybe try --rename")
+            })?;
 
         let mp = MultiProgress::new();
         send_many(
@@ -497,7 +505,9 @@ async fn receive(
         return req.reject().await;
     }
 
-    let file_name = file_name.unwrap_or_else(|| req.filename.as_ref());
+    let file_name = file_name
+        .or_else(|| req.filename.file_name())
+        .ok_or_else(|| anyhow::format_err!("The sender did not specify a valid file name, and neither did you. Try using --rename."))?;
     let file_path = std::path::Path::new(target_dir).join(file_name);
 
     let pb = ProgressBar::new(req.filesize);
