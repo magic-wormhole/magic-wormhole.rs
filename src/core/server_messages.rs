@@ -103,7 +103,6 @@ pub fn deserialize(s: &str) -> InboundMessage {
     serde_json::from_str(&s).unwrap()
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::*;

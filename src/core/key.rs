@@ -262,7 +262,6 @@ pub fn derive_verifier(key: &Key) -> Vec<u8> {
     derive_key(key, b"wormhole:verifier", 32)
 }
 
-#[cfg_attr(tarpaulin, skip)]
 #[cfg(test)]
 mod test {
     use super::*;
