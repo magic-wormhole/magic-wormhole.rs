@@ -1,6 +1,6 @@
 # Changelog
 
-## Version 0.2.0 (release candicate 1)
+## Version 0.2.0
 
 - Implemented version and verifier in the API
 - Added API documentation \o/ (still a long way to go though)
