@@ -16,7 +16,7 @@
 use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
-use anyhow::{ensure, format_err, Context, Error, Result};
+use anyhow::{ensure, format_err, Error, Result};
 use async_std::{
     io::{prelude::WriteExt, ReadExt},
     net::{TcpListener, TcpStream},
@@ -490,7 +490,8 @@ impl Transit {
             let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(&rkey));
             cipher
                 .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
-                .context("Decryption failed")?
+                /* TODO replace with `.context` after the next xsalsa20poly1305 update */
+                .map_err(|_| format_err!("Decryption failed"))?
         };
 
         Ok(plaintext.into_boxed_slice())
@@ -518,7 +519,8 @@ impl Transit {
             let cipher = secretbox::XSalsa20Poly1305::new(sodium_key);
             cipher
                 .encrypt(nonce_le, plaintext)
-                .context("Encryption failed")?
+                /* TODO replace with `.context` after the next xsalsa20poly1305 update */
+                .map_err(|_| format_err!("Encryption failed"))?
         };
 
         // send the encrypted record
@@ -722,25 +724,17 @@ fn get_direct_relay_hosts<'a, 'b: 'a>(
     let direct_hosts: Vec<(HostType, &DirectHint)> = ttype
         .hints_v1
         .iter()
-        .filter(|hint| match hint {
-            Hint::DirectTcpV1(_) => true,
-            _ => false,
-        })
-        .map(|hint| match hint {
-            Hint::DirectTcpV1(dt) => (HostType::Direct, dt),
-            _ => unreachable!(),
+        .filter_map(|hint| match hint {
+            Hint::DirectTcpV1(dt) => Some((HostType::Direct, dt)),
+            _ => None,
         })
         .collect();
     let relay_hosts_list: Vec<&Vec<DirectHint>> = ttype
         .hints_v1
         .iter()
-        .filter(|hint| match hint {
-            Hint::RelayV1(_) => true,
-            _ => false,
-        })
-        .map(|hint| match hint {
-            Hint::RelayV1(rt) => &rt.hints,
-            _ => unreachable!(),
+        .filter_map(|hint| match hint {
+            Hint::RelayV1(rt) => Some(&rt.hints),
+            _ => None,
         })
         .collect();
 
