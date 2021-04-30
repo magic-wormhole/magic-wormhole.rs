@@ -11,8 +11,8 @@ use std::collections::VecDeque;
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
     aead::{
-        generic_array::{typenum::Unsigned, GenericArray},
-        Aead, NewAead,
+        generic_array::GenericArray,
+        Aead, AeadCore, NewAead,
     },
     XSalsa20Poly1305,
 };
@@ -233,7 +233,8 @@ pub fn encrypt_data(
 
 // TODO: return a Result with a proper error type
 pub fn decrypt_data(key: &xsalsa20poly1305::Key, encrypted: &[u8]) -> Option<Vec<u8>> {
-    let nonce_size = <XSalsa20Poly1305 as Aead>::NonceSize::to_usize();
+    use xsalsa20poly1305::aead::generic_array::typenum::marker_traits::Unsigned;
+    let nonce_size = <XSalsa20Poly1305 as AeadCore>::NonceSize::to_usize();
     let (nonce, ciphertext) = encrypted.split_at(nonce_size);
     assert_eq!(nonce.len(), nonce_size);
     let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(key));
