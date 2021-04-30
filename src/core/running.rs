@@ -1,4 +1,4 @@
-use super::{key, mailbox, Key};
+use super::{key, mailbox};
 use crate::{
     core::{EncryptedMessage, Event, Mood, MySide, Phase},
     APIEvent,
@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 pub(super) struct RunningMachine {
     pub phase: u64,
-    pub key: Key,
+    pub key: xsalsa20poly1305::Key,
     pub side: MySide,
     pub await_nameplate_release: bool,
     pub mailbox_machine: mailbox::MailboxMachine,
@@ -15,7 +15,7 @@ pub(super) struct RunningMachine {
 
 impl RunningMachine {
     pub(super) fn send_message(
-        mut self,
+        mut self: Box<Self>,
         actions: &mut VecDeque<Event>,
         plaintext: Vec<u8>,
     ) -> super::State {
@@ -30,7 +30,7 @@ impl RunningMachine {
     }
 
     pub(super) fn receive_message(
-        mut self,
+        mut self: Box<Self>,
         actions: &mut VecDeque<Event>,
         message: EncryptedMessage,
     ) -> super::State {
@@ -56,7 +56,7 @@ impl RunningMachine {
     }
 
     pub(super) fn shutdown(
-        self,
+        self: Box<Self>,
         actions: &mut VecDeque<Event>,
         result: anyhow::Result<()>,
     ) -> super::State {
