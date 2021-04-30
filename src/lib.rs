@@ -34,6 +34,8 @@ use futures::{
 };
 use std::{fmt::Display, pin::Pin};
 
+use xsalsa20poly1305 as secretbox;
+
 use crate::core::key::derive_key;
 use log::*;
 use std::str;
@@ -75,15 +77,9 @@ impl KeyPurpose for GenericKey {}
  *
  * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
  */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 // TODO redact value for logs by manually deriving Debug
-pub struct Key<P: KeyPurpose>(pub Vec<u8>, std::marker::PhantomData<P>);
-
-impl<P: KeyPurpose> Clone for Key<P> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone(), std::marker::PhantomData)
-    }
-}
+pub struct Key<P: KeyPurpose>(pub Box<secretbox::Key>, std::marker::PhantomData<P>);
 
 impl<P: KeyPurpose> Display for Key<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -93,7 +89,7 @@ impl<P: KeyPurpose> Display for Key<P> {
 }
 
 impl<P: KeyPurpose> std::ops::Deref for Key<P> {
-    type Target = Vec<u8>;
+    type Target = secretbox::Key;
 
     /// Dereferences the value.
     fn deref(&self) -> &Self::Target {
@@ -129,9 +125,8 @@ impl<P: KeyPurpose> Key<P> {
      * Derive a new sub-key from this one
      */
     pub fn derive_subkey_from_purpose<NewP: KeyPurpose>(&self, purpose: &str) -> Key<NewP> {
-        let length = sodiumoxide::crypto::secretbox::KEYBYTES;
         Key(
-            derive_key(&*self, &purpose.as_bytes(), length),
+            Box::new(derive_key(&*self, &purpose.as_bytes())),
             std::marker::PhantomData,
         )
     }
@@ -202,7 +197,7 @@ impl WormholeConnector {
         Ok(Wormhole {
             tx: Box::pin(tx_api_to_core),
             rx: Box::pin(rx_core_to_api),
-            key: Key(key.to_vec(), std::marker::PhantomData),
+            key: Key(key, std::marker::PhantomData),
             verifier,
             peer_version,
             appid: self.appid,
@@ -243,7 +238,7 @@ pub struct Wormhole {
         Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
     pub rx: Pin<Box<dyn Stream<Item = anyhow::Result<Vec<u8>>> + std::marker::Send>>,
     pub key: Key<WormholeKey>,
-    pub verifier: Vec<u8>,
+    pub verifier: Box<secretbox::Key>,
     /**
      * The `AppID` this wormhole is bound to.
      * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
