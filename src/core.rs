@@ -35,8 +35,8 @@ pub enum APIEvent {
 
     /// The wormhole is now up and running
     ConnectedToClient {
-        key: Key,
-        verifier: Vec<u8>,
+        key: Box<xsalsa20poly1305::Key>,
+        verifier: Box<xsalsa20poly1305::Key>,
         versions: serde_json::Value,
     },
 
@@ -78,7 +78,7 @@ enum State {
         versions: serde_json::Value,
     },
     Keying(Box<key::KeyMachine>),
-    Running(running::RunningMachine),
+    Running(Box<running::RunningMachine>),
     Closing {
         await_nameplate_release: bool,
         await_mailbox_close: bool,
@@ -218,11 +218,9 @@ pub async fn run(
                     // TODO make more elegant with boxed patterns (once stable)
                     machine.nameplate = None;
                 },
-                State::Running(running::RunningMachine {
-                    await_nameplate_release,
-                    ..
-                }) => {
-                    *await_nameplate_release = false;
+                State::Running(machine) => {
+                    // TODO make more elegant with boxed patterns (once stable)
+                    machine.await_nameplate_release = false;
                 },
                 State::Closing {
                     await_nameplate_release,

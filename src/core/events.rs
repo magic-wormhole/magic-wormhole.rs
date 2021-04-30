@@ -7,7 +7,6 @@ use crate::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{fmt, ops::Deref};
-use zeroize::Zeroize;
 
 pub use super::wordlist::Wordlist;
 
@@ -41,22 +40,6 @@ impl From<String> for AppID {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Zeroize)]
-#[zeroize(drop)]
-pub struct Key(pub Vec<u8>);
-impl Deref for Key {
-    type Target = Vec<u8>;
-    fn deref(&self) -> &Vec<u8> {
-        &self.0
-    }
-}
-
-impl fmt::Debug for Key {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Key(REDACTED)")
-    }
-}
-
 fn generate_side() -> String {
     let mut bytes: [u8; 5] = [0; 5];
     random_bytes(&mut bytes);
@@ -87,7 +70,7 @@ impl Deref for MySide {
     }
 }
 
-// TheirSide is used for the String that arrives inside inbound messages
+// TheirSide is used for the string that arrives inside inbound messages
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct TheirSide(EitherSide);
@@ -183,7 +166,7 @@ pub struct EncryptedMessage {
 }
 
 impl EncryptedMessage {
-    pub fn decrypt(&self, key: &Key) -> anyhow::Result<Vec<u8>> {
+    pub fn decrypt(&self, key: &xsalsa20poly1305::Key) -> anyhow::Result<Vec<u8>> {
         use super::key;
         let data_key = key::derive_phase_key(&self.side, key, &self.phase);
         key::decrypt_data(&data_key, &self.body)
