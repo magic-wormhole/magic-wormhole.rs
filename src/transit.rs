@@ -474,17 +474,14 @@ impl Transit {
             let (received_nonce, ciphertext) = enc_packet.split_at(secretbox::NONCE_SIZE);
             {
                 // Nonce check
-                // nonce in little endian (to interop with python client)
-                let mut nonce_vec = nonce.to_vec();
-                nonce_vec.reverse();
                 anyhow::ensure!(
-                    nonce_vec == received_nonce,
+                    nonce.as_slice() == received_nonce,
                     "Wrong nonce received, got {:x?} but expected {:x?}",
                     received_nonce,
-                    nonce_vec
+                    nonce
                 );
 
-                crate::util::sodium_increment_le(nonce);
+                crate::util::sodium_increment_be(nonce);
             }
 
             let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(&rkey));
@@ -509,12 +506,9 @@ impl Transit {
         nonce: &mut secretbox::Nonce,
     ) -> anyhow::Result<()> {
         let sodium_key = secretbox::Key::from_slice(&skey);
-        // nonce in little endian (to interop with python client)
-        let mut nonce_vec = nonce.to_vec();
-        nonce_vec.reverse();
 
         let ciphertext = {
-            let nonce_le = secretbox::Nonce::from_slice(nonce_vec.as_ref());
+            let nonce_le = secretbox::Nonce::from_slice(nonce);
 
             let cipher = secretbox::XSalsa20Poly1305::new(sodium_key);
             cipher
@@ -525,12 +519,12 @@ impl Transit {
 
         // send the encrypted record
         socket
-            .write_all(&((ciphertext.len() + nonce_vec.len()) as u32).to_be_bytes())
+            .write_all(&((ciphertext.len() + nonce.len()) as u32).to_be_bytes())
             .await?;
-        socket.write_all(&nonce_vec).await?;
+        socket.write_all(nonce).await?;
         socket.write_all(&ciphertext).await?;
 
-        crate::util::sodium_increment_le(nonce);
+        crate::util::sodium_increment_be(nonce);
 
         Ok(())
     }

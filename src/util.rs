@@ -14,6 +14,15 @@ pub fn sodium_increment_le(n: &mut [u8]) {
     }
 }
 
+pub fn sodium_increment_be(n: &mut [u8]) {
+    let mut c = 1u16;
+    for b in n.iter_mut().rev() {
+        c += *b as u16;
+        *b = c as u8;
+        c >>= 8;
+    }
+}
+
 pub async fn ask_user(message: String, default_answer: bool) -> bool {
     let message = format!(
         "{} ({}/{}) ",

@@ -10,10 +10,7 @@ use spake2::{Ed25519Group, Identity, Password, SPAKE2};
 use std::collections::VecDeque;
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
-    aead::{
-        generic_array::GenericArray,
-        Aead, AeadCore, NewAead,
-    },
+    aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
     XSalsa20Poly1305,
 };
 
