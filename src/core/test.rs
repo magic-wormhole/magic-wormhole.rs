@@ -1,5 +1,6 @@
 use super::{events::Phase, Mood};
 use crate::CodeProvider;
+use std::time::Duration;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/rusty-wormhole-test";
@@ -106,7 +107,6 @@ pub async fn test_eventloop_exit1() {
     init_logger();
 
     use futures::{SinkExt, StreamExt};
-    use std::time::Duration;
 
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
     let dummy_task = async_std::task::spawn(async move {
@@ -158,7 +158,6 @@ pub async fn test_eventloop_exit2() {
     init_logger();
 
     use futures::StreamExt;
-    use std::time::Duration;
 
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
     let dummy_task = async_std::task::spawn(async move {
@@ -208,8 +207,6 @@ pub async fn test_eventloop_exit2() {
 #[async_std::test]
 pub async fn test_eventloop_exit3() {
     init_logger();
-
-    use std::time::Duration;
 
     async_std::future::timeout(Duration::from_secs(5), async {
         let mut eventloop_task = None;
@@ -338,6 +335,63 @@ pub async fn test_send_many() -> anyhow::Result<()> {
     for sender in senders.await? {
         sender.await?;
     }
+
+    Ok(())
+}
+
+/// Try to send a file, but use a bad code, and see how it's handled
+#[async_std::test]
+pub async fn test_wrong_code() -> anyhow::Result<()> {
+    init_logger();
+    use crate as magic_wormhole;
+    use magic_wormhole::{transfer, CodeProvider};
+
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async_std::task::Builder::new()
+        .name("sender".to_owned())
+        .spawn(async {
+            let (welcome, connector) = magic_wormhole::connect_to_server(
+                transfer::APPID,
+                transfer::AppVersion::default(),
+                magic_wormhole::DEFAULT_MAILBOX_SERVER,
+                CodeProvider::AllocateCode(2),
+                &mut None,
+            )
+            .await?;
+            log::info!("Got welcome: {}", &welcome.welcome);
+            log::info!("This wormhole's code is: {}", &welcome.code);
+            code_tx.send(welcome.code.0).unwrap();
+
+            let result = connector.connect_to_client().await;
+            /* This should have failed, due to the wrong code */
+            assert!(result.is_err());
+            anyhow::Result::<_>::Ok(())
+        })?;
+    let receiver_task = async_std::task::Builder::new()
+        .name("receiver".to_owned())
+        .spawn(async {
+            let code = code_rx.await?;
+            log::info!("Got code over local: {}", &code);
+            let (welcome, connector) = magic_wormhole::connect_to_server(
+                transfer::APPID,
+                transfer::AppVersion::default(),
+                magic_wormhole::DEFAULT_MAILBOX_SERVER,
+                /* Making a wrong code here by appending bullshit */
+                CodeProvider::SetCode(format!("{}-foo-bar", code)),
+                &mut None,
+            )
+            .await?;
+            log::info!("Got welcome: {}", &welcome.welcome);
+
+            let result = connector.connect_to_client().await;
+            /* This should have failed, due to the wrong code */
+            assert!(result.is_err());
+            anyhow::Result::<_>::Ok(())
+        })?;
+
+    async_std::future::timeout(Duration::from_secs(5), sender_task).await??;
+    async_std::future::timeout(Duration::from_secs(5), receiver_task).await??;
 
     Ok(())
 }

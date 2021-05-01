@@ -92,6 +92,13 @@ impl Deref for TheirSide {
 #[serde(transparent)]
 pub struct EitherSide(pub String);
 
+impl Deref for EitherSide {
+    type Target = String;
+    fn deref(&self) -> &String {
+        &self.0
+    }
+}
+
 impl<S: Into<String>> From<S> for EitherSide {
     fn from(s: S) -> EitherSide {
         EitherSide(s.into())
