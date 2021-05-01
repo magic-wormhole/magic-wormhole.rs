@@ -25,6 +25,7 @@ enum State {
     S2Unverified(xsalsa20poly1305::Key, Vec<EncryptedMessage>), // key, another message queue
 }
 
+#[derive(Debug)]
 pub(super) struct KeyMachine {
     side: MySide,
     versions: serde_json::Value,
@@ -169,8 +170,14 @@ impl KeyMachine {
                 Mood::Errory
             },
         );
+        let await_nameplate_release = if let Some(nameplate) = self.nameplate {
+            actions.push_back(OutboundMessage::release(nameplate).into());
+            true
+        } else {
+            false
+        };
         super::State::Closing {
-            await_nameplate_release: self.nameplate.is_some(),
+            await_nameplate_release,
             await_mailbox_close: true,
             result,
         }
