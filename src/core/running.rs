@@ -5,6 +5,7 @@ use crate::{
 };
 use std::collections::VecDeque;
 
+#[derive(Debug)]
 pub(super) struct RunningMachine {
     pub phase: u64,
     pub key: xsalsa20poly1305::Key,

@@ -61,6 +61,7 @@ pub enum Mood {
     Unwelcome,
 }
 
+#[derive(Debug)]
 enum State {
     AllocatingNameplate {
         wordlist: Arc<Wordlist>,
@@ -120,7 +121,7 @@ pub async fn run(
 
             state = State::AllocatingNameplate {
                 wordlist,
-                side,
+                side: side.clone(),
                 versions,
             };
         },
@@ -133,7 +134,7 @@ pub async fn run(
             state = State::ClaimingNameplate {
                 nameplate,
                 code: Code(code),
-                side,
+                side: side.clone(),
                 versions,
             };
         },
@@ -165,7 +166,8 @@ pub async fn run(
             },
         };
 
-        trace!("Processing: {:?}", e);
+        trace!("[{:?}] State: {:?}", &**side, &state);
+        debug!("[{:?}] Processing: {:?}", &**side, e);
         use self::{events::Event::*, server_messages::InboundMessage};
         match e {
             FromIO(InboundMessage::Welcome { welcome }) => {
@@ -355,6 +357,9 @@ pub async fn run(
                 },
                 State::Running(machine) => {
                     state = machine.receive_message(&mut actions, message);
+                },
+                State::Closing { result: Err(_), .. } => {
+                    /* If we're already in an error state, simply ignore incoming messages from peer. */
                 },
                 _ => {
                     actions.push_back(Event::ShutDown(Err(anyhow::format_err!(

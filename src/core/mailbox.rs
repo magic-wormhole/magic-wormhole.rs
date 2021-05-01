@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::events::{Mailbox, MySide, Phase};
 
+#[derive(Debug)]
 pub struct MailboxMachine {
     mailbox: Mailbox,
     processed: HashSet<Phase>,
