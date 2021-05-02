@@ -11,19 +11,47 @@ pub struct Nameplate {
 }
 
 // Client sends only these
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum OutboundMessage {
-    Bind { appid: AppID, side: MySide },
+    #[display(fmt = "Bind {{ appid: {}, side: {} }}", appid, side)]
+    Bind {
+        appid: AppID,
+        side: MySide,
+    },
     List,
     Allocate,
-    Claim { nameplate: String },
-    Release { nameplate: String }, // TODO: nominally optional
-    Open { mailbox: Mailbox },
-    Add { phase: Phase, body: String },
-    Close { mailbox: Mailbox, mood: Mood },
-    Ping { ping: u64 },
+    #[display(fmt = "Claim({})", nameplate)]
+    Claim {
+        nameplate: String,
+    },
+    #[display(fmt = "Release({})", nameplate)]
+    Release {
+        nameplate: String,
+    }, // TODO: nominally optional
+    #[display(fmt = "Open({})", mailbox)]
+    Open {
+        mailbox: Mailbox,
+    },
+    #[display(
+        fmt = "Add {{ phase: {}, body: {} }}",
+        phase,
+        "crate::util::DisplayBytes(body.as_bytes())"
+    )]
+    Add {
+        phase: Phase,
+        body: String,
+    },
+    #[display(fmt = "Close {{ mailbox: {}, mood: {} }}", mailbox, mood)]
+    Close {
+        mailbox: Mailbox,
+        mood: Mood,
+    },
+    #[display(fmt = "Ping({})", ping)]
+    Ping {
+        ping: u64,
+    },
 }
 
 impl OutboundMessage {
@@ -63,23 +91,33 @@ impl OutboundMessage {
 }
 
 // Server sends only these
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum InboundMessage {
+    #[display(fmt = "Welcome({})", welcome)]
     Welcome {
         welcome: Value, // left mostly-intact for application
     },
+    #[display(fmt = "Nameplates({:?})", nameplates)]
     Nameplates {
         nameplates: Vec<Nameplate>,
     },
+    #[display(fmt = "Allocated({})", nameplate)]
     Allocated {
         nameplate: String,
     },
+    #[display(fmt = "Claimed({})", mailbox)]
     Claimed {
         mailbox: Mailbox,
     },
     Released,
+    #[display(
+        fmt = "Message {{ side: {}, phase: {:?}, body: {} }}",
+        side,
+        phase,
+        "crate::util::DisplayBytes(body.as_bytes())"
+    )]
     Message {
         side: TheirSide,
         phase: String,
@@ -88,9 +126,11 @@ pub enum InboundMessage {
     },
     Closed,
     Ack,
+    #[display(fmt = "Pong({})", pong)]
     Pong {
         pong: u64,
     },
+    #[display(fmt = "Error {{ error: {:?}, .. }}", error)]
     Error {
         error: String,
         orig: Box<InboundMessage>,
