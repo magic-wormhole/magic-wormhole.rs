@@ -10,7 +10,7 @@ use std::{fmt, ops::Deref};
 
 pub use super::wordlist::Wordlist;
 
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 pub struct AppID(pub String);
 
 impl std::ops::Deref for AppID {
@@ -47,8 +47,9 @@ fn generate_side() -> String {
 }
 
 // MySide is used for the String that we send in all our outbound messages
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
+#[display(fmt = "MySide({})", "&*_0")]
 pub struct MySide(EitherSide);
 
 impl MySide {
@@ -71,8 +72,9 @@ impl Deref for MySide {
 }
 
 // TheirSide is used for the string that arrives inside inbound messages
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
+#[display(fmt = "TheirSide({})", "&*_0")]
 pub struct TheirSide(EitherSide);
 
 impl<S: Into<String>> From<S> for TheirSide {
@@ -88,8 +90,9 @@ impl Deref for TheirSide {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
+#[display(fmt = "{}", "&*_0")]
 pub struct EitherSide(pub String);
 
 impl Deref for EitherSide {
@@ -105,7 +108,7 @@ impl<S: Into<String>> From<S> for EitherSide {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
 pub struct Phase(pub String);
 
@@ -121,7 +124,7 @@ impl Phase {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
 pub struct Mailbox(pub String);
 
@@ -165,7 +168,13 @@ impl fmt::Display for Code {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, derive_more::Display)]
+#[display(
+    fmt = "EncryptedMessage {{ side: {}, phase: {}, body: <{} encypted bytes>",
+    side,
+    phase,
+    "body.len()"
+)]
 pub struct EncryptedMessage {
     pub side: TheirSide,
     pub phase: Phase,
@@ -181,23 +190,29 @@ impl EncryptedMessage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
 pub enum Event {
     /** Got a message from the server */
+    #[display(fmt = "FromIO({})", _0)]
     FromIO(InboundMessage),
+    #[display(fmt = "ToIO({})", _0)]
     ToIO(OutboundMessage),
     /** This is second to the last command issued by the core */
     CloseWebsocket,
     /** This is the last event received by the core. After this the event loop will exit. */
     WebsocketClosed,
     /** Sometimes we queue up messages and then release them */
+    #[display(fmt = "BounceMessage({})", _0)]
     BounceMessage(EncryptedMessage),
+    #[display(fmt = "FromAPI({})", "crate::util::DisplayBytes(_0)")]
     FromAPI(Vec<u8>),
+    #[display(fmt = "ToAPI({})", _0)]
     ToAPI(APIEvent),
     /** Close the connection to the server
      *
      * This might trigger a series of events to release all resources and end up with [`Event::WebsocketClosed`]
      */
+    #[display(fmt = "Shutdown({:?})", _0)]
     ShutDown(anyhow::Result<()>),
 }
 

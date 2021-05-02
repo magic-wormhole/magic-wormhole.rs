@@ -5,7 +5,14 @@ use crate::{
 };
 use std::collections::VecDeque;
 
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
+#[display(
+    fmt = "RunningMachine {{ phase: {}, side: {}, await_nameplate_release: {}, mailbox_machine: {}",
+    phase,
+    side,
+    await_nameplate_release,
+    mailbox_machine
+)]
 pub(super) struct RunningMachine {
     pub phase: u64,
     pub key: xsalsa20poly1305::Key,
