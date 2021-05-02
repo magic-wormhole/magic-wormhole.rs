@@ -23,8 +23,9 @@ use serde_derive::{Deserialize, Serialize};
 
 /// Send an API event to the outside
 // TODO manually implement Debug again to display some Vec<u8> as string and others as hex
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
 pub enum APIEvent {
+    #[display(fmt = "ConnectedToServer {{ welcome: {}, code: {} }}", welcome, code)]
     ConnectedToServer {
         /// A little welcome message from the server (message of the day and such)
         // TODO we can actually provide more structure than a "value", see the protocol
@@ -34,12 +35,18 @@ pub enum APIEvent {
     },
 
     /// The wormhole is now up and running
+    #[display(
+        fmt = "ConnectedToClient {{ key: <censored>, verifier: {:x?}, versions: {} }}",
+        verifier,
+        versions
+    )]
     ConnectedToClient {
         key: Box<xsalsa20poly1305::Key>,
         verifier: Box<xsalsa20poly1305::Key>,
         versions: serde_json::Value,
     },
 
+    #[display(fmt = "GotMessage({})", "crate::util::DisplayBytes(_0)")]
     GotMessage(Vec<u8>),
     /// If this message is sent, it always is the last before the channel closes
     GotError(anyhow::Error),
@@ -47,7 +54,7 @@ pub enum APIEvent {
 
 // the serialized forms of these variants are part of the wire protocol, so
 // they must be spelled exactly as shown
-#[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize, derive_more::Display)]
 pub enum Mood {
     #[serde(rename = "happy")]
     Happy,
@@ -61,8 +68,14 @@ pub enum Mood {
     Unwelcome,
 }
 
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
 enum State {
+    #[display(
+        fmt = "AllocatingNameplate {{ wordlist: <{} words>, side: {}, versions: {} }}",
+        "wordlist.num_words",
+        side,
+        versions
+    )]
     AllocatingNameplate {
         wordlist: Arc<Wordlist>,
 
@@ -70,6 +83,13 @@ enum State {
         side: MySide,
         versions: serde_json::Value,
     },
+    #[display(
+        fmt = "ClaimingNameplate {{ nameplate: {}, code: {}, side: {}, versions: {} }}",
+        nameplate,
+        code,
+        side,
+        versions
+    )]
     ClaimingNameplate {
         nameplate: Nameplate,
         code: Code,
@@ -78,8 +98,16 @@ enum State {
         side: MySide,
         versions: serde_json::Value,
     },
+    #[display(fmt = "Keying({})", _0)]
     Keying(Box<key::KeyMachine>),
+    #[display(fmt = "Running({})", _0)]
     Running(Box<running::RunningMachine>),
+    #[display(
+        fmt = "Closing {{ await_nameplate_release: {}, await_mailbox_close: {}, result: {:?} }}",
+        await_nameplate_release,
+        await_mailbox_close,
+        result
+    )]
     Closing {
         await_nameplate_release: bool,
         await_mailbox_close: bool,
@@ -166,8 +194,8 @@ pub async fn run(
             },
         };
 
-        trace!("[{:?}] State: {:?}", &**side, &state);
-        debug!("[{:?}] Processing: {:?}", &**side, e);
+        trace!("[{}] State: {}", &**side, &state);
+        debug!("[{}] Processing: {}", &**side, e);
         use self::{events::Event::*, server_messages::InboundMessage};
         match e {
             FromIO(InboundMessage::Welcome { welcome }) => {
