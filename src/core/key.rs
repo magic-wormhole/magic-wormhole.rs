@@ -19,13 +19,29 @@ use super::{
     mailbox, util,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, derive_more::Display)]
 enum State {
+    #[display(
+        fmt = "S1NoPake {{ pake: <censored>, message_queue: <{} items> }}",
+        "_1.len()"
+    )]
     S1NoPake(SPAKE2<Ed25519Group>, Vec<EncryptedMessage>), // pake_state, message queue
+    #[display(
+        fmt = "S2Unverified {{ key: <censored>, message_queue: <{} items> }}",
+        "_1.len()"
+    )]
     S2Unverified(xsalsa20poly1305::Key, Vec<EncryptedMessage>), // key, another message queue
 }
 
-#[derive(Debug)]
+#[derive(Debug, derive_more::Display)]
+#[display(
+    fmt = "KeyMachine {{ side: {}, versions: {}, nameplate: {:?}, mailbox_machine: {}, state: {} }}",
+    side,
+    versions,
+    nameplate,
+    mailbox_machine,
+    state
+)]
 pub(super) struct KeyMachine {
     side: MySide,
     versions: serde_json::Value,
