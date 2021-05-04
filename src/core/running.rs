@@ -1,8 +1,5 @@
 use super::{key, mailbox};
-use crate::{
-    core::{EncryptedMessage, Event, Mood, MySide, Phase},
-    APIEvent,
-};
+use crate::{core::*, APIEvent};
 use std::collections::VecDeque;
 
 #[derive(Debug, derive_more::Display)]
@@ -52,11 +49,11 @@ impl RunningMachine {
 
         // TODO maybe reorder incoming messages by phase numeral?
         match message.decrypt(&self.key) {
-            Ok(plaintext) => {
+            Some(plaintext) => {
                 actions.push_back(APIEvent::GotMessage(plaintext).into());
             },
-            Err(error) => {
-                actions.push_back(Event::ShutDown(Err(error)));
+            None => {
+                actions.push_back(Event::ShutDown(Err(WormholeCoreError::Crypto)));
             },
         }
 
@@ -66,15 +63,14 @@ impl RunningMachine {
     pub(super) fn shutdown(
         self: Box<Self>,
         actions: &mut VecDeque<Event>,
-        result: anyhow::Result<()>,
+        result: Result<(), WormholeCoreError>,
     ) -> super::State {
-        // TODO handle "scared" mood
         self.mailbox_machine.close(
             actions,
-            if result.is_ok() {
-                Mood::Happy
-            } else {
-                Mood::Errory
+            match &result {
+                Ok(_) => Mood::Happy,
+                Err(e) if e.is_scared() => Mood::Scared,
+                Err(_) => Mood::Errory,
             },
         );
         super::State::Closing {
