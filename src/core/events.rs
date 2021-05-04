@@ -2,6 +2,7 @@ use crate::{
     core::{
         server_messages::{InboundMessage, OutboundMessage},
         util::random_bytes,
+        WormholeCoreError,
     },
     APIEvent,
 };
@@ -182,11 +183,11 @@ pub struct EncryptedMessage {
 }
 
 impl EncryptedMessage {
-    pub fn decrypt(&self, key: &xsalsa20poly1305::Key) -> anyhow::Result<Vec<u8>> {
+    pub fn decrypt(&self, key: &xsalsa20poly1305::Key) -> Option<Vec<u8>> {
         use super::key;
         let data_key = key::derive_phase_key(&self.side, key, &self.phase);
         key::decrypt_data(&data_key, &self.body)
-            .ok_or_else(|| anyhow::format_err!("Got bad message that could not be decrypted"))
+        // .ok_or_else(|| anyhow::format_err!("Got bad message that could not be decrypted"))
     }
 }
 
@@ -213,7 +214,7 @@ pub enum Event {
      * This might trigger a series of events to release all resources and end up with [`Event::WebsocketClosed`]
      */
     #[display(fmt = "Shutdown({:?})", _0)]
-    ShutDown(anyhow::Result<()>),
+    ShutDown(Result<(), WormholeCoreError>),
 }
 
 // conversion from specific event types to the generic Event
