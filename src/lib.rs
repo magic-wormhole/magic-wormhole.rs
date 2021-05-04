@@ -20,6 +20,7 @@
 
 #![forbid(unsafe_code)]
 // #![deny(warnings)]
+#![allow(clippy::upper_case_acronyms)]
 
 mod core;
 pub mod transfer;
@@ -236,7 +237,8 @@ impl WormholeConnector {
 pub struct Wormhole {
     pub tx:
         Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
-    pub rx: Pin<Box<dyn Stream<Item = anyhow::Result<Vec<u8>>> + std::marker::Send>>,
+    pub rx:
+        Pin<Box<dyn Stream<Item = Result<Vec<u8>, core::WormholeCoreError>> + std::marker::Send>>,
     pub key: Key<WormholeKey>,
     pub verifier: Box<secretbox::Key>,
     /**
@@ -249,6 +251,26 @@ pub struct Wormhole {
      * This is bound by the `AppID`'s protocol and thus shall be handled on a higher level.
      */
     pub peer_version: serde_json::Value,
+}
+
+impl Wormhole {
+    /** The recommended way to close a Wormhole
+     *
+     * While you can simply drop it, that won't catch any errors, and more importantly,
+     * it won't wait until the inner thread has finished. If this is the last thing your
+     * program does, it will exit before any remaining messages are processed. Using `close`
+     * will wait for everything and give you error messages.
+     */
+    pub async fn close(mut self) -> anyhow::Result<()> {
+        use futures::{SinkExt, StreamExt};
+        /* Close the sender */
+        self.tx.close().await?;
+        /* Wait until the wormhole thread stops */
+        self.rx
+            .forward(futures::sink::drain::<Vec<u8>>().sink_err_into())
+            .await?;
+        Ok(())
+    }
 }
 
 /**

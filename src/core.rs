@@ -21,6 +21,39 @@ use log::*;
 
 use serde_derive::{Deserialize, Serialize};
 
+#[derive(Debug, thiserror::Error)]
+pub enum WormholeCoreError {
+    #[error("Protocol error")]
+    Protocol(#[source] anyhow::Error),
+    #[error(
+        "Key confirmation failed. If you didn't mistype the code, \
+        this is a sign of an attacker guessing passwords. Please try \
+        again some time later."
+    )]
+    PakeFailed,
+    #[error("Cannot decrypt a received message")]
+    Crypto,
+    #[error("Websocket IO error")]
+    IO(#[source] anyhow::Error),
+}
+
+impl WormholeCoreError {
+    pub(self) fn protocol(error: impl Into<anyhow::Error>) -> Self {
+        Self::Protocol(error.into())
+    }
+
+    /** Should we tell the server that we are "errory" or "scared"? */
+    pub fn is_scared(&self) -> bool {
+        matches!(self, Self::PakeFailed)
+    }
+}
+
+impl From<std::convert::Infallible> for WormholeCoreError {
+    fn from(_: std::convert::Infallible) -> Self {
+        unreachable!()
+    }
+}
+
 /// Send an API event to the outside
 // TODO manually implement Debug again to display some Vec<u8> as string and others as hex
 #[derive(Debug, derive_more::Display)]
@@ -49,7 +82,7 @@ pub enum APIEvent {
     #[display(fmt = "GotMessage({})", "crate::util::DisplayBytes(_0)")]
     GotMessage(Vec<u8>),
     /// If this message is sent, it always is the last before the channel closes
-    GotError(anyhow::Error),
+    GotError(WormholeCoreError),
 }
 
 // the serialized forms of these variants are part of the wire protocol, so
@@ -111,7 +144,7 @@ enum State {
     Closing {
         await_nameplate_release: bool,
         await_mailbox_close: bool,
-        result: anyhow::Result<()>,
+        result: Result<(), WormholeCoreError>,
     },
 }
 
@@ -187,8 +220,9 @@ pub async fn run(
         let e = match e {
             Ok(e) => e,
             Err(error) => {
+                debug!("Stopping wormhole event loop because of IO Error: {:?}", error);
                 to_api
-                    .unbounded_send(APIEvent::GotError(error))
+                    .unbounded_send(APIEvent::GotError(WormholeCoreError::IO(error)))
                     .expect("Don't close the receiver before shutting down the wormhole!");
                 break;
             },
@@ -237,8 +271,8 @@ pub async fn run(
                     },
                     State::Closing { .. } => { /* This may happen. Ignore it. */ },
                     _ => {
-                        actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                            "Protocol error: received message without requesting it"
+                        actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                            anyhow::format_err!("Received message without requesting it"),
                         ))));
                     },
                 }
@@ -263,8 +297,8 @@ pub async fn run(
                     }
                 },
                 _ => {
-                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                        "Protocol error: received message without requesting it"
+                    actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                        anyhow::format_err!("Received message without requesting it"),
                     ))));
                 },
             },
@@ -280,8 +314,8 @@ pub async fn run(
                     }
                 },
                 _ => {
-                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                        "Protocol error: received message in invalid state"
+                    actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                        anyhow::format_err!("Received message in invalid state"),
                     ))));
                 },
             },
@@ -313,16 +347,16 @@ pub async fn run(
                     };
                 } else {
                     // TODO protocol error
-                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                        "Protocol error: received message without requesting it"
+                    actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                        anyhow::format_err!("Received message without requesting it"),
                     ))));
                 }
             },
             FromIO(InboundMessage::Nameplates { nameplates: _ }) => {
                 /* We do not implement the "list" command at the moment. */
                 // TODO protocol error
-                actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                    "Protocol error: received message without requesting it"
+                actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                    anyhow::format_err!("Received message without requesting it"),
                 ))));
             },
             FromIO(InboundMessage::Error {
@@ -330,9 +364,8 @@ pub async fn run(
                 orig: _,
             }) => {
                 // TODO maybe hanlde orig field for better messages
-                actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                    "Received error message from server: {}",
-                    message
+                actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                    anyhow::format_err!("Received error message from server: {}", message),
                 ))));
             },
             FromIO(InboundMessage::Pong { .. }) | FromIO(InboundMessage::Ack { .. }) => (), /* we ignore this, it's only for the timing log */
@@ -345,8 +378,8 @@ pub async fn run(
                     state = machine.send_message(&mut actions, plaintext);
                 } else {
                     // TODO print current state's name
-                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                        "Cannot call Send outside of State::Running"
+                    actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                        anyhow::format_err!("Cannot call Send outside of State::Running"),
                     ))));
                 }
             },
@@ -386,12 +419,14 @@ pub async fn run(
                 State::Running(machine) => {
                     state = machine.receive_message(&mut actions, message);
                 },
-                State::Closing { result: Err(_), .. } => {
-                    /* If we're already in an error state, simply ignore incoming messages from peer. */
+                State::Closing { .. } => {
+                    /* If we're closing, simply ignore any incoming messages.
+                     * We could decrypt them if we hadn't dropped the key at this point, but eeh
+                     */
                 },
                 _ => {
-                    actions.push_back(Event::ShutDown(Err(anyhow::format_err!(
-                        "Protocol error: received message in invalid state"
+                    actions.push_back(Event::ShutDown(Err(WormholeCoreError::Protocol(
+                        anyhow::format_err!("Received message in invalid state"),
                     ))));
                 },
             },
