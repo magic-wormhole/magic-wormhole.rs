@@ -7,6 +7,7 @@ use std::{
 use anyhow::Context;
 use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
+use color_eyre::eyre;
 use console::{style, Term};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
@@ -16,8 +17,14 @@ use magic_wormhole::{
 };
 use std::str::FromStr;
 
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub struct AsStdError(#[from] anyhow::Error);
+
 #[async_std::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> eyre::Result<()> {
+    color_eyre::install()?;
+
     /* Define some common arguments first */
 
     let relay_server_arg = Arg::with_name("relay-server")
@@ -181,7 +188,7 @@ async fn main() -> anyhow::Result<()> {
     if matches.is_present("log") {
         env_logger::builder()
             .filter_level(log::LevelFilter::Debug)
-            // .filter_module("magic_wormhole::core", LevelFilter::Trace)
+            .filter_module("magic_wormhole::core", log::LevelFilter::Trace)
             .filter_module("mio", log::LevelFilter::Debug)
             .filter_module("ws", log::LevelFilter::Error)
             .init();
@@ -196,30 +203,41 @@ async fn main() -> anyhow::Result<()> {
             .value_of_os("file-name")
             .or_else(|| std::path::Path::new(file_path).file_name())
             .ok_or_else(|| {
-                anyhow::format_err!("You can't send a file without a name. Maybe try --rename")
+                eyre::format_err!("You can't send a file without a name. Maybe try --rename")
             })?;
 
-        anyhow::ensure!(
+        eyre::ensure!(
             std::path::Path::new(file_path).exists(),
             "{:?} does not exist",
             file_path
         );
 
-        let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
-        print_welcome(&mut term, &welcome)?;
-        sender_print_code(&mut term, &welcome.code)?;
-        let wormhole = connector.connect_to_client().await?;
+        let (welcome, connector, relay_server): (WormholeWelcome, WormholeConnector, RelayUrl) =
+            parse_and_connect(&matches, true)
+                .await
+                .map_err(AsStdError::from)?;
+        print_welcome(&mut term, &welcome).map_err(AsStdError::from)?;
+        sender_print_code(&mut term, &welcome.code).map_err(AsStdError::from)?;
+        let mut wormhole: Wormhole = connector
+            .connect_to_client()
+            .await
+            .map_err(AsStdError::from)?;
         writeln!(&term, "Successfully connected to peer.")?;
 
-        send(wormhole, &relay_server, &file_path, &file_name).await?;
+        send(&mut wormhole, &relay_server, &file_path, &file_name)
+            .await
+            .map_err(AsStdError::from)?;
+        wormhole.close().await.map_err(AsStdError::from)?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
+        let (welcome, connector, relay_server) = parse_and_connect(&matches, true)
+            .await
+            .map_err(AsStdError::from)?;
         let timeout =
             Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
         let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
 
-        print_welcome(&mut term, &welcome)?;
-        sender_print_code(&mut term, &welcome.code)?;
+        print_welcome(&mut term, &welcome).map_err(AsStdError::from)?;
+        sender_print_code(&mut term, &welcome.code).map_err(AsStdError::from)?;
 
         let file_path = matches.value_of_os("file").unwrap();
         let file_name = matches
@@ -227,7 +245,8 @@ async fn main() -> anyhow::Result<()> {
             .or_else(|| std::path::Path::new(file_path).file_name())
             .ok_or_else(|| {
                 anyhow::format_err!("You can't send a file without a name. Maybe try --rename")
-            })?;
+            })
+            .map_err(AsStdError::from)?;
 
         send_many(
             relay_server,
@@ -239,23 +258,32 @@ async fn main() -> anyhow::Result<()> {
             connector,
             &mut term,
         )
-        .await?;
+        .await
+        .map_err(AsStdError::from)?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
-        let (welcome, connector, relay_server) = parse_and_connect(&matches, false).await?;
-        print_welcome(&mut term, &welcome)?;
+        let (welcome, connector, relay_server): (_, WormholeConnector, _) =
+            parse_and_connect(&matches, false)
+                .await
+                .map_err(AsStdError::from)?;
+        print_welcome(&mut term, &welcome).map_err(AsStdError::from)?;
 
-        let w = connector.connect_to_client().await?;
+        let mut wormhole = connector
+            .connect_to_client()
+            .await
+            .map_err(AsStdError::from)?;
         writeln!(&term, "Successfully connected to peer.")?;
 
         let file_path = matches.value_of_os("file-path").unwrap();
 
         receive(
-            w,
+            &mut wormhole,
             &relay_server,
             &file_path,
             matches.value_of_os("file-name"),
         )
-        .await?;
+        .await
+        .map_err(AsStdError::from)?;
+        wormhole.close().await.map_err(AsStdError::from)?;
     } else {
         let _code = matches.subcommand_name();
         // TODO implement this properly once clap 3.0 is out
@@ -371,14 +399,14 @@ fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> anyhow::Re
 }
 
 async fn send(
-    mut wormhole: Wormhole,
+    wormhole: &mut Wormhole,
     relay_server: &RelayUrl,
     file: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
 ) -> anyhow::Result<()> {
     use async_std::fs::File;
 
-    let mut file = File::open(file)
+    let mut file: async_std::fs::File = File::open(file)
         .await
         .context(format!("Could not open {:?}", file))?;
     let file_size = file.metadata().await?.len();
@@ -386,7 +414,7 @@ async fn send(
     let pb = create_progress_bar(file_size);
     let pb2 = pb.clone();
     transfer::send_file(
-        &mut wormhole,
+        wormhole,
         &relay_server,
         &mut file,
         &std::path::Path::new(file_name),
@@ -499,22 +527,25 @@ async fn send_many(
         // let pb = mp.add(pb);
         async_std::task::spawn(async move {
             // let pb2 = pb.clone();
-            let result = transfer::send_file(
-                &mut wormhole,
-                &url,
-                &mut file,
-                file_name.deref(),
-                file_size,
-                move |_sent, _total| {
-                    // if sent == 0 {
-                    //     pb2.reset_elapsed();
-                    //     pb2.enable_steady_tick(250);
-                    // }
-                    // pb2.set_position(sent);
-                },
-            )
-            .await;
-            match result {
+            let result = async move {
+                transfer::send_file(
+                    &mut wormhole,
+                    &url,
+                    &mut file,
+                    file_name.deref(),
+                    file_size,
+                    move |_sent, _total| {
+                        // if sent == 0 {
+                        //     pb2.reset_elapsed();
+                        //     pb2.enable_steady_tick(250);
+                        // }
+                        // pb2.set_position(sent);
+                    },
+                )
+                .await?;
+                wormhole.close().await
+            };
+            match result.await {
                 Ok(_) => {
                     // pb.finish();
                     writeln!(&mut term, "Successfully sent file to peer").unwrap();
@@ -532,12 +563,12 @@ async fn send_many(
 }
 
 async fn receive(
-    mut w: Wormhole,
+    wormhole: &mut Wormhole,
     relay_server: &RelayUrl,
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
 ) -> anyhow::Result<()> {
-    let req = transfer::request_file(&mut w, &relay_server).await?;
+    let req = transfer::request_file(wormhole, &relay_server).await?;
 
     /*
      * Control flow is a bit tricky here:
