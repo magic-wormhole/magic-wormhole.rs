@@ -28,6 +28,8 @@ This work is licensed under the EUPL v1.2 or later. Contact the owner(s) for use
 
 ----------
 
+[![Matrix][matrix-room-image]][matrix-room-url]
+![Irc][irc-room-image]
 ![Build Status][build-status-image]
 [![Deps][deps-status-image]][deps-status-url]
 [![Codecov][codecov-image]][codecov-url]
@@ -36,6 +38,9 @@ This work is licensed under the EUPL v1.2 or later. Contact the owner(s) for use
 [![Docs.rs][docs-image]][docs-url]
 [![License][license-image]][license-url]
 
+[matrix-room-image]: https://img.shields.io/badge/matrix.org-%23magic--wormhole-brightgreen
+[matrix-room-url]: https://matrix.to/#/#magic-wormhole:matrix.org
+[irc-room-image]: https://img.shields.io/badge/chat.freenode.net-%23magic--wormhole-brightgreen
 [build-status-image]: https://github.com/magic-wormhole/magic-wormhole.rs/workflows/Rust/badge.svg
 [deps-status-image]: https://deps.rs/repo/github/magic-wormhole/magic-wormhole.rs/status.svg
 [deps-status-url]: https://deps.rs/repo/github/magic-wormhole/magic-wormhole.rs
