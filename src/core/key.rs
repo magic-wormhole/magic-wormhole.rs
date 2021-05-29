@@ -199,6 +199,12 @@ impl KeyMachine {
         actions: &mut VecDeque<Event>,
         result: Result<(), WormholeCoreError>,
     ) -> super::State {
+        let await_nameplate_release = if let Some(nameplate) = self.nameplate {
+            actions.push_back(OutboundMessage::release(nameplate).into());
+            true
+        } else {
+            false
+        };
         self.mailbox_machine.close(
             actions,
             match &result {
@@ -207,12 +213,6 @@ impl KeyMachine {
                 Err(_) => Mood::Errory,
             },
         );
-        let await_nameplate_release = if let Some(nameplate) = self.nameplate {
-            actions.push_back(OutboundMessage::release(nameplate).into());
-            true
-        } else {
-            false
-        };
         super::State::Closing {
             await_nameplate_release,
             await_mailbox_close: true,
