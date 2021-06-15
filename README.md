@@ -25,7 +25,7 @@ However before diving into the `core` module, you should definitively read the [
 ----------
 
 [![Matrix][matrix-room-image]][matrix-room-url]
-![Irc][irc-room-image]
+[![Irc][irc-room-image]][irc-room-url]
 ![Build Status][build-status-image]
 [![Deps][deps-status-image]][deps-status-url]
 [![Codecov][codecov-image]][codecov-url]
@@ -36,7 +36,8 @@ However before diving into the `core` module, you should definitively read the [
 
 [matrix-room-image]: https://img.shields.io/badge/matrix.org-%23magic--wormhole-brightgreen
 [matrix-room-url]: https://matrix.to/#/#magic-wormhole:matrix.org
-[irc-room-image]: https://img.shields.io/badge/chat.freenode.net-%23magic--wormhole-brightgreen
+[irc-room-image]: https://img.shields.io/badge/irc.libera.chat-%23magic--wormhole-brightgreen
+[irc-room-url]: https://web.libera.chat/
 [build-status-image]: https://github.com/magic-wormhole/magic-wormhole.rs/workflows/Rust/badge.svg
 [deps-status-image]: https://deps.rs/repo/github/magic-wormhole/magic-wormhole.rs/status.svg
 [deps-status-url]: https://deps.rs/repo/github/magic-wormhole/magic-wormhole.rs
