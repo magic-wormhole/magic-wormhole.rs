@@ -1,6 +1,6 @@
 use super::{
     events::{AppID, Mailbox, MySide, Phase, TheirSide},
-    util, Mood,
+    util, Mood, WormholeCoreError,
 };
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{self, Value};
@@ -139,8 +139,8 @@ pub enum InboundMessage {
     Unknown,
 }
 
-pub fn deserialize(s: &str) -> InboundMessage {
-    serde_json::from_str(&s).unwrap()
+pub fn deserialize(s: &str) -> Result<InboundMessage, WormholeCoreError> {
+    serde_json::from_str(&s).map_err(WormholeCoreError::ProtocolJson)
 }
 
 #[cfg(test)]
@@ -254,7 +254,7 @@ mod test {
     #[test]
     fn test_welcome3() {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
-        let m = deserialize(&s);
+        let m = deserialize(&s).unwrap();
         match m {
             InboundMessage::Welcome { welcome: msg } => assert_eq!(msg, json!({})),
             _ => panic!(),
@@ -264,7 +264,7 @@ mod test {
     #[test]
     fn test_welcome4() {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
-        let m = deserialize(&s);
+        let m = deserialize(&s).unwrap();
         match m {
             InboundMessage::Welcome { welcome: msg } => assert_eq!(msg, json!({})),
             _ => panic!(),
@@ -277,7 +277,7 @@ mod test {
     #[rustfmt::skip]
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
-        let m = deserialize(&s);
+        let m = deserialize(&s).unwrap();
         match m {
             InboundMessage::Welcome { welcome: msg } =>
                 assert_eq!(msg, json!({"motd": "hello world"})),
@@ -288,7 +288,7 @@ mod test {
     #[test]
     fn test_ack() {
         let s = r#"{"type": "ack", "id": null, "server_tx": 1234.56}"#;
-        let m = deserialize(&s);
+        let m = deserialize(&s).unwrap();
         match m {
             InboundMessage::Ack {} => (),
             _ => panic!(),
@@ -298,7 +298,7 @@ mod test {
     #[test]
     fn test_message() {
         let s = r#"{"body": "7b2270616b655f7631223a22353361346566366234363434303364376534633439343832663964373236646538396462366631336632613832313537613335646562393562366237633536353533227d", "server_rx": 1523468188.293486, "id": null, "phase": "pake", "server_tx": 1523498654.753594, "type": "message", "side": "side1"}"#;
-        let m = deserialize(&s);
+        let m = deserialize(&s).unwrap();
         match m {
             InboundMessage::Message {
                 side: _s,

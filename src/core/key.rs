@@ -93,9 +93,9 @@ impl KeyMachine {
                 if message.phase.is_pake() {
                     /* Got a pake message, derive key */
                     let key = extract_pake_msg(&message.body)
-                        .map_err(WormholeCoreError::protocol)
+                        .map_err(WormholeCoreError::ProtocolJson)
                         .and_then(|pake_message| {
-                            hex::decode(pake_message).map_err(WormholeCoreError::protocol)
+                            hex::decode(pake_message).map_err(WormholeCoreError::ProtocolHex)
                         })
                         .and_then(|pake_message| {
                             pake_state
@@ -137,10 +137,8 @@ impl KeyMachine {
                         .decrypt(&key)
                         .ok_or(WormholeCoreError::PakeFailed)
                         .and_then(|plaintext| {
-                            String::from_utf8(plaintext).map_err(WormholeCoreError::protocol)
-                        })
-                        .and_then(|version_str| {
-                            serde_json::from_str(&version_str).map_err(WormholeCoreError::protocol)
+                            serde_json::from_slice(&plaintext)
+                                .map_err(WormholeCoreError::ProtocolJson)
                         });
 
                     match versions {

@@ -187,7 +187,6 @@ impl EncryptedMessage {
         use super::key;
         let data_key = key::derive_phase_key(&self.side, key, &self.phase);
         key::decrypt_data(&data_key, &self.body)
-        // .ok_or_else(|| anyhow::format_err!("Got bad message that could not be decrypted"))
     }
 }
 
