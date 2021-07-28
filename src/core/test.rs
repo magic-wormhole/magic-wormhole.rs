@@ -4,6 +4,7 @@ use std::time::Duration;
 
 const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 const APPID: &str = "lothar.com/wormhole/rusty-wormhole-test";
+const TIMEOUT: Duration = Duration::from_secs(60);
 
 fn init_logger() {
     /* Ignore errors from succeedent initialization tries */
@@ -125,7 +126,7 @@ pub async fn test_eventloop_exit1() {
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
-    async_std::future::timeout(Duration::from_secs(5), async {
+    async_std::future::timeout(TIMEOUT, async {
         let (_welcome, connector) = crate::connect_to_server(
             APPID,
             serde_json::json!({}),
@@ -176,7 +177,7 @@ pub async fn test_eventloop_exit2() {
         async_std::task::sleep(Duration::from_secs(5)).await;
         log::info!("A Done sleeping.");
     });
-    async_std::future::timeout(Duration::from_secs(5), async {
+    async_std::future::timeout(TIMEOUT, async {
         let (_welcome, connector) = crate::connect_to_server(
             APPID,
             serde_json::json!({}),
@@ -208,7 +209,7 @@ pub async fn test_eventloop_exit2() {
 pub async fn test_eventloop_exit3() {
     init_logger();
 
-    async_std::future::timeout(Duration::from_secs(5), async {
+    async_std::future::timeout(TIMEOUT, async {
         let mut eventloop_task = None;
         let (_welcome, connector) = crate::connect_to_server(
             APPID,
@@ -390,8 +391,8 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
             eyre::Result::<_>::Ok(())
         })?;
 
-    async_std::future::timeout(Duration::from_secs(5), sender_task).await??;
-    async_std::future::timeout(Duration::from_secs(5), receiver_task).await??;
+    async_std::future::timeout(TIMEOUT, sender_task).await??;
+    async_std::future::timeout(TIMEOUT, receiver_task).await??;
 
     Ok(())
 }
