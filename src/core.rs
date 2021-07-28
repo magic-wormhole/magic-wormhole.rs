@@ -22,12 +22,13 @@ use log::*;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum WormholeCoreError {
     /// Some deserialization went wrong, we probably got some garbage
     #[error("Corrupt message received")]
-    ProtocolJson(#[source] serde_json::Error),
+    ProtocolJson(#[from] #[source] serde_json::Error),
     #[error("Corrupt hex string encountered within a message")]
-    ProtocolHex(#[source] hex::FromHexError),
+    ProtocolHex(#[from] #[source] hex::FromHexError),
     /// A generic string message for "something went wrong", i.e.
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
@@ -41,7 +42,7 @@ pub enum WormholeCoreError {
     #[error("Cannot decrypt a received message")]
     Crypto,
     #[error("Websocket IO error")]
-    IO(#[source] async_tungstenite::tungstenite::Error),
+    IO(#[from] #[source] async_tungstenite::tungstenite::Error),
 }
 
 impl WormholeCoreError {
