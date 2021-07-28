@@ -33,7 +33,6 @@ pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 // TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)
 
-// TODO better check for peer errors
 // TODO send peer errors when something went wrong (if possible)
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -104,8 +103,13 @@ impl TransitAck {
         }
     }
 
+    #[cfg(test)]
     pub fn serialize(&self) -> String {
         json!(self).to_string()
+    }
+
+    pub fn serialize_vec(&self) -> Vec<u8> {
+        serde_json::to_vec(self).unwrap()
     }
 }
 
@@ -169,8 +173,13 @@ impl PeerMessage {
         }))
     }
 
+    #[cfg(test)]
     pub fn serialize(&self) -> String {
         json!(self).to_string()
+    }
+
+    pub fn serialize_vec(&self) -> Vec<u8> {
+        serde_json::to_vec(self).unwrap()
     }
 }
 
@@ -222,10 +231,7 @@ where
     wormhole
         .tx
         .send(
-            PeerMessage::Transit(connector.our_side_ttype().clone())
-                .serialize()
-                .as_bytes()
-                .to_vec(),
+            PeerMessage::Transit(connector.our_side_ttype().clone()).serialize_vec(),
         )
         .await?;
 
@@ -235,9 +241,7 @@ where
         .tx
         .send(
             PeerMessage::new_offer_file(file_name, file_size)
-                .serialize()
-                .as_bytes()
-                .to_vec(),
+                .serialize_vec(),
         )
         .await?;
 
@@ -248,7 +252,14 @@ where
 
         match maybe_transit {
             PeerMessage::Transit(tmsg) => tmsg,
-            _ => bail!(TransferError::unexpected_message("transit", maybe_transit)),
+            PeerMessage::Error(err) => {
+                bail!(TransferError::PeerError(err));
+            },
+            _ => {
+                let error = TransferError::unexpected_message("transit", maybe_transit);
+                let _ = wormhole.tx.send(PeerMessage::Error(format!("{}", error)).serialize_vec()).await;
+                bail!(error)
+            },
         }
     };
 
@@ -261,7 +272,14 @@ where
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
                 ensure!(msg == "ok", TransferError::AckError);
             },
-            _ => bail!(TransferError::unexpected_message("answer/file_ack", fileack_msg)),
+            PeerMessage::Error(err) => {
+                bail!(TransferError::PeerError(err));
+            },
+            _ => {
+                let error = TransferError::unexpected_message("answer/file_ack", fileack_msg);
+                let _ = wormhole.tx.send(PeerMessage::Error(format!("{}", error)).serialize_vec()).await;
+                bail!(error)
+            },
         }
     }
 
@@ -303,9 +321,7 @@ pub async fn request_file<'a>(
 
     // send the transit message
     debug!("Sending transit message '{:?}", connector.our_side_ttype());
-    let transit_msg =
-        crate::transfer::PeerMessage::Transit(connector.our_side_ttype().clone()).serialize();
-    wormhole.tx.send(transit_msg.as_bytes().to_vec()).await?;
+    wormhole.tx.send(crate::transfer::PeerMessage::Transit(connector.our_side_ttype().clone()).serialize_vec()).await?;
 
     // receive transit message
     let other_side_ttype = match serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)? {
@@ -316,7 +332,11 @@ pub async fn request_file<'a>(
         PeerMessage::Error(err) => {
             bail!(TransferError::PeerError(err));
         },
-        other => bail!(TransferError::unexpected_message("transit", other)),
+        other => {
+            let error = TransferError::unexpected_message("transit", other);
+            let _ = wormhole.tx.send(PeerMessage::Error(format!("{}", error)).serialize_vec()).await;
+            bail!(error)
+        },
     };
 
     // 3. receive file offer message from peer
@@ -328,7 +348,14 @@ pub async fn request_file<'a>(
             OfferType::File { filename, filesize } => (filename, filesize),
             _ => bail!(TransferError::UnsupportedOffer),
         },
-        _ => bail!(TransferError::unexpected_message("offer", maybe_offer)),
+        PeerMessage::Error(err) => {
+            bail!(TransferError::PeerError(err));
+        },
+        _ => {
+            let error = TransferError::unexpected_message("offer", maybe_offer);
+            let _ = wormhole.tx.send(PeerMessage::Error(format!("{}", error)).serialize_vec()).await;
+            bail!(error)
+        },
     };
 
     let req = ReceiveRequest {
@@ -373,10 +400,7 @@ impl<'a> ReceiveRequest<'a> {
         self.wormhole
             .tx
             .send(
-                PeerMessage::new_file_ack("ok")
-                    .serialize()
-                    .as_bytes()
-                    .to_vec(),
+                PeerMessage::new_file_ack("ok").serialize_vec(),
             )
             .await?;
 
@@ -409,10 +433,7 @@ impl<'a> ReceiveRequest<'a> {
         self.wormhole
             .tx
             .send(
-                PeerMessage::new_error_message("transfer rejected")
-                    .serialize()
-                    .as_bytes()
-                    .to_vec(),
+                PeerMessage::new_error_message("transfer rejected").serialize_vec(),
             )
             .await?;
 
@@ -532,8 +553,7 @@ where
     debug!("sha256 sum: {:?}", sha256sum);
 
     // 6. verify sha256 sum by sending an ack message to peer along with checksum.
-    let plaintext = TransitAck::new("ok", &sha256sum).serialize();
-    transit.send_record(plaintext.as_bytes()).await?;
+    transit.send_record(&TransitAck::new("ok", &sha256sum).serialize_vec()).await?;
 
     // 7. close socket.
     // well, no need, it gets dropped when it goes out of scope.
