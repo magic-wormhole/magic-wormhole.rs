@@ -18,7 +18,7 @@ fn init_logger() {
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[async_std::test]
-pub async fn test_file_rust2rust() -> anyhow::Result<()> {
+pub async fn test_file_rust2rust() -> eyre::Result<()> {
     init_logger();
     use crate as magic_wormhole;
     use magic_wormhole::{transfer, CodeProvider};
@@ -41,7 +41,7 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
             code_tx.send(welcome.code.0).unwrap();
             let mut w = connector.connect_to_client().await?;
             log::info!("Got key: {}", &w.key);
-            transfer::send_file(
+            eyre::Result::<_>::Ok(transfer::send_file(
                 &mut w,
                 &magic_wormhole::transit::DEFAULT_RELAY_SERVER
                     .parse()
@@ -55,7 +55,7 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
                     log::info!("Sent {} of {} bytes", sent, total);
                 },
             )
-            .await
+            .await?)
         })?;
     let receiver_task = async_std::task::Builder::new()
         .name("receiver".to_owned())
@@ -95,7 +95,7 @@ pub async fn test_file_rust2rust() -> anyhow::Result<()> {
 
     sender_task.await?;
     let original = std::fs::read("examples/example-file.bin")?;
-    let received: Vec<u8> = (receiver_task.await as anyhow::Result<Vec<u8>>)?;
+    let received: Vec<u8> = (receiver_task.await as eyre::Result<Vec<u8>>)?;
 
     assert_eq!(original, received, "Files differ");
     Ok(())
@@ -234,7 +234,7 @@ pub async fn test_eventloop_exit3() {
  * `test_eventloop_exit` tests. We send us a file five times, and check if it arrived.
  */
 #[async_std::test]
-pub async fn test_send_many() -> anyhow::Result<()> {
+pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
 
     let (welcome, connector) = crate::connect_to_server(
@@ -254,7 +254,7 @@ pub async fn test_send_many() -> anyhow::Result<()> {
     /* Send many */
     let sender_code = code.clone();
     let senders = async_std::task::spawn(async move {
-        // let mut senders = Vec::<async_std::task::JoinHandle<std::result::Result<std::vec::Vec<u8>, anyhow::Error>>>::new();
+        // let mut senders = Vec::<async_std::task::JoinHandle<std::result::Result<std::vec::Vec<u8>, eyre::Error>>>::new();
         let mut senders = Vec::new();
 
         /* The first time, we reuse the current session for sending */
@@ -303,7 +303,7 @@ pub async fn test_send_many() -> anyhow::Result<()> {
                 .await
             }));
         }
-        anyhow::Result::<_>::Ok(senders)
+        eyre::Result::<_>::Ok(senders)
     });
 
     async_std::task::sleep(std::time::Duration::from_secs(1)).await;
@@ -341,7 +341,7 @@ pub async fn test_send_many() -> anyhow::Result<()> {
 
 /// Try to send a file, but use a bad code, and see how it's handled
 #[async_std::test]
-pub async fn test_wrong_code() -> anyhow::Result<()> {
+pub async fn test_wrong_code() -> eyre::Result<()> {
     init_logger();
     use crate as magic_wormhole;
     use magic_wormhole::{transfer, CodeProvider};
@@ -366,7 +366,7 @@ pub async fn test_wrong_code() -> anyhow::Result<()> {
             let result = connector.connect_to_client().await;
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
-            anyhow::Result::<_>::Ok(())
+            eyre::Result::<_>::Ok(())
         })?;
     let receiver_task = async_std::task::Builder::new()
         .name("receiver".to_owned())
@@ -387,7 +387,7 @@ pub async fn test_wrong_code() -> anyhow::Result<()> {
             let result = connector.connect_to_client().await;
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
-            anyhow::Result::<_>::Ok(())
+            eyre::Result::<_>::Ok(())
         })?;
 
     async_std::future::timeout(Duration::from_secs(5), sender_task).await??;

@@ -17,17 +17,69 @@ use super::{
     transit,
     transit::{RelayUrl, Transit},
     Wormhole,
+    core::WormholeCoreError,
+    ensure,
+    bail,
 };
-use anyhow::{bail, ensure, format_err, Context, Result};
 use async_std::io::{prelude::WriteExt, ReadExt};
 use futures::{SinkExt, StreamExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use std::path::PathBuf;
-use transit::TransitConnector;
+use transit::{TransitConnector, TransitError, TransitConnectError};
 
 /// The App ID associated with this protocol.
 pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
+
+// TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)
+
+// TODO better check for peer errors
+// TODO send peer errors when something went wrong (if possible)
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TransferError {
+    #[error("Transfer was not acknowledged by peer")]
+    AckError,
+    #[error("Receive checksum error")]
+    Checksum,
+    #[error("The file contained a different amount of bytes than advertized!")]
+    FileSize,
+    // TODO be more specific
+    #[error("Unsupported offer type")]
+    UnsupportedOffer,
+    #[error("Something went wrong on the other side: {}", _0)]
+    PeerError(String),
+
+    /// Some deserialization went wrong, we probably got some garbage
+    #[error("Corrupt message received")]
+    ProtocolJson(#[from] #[source] serde_json::Error),
+    /// A generic string message for "something went wrong", i.e.
+    /// the server sent some bullshit message order
+    #[error("Protocol error: {}", _0)]
+    Protocol(Box<str>),
+    #[error("Unexpected message (protocol error): Expected '{}', but got: {:?}", _0, _1)]
+    ProtocolUnexpectedMessage(Box<str>, Box<dyn std::fmt::Debug + Send + Sync>),
+    #[error("Wormhole connection error")]
+    Wormhole(#[from] #[source] WormholeCoreError),
+    #[error("Internal error: wormhole core died")]
+    WormholeClosed(#[from] #[source] futures::channel::mpsc::SendError),
+    #[error("Error while establishing transit connection")]
+    TransitConnect(#[from] #[source] TransitConnectError),
+    #[error("Transit error")]
+    Transit(#[from] #[source] TransitError),
+    #[error("IO error")]
+    IO(#[from] #[source] std::io::Error),
+}
+
+impl TransferError {
+    pub(self) fn protocol(error: impl Into<Box<str>>) -> Self {
+        Self::Protocol(error.into())
+    }
+
+    pub(self) fn unexpected_message(expected: impl Into<Box<str>>, got: impl std::fmt::Debug + Send + Sync + 'static) -> Self {
+        Self::ProtocolUnexpectedMessage(expected.into(), Box::new(got))
+    }
+}
 
 /**
  * The application specific version information for this protocol.
@@ -157,7 +209,7 @@ pub async fn send_file<F, N, H>(
     file_name: N,
     file_size: u64,
     progress_handler: H,
-) -> Result<()>
+) -> Result<(), TransferError>
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
@@ -191,27 +243,25 @@ where
 
     // Wait for their transit response
     let other_side_ttype = {
-        let maybe_transit =
-            serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)?;
+        let maybe_transit = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
         debug!("received transit message: {:?}", maybe_transit);
 
         match maybe_transit {
             PeerMessage::Transit(tmsg) => tmsg,
-            _ => bail!(format_err!("unexpected message: {:?}", maybe_transit)),
+            _ => bail!(TransferError::unexpected_message("transit", maybe_transit)),
         }
     };
 
     {
         // Wait for file_ack
-        let fileack_msg =
-            serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)?;
+        let fileack_msg = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
         debug!("received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
             PeerMessage::Answer(AnswerType::FileAck(msg)) => {
-                ensure!(msg == "ok", "file ack failed");
+                ensure!(msg == "ok", TransferError::AckError);
             },
-            _ => bail!("did not receive file ack"),
+            _ => bail!(TransferError::unexpected_message("answer/file_ack", fileack_msg)),
         }
     }
 
@@ -230,10 +280,10 @@ where
     // 13. wait for the transit ack with sha256 sum from the peer.
     debug!("sent file. Waiting for ack");
     let transit_ack = transit.receive_record().await?;
-    let transit_ack_msg = serde_json::from_str::<TransitAck>(std::str::from_utf8(&transit_ack)?)?;
+    let transit_ack_msg = serde_json::from_slice::<TransitAck>(&transit_ack)?;
     ensure!(
         transit_ack_msg.sha256 == hex::encode(checksum),
-        "receive checksum error"
+        TransferError::Checksum
     );
     debug!("transfer complete!");
     Ok(())
@@ -248,7 +298,7 @@ where
 pub async fn request_file<'a>(
     wormhole: &'a mut Wormhole,
     relay_url: &RelayUrl,
-) -> Result<ReceiveRequest<'a>> {
+) -> Result<ReceiveRequest<'a>, TransferError> {
     let connector = transit::init(transit::Ability::all_abilities(), relay_url).await?;
 
     // send the transit message
@@ -258,34 +308,27 @@ pub async fn request_file<'a>(
     wormhole.tx.send(transit_msg.as_bytes().to_vec()).await?;
 
     // receive transit message
-    let other_side_ttype =
-        match serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)? {
-            PeerMessage::Transit(transit) => {
-                debug!("received transit message: {:?}", transit);
-                transit
-            },
-            PeerMessage::Error(err) => {
-                anyhow::bail!("Something went wrong on the other side: {}", err);
-            },
-            other => {
-                anyhow::bail!(
-                    "Got an unexpected message type, is the other side all right? Got: '{:?}'",
-                    other
-                );
-            },
-        };
+    let other_side_ttype = match serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)? {
+        PeerMessage::Transit(transit) => {
+            debug!("received transit message: {:?}", transit);
+            transit
+        },
+        PeerMessage::Error(err) => {
+            bail!(TransferError::PeerError(err));
+        },
+        other => bail!(TransferError::unexpected_message("transit", other)),
+    };
 
     // 3. receive file offer message from peer
-    let maybe_offer =
-        serde_json::from_str(std::str::from_utf8(&wormhole.rx.next().await.unwrap()?)?)?;
+    let maybe_offer = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
     debug!("Received offer message '{:?}'", &maybe_offer);
 
     let (filename, filesize) = match maybe_offer {
         PeerMessage::Offer(offer_type) => match offer_type {
             OfferType::File { filename, filesize } => (filename, filesize),
-            _ => bail!("unsupported offer type"),
+            _ => bail!(TransferError::UnsupportedOffer),
         },
-        _ => bail!("unexpected message: {:?}", maybe_offer),
+        _ => bail!(TransferError::unexpected_message("offer", maybe_offer)),
     };
 
     let req = ReceiveRequest {
@@ -320,7 +363,7 @@ impl<'a> ReceiveRequest<'a> {
      *
      * This will transfer the file and save it on disk.
      */
-    pub async fn accept<F, W>(self, progress_handler: F, content_handler: &mut W) -> Result<()>
+    pub async fn accept<F, W>(self, progress_handler: F, content_handler: &mut W) -> Result<(), TransferError>
     where
         F: FnMut(u64, u64) + 'static,
         W: AsyncWrite + Unpin,
@@ -354,7 +397,6 @@ impl<'a> ReceiveRequest<'a> {
             content_handler,
         )
         .await
-        .context("Could not receive file")
     }
 
     /**
@@ -363,7 +405,7 @@ impl<'a> ReceiveRequest<'a> {
      * This will send an error message to the other side so that it knows the transfer failed.
      * You can close the wormhole afterwards.
      */
-    pub async fn reject(self) -> Result<()> {
+    pub async fn reject(self) -> Result<(), TransferError> {
         self.wormhole
             .tx
             .send(
@@ -385,7 +427,7 @@ async fn send_records<F>(
     file: &mut (impl AsyncRead + Unpin),
     file_size: u64,
     mut progress_handler: F,
-) -> Result<Vec<u8>>
+) -> Result<Vec<u8>, TransferError>
 where
     F: FnMut(u64, u64) + 'static,
 {
@@ -424,9 +466,9 @@ where
         }
     }
 
-    anyhow::ensure!(
+    ensure!(
         sent_size == file_size,
-        "The file contained a different amount of bytes than advertized!"
+        TransferError::FileSize
     );
 
     Ok(hasher.finalize_fixed().to_vec())
@@ -437,7 +479,7 @@ async fn receive_records<F, W>(
     transit: &mut Transit,
     mut progress_handler: F,
     content_handler: &mut W,
-) -> Result<Vec<u8>>
+) -> Result<Vec<u8>, TransferError>
 where
     F: FnMut(u64, u64) + 'static,
     W: AsyncWrite + Unpin,
@@ -476,7 +518,7 @@ async fn tcp_file_receive<F, W>(
     filesize: u64,
     progress_handler: F,
     content_handler: &mut W,
-) -> Result<()>
+) -> Result<(), TransferError>
 where
     F: FnMut(u64, u64) + 'static,
     W: AsyncWrite + Unpin,

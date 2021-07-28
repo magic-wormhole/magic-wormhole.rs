@@ -13,10 +13,9 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{Key, KeyPurpose};
+use crate::{core::WormholeCoreError, ensure, Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
-use anyhow::{ensure, format_err, Error, Result};
 use async_std::{
     io::{prelude::WriteExt, ReadExt},
     net::{TcpListener, TcpStream},
@@ -36,6 +35,63 @@ pub struct TransitRxKey;
 impl KeyPurpose for TransitRxKey {}
 pub struct TransitTxKey;
 impl KeyPurpose for TransitTxKey {}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TransitConnectError {
+    #[error("All (relay) handshakes failed, could not establish a connection with the peer")]
+    Handshake,
+    #[error("Wormhole connection error")]
+    Wormhole(
+        #[from]
+        #[source]
+        WormholeCoreError,
+    ),
+    #[error("IO error")]
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
+}
+
+/// Private, because we try multiple handshakes and only
+/// one needs to succeed
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+enum TransitHandshakeError {
+    #[error("Handshake failed")]
+    HandshakeFailed,
+    #[error("Relay handshake failed")]
+    RelayHandshakeFailed,
+    #[error("Wormhole connection error")]
+    Wormhole(
+        #[from]
+        #[source]
+        WormholeCoreError,
+    ),
+    #[error("IO error")]
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum TransitError {
+    #[error("Cryptography error. This is probably an implementation bug, but may also be caused by an attack.")]
+    Crypto,
+    #[error("Wrong nonce received, got {:x?} but expected {:x?}. This is probably an implementation bug, but may also be caused by an attack.", _0, _1)]
+    Nonce(Box<[u8]>, Box<[u8]>),
+    #[error("IO error")]
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
+}
 
 /**
  * A set of hints for both sides to find each other
@@ -145,7 +201,10 @@ impl FromStr for RelayUrl {
  *
  * Bind a port and generate our [`TransitType`]. This does not do any communication yet.
  */
-pub async fn init(abilities: Vec<Ability>, relay_url: &RelayUrl) -> Result<TransitConnector> {
+pub async fn init(
+    abilities: Vec<Ability>,
+    relay_url: &RelayUrl,
+) -> Result<TransitConnector, std::io::Error> {
     let listener = TcpListener::bind("[::]:0").await?;
     let port = listener.local_addr()?.port();
 
@@ -208,7 +267,7 @@ impl TransitConnector {
         self,
         transit_key: Key<TransitKey>,
         other_side_ttype: TransitType,
-    ) -> Result<Transit> {
+    ) -> Result<Transit, TransitConnectError> {
         let transit_key = Arc::new(transit_key);
         /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */
         debug!("transit key {}", hex::encode(&***transit_key));
@@ -244,7 +303,7 @@ impl TransitConnector {
                     debug!("peer host: {}", direct_host);
 
                     TcpStream::connect(direct_host)
-                        .err_into::<Error>()
+                        .err_into::<TransitHandshakeError>()
                         .and_then(|socket| leader_handshake_exchange(socket, host.0, &*transit_key))
                         .await
                 },
@@ -260,7 +319,7 @@ impl TransitConnector {
              */
             use futures::stream::TryStreamExt;
             async_std::stream::StreamExt::skip_while(listener.incoming()
-                .err_into::<Error>()
+                .err_into::<TransitHandshakeError>()
                 .and_then(move |socket| {
                     /* Pinning a future + moving some value from outer scope is a bit painful */
                     let transit_key = transit_key.clone();
@@ -281,9 +340,11 @@ impl TransitConnector {
          */
         let transit;
         loop {
-            if handshake_futures.is_empty() {
-                return Err(format_err!("All handshakes failed or timed out"));
-            }
+            ensure!(
+                !handshake_futures.is_empty(),
+                TransitConnectError::Handshake
+            );
+
             match futures::future::select_all(handshake_futures).await {
                 (Ok(transit2), _index, remaining) => {
                     transit = transit2;
@@ -320,7 +381,7 @@ impl TransitConnector {
         self,
         transit_key: Key<TransitKey>,
         other_side_ttype: Arc<TransitType>,
-    ) -> Result<Transit> {
+    ) -> Result<Transit, TransitConnectError> {
         let transit_key = Arc::new(transit_key);
         /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */
         debug!("transit key {}", hex::encode(&***transit_key));
@@ -355,7 +416,7 @@ impl TransitConnector {
                     debug!("peer host: {}", direct_host);
 
                     TcpStream::connect(direct_host)
-                        .err_into::<Error>()
+                        .err_into::<TransitHandshakeError>()
                         .and_then(|socket| {
                             follower_handshake_exchange(socket, host.0, &*transit_key)
                         })
@@ -373,7 +434,7 @@ impl TransitConnector {
              */
             use futures::stream::TryStreamExt;
             async_std::stream::StreamExt::skip_while(listener.incoming()
-                .err_into::<Error>()
+                .err_into::<TransitHandshakeError>()
                 .and_then(move |socket| {
                     /* Pinning a future + moving some value from outer scope is a bit painful */
                     let transit_key = transit_key.clone();
@@ -395,9 +456,11 @@ impl TransitConnector {
          */
         let transit;
         loop {
-            if handshake_futures.is_empty() {
-                return Err(format_err!("All handshakes failed or timed out"));
-            }
+            ensure!(
+                !handshake_futures.is_empty(),
+                TransitConnectError::Handshake
+            );
+
             match futures::future::select_all(handshake_futures).await {
                 (Ok(transit2), _index, remaining) => {
                     transit = transit2;
@@ -446,7 +509,7 @@ pub struct Transit {
 
 impl Transit {
     /** Receive and decrypt one message from the other side. */
-    pub async fn receive_record(&mut self) -> anyhow::Result<Box<[u8]>> {
+    pub async fn receive_record(&mut self) -> Result<Box<[u8]>, TransitError> {
         Transit::receive_record_inner(&mut self.socket, &self.rkey, &mut self.rnonce).await
     }
 
@@ -454,7 +517,7 @@ impl Transit {
         socket: &mut (impl futures::io::AsyncRead + Unpin),
         rkey: &Key<TransitRxKey>,
         nonce: &mut secretbox::Nonce,
-    ) -> anyhow::Result<Box<[u8]>> {
+    ) -> Result<Box<[u8]>, TransitError> {
         let enc_packet = {
             // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
             let length = {
@@ -474,11 +537,9 @@ impl Transit {
             let (received_nonce, ciphertext) = enc_packet.split_at(secretbox::NONCE_SIZE);
             {
                 // Nonce check
-                anyhow::ensure!(
+                ensure!(
                     nonce.as_slice() == received_nonce,
-                    "Wrong nonce received, got {:x?} but expected {:x?}",
-                    received_nonce,
-                    nonce
+                    TransitError::Nonce(received_nonce.into(), nonce.as_slice().into()),
                 );
 
                 crate::util::sodium_increment_be(nonce);
@@ -487,15 +548,15 @@ impl Transit {
             let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(&rkey));
             cipher
                 .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
-                /* TODO replace with `.context` after the next xsalsa20poly1305 update */
-                .map_err(|_| format_err!("Decryption failed"))?
+                /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
+                .map_err(|_| TransitError::Crypto)?
         };
 
         Ok(plaintext.into_boxed_slice())
     }
 
     /** Send an encrypted message to the other side */
-    pub async fn send_record(&mut self, plaintext: &[u8]) -> anyhow::Result<()> {
+    pub async fn send_record(&mut self, plaintext: &[u8]) -> Result<(), TransitError> {
         Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.snonce).await
     }
 
@@ -504,7 +565,7 @@ impl Transit {
         skey: &Key<TransitTxKey>,
         plaintext: &[u8],
         nonce: &mut secretbox::Nonce,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), TransitError> {
         let sodium_key = secretbox::Key::from_slice(&skey);
 
         let ciphertext = {
@@ -513,8 +574,8 @@ impl Transit {
             let cipher = secretbox::XSalsa20Poly1305::new(sodium_key);
             cipher
                 .encrypt(nonce_le, plaintext)
-                /* TODO replace with `.context` after the next xsalsa20poly1305 update */
-                .map_err(|_| format_err!("Encryption failed"))?
+                /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
+                .map_err(|_| TransitError::Crypto)?
         };
 
         // send the encrypted record
@@ -534,7 +595,7 @@ impl Transit {
         self,
     ) -> (
         impl futures::sink::Sink<Box<[u8]>>,
-        impl futures::stream::Stream<Item = anyhow::Result<Box<[u8]>>>,
+        impl futures::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
     ) {
         use futures::io::AsyncReadExt;
 
@@ -583,7 +644,7 @@ async fn follower_handshake_exchange(
     mut socket: TcpStream,
     host_type: HostType,
     key: &Key<TransitKey>,
-) -> Result<Transit> {
+) -> Result<Transit, TransitHandshakeError> {
     // create record keys
     /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
      * "leader" and "follower" instead. As a follower, we use the leader key for receiving and our
@@ -603,7 +664,7 @@ async fn follower_handshake_exchange(
         let mut rx = [0u8; 3];
         socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
-        ensure!(ok_msg == rx, format_err!("relay handshake failed"));
+        ensure!(ok_msg == rx, TransitHandshakeError::RelayHandshakeFailed);
     }
 
     {
@@ -634,7 +695,7 @@ async fn follower_handshake_exchange(
         );
         ensure!(
             &rx[..] == expected_tx_handshake.as_bytes(),
-            "handshake failed"
+            TransitHandshakeError::HandshakeFailed
         );
     }
 
@@ -651,7 +712,7 @@ async fn leader_handshake_exchange(
     mut socket: TcpStream,
     host_type: HostType,
     key: &Key<TransitKey>,
-) -> Result<Transit> {
+) -> Result<Transit, TransitHandshakeError> {
     // 9. create record keys
     let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
     let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
@@ -666,7 +727,7 @@ async fn leader_handshake_exchange(
         let mut rx = [0u8; 3];
         socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
-        ensure!(ok_msg == rx, format_err!("relay handshake failed"));
+        ensure!(ok_msg == rx, TransitHandshakeError::RelayHandshakeFailed);
     }
 
     {
@@ -695,7 +756,7 @@ async fn leader_handshake_exchange(
         );
         ensure!(
             &rx[..] == expected_rx_handshake.as_bytes(),
-            format_err!("handshake failed")
+            TransitHandshakeError::HandshakeFailed,
         );
     }
 
