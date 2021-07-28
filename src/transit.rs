@@ -153,7 +153,6 @@ impl Hint {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case", tag = "type", rename = "direct-tcp-v1")]
 pub struct DirectHint {
     pub priority: f32,
     pub hostname: String,
@@ -161,7 +160,6 @@ pub struct DirectHint {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case", tag = "type", rename = "relay-v1")]
 pub struct RelayHint {
     pub hints: Vec<DirectHint>,
 }
@@ -822,6 +820,6 @@ mod test {
             }]),
         ];
         let t = crate::transfer::PeerMessage::new_transit(abilities, hints);
-        assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"priority\":0.0,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001,\"priority\":2.0,\"type\":\"direct-tcp-v1\"}],\"type\":\"relay-v1\"}]}}")
+        assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"priority\":0.0,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001,\"priority\":2.0}],\"type\":\"relay-v1\"}]}}")
     }
 }
