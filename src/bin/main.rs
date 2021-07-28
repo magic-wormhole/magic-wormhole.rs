@@ -4,10 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
 use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
-use color_eyre::eyre;
+use color_eyre::{eyre, eyre::WrapErr};
 use console::{style, Term};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
@@ -16,10 +15,6 @@ use magic_wormhole::{
     transfer, transit::RelayUrl, util, CodeProvider, Wormhole, WormholeConnector, WormholeWelcome,
 };
 use std::str::FromStr;
-
-#[derive(thiserror::Error, Debug)]
-#[error(transparent)]
-pub struct AsStdError(#[from] anyhow::Error);
 
 #[async_std::main]
 async fn main() -> eyre::Result<()> {
@@ -213,40 +208,30 @@ async fn main() -> eyre::Result<()> {
         );
 
         let (welcome, connector, relay_server): (WormholeWelcome, WormholeConnector, RelayUrl) =
-            parse_and_connect(&matches, true)
-                .await
-                .map_err(AsStdError::from)?;
-        print_welcome(&mut term, &welcome).map_err(AsStdError::from)?;
-        sender_print_code(&mut term, &welcome.code).map_err(AsStdError::from)?;
-        let mut wormhole: Wormhole = connector
-            .connect_to_client()
-            .await
-            .map_err(AsStdError::from)?;
+            parse_and_connect(&matches, true).await?;
+        print_welcome(&mut term, &welcome)?;
+        sender_print_code(&mut term, &welcome.code)?;
+        let mut wormhole: Wormhole = connector.connect_to_client().await?;
         writeln!(&term, "Successfully connected to peer.")?;
 
-        send(&mut wormhole, &relay_server, &file_path, &file_name)
-            .await
-            .map_err(AsStdError::from)?;
-        wormhole.close().await.map_err(AsStdError::from)?;
+        send(&mut wormhole, &relay_server, &file_path, &file_name).await?;
+        wormhole.close().await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (welcome, connector, relay_server) = parse_and_connect(&matches, true)
-            .await
-            .map_err(AsStdError::from)?;
+        let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
         let timeout =
             Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
         let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
 
-        print_welcome(&mut term, &welcome).map_err(AsStdError::from)?;
-        sender_print_code(&mut term, &welcome.code).map_err(AsStdError::from)?;
+        print_welcome(&mut term, &welcome)?;
+        sender_print_code(&mut term, &welcome.code)?;
 
         let file_path = matches.value_of_os("file").unwrap();
         let file_name = matches
             .value_of_os("file-name")
             .or_else(|| std::path::Path::new(file_path).file_name())
             .ok_or_else(|| {
-                anyhow::format_err!("You can't send a file without a name. Maybe try --rename")
-            })
-            .map_err(AsStdError::from)?;
+                eyre::format_err!("You can't send a file without a name. Maybe try --rename")
+            })?;
 
         send_many(
             relay_server,
@@ -258,19 +243,13 @@ async fn main() -> eyre::Result<()> {
             connector,
             &mut term,
         )
-        .await
-        .map_err(AsStdError::from)?;
+        .await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let (welcome, connector, relay_server): (_, WormholeConnector, _) =
-            parse_and_connect(&matches, false)
-                .await
-                .map_err(AsStdError::from)?;
-        print_welcome(&mut term, &welcome).map_err(AsStdError::from)?;
+            parse_and_connect(&matches, false).await?;
+        print_welcome(&mut term, &welcome)?;
 
-        let mut wormhole = connector
-            .connect_to_client()
-            .await
-            .map_err(AsStdError::from)?;
+        let mut wormhole = connector.connect_to_client().await?;
         writeln!(&term, "Successfully connected to peer.")?;
 
         let file_path = matches.value_of_os("file-path").unwrap();
@@ -281,9 +260,8 @@ async fn main() -> eyre::Result<()> {
             &file_path,
             matches.value_of_os("file-name"),
         )
-        .await
-        .map_err(AsStdError::from)?;
-        wormhole.close().await.map_err(AsStdError::from)?;
+        .await?;
+        wormhole.close().await?;
     } else {
         let _code = matches.subcommand_name();
         // TODO implement this properly once clap 3.0 is out
@@ -321,7 +299,7 @@ async fn main() -> eyre::Result<()> {
 async fn parse_and_connect(
     matches: &clap::ArgMatches<'_>,
     is_send: bool,
-) -> anyhow::Result<(WormholeWelcome, WormholeConnector, RelayUrl)> {
+) -> eyre::Result<(WormholeWelcome, WormholeConnector, RelayUrl)> {
     let relay_server: RelayUrl = matches
         .value_of("relay-server")
         .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER)
@@ -353,7 +331,7 @@ async fn parse_and_connect(
         code,
     )
     .await?;
-    anyhow::Result::<_>::Ok((welcome, connector, relay_server))
+    eyre::Result::<_>::Ok((welcome, connector, relay_server))
 }
 
 fn _might_be_code(_code: Option<&str>) -> bool {
@@ -377,7 +355,7 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     pb
 }
 
-fn enter_code() -> anyhow::Result<String> {
+fn enter_code() -> eyre::Result<String> {
     use dialoguer::Input;
 
     Input::new()
@@ -386,12 +364,12 @@ fn enter_code() -> anyhow::Result<String> {
         .map_err(From::from)
 }
 
-fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> anyhow::Result<()> {
+fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> eyre::Result<()> {
     writeln!(term, "Got welcome from server: {}", &welcome.welcome)?;
     Ok(())
 }
 
-fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> anyhow::Result<()> {
+fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
     writeln!(term, "This wormhole's code is: {}", &code)?;
     writeln!(term, "On the other computer, please run:\n")?;
     writeln!(term, "wormhole receive {}\n", &code)?;
@@ -403,7 +381,7 @@ async fn send(
     relay_server: &RelayUrl,
     file: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     use async_std::fs::File;
 
     let mut file: async_std::fs::File = File::open(file)
@@ -441,7 +419,7 @@ async fn send_many(
     timeout: Duration,
     connector: WormholeConnector,
     term: &mut Term,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     /* Progress bar is commented out for now. See the issues about threading/async in
      * the Indicatif repository for more information. Multiple progress bars are not usable
      * for us at the moment, so we'll have to do without for now.
@@ -520,7 +498,7 @@ async fn send_many(
         connector: WormholeConnector,
         mut term: Term,
         // mp: &MultiProgress,
-    ) -> anyhow::Result<()> {
+    ) -> eyre::Result<()> {
         let mut wormhole = connector.connect_to_client().await?;
         writeln!(&mut term, "Sending file to peer").unwrap();
         // let pb = create_progress_bar(file_size);
@@ -543,7 +521,7 @@ async fn send_many(
                     },
                 )
                 .await?;
-                wormhole.close().await
+                eyre::Result::<_>::Ok(wormhole.close().await?)
             };
             match result.await {
                 Ok(_) => {
@@ -567,7 +545,7 @@ async fn receive(
     relay_server: &RelayUrl,
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
-) -> anyhow::Result<()> {
+) -> eyre::Result<()> {
     let req = transfer::request_file(wormhole, &relay_server).await?;
 
     /*
@@ -588,12 +566,12 @@ async fn receive(
     )
     .await
     {
-        return req.reject().await;
+        return Ok(req.reject().await?);
     }
 
     let file_name = file_name
         .or_else(|| req.filename.file_name())
-        .ok_or_else(|| anyhow::format_err!("The sender did not specify a valid file name, and neither did you. Try using --rename."))?;
+        .ok_or_else(|| eyre::format_err!("The sender did not specify a valid file name, and neither did you. Try using --rename."))?;
     let file_path = std::path::Path::new(target_dir).join(file_name);
 
     let pb = create_progress_bar(req.filesize);
@@ -609,7 +587,7 @@ async fn receive(
             .create_new(true)
             .open(&file_path)
             .await?;
-        return req.accept(on_progress, &mut file).await;
+        return Ok(req.accept(on_progress, &mut file).await?);
     }
 
     /* If there is a collision, ask whether to overwrite */
@@ -619,7 +597,7 @@ async fn receive(
     )
     .await
     {
-        return req.reject().await;
+        return Ok(req.reject().await?);
     }
 
     let mut file = OpenOptions::new()
@@ -628,5 +606,5 @@ async fn receive(
         .truncate(true)
         .open(&file_path)
         .await?;
-    req.accept(on_progress, &mut file).await
+    Ok(req.accept(on_progress, &mut file).await?)
 }
