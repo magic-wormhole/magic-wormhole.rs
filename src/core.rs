@@ -26,9 +26,17 @@ use serde_derive::{Deserialize, Serialize};
 pub enum WormholeCoreError {
     /// Some deserialization went wrong, we probably got some garbage
     #[error("Corrupt message received")]
-    ProtocolJson(#[from] #[source] serde_json::Error),
+    ProtocolJson(
+        #[from]
+        #[source]
+        serde_json::Error,
+    ),
     #[error("Corrupt hex string encountered within a message")]
-    ProtocolHex(#[from] #[source] hex::FromHexError),
+    ProtocolHex(
+        #[from]
+        #[source]
+        hex::FromHexError,
+    ),
     /// A generic string message for "something went wrong", i.e.
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
@@ -42,7 +50,11 @@ pub enum WormholeCoreError {
     #[error("Cannot decrypt a received message")]
     Crypto,
     #[error("Websocket IO error")]
-    IO(#[from] #[source] async_tungstenite::tungstenite::Error),
+    IO(
+        #[from]
+        #[source]
+        async_tungstenite::tungstenite::Error,
+    ),
 }
 
 impl WormholeCoreError {
@@ -174,10 +186,11 @@ pub async fn run(
     let mut io = match io::WormholeIO::new(relay_url).await {
         Ok(io) => io,
         Err(error) => {
-            to_api.unbounded_send(APIEvent::GotError(WormholeCoreError::IO(error)))
+            to_api
+                .unbounded_send(APIEvent::GotError(WormholeCoreError::IO(error)))
                 .expect("Don't close the receiver before shutting down the wormhole!");
             return;
-        }
+        },
     };
 
     use futures::stream::StreamExt;
@@ -237,7 +250,10 @@ pub async fn run(
         let e = match e {
             Ok(e) => e,
             Err(error) => {
-                debug!("Stopping wormhole event loop because of IO Error: {:?}", error);
+                debug!(
+                    "Stopping wormhole event loop because of IO Error: {:?}",
+                    error
+                );
                 to_api
                     .unbounded_send(APIEvent::GotError(error))
                     .expect("Don't close the receiver before shutting down the wormhole!");
@@ -289,7 +305,7 @@ pub async fn run(
                     State::Closing { .. } => { /* This may happen. Ignore it. */ },
                     _ => {
                         actions.push_back(Event::ShutDown(Err(WormholeCoreError::protocol(
-                            "Received message without requesting it"
+                            "Received message without requesting it",
                         ))));
                     },
                 }
@@ -315,7 +331,7 @@ pub async fn run(
                 },
                 _ => {
                     actions.push_back(Event::ShutDown(Err(WormholeCoreError::protocol(
-                        "Received message without requesting it"
+                        "Received message without requesting it",
                     ))));
                 },
             },
@@ -332,7 +348,7 @@ pub async fn run(
                 },
                 _ => {
                     actions.push_back(Event::ShutDown(Err(WormholeCoreError::protocol(
-                        "Received message in invalid state"
+                        "Received message in invalid state",
                     ))));
                 },
             },
@@ -382,9 +398,10 @@ pub async fn run(
             }) => {
                 // TODO maybe hanlde orig field for better messages
                 // Also, make this a proper error type, maybe ServerError or RemoteError
-                actions.push_back(Event::ShutDown(Err(WormholeCoreError::protocol(
-                    format!("Received error message from server: {}", message),
-                ))));
+                actions.push_back(Event::ShutDown(Err(WormholeCoreError::protocol(format!(
+                    "Received error message from server: {}",
+                    message
+                )))));
             },
             FromIO(InboundMessage::Pong { .. }) | FromIO(InboundMessage::Ack { .. }) => (), /* we ignore this, it's only for the timing log */
             FromIO(InboundMessage::Unknown) => {
