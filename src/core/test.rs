@@ -42,21 +42,23 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             code_tx.send(welcome.code.0).unwrap();
             let mut w = connector.connect_to_client().await?;
             log::info!("Got key: {}", &w.key);
-            eyre::Result::<_>::Ok(transfer::send_file(
-                &mut w,
-                &magic_wormhole::transit::DEFAULT_RELAY_SERVER
-                    .parse()
-                    .unwrap(),
-                &mut async_std::fs::File::open("examples/example-file.bin").await?,
-                "example-file.bin",
-                std::fs::metadata("examples/example-file.bin")
-                    .unwrap()
-                    .len(),
-                |sent, total| {
-                    log::info!("Sent {} of {} bytes", sent, total);
-                },
+            eyre::Result::<_>::Ok(
+                transfer::send_file(
+                    &mut w,
+                    &magic_wormhole::transit::DEFAULT_RELAY_SERVER
+                        .parse()
+                        .unwrap(),
+                    &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                    "example-file.bin",
+                    std::fs::metadata("examples/example-file.bin")
+                        .unwrap()
+                        .len(),
+                    |sent, total| {
+                        log::info!("Sent {} of {} bytes", sent, total);
+                    },
+                )
+                .await?,
             )
-            .await?)
         })?;
     let receiver_task = async_std::task::Builder::new()
         .name("receiver".to_owned())
