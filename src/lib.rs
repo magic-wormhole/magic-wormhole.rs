@@ -44,7 +44,7 @@ use std::str;
 /// Some mailbox server you might use.
 ///
 /// Two applications that want to communicate with each other *must* use the same mailbox server.
-pub const DEFAULT_MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
+pub const DEFAULT_MAILBOX_SERVER: &str = "wss://relay.magic-wormhole.io:4000/v1";
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
