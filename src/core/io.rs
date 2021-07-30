@@ -7,7 +7,7 @@
 // in Twisted, we delegate all of this to a ClientService, so there's a lot
 // more code and more states here
 
-use crate::core::{server_messages::OutboundMessage, Event};
+use crate::core::{server_messages::OutboundMessage, Event, WormholeCoreError};
 use log::*;
 use std::pin::Pin;
 
@@ -32,17 +32,12 @@ enum State {
     Stopped,
 }
 
-type WebsocketSender = Pin<
-    Box<
-        dyn futures::sink::Sink<IOAction, Error = async_tungstenite::tungstenite::Error>
-            + std::marker::Send,
-    >,
->;
+type WebsocketSender =
+    Pin<Box<dyn futures::sink::Sink<IOAction, Error = WormholeCoreError> + std::marker::Send>>;
 type WebsocketReceiver = Pin<
     Box<
-        dyn futures::stream::FusedStream<
-                Item = Result<IOEvent, async_tungstenite::tungstenite::Error>,
-            > + std::marker::Send,
+        dyn futures::stream::FusedStream<Item = Result<IOEvent, WormholeCoreError>>
+            + std::marker::Send,
     >,
 >;
 
@@ -53,32 +48,34 @@ pub struct WormholeIO {
 }
 
 impl WormholeIO {
-    pub async fn new(relay_url: &str) -> Self {
-        let (ws_tx, ws_rx) = ws_connector(&relay_url).await;
-        WormholeIO {
+    pub async fn new(relay_url: &str) -> Result<Self, async_tungstenite::tungstenite::Error> {
+        let (ws_tx, ws_rx) = ws_connector(&relay_url).await?;
+        Ok(WormholeIO {
             state: State::Connected,
             ws_tx,
             ws_rx,
-        }
+        })
     }
 
-    pub fn process_io(&mut self, event: IOEvent) -> anyhow::Result<Event> {
+    pub fn process_io(&mut self, event: IOEvent) -> Result<Event, WormholeCoreError> {
         use State::*;
         let action: Event;
         self.state = match self.state {
             Connected => match event {
                 IOEvent::WebSocketMessageReceived(message) => {
-                    action = Event::FromIO(super::server_messages::deserialize(&message));
+                    action = Event::FromIO(super::server_messages::deserialize(&message)?);
                     Connected
                 },
                 IOEvent::WebSocketConnectionLost => {
-                    anyhow::bail!("Initial WebSocket connection lost");
+                    return Err(WormholeCoreError::protocol(
+                        "Unexpectedly lost connection (WebSocket closed)",
+                    ));
                 },
             },
             Disconnecting => match event {
                 IOEvent::WebSocketMessageReceived(message) => {
                     log::warn!("Received message while closing: {:?}", message);
-                    action = Event::FromIO(super::server_messages::deserialize(&message));
+                    action = Event::FromIO(super::server_messages::deserialize(&message)?);
                     Disconnecting
                 },
                 IOEvent::WebSocketConnectionLost => {
@@ -86,7 +83,11 @@ impl WormholeIO {
                     Stopped
                 },
             },
-            Stopped => panic!("I don't accept events after having stopped"),
+            Stopped => {
+                return Err(WormholeCoreError::protocol(
+                    "Received a WebSocket event after having stopped",
+                ));
+            },
         };
         Ok(action)
     }
@@ -113,46 +114,50 @@ impl WormholeIO {
     }
 }
 
-async fn ws_connector(url: &str) -> (WebsocketSender, WebsocketReceiver) {
+async fn ws_connector(
+    url: &str,
+) -> Result<(WebsocketSender, WebsocketReceiver), async_tungstenite::tungstenite::Error> {
     use async_tungstenite::{async_std::*, tungstenite as ws2};
     use futures::{
         sink::SinkExt,
         stream::{StreamExt, TryStreamExt},
     };
 
-    // TODO error handling here
-    let (ws_stream, _) = connect_async(url).await.unwrap();
+    let (ws_stream, _) = connect_async(url).await?;
     let (write, read) = ws_stream.split();
 
     /* Receive websockets event and forward them to the API */
-    let ws_rx = read.try_filter_map(|message| async move {
-        Ok(match message {
-            ws2::Message::Text(text) => Some(IOEvent::WebSocketMessageReceived(text)),
-            ws2::Message::Close(_) => Some(IOEvent::WebSocketConnectionLost),
-            ws2::Message::Ping(_) => {
-                warn!("Not responding to pings for now");
-                // TODO
-                None
-            },
-            ws2::Message::Pong(_) => {
-                warn!("Got a pong without ping?!");
-                // TODO maybe send pings too?
-                None
-            },
-            ws2::Message::Binary(_) => {
-                error!("Someone is sending binary data, this is not part of the protocol!");
-                None
-            },
-        })
-    });
+    let ws_rx = read
+        .map_err(WormholeCoreError::IO)
+        .try_filter_map(|message| async move {
+            match message {
+                ws2::Message::Text(text) => Ok(Some(IOEvent::WebSocketMessageReceived(text))),
+                ws2::Message::Close(_) => Ok(Some(IOEvent::WebSocketConnectionLost)),
+                ws2::Message::Ping(_) => {
+                    warn!("Not responding to pings for now");
+                    // TODO
+                    Ok(None)
+                },
+                ws2::Message::Pong(_) => {
+                    warn!("Got a pong without ping?!");
+                    // TODO maybe send pings too?
+                    Ok(None)
+                },
+                ws2::Message::Binary(_) => Err(WormholeCoreError::protocol(
+                    "Received some binary data; this is not part of the protocol!",
+                )),
+            }
+        });
 
     /* Send events from the API to the other websocket side */
-    let ws_tx = write.with(move |c| async {
-        match c {
-            IOAction::WebSocketSendMessage(d) => Ok(ws2::Message::Text(d)),
-            IOAction::WebSocketClose => Ok(ws2::Message::Close(None)),
-        }
-    });
+    let ws_tx = write
+        .sink_map_err(WormholeCoreError::IO)
+        .with(move |c| async {
+            match c {
+                IOAction::WebSocketSendMessage(d) => Ok(ws2::Message::Text(d)),
+                IOAction::WebSocketClose => Ok(ws2::Message::Close(None)),
+            }
+        });
 
-    (Box::pin(ws_tx), Box::pin(ws_rx.fuse()))
+    Ok((Box::pin(ws_tx), Box::pin(ws_rx.fuse())))
 }
