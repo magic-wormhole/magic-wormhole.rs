@@ -41,6 +41,9 @@ pub enum WormholeCoreError {
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
     Protocol(Box<str>),
+    /// The server sent us an error message
+    #[error("Received error message from server: {}", _0)]
+    Server(Box<str>),
     #[error(
         "Key confirmation failed. If you didn't mistype the code, \
         this is a sign of an attacker guessing passwords. Please try \
@@ -397,11 +400,9 @@ pub async fn run(
                 orig: _,
             }) => {
                 // TODO maybe hanlde orig field for better messages
-                // Also, make this a proper error type, maybe ServerError or RemoteError
-                actions.push_back(Event::ShutDown(Err(WormholeCoreError::protocol(format!(
-                    "Received error message from server: {}",
-                    message
-                )))));
+                actions.push_back(Event::ShutDown(Err(WormholeCoreError::Server(
+                    message.into(),
+                ))));
             },
             FromIO(InboundMessage::Pong { .. }) | FromIO(InboundMessage::Ack { .. }) => (), /* we ignore this, it's only for the timing log */
             FromIO(InboundMessage::Unknown) => {
