@@ -1,5 +1,5 @@
 use super::events::{Events, Key, Phase, TheirSide};
-use super::key;
+use super::{key, WormholeCoreError};
 use log::trace;
 
 // we process these
@@ -26,7 +26,7 @@ impl ReceiveMachine {
         }
     }
 
-    pub fn process(&mut self, event: ReceiveEvent) -> anyhow::Result<Events> {
+    pub fn process(&mut self, event: ReceiveEvent) -> Result<Events, WormholeCoreError> {
         use self::State::*;
         use ReceiveEvent::*;
 
@@ -58,44 +58,32 @@ impl ReceiveMachine {
                 GotKey(_) => unreachable!(),
             },
             S1YesPake => match event {
-                GotMessage(..) => panic!(), // TODO not sure if this is correct
+                GotMessage(..) => unreachable!(),
                 GotKey(key) => S2Unverified(key),
             },
             S2Unverified(key) => match event {
-                GotKey(_) => panic!(),
+                GotKey(_) => unreachable!(),
                 GotMessage(side, phase, body) => {
-                    match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
-                        Some(plaintext) => {
-                            // got_message_good
-                            let verifier = key::derive_verifier(&key);
-                            actions.push(CoreEvent::FirstVerifiedMessage {
-                                verifier,
-                                key: key.clone(),
-                            });
-                            actions.push(CoreEvent::GotDecryptedMessage(phase, plaintext));
-                            S3Verified(key)
-                        },
-                        None => {
-                            // got_message_bad
-                            anyhow::bail!("Got bad message that could not be decrypted");
-                        },
-                    }
+                    let plaintext = Self::derive_key_and_decrypt(&side, &key, &phase, &body)?;
+
+                    // got_message_good
+                    let verifier = key::derive_verifier(&key);
+                    actions.push(CoreEvent::FirstVerifiedMessage {
+                        verifier,
+                        key: key.clone(),
+                    });
+                    actions.push(CoreEvent::GotDecryptedMessage(phase, plaintext));
+                    S3Verified(key)
                 },
             },
             S3Verified(ref key) => match event {
-                GotKey(_) => panic!(),
+                GotKey(_) => unreachable!(),
                 GotMessage(side, phase, body) => {
-                    match Self::derive_key_and_decrypt(&side, &key, &phase, &body) {
-                        Some(plaintext) => {
-                            // got_message_good
-                            actions.push(CoreEvent::GotDecryptedMessage(phase, plaintext));
-                            S3Verified(key.clone())
-                        },
-                        None => {
-                            // got_message_bad
-                            anyhow::bail!("Got bad message that could not be decrypted");
-                        },
-                    }
+                    let plaintext = Self::derive_key_and_decrypt(&side, &key, &phase, &body)?;
+
+                    // got_message_good
+                    actions.push(CoreEvent::GotDecryptedMessage(phase, plaintext));
+                    S3Verified(key.clone())
                 },
             },
         });
@@ -108,8 +96,9 @@ impl ReceiveMachine {
         key: &Key,
         phase: &Phase,
         body: &[u8],
-    ) -> Option<Vec<u8>> {
+    ) -> Result<Vec<u8>, WormholeCoreError> {
         let data_key = key::derive_phase_key(&side, &key, &phase);
         key::decrypt_data(&data_key, body)
+            .ok_or(WormholeCoreError::Crypto)
     }
 }

@@ -20,6 +20,7 @@
 
 #![forbid(unsafe_code)]
 // #![deny(warnings)]
+#![allow(clippy::upper_case_acronyms)]
 
 mod core;
 pub mod transfer;
@@ -44,6 +45,13 @@ use std::str;
 ///
 /// Two applications that want to communicate with each other *must* use the same mailbox server.
 pub const DEFAULT_MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum WormholeError {
+    #[error(transparent)]
+    CoreError(#[from] core::WormholeCoreError),
+}
 
 /// Set a code, or allocate one
 #[non_exhaustive]
@@ -155,7 +163,7 @@ impl WormholeConnector {
      * This will perform the PAKE key exchange and all other necessary things to fully connect.
      * It returns a [`Wormhole`] struct over which you can send and receive byte messages with the other side.
      */
-    pub async fn connect_to_client(mut self) -> anyhow::Result<Wormhole> {
+    pub async fn connect_to_client(mut self) -> Result<Wormhole, WormholeError> {
         use futures::{SinkExt, StreamExt};
 
         let key;
@@ -177,11 +185,9 @@ impl WormholeConnector {
                     peer_version = versions;
                     break;
                 },
-                Some(GotError(error)) => anyhow::bail!(error),
-                None => {
-                    /* TODO is this reachable code? */
-                    anyhow::bail!("Wormhole unexpectedly closed");
-                },
+                Some(GotError(error)) => return Err(error.into()),
+                /* We will/should always get an error (above) before the connection closes */
+                None => unreachable!("Wormhole unexpectedly closed"),
             }
         }
 
@@ -236,7 +242,8 @@ impl WormholeConnector {
 pub struct Wormhole {
     pub tx:
         Pin<Box<dyn Sink<Vec<u8>, Error = futures::channel::mpsc::SendError> + std::marker::Send>>,
-    pub rx: Pin<Box<dyn Stream<Item = anyhow::Result<Vec<u8>>> + std::marker::Send>>,
+    pub rx:
+        Pin<Box<dyn Stream<Item = Result<Vec<u8>, core::WormholeCoreError>> + std::marker::Send>>,
     pub key: Key<WormholeKey>,
     pub verifier: Box<secretbox::Key>,
     /**
@@ -249,6 +256,30 @@ pub struct Wormhole {
      * This is bound by the `AppID`'s protocol and thus shall be handled on a higher level.
      */
     pub peer_version: serde_json::Value,
+}
+
+impl Wormhole {
+    /** The recommended way to close a Wormhole
+     *
+     * While you can simply drop it, that won't catch any errors, and more importantly,
+     * it won't wait until the inner thread has finished. If this is the last thing your
+     * program does, it will exit before any remaining messages are processed. Using `close`
+     * will wait for everything and give you error messages.
+     *
+     * ## Panics
+     *
+     * If the underlying Wormhole has already been closed or shut down.
+     */
+    pub async fn close(mut self) -> Result<(), WormholeError> {
+        use futures::{SinkExt, StreamExt};
+        /* Close the sender */
+        self.tx.close().await.expect("Wormhole already closed");
+        /* Wait until the wormhole thread stops */
+        self.rx
+            .forward(futures::sink::drain::<Vec<u8>>().sink_err_into())
+            .await?;
+        Ok(())
+    }
 }
 
 /**
@@ -277,7 +308,7 @@ pub async fn connect_to_server(
     relay_url: impl Into<String>,
     code_provider: CodeProvider,
     #[cfg(test)] eventloop_task: &mut Option<async_std::task::JoinHandle<()>>,
-) -> anyhow::Result<(WormholeWelcome, WormholeConnector)> {
+) -> Result<(WormholeWelcome, WormholeConnector), WormholeError> {
     let relay_url = relay_url.into();
     let appid: AppID = AppID::new(appid);
     let versions = serde_json::to_value(versions).expect("Could not serialize versions");
@@ -323,11 +354,9 @@ pub async fn connect_to_server(
                 break;
             },
             Some(ConnectedToClient { .. }) | Some(GotMessage(_)) => unreachable!(),
-            Some(GotError(error)) => anyhow::bail!(error),
-            None => {
-                /* TODO is this reachable code? */
-                anyhow::bail!("Wormhole unexpectedly closed");
-            },
+            Some(GotError(error)) => return Err(error.into()),
+            /* We will/should always get an error (above) before the connection closes */
+            None => unreachable!("Wormhole unexpectedly closed"),
         }
     }
 

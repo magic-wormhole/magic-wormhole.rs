@@ -1,5 +1,5 @@
 use crate::{
-    core::{server_messages::OutboundMessage, EncryptedMessage, Event, Mailbox, Mood, Nameplate},
+    core::{server_messages::OutboundMessage, *},
     APIEvent,
 };
 use hkdf::Hkdf;
@@ -19,12 +19,30 @@ use super::{
     mailbox, util,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, derive_more::Display)]
 enum State {
+    #[display(
+        fmt = "S1NoPake {{ pake: <censored>, message_queue: <{} items> }}",
+        "_1.len()"
+    )]
     S1NoPake(SPAKE2<Ed25519Group>, Vec<EncryptedMessage>), // pake_state, message queue
+    #[display(
+        fmt = "S2Unverified {{ key: <censored>, message_queue: <{} items> }}",
+        "_1.len()"
+    )]
     S2Unverified(xsalsa20poly1305::Key, Vec<EncryptedMessage>), // key, another message queue
+    Error, // Once an error happens, we don't do anything anymore
 }
 
+#[derive(Debug, derive_more::Display)]
+#[display(
+    fmt = "KeyMachine {{ side: {}, versions: {}, nameplate: {:?}, mailbox_machine: {}, state: {} }}",
+    side,
+    versions,
+    nameplate,
+    mailbox_machine,
+    state
+)]
 pub(super) struct KeyMachine {
     side: MySide,
     versions: serde_json::Value,
@@ -73,48 +91,64 @@ impl KeyMachine {
         match self.state {
             State::S1NoPake(pake_state, mut queue) => {
                 if message.phase.is_pake() {
-                    // got a pake message, derive key
-                    // TODO error handling
-                    let pake_message = extract_pake_msg(&message.body).unwrap();
-                    let key = *secretbox::Key::from_slice(
-                        &pake_state
-                            .finish(&hex::decode(pake_message).unwrap())
-                            .unwrap(),
-                    );
+                    /* Got a pake message, derive key */
+                    let key = extract_pake_msg(&message.body)
+                        .map_err(WormholeCoreError::ProtocolJson)
+                        .and_then(|pake_message| {
+                            hex::decode(pake_message).map_err(WormholeCoreError::ProtocolHex)
+                        })
+                        .and_then(|pake_message| {
+                            pake_state
+                                .finish(&pake_message)
+                                .map_err(|_| WormholeCoreError::PakeFailed)
+                        })
+                        .map(|key| *secretbox::Key::from_slice(&key));
 
-                    // Send versions message
-                    let versions = json!({"app_versions": self.versions});
-                    let (version_phase, version_msg) =
-                        build_version_msg(&self.side, &key, &versions);
-                    self.mailbox_machine
-                        .send_message(actions, version_phase, version_msg);
+                    match key {
+                        Ok(key) => {
+                            /* Send versions message */
+                            let versions = json!({"app_versions": self.versions});
+                            let (version_phase, version_msg) =
+                                build_version_msg(&self.side, &key, &versions);
+                            self.mailbox_machine
+                                .send_message(actions, version_phase, version_msg);
 
-                    // Release all queued messages
-                    for message in queue {
-                        actions.push_back(Event::BounceMessage(message));
+                            /* Release all queued messages */
+                            for message in queue {
+                                actions.push_back(Event::BounceMessage(message));
+                            }
+                            self.state = State::S2Unverified(key, Vec::new());
+                        },
+                        Err(e) => {
+                            actions.push_back(Event::ShutDown(Err(e)));
+                            self.state = State::Error;
+                        },
                     }
-
-                    self.state = State::S2Unverified(key, Vec::new());
                 } else {
-                    // not a  pake message, queue it.
+                    /* not a  pake message, queue it. */
                     queue.push(message);
                     self.state = State::S1NoPake(pake_state, queue);
                 }
             },
             State::S2Unverified(key, mut queue) => {
                 if message.phase.is_version() {
-                    match message.decrypt(&key) {
-                        Ok(plaintext) => {
-                            // Handle received message
-                            // TODO handle error conditions
-                            let version_str = String::from_utf8(plaintext).unwrap();
-                            let v: Value = serde_json::from_str(&version_str).unwrap();
-                            let app_versions = match v.get("app_versions") {
-                                Some(versions) => versions.clone(),
-                                None => serde_json::json!({}),
-                            };
+                    /* Handle received message */
+                    let versions: Result<Value, _> = message
+                        .decrypt(&key)
+                        .ok_or(WormholeCoreError::PakeFailed)
+                        .and_then(|plaintext| {
+                            serde_json::from_slice(&plaintext)
+                                .map_err(WormholeCoreError::ProtocolJson)
+                        });
 
-                            // Release old things
+                    match versions {
+                        Ok(versions) => {
+                            let app_versions = versions
+                                .get("app_versions")
+                                .cloned()
+                                .unwrap_or_else(|| serde_json::json!({}));
+
+                            /* Release old things */
                             if let Some(nameplate) = self.nameplate {
                                 actions.push_back(OutboundMessage::release(nameplate).into());
                             }
@@ -122,7 +156,7 @@ impl KeyMachine {
                                 actions.push_back(Event::BounceMessage(message));
                             }
 
-                            // We are now fully initialized! Up and running! :tada:
+                            /* We are now fully initialized! Up and running! :tada: */
                             actions.push_back(
                                 APIEvent::ConnectedToClient {
                                     verifier: Box::new(derive_verifier(&key)),
@@ -131,6 +165,7 @@ impl KeyMachine {
                                 }
                                 .into(),
                             );
+
                             return super::State::Running(Box::new(
                                 super::running::RunningMachine {
                                     phase: 0,
@@ -141,9 +176,9 @@ impl KeyMachine {
                                 },
                             ));
                         },
-                        Err(error) => {
-                            actions.push_back(Event::ShutDown(Err(error)));
-                            self.state = State::S2Unverified(key, queue);
+                        Err(e) => {
+                            actions.push_back(Event::ShutDown(Err(e)));
+                            self.state = State::Error;
                         },
                     }
                 } else {
@@ -151,6 +186,7 @@ impl KeyMachine {
                     self.state = State::S2Unverified(key, queue);
                 }
             },
+            State::Error => (),
         }
 
         super::State::Keying(self)
@@ -159,18 +195,24 @@ impl KeyMachine {
     pub(super) fn shutdown(
         self,
         actions: &mut VecDeque<Event>,
-        result: anyhow::Result<()>,
+        result: Result<(), WormholeCoreError>,
     ) -> super::State {
+        let await_nameplate_release = if let Some(nameplate) = self.nameplate {
+            actions.push_back(OutboundMessage::release(nameplate).into());
+            true
+        } else {
+            false
+        };
         self.mailbox_machine.close(
             actions,
-            if result.is_ok() {
-                Mood::Lonely
-            } else {
-                Mood::Errory
+            match &result {
+                Ok(_) => Mood::Happy,
+                Err(e) if e.is_scared() => Mood::Scared,
+                Err(_) => Mood::Errory,
             },
         );
         super::State::Closing {
-            await_nameplate_release: self.nameplate.is_some(),
+            await_nameplate_release,
             await_mailbox_close: true,
             result,
         }
@@ -200,10 +242,8 @@ fn build_version_msg(
     (phase, encrypted)
 }
 
-fn extract_pake_msg(body: &[u8]) -> Option<String> {
-    serde_json::from_slice(&body)
-        .map(|res: PhaseMessage| res.pake_v1)
-        .ok()
+fn extract_pake_msg(body: &[u8]) -> serde_json::Result<String> {
+    serde_json::from_slice(&body).map(|res: PhaseMessage| res.pake_v1)
 }
 
 fn encrypt_data_with_nonce(
@@ -287,7 +327,7 @@ mod test {
         let s1 = "7b2270616b655f7631223a22353337363331646366643064336164386130346234663531643935336131343563386538626663373830646461393834373934656634666136656536306339663665227d";
         let pake_msg = super::extract_pake_msg(&hex::decode(s1).unwrap());
         assert_eq!(
-            pake_msg,
+            pake_msg.ok(),
             Some(String::from(
                 "537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e"
             ))

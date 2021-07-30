@@ -3,6 +3,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::events::{Mailbox, MySide, Phase};
 
+#[derive(Debug, derive_more::Display)]
+#[display(fmt = "MailboxMachine {{ mailbox: {}, side: {}, processed: [{}], pending_outbound: {{ {} }} }} ", mailbox, side, 
+    "processed.iter().map(|p| format!(\"{}\", p)).collect::<Vec<String>>().join(\", \")",
+    "pending_outbound.iter().map(|(phase, message)| format!(\"({}, {})\", phase, crate::util::DisplayBytes(message))).collect::<Vec<String>>().join(\", \")"
+)]
 pub struct MailboxMachine {
     mailbox: Mailbox,
     processed: HashSet<Phase>,
