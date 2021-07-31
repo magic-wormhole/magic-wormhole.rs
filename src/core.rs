@@ -45,6 +45,11 @@ pub enum WormholeCoreError {
     #[error("Received error message from server: {}", _0)]
     Server(Box<str>),
     #[error(
+        "Server wants one of {:?} for permissions, but we don't suppport any of these",
+        _0
+    )]
+    Login(Vec<String>),
+    #[error(
         "Key confirmation failed. If you didn't mistype the code, \
         this is a sign of an attacker guessing passwords. Please try \
         again some time later."
@@ -81,11 +86,16 @@ impl From<std::convert::Infallible> for WormholeCoreError {
 // TODO manually implement Debug again to display some Vec<u8> as string and others as hex
 #[derive(Debug, derive_more::Display)]
 pub enum APIEvent {
-    #[display(fmt = "ConnectedToServer {{ welcome: {}, code: {} }}", welcome, code)]
+    #[display(
+        fmt = "ConnectedToServer {{ motd: {} }}",
+        r#"motd.as_deref().unwrap_or("<none>")"#
+    )]
     ConnectedToServer {
         /// A little welcome message from the server (message of the day and such)
-        // TODO we can actually provide more structure than a "value", see the protocol
-        welcome: serde_json::Value,
+        motd: Option<String>,
+    },
+    #[display(fmt = "GotCode {{ code: {} }}", code)]
+    GotCode {
         /// Share this with your peer so they can connect
         code: Code,
     },
@@ -126,6 +136,12 @@ pub enum Mood {
 
 #[derive(Debug, derive_more::Display)]
 enum State {
+    #[display(fmt = "")] // TODO
+    WaitForWelcome {
+        versions: serde_json::Value,
+        code_provider: CodeProvider,
+    },
+
     #[display(
         fmt = "AllocatingNameplate {{ wordlist: <{} words>, side: {}, versions: {} }}",
         "wordlist.num_words",
@@ -200,39 +216,12 @@ pub async fn run(
 
     let mut actions: VecDeque<Event> = VecDeque::new();
 
-    /* Bootstrapping code */
-    let mut state;
-    actions.push_back(OutboundMessage::bind(appid.clone(), side.clone()).into());
-    /* A mini state machine to track that messaage. It's okay for now, but modularize if it starts growing. */
-    let mut welcome_message = None;
+    let mut state = State::WaitForWelcome {
+        versions,
+        code_provider,
+    };
 
-    match code_provider {
-        CodeProvider::AllocateCode(num_words) => {
-            // TODO: provide choice of wordlists
-            let wordlist = Arc::new(wordlist::default_wordlist(num_words));
-            actions.push_back(OutboundMessage::Allocate.into());
-
-            state = State::AllocatingNameplate {
-                wordlist,
-                side: side.clone(),
-                versions,
-            };
-        },
-        CodeProvider::SetCode(code) => {
-            let code_string = code.to_string();
-            let nc: Vec<&str> = code_string.splitn(2, '-').collect();
-            let nameplate = Nameplate::new(nc[0]);
-            actions.push_back(OutboundMessage::claim(nameplate.clone()).into());
-
-            state = State::ClaimingNameplate {
-                nameplate,
-                code: Code(code),
-                side: side.clone(),
-                versions,
-            };
-        },
-    }
-
+    /* The usual main loop */
     loop {
         let e = match actions.pop_front() {
             Some(event) => Ok(event),
@@ -269,7 +258,72 @@ pub async fn run(
         use self::{events::Event::*, server_messages::InboundMessage};
         match e {
             FromIO(InboundMessage::Welcome { welcome }) => {
-                welcome_message = Some(welcome);
+                match state {
+                    State::WaitForWelcome {
+                        versions,
+                        code_provider,
+                    } => {
+                        use server_messages::{PermissionRequired, SubmitPermission};
+
+                        actions
+                            .push_back(APIEvent::ConnectedToServer { motd: welcome.motd }.into());
+
+                        match welcome.permission_required {
+                            Some(PermissionRequired {
+                                hashcash: Some(hashcash),
+                                ..
+                            }) => {
+                                let token = hashcash::Token::new(hashcash.resource, hashcash.bits);
+                                actions.push_back(
+                                    OutboundMessage::SubmitPermission(SubmitPermission::Hashcash {
+                                        stamp: token.to_string(),
+                                    })
+                                    .into(),
+                                )
+                            },
+                            Some(PermissionRequired { none: true, .. }) => (),
+                            Some(PermissionRequired { other, .. }) => {
+                                /* We can't actually log in :/ */
+                                actions.push_back(Event::ShutDown(Err(WormholeCoreError::Login(
+                                    // TODO use `into_keys` once stable and remove the `cloned`
+                                    other.keys().cloned().collect(),
+                                ))));
+                            },
+                            None => (),
+                        }
+
+                        actions
+                            .push_back(OutboundMessage::bind(appid.clone(), side.clone()).into());
+
+                        match code_provider {
+                            CodeProvider::AllocateCode(num_words) => {
+                                // TODO: provide choice of wordlists
+                                let wordlist = Arc::new(wordlist::default_wordlist(num_words));
+                                actions.push_back(OutboundMessage::Allocate.into());
+
+                                state = State::AllocatingNameplate {
+                                    wordlist,
+                                    side: side.clone(),
+                                    versions,
+                                };
+                            },
+                            CodeProvider::SetCode(code) => {
+                                let code_string = code.to_string();
+                                let nc: Vec<&str> = code_string.splitn(2, '-').collect();
+                                let nameplate = Nameplate::new(nc[0]);
+                                actions.push_back(OutboundMessage::claim(nameplate.clone()).into());
+
+                                state = State::ClaimingNameplate {
+                                    nameplate,
+                                    code: Code(code),
+                                    side: side.clone(),
+                                    versions,
+                                };
+                            },
+                        }
+                    },
+                    _ => unreachable!(),
+                }
             },
             FromIO(InboundMessage::Claimed { mailbox }) => {
                 match state {
@@ -291,19 +345,7 @@ pub async fn run(
                             &code,
                         )));
 
-                        actions.push_back(
-                            APIEvent::ConnectedToServer {
-                                /* TODO Is the welcome message mandatory or optional? */
-                                welcome: welcome_message
-                                    .take()
-                                    .ok_or_else(|| {
-                                        anyhow::format_err!("Didn't get a welcome message")
-                                    })
-                                    .unwrap(),
-                                code,
-                            }
-                            .into(),
-                        );
+                        actions.push_back(APIEvent::GotCode { code }.into());
                     },
                     State::Closing { .. } => { /* This may happen. Ignore it. */ },
                     _ => {
@@ -420,6 +462,13 @@ pub async fn run(
                 }
             },
             ShutDown(result) => match state {
+                State::WaitForWelcome { .. } => {
+                    state = State::Closing {
+                        await_nameplate_release: false,
+                        await_mailbox_close: false,
+                        result,
+                    };
+                },
                 State::AllocatingNameplate { .. } => {
                     state = State::Closing {
                         await_nameplate_release: false,
