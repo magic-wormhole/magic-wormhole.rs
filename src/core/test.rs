@@ -37,7 +37,9 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 &mut None,
             )
             .await?;
-            log::info!("Got welcome: {}", &welcome.welcome);
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
             log::info!("This wormhole's code is: {}", &welcome.code);
             code_tx.send(welcome.code.0).unwrap();
             let mut w = connector.connect_to_client().await?;
@@ -73,7 +75,9 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 &mut None,
             )
             .await?;
-            log::info!("Got welcome: {}", &welcome.welcome);
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
 
             let mut w = connector.connect_to_client().await?;
             log::info!("Got key: {}", &w.key);
@@ -362,7 +366,9 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
                 &mut None,
             )
             .await?;
-            log::info!("Got welcome: {}", &welcome.welcome);
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
             log::info!("This wormhole's code is: {}", &welcome.code);
             code_tx.send(welcome.code.0).unwrap();
 
@@ -385,7 +391,9 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
                 &mut None,
             )
             .await?;
-            log::info!("Got welcome: {}", &welcome.welcome);
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
 
             let result = connector.connect_to_client().await;
             /* This should have failed, due to the wrong code */
