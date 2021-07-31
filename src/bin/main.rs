@@ -6,7 +6,7 @@ use std::{
 
 use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
-use color_eyre::{eyre, eyre::WrapErr};
+use color_eyre::eyre;
 use console::{style, Term};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
@@ -190,16 +190,36 @@ async fn main() -> eyre::Result<()> {
         log::debug!("Logging enabled.");
     }
 
+    let file_name = |file_path| {
+        // TODO this has gotten out of hand (it ugly)
+        // The correct solution would be to make `file_name` an Option everywhere and
+        // move the ".tar" part further down the line.
+        // The correct correct solution would be to have working file transfer instead
+        // of sending stupid archives.
+        matches
+            .value_of_os("file-name")
+            .map(std::ffi::OsString::from)
+            .or_else(|| {
+                let path = std::path::Path::new(file_path);
+                let mut name = path.file_name().map(std::ffi::OsString::from);
+                if path.is_dir() {
+                    name = name.map(|mut name| {
+                        name.push(".tar");
+                        name
+                    });
+                }
+                name
+            })
+            .ok_or_else(|| {
+                eyre::format_err!("You can't send a file without a name. Maybe try --rename")
+            })
+    };
+
     /* Handling of the argument matches (one branch per subcommand) */
 
     if let Some(matches) = matches.subcommand_matches("send") {
         let file_path = matches.value_of_os("file").unwrap();
-        let file_name = matches
-            .value_of_os("file-name")
-            .or_else(|| std::path::Path::new(file_path).file_name())
-            .ok_or_else(|| {
-                eyre::format_err!("You can't send a file without a name. Maybe try --rename")
-            })?;
+        let file_name = file_name(file_path)?;
 
         eyre::ensure!(
             std::path::Path::new(file_path).exists(),
@@ -226,18 +246,13 @@ async fn main() -> eyre::Result<()> {
         sender_print_code(&mut term, &welcome.code)?;
 
         let file_path = matches.value_of_os("file").unwrap();
-        let file_name = matches
-            .value_of_os("file-name")
-            .or_else(|| std::path::Path::new(file_path).file_name())
-            .ok_or_else(|| {
-                eyre::format_err!("You can't send a file without a name. Maybe try --rename")
-            })?;
+        let file_name = file_name(file_path)?;
 
         send_many(
             relay_server,
             &welcome.code,
             file_path,
-            file_name,
+            &file_name,
             max_tries,
             timeout,
             connector,
@@ -381,27 +396,20 @@ fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Resu
 async fn send(
     wormhole: &mut Wormhole,
     relay_server: &RelayUrl,
-    file: &std::ffi::OsStr,
+    file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
 ) -> eyre::Result<()> {
-    use async_std::fs::File;
-
-    let mut file: async_std::fs::File = File::open(file)
-        .await
-        .context(format!("Could not open {:?}", file))?;
-    let file_size = file.metadata().await?.len();
-
-    let pb = create_progress_bar(file_size);
+    let pb = create_progress_bar(0);
     let pb2 = pb.clone();
-    transfer::send_file(
+    transfer::send_file_or_folder(
         wormhole,
         &relay_server,
-        &mut file,
-        &std::path::Path::new(file_name),
-        file_size,
-        move |sent, _total| {
+        file_path,
+        file_name,
+        move |sent, total| {
             if sent == 0 {
                 pb.reset_elapsed();
+                pb.set_length(total);
                 pb.enable_steady_tick(250);
             }
             pb.set_position(sent);
@@ -429,23 +437,17 @@ async fn send_many(
     // let mp = MultiProgress::new();
     // async_std::task::spawn_blocking(move || mp.join()).await?;
 
+    let file_path = Arc::new(file_path.to_owned());
     let file_name = Arc::new(file_name.to_owned());
     let url = Arc::new(relay_server);
 
     let time = Instant::now();
 
-    use async_std::fs::File;
-    let file = File::open(file_path)
-        .await
-        .context(format!("Could not open {:?}", file_path))?;
-    let file_size = file.metadata().await?.len();
-
     /* Special-case the first send with reusing the existing connection */
     send_in_background(
         Arc::clone(&url),
-        file,
+        Arc::clone(&file_path),
         Arc::clone(&file_name),
-        file_size,
         connector,
         term.clone(),
         // &mp,
@@ -469,9 +471,6 @@ async fn send_many(
             break;
         }
 
-        let file = File::open(file_path)
-            .await
-            .context(format!("Could not open {:?}", file_path))?;
         let (_welcome, connector) = magic_wormhole::connect_to_server(
             magic_wormhole::transfer::APPID,
             magic_wormhole::transfer::AppVersion::default(),
@@ -481,9 +480,8 @@ async fn send_many(
         .await?;
         send_in_background(
             Arc::clone(&url),
-            file,
+            Arc::clone(&file_path),
             Arc::clone(&file_name),
-            file_size,
             connector,
             term.clone(),
             // &mp,
@@ -491,12 +489,10 @@ async fn send_many(
         .await?;
     }
 
-    use futures::AsyncRead;
     async fn send_in_background(
         url: Arc<RelayUrl>,
-        mut file: impl AsyncRead + Unpin + Send + 'static,
         file_name: Arc<std::ffi::OsString>,
-        file_size: u64,
+        file_path: Arc<std::ffi::OsString>,
         connector: WormholeConnector,
         mut term: Term,
         // mp: &MultiProgress,
@@ -508,12 +504,11 @@ async fn send_many(
         async_std::task::spawn(async move {
             // let pb2 = pb.clone();
             let result = async move {
-                transfer::send_file(
+                transfer::send_file_or_folder(
                     &mut wormhole,
                     &url,
-                    &mut file,
+                    file_path.deref(),
                     file_name.deref(),
-                    file_size,
                     move |_sent, _total| {
                         // if sent == 0 {
                         //     pb2.reset_elapsed();

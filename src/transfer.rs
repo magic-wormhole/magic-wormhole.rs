@@ -41,8 +41,13 @@ pub enum TransferError {
     AckError,
     #[error("Receive checksum error")]
     Checksum,
-    #[error("The file contained a different amount of bytes than advertized!")]
-    FileSize,
+    #[error("The file contained a different amount of bytes than advertized! Sent {} bytes, but should have been {}", sent_size, file_size)]
+    FileSize {
+        sent_size: u64,
+        file_size: u64,
+    },
+    #[error("The file(s) to send got modified during the transfer, and thus corrupted")]
+    FilesystemSkew,
     // TODO be more specific
     #[error("Unsupported offer type")]
     UnsupportedOffer,
@@ -156,6 +161,8 @@ pub enum PeerMessage {
     Error(String),
     /** Used to set up a transit channel */
     Transit(Arc<transit::TransitType>),
+    #[serde(other)]
+    Unknown,
 }
 
 impl PeerMessage {
@@ -168,18 +175,6 @@ impl PeerMessage {
             filename: name.into(),
             filesize: size,
         })
-    }
-
-    pub fn new_message_ack(msg: impl Into<String>) -> Self {
-        PeerMessage::Answer(AnswerType::MessageAck(msg.into()))
-    }
-
-    pub fn new_file_ack(msg: impl Into<String>) -> Self {
-        PeerMessage::Answer(AnswerType::FileAck(msg.into()))
-    }
-
-    pub fn new_error_message(msg: impl Into<String>) -> Self {
-        PeerMessage::Error(msg.into())
     }
 
     pub fn new_offer_directory(
@@ -197,6 +192,19 @@ impl PeerMessage {
             numfiles,
         })
     }
+
+    pub fn new_message_ack(msg: impl Into<String>) -> Self {
+        PeerMessage::Answer(AnswerType::MessageAck(msg.into()))
+    }
+
+    pub fn new_file_ack(msg: impl Into<String>) -> Self {
+        PeerMessage::Answer(AnswerType::FileAck(msg.into()))
+    }
+
+    pub fn new_error_message(msg: impl Into<String>) -> Self {
+        PeerMessage::Error(msg.into())
+    }
+
     pub fn new_transit(abilities: Vec<transit::Ability>, hints: Vec<transit::Hint>) -> Self {
         PeerMessage::Transit(Arc::new(transit::TransitType {
             abilities_v1: abilities,
@@ -229,6 +237,8 @@ pub enum OfferType {
         numbytes: u64,
         numfiles: u64,
     },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -236,6 +246,46 @@ pub enum OfferType {
 pub enum AnswerType {
     MessageAck(String),
     FileAck(String),
+}
+
+pub async fn send_file_or_folder<N, M, H>(
+    wormhole: &mut Wormhole,
+    relay_url: &RelayUrl,
+    file_path: N,
+    file_name: M,
+    progress_handler: H,
+) -> Result<(), TransferError>
+where
+    N: AsRef<async_std::path::Path>,
+    M: AsRef<async_std::path::Path>,
+    H: FnMut(u64, u64) + 'static,
+{
+    use async_std::fs::File;
+    let file_path = file_path.as_ref();
+    let file_name = file_name.as_ref();
+
+    let mut file = File::open(file_path).await?;
+    let metadata = file.metadata().await?;
+    if metadata.is_dir() {
+        send_folder(
+            wormhole,
+            relay_url,
+            file_path,
+            file_name,
+            progress_handler,
+        ).await?;
+    } else {
+        let file_size = metadata.len();
+        send_file(
+            wormhole,
+            relay_url,
+            &mut file,
+            file_name,
+            file_size,
+            progress_handler,
+        ).await?;
+    }
+    Ok(())
 }
 
 /// Send a file to the other side
@@ -339,6 +389,216 @@ where
     Ok(())
 }
 
+/// Send a folder to the other side
+/// 
+/// This isn't a proper folder transfer as per the Wormhole protocol
+/// because it sends it in a way so that the receiver still has to manually
+/// unpack it. But it's better than nothing
+pub async fn send_folder<N, M, H>(
+    wormhole: &mut Wormhole,
+    relay_url: &RelayUrl,
+    folder_path: N,
+    folder_name: M,
+    progress_handler: H,
+) -> Result<(), TransferError>
+where
+    N: Into<PathBuf>,
+    M: Into<PathBuf>,
+    H: FnMut(u64, u64) + 'static,
+{
+    let connector = transit::init(transit::Ability::all_abilities(), relay_url).await?;
+    let folder_path = folder_path.into();
+
+    if !folder_path.is_dir() {
+        panic!("You should only call this method with directory paths, but '{}' is not", folder_path.display());
+    }
+
+    // We want to do some transit
+    debug!("Sending transit message '{:?}", connector.our_side_ttype());
+    wormhole
+        .tx
+        .send(PeerMessage::Transit(connector.our_side_ttype().clone()).serialize_vec())
+        .await?;
+
+    use tar::Builder;
+    // use sha2::{digest::FixedOutput, Digest, Sha256};
+
+    /* Helper struct stolen from https://docs.rs/count-write/0.1.0 */
+    struct CountWrite<W> { inner: W, count: u64, }
+
+    impl<W: std::io::Write> std::io::Write for CountWrite<W> {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let written = self.inner.write(buf)?;
+            self.count += written as u64;
+            Ok(written)
+        }
+    
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.inner.flush()
+        }
+    }
+
+    /* We need to know the length of what we are going to send in advance. So we build the
+     * tar file once, stream it into the void, and the second time we stream it over the
+     * wire. Also hashing for future reference.
+     */
+    log::info!("Tar'ing '{}' to see how big it'll be :)", folder_path.display());
+    let folder_path2 = folder_path.clone();
+    let (length, sha256sum_initial) = async_std::task::spawn_blocking(move || {
+        let mut hasher = Sha256::new();
+        let mut counter = CountWrite { inner: &mut hasher, count: 0, };
+        let mut builder = Builder::new(&mut counter);
+
+        builder.mode(tar::HeaderMode::Deterministic);
+        builder.follow_symlinks(false);
+        /* A hasher should never fail writing */
+        builder.append_dir_all("", folder_path2).unwrap();
+        builder.finish().unwrap();
+
+        std::mem::drop(builder);
+        let count = counter.count;
+        std::mem::drop(counter);
+        (count, hasher.finalize_fixed())
+    }).await;
+
+    // Send file offer message.
+    debug!("Sending file offer");
+    wormhole
+        .tx
+        .send(
+            PeerMessage::new_offer_file(
+                folder_name,
+                length
+            )
+            .serialize_vec(),
+        )
+        .await?;
+
+    // Wait for their transit response
+    let other_side_ttype = {
+        let maybe_transit = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+        debug!("received transit message: {:?}", maybe_transit);
+
+        match maybe_transit {
+            PeerMessage::Transit(tmsg) => tmsg,
+            _ => {
+                let error = TransferError::unexpected_message("transit", maybe_transit);
+                let _ = wormhole
+                    .tx
+                    .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+                    .await;
+                bail!(error)
+            },
+        }
+    };
+
+    {
+        // Wait for file_ack
+        let fileack_msg = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+        debug!("received file ack message: {:?}", fileack_msg);
+
+        match fileack_msg {
+            PeerMessage::Answer(AnswerType::FileAck(msg)) => {
+                ensure!(msg == "ok", TransferError::AckError);
+            },
+            PeerMessage::Error(err) => {
+                bail!(TransferError::PeerError(err));
+            },
+            _ => {
+                let error = TransferError::unexpected_message("answer/file_ack", fileack_msg);
+                let _ = wormhole
+                    .tx
+                    .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+                    .await;
+                bail!(error)
+            },
+        }
+    }
+
+    let mut transit = connector
+        .leader_connect(
+            wormhole.key.derive_transit_key(&wormhole.appid),
+            Arc::try_unwrap(other_side_ttype).unwrap(),
+        )
+        .await?;
+
+    debug!("Beginning file transfer");
+
+    /* Helper struct stolen from https://github.com/softprops/broadcast/blob/master/src/lib.rs */
+    pub struct BroadcastWriter<A: std::io::Write, B: std::io::Write> {
+        primary: A,
+        secondary: B,
+    }
+
+    impl<A: std::io::Write, B: std::io::Write> std::io::Write for BroadcastWriter<A, B> {
+        fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+            let n = self.primary.write(data).unwrap();
+            self.secondary.write_all(&data[..n]).unwrap();
+            Ok(n)
+        }
+    
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.primary.flush().and(self.secondary.flush())
+        }
+    }
+
+    // 11. send the file as encrypted records.
+    use futures::{AsyncReadExt, AsyncWriteExt};
+    let (mut reader, mut writer) = futures_ringbuf::RingBuffer::new(4096).split();
+
+    struct BlockingWrite<W>(std::pin::Pin<Box<W>>);
+    
+    impl <W: AsyncWrite + Send + Unpin> std::io::Write for BlockingWrite<W> {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut writer = self.0.as_mut();
+            futures::executor::block_on(AsyncWriteExt::write(&mut writer, buf))
+        }
+
+        fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
+            let mut writer = self.0.as_mut();
+            futures::executor::block_on(AsyncWriteExt::flush(&mut writer))
+        }
+    }
+
+    let file_sender = async_std::task::spawn_blocking(move || {
+        let mut hasher = Sha256::new();
+        let mut hash_writer = BroadcastWriter { primary: BlockingWrite(Box::pin(&mut writer)), secondary: &mut hasher };
+        let mut builder = Builder::new(&mut hash_writer);
+
+        builder.mode(tar::HeaderMode::Deterministic);
+        builder.follow_symlinks(false);
+        builder.append_dir_all("", folder_path).unwrap();
+        builder.finish().unwrap();
+
+        std::mem::drop(builder);
+        std::mem::drop(hash_writer);
+
+        std::io::Result::Ok(hasher.finalize_fixed())
+    });
+
+    let checksum = send_records(&mut transit, &mut reader, length, progress_handler).await.unwrap();
+    /* This should always be ready by now, but just in case */
+    let sha256sum = file_sender.await.unwrap();
+
+    /* Check if the hash sum still matches what we advertized. Otherwise, tell the other side and bail out */
+    if sha256sum != sha256sum_initial {
+        let error = TransferError::FilesystemSkew;
+        let _ = wormhole
+            .tx
+            .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+            .await;
+        bail!(error)
+    }
+
+    // 13. wait for the transit ack with sha256 sum from the peer.
+    debug!("sent file. Waiting for ack");
+    let transit_ack = transit.receive_record().await?;
+    let transit_ack_msg = serde_json::from_slice::<TransitAck>(&transit_ack)?;
+    ensure!(transit_ack_msg.sha256 == hex::encode(checksum), TransferError::Checksum);
+    debug!("transfer complete!");
+    Ok(())
+}
+
 /**
  * Wait for a file offer from the other side
  *
@@ -387,6 +647,10 @@ pub async fn request_file<'a>(
     let (filename, filesize) = match maybe_offer {
         PeerMessage::Offer(offer_type) => match offer_type {
             OfferType::File { filename, filesize } => (filename, filesize),
+            OfferType::Directory { mut dirname, zipsize, ..} => {
+                dirname.set_extension("zip");
+                (dirname, zipsize)
+            },
             _ => bail!(TransferError::UnsupportedOffer),
         },
         PeerMessage::Error(err) => {
@@ -531,7 +795,7 @@ where
         }
     }
 
-    ensure!(sent_size == file_size, TransferError::FileSize);
+    ensure!(sent_size == file_size, TransferError::FileSize { sent_size, file_size });
 
     Ok(hasher.finalize_fixed().to_vec())
 }

@@ -31,6 +31,8 @@ log = "0.4.13"
 get_if_addrs = "0.5.3"
 byteorder = "1.4.2"
 hashcash = "0.1.1"
+futures_ringbuf = "0.3.1"
+tar = "0.4.33"
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display"] }
 thiserror = "1.0.24"
