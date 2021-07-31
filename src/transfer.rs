@@ -10,6 +10,7 @@
 
 use futures::{AsyncRead, AsyncWrite};
 use serde_derive::{Deserialize, Serialize};
+#[cfg(test)]
 use serde_json::json;
 use std::sync::Arc;
 

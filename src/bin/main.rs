@@ -365,7 +365,9 @@ fn enter_code() -> eyre::Result<String> {
 }
 
 fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> eyre::Result<()> {
-    writeln!(term, "Got welcome from server: {}", &welcome.welcome)?;
+    if let Some(welcome) = &welcome.welcome {
+        writeln!(term, "Got welcome from server: {}", welcome)?;
+    }
     Ok(())
 }
 

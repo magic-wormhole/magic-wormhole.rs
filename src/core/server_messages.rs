@@ -3,18 +3,98 @@ use super::{
     util, Mood, WormholeCoreError,
 };
 use serde_derive::{Deserialize, Serialize};
-use serde_json::{self, Value};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Nameplate {
     pub id: String,
 }
 
+#[derive(Serialize, Debug, PartialEq, Eq, derive_more::Display)]
+#[serde(rename_all = "kebab-case")]
+#[serde(tag = "method")]
+pub enum SubmitPermission {
+    #[display(fmt = "Hashcash {{ stamp: '{}' }}", stamp)]
+    Hashcash { stamp: String },
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, Default)]
+pub struct WelcomeMessage {
+    #[deprecated(note = "This is for the Python client")]
+    pub current_cli_version: Option<String>,
+    pub motd: Option<String>,
+    #[deprecated(note = "Servers should send a proper error message instead")]
+    pub error: Option<String>,
+    #[serde(rename = "permission-required")]
+    pub permission_required: Option<PermissionRequired>,
+}
+
+impl std::fmt::Display for WelcomeMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "WelcomeMessage {{ ")?;
+        if let Some(motd) = &self.motd {
+            write!(f, "motd: '{}', ", motd)?;
+        }
+        if let Some(permission_required) = &self.permission_required {
+            write!(f, "permission_required: '{}', ", permission_required)?;
+        }
+        write!(f, ".. }}")?;
+        Ok(())
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+pub struct PermissionRequired {
+    #[serde(deserialize_with = "PermissionRequired::deserialize_none")]
+    pub none: bool,
+    pub hashcash: Option<HashcashPermission>,
+    #[serde(flatten)]
+    pub other: HashMap<String, serde_json::Value>,
+}
+
+impl PermissionRequired {
+    fn deserialize_none<'de, D>(de: D) -> Result<bool, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value: Option<serde_json::Map<String, serde_json::Value>> =
+            serde::Deserialize::deserialize(de)?;
+        Ok(value.is_some())
+    }
+}
+
+impl std::fmt::Display for PermissionRequired {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let none_iter = std::iter::once("none").filter(|_| self.none);
+        let hashcash_iter = std::iter::once("hashcash").filter(|_| self.hashcash.is_some());
+        let other_iter = self.other.keys().map(String::as_str);
+        write!(
+            f,
+            "PermissionRequired {{ one of: {:?}}}",
+            none_iter.chain(hashcash_iter).chain(other_iter)
+        )
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, derive_more::Display)]
+#[display(
+    fmt = "HashcashPermission {{ bits: {}, resource: '{}' }}",
+    bits,
+    resource
+)]
+#[serde(deny_unknown_fields)]
+pub struct HashcashPermission {
+    pub bits: u32,
+    pub resource: String,
+}
+
 // Client sends only these
-#[derive(Serialize, Deserialize, Debug, PartialEq, derive_more::Display)]
+#[derive(Serialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum OutboundMessage {
+    #[display(fmt = "SubmitPermission({})", _0)]
+    SubmitPermission(SubmitPermission),
     #[display(fmt = "Bind {{ appid: {}, side: {} }}", appid, side)]
     Bind {
         appid: AppID,
@@ -91,13 +171,13 @@ impl OutboundMessage {
 }
 
 // Server sends only these
-#[derive(Serialize, Deserialize, Debug, PartialEq, derive_more::Display)]
+#[derive(Deserialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum InboundMessage {
     #[display(fmt = "Welcome({})", welcome)]
     Welcome {
-        welcome: Value, // left mostly-intact for application
+        welcome: WelcomeMessage,
     },
     #[display(fmt = "Nameplates({:?})", nameplates)]
     Nameplates {
@@ -146,7 +226,7 @@ pub fn deserialize(s: &str) -> Result<InboundMessage, WormholeCoreError> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use serde_json::{from_str, json};
+    use serde_json::{from_str, json, Value};
 
     #[test]
     fn test_bind() {
@@ -252,23 +332,39 @@ mod test {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_welcome3() {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
         let m = deserialize(&s).unwrap();
-        match m {
-            InboundMessage::Welcome { welcome: msg } => assert_eq!(msg, json!({})),
-            _ => panic!(),
-        }
+        assert!(matches!(
+            m,
+            InboundMessage::Welcome {
+                welcome: WelcomeMessage {
+                    current_cli_version: None,
+                    motd: None,
+                    error: None,
+                    permission_required: None
+                }
+            }
+        ));
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_welcome4() {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
         let m = deserialize(&s).unwrap();
-        match m {
-            InboundMessage::Welcome { welcome: msg } => assert_eq!(msg, json!({})),
-            _ => panic!(),
-        }
+        assert!(matches!(
+            m,
+            InboundMessage::Welcome {
+                welcome: WelcomeMessage {
+                    current_cli_version: None,
+                    motd: None,
+                    error: None,
+                    permission_required: None
+                }
+            }
+        ));
     }
 
     // TODO: when "error_on_line_overflow=false" lands on rustfmt(stable),
@@ -278,11 +374,48 @@ mod test {
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
         let m = deserialize(&s).unwrap();
-        match m {
-            InboundMessage::Welcome { welcome: msg } =>
-                assert_eq!(msg, json!({"motd": "hello world"})),
-            _ => panic!(),
-        }
+        assert!(matches!(m, InboundMessage::Welcome { welcome: WelcomeMessage { current_cli_version: None, motd: Some(_), error: None, permission_required: None }  }));
+    }
+
+    /// Test permission_required field deserialization
+    #[test]
+    #[allow(deprecated)]
+    fn test_welcome6() {
+        let s = r#"{"type": "welcome", "welcome": { "motd": "hello world", "permission-required": { "none": {}, "hashcash": { "bits": 6, "resource": "resource-string" }, "dark-ritual": { "hocrux": true } } } }"#;
+        let m = deserialize(&s).unwrap();
+        assert_eq!(
+            m,
+            InboundMessage::Welcome {
+                welcome: WelcomeMessage {
+                    motd: Some("hello world".into()),
+                    permission_required: Some(PermissionRequired {
+                        none: true,
+                        hashcash: Some(HashcashPermission {
+                            bits: 6,
+                            resource: "resource-string".into(),
+                        }),
+                        // TODO replace with array once stable
+                        other: vec![("dark-ritual".to_string(), json!({ "hocrux": true }))]
+                            .into_iter()
+                            .collect()
+                    }),
+                    current_cli_version: None,
+                    error: None,
+                }
+            }
+        )
+    }
+
+    #[test]
+    fn test_submit_permissions() {
+        let m = OutboundMessage::SubmitPermission(SubmitPermission::Hashcash {
+            stamp: "stamp".into(),
+        });
+        let s = serde_json::to_string(&m).unwrap();
+        assert_eq!(
+            s,
+            r#"{"type":"submit-permission","method":"hashcash","stamp":"stamp"}"#
+        );
     }
 
     #[test]
