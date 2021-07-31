@@ -32,10 +32,8 @@ get_if_addrs = "0.5.3"
 byteorder = "1.4.2"
 hashcash = "0.1.1"
 
-anyhow = "1.0.38"
 derive_more = { version = "0.99.0", default-features = false, features = ["display"] }
 thiserror = "1.0.24"
-eyre = "0.6.5"
 
 futures = "0.3.12"
 async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
@@ -52,6 +50,7 @@ color-eyre = { version = "0.5.7", optional = true }
 # for some tests
 [dev-dependencies]
 env_logger = "0.8.2"
+eyre = "0.6.5"
 
 [features]
 bin = ["clap", "env_logger", "console", "indicatif", "dialoguer", "color-eyre" ]
