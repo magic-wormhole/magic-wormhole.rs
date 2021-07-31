@@ -55,6 +55,7 @@ pub enum WormholeError {
 
 /// Set a code, or allocate one
 #[non_exhaustive]
+#[derive(Debug, Clone)]
 pub enum CodeProvider {
     /// Allocate a code with n random words
     AllocateCode(usize),
@@ -173,7 +174,9 @@ impl WormholeConnector {
         loop {
             use self::APIEvent::*;
             match self.rx_core_to_api.next().await {
-                Some(ConnectedToServer { .. }) | Some(GotMessage(_)) => unreachable!(),
+                Some(ConnectedToServer { .. }) | Some(GotMessage(_)) | Some(GotCode { .. }) => {
+                    unreachable!()
+                },
                 Some(ConnectedToClient {
                     key: k,
                     verifier: v,
@@ -287,8 +290,8 @@ impl Wormhole {
  */
 pub struct WormholeWelcome {
     pub code: Code,
-    /** A welcome message from the server (think of "message of the day"). Display it to the user if you wish. */
-    pub welcome: String,
+    /** A welcome message from the server (think of "message of the day"). Should be displayed to the user if present. */
+    pub welcome: Option<String>,
 }
 
 /**
@@ -337,19 +340,19 @@ pub async fn connect_to_server(
     }
 
     let code;
-    let welcome;
+    let mut welcome = None;
 
     use futures::StreamExt;
 
     loop {
         use self::APIEvent::*;
         match rx_core_to_api.next().await {
-            Some(ConnectedToServer {
-                welcome: w,
-                code: c,
-            }) => {
+            Some(ConnectedToServer { motd: w }) => {
                 debug!("Got welcome");
-                welcome = w;
+                welcome = Some(w);
+            },
+            Some(GotCode { code: c }) => {
+                debug!("Got code");
                 code = c;
                 break;
             },
@@ -363,7 +366,7 @@ pub async fn connect_to_server(
     Ok((
         WormholeWelcome {
             code,
-            welcome: welcome.to_string(), // TODO don't do that
+            welcome: welcome.unwrap(),
         },
         WormholeConnector {
             tx_api_to_core,
