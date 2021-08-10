@@ -409,8 +409,9 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
 
 #[test]
 fn test_phase() {
-    let p = Phase(String::from("pake"));
-    assert!(p.is_pake()); // Order looks for "pake"
+    let p = Phase::PAKE;
+    assert!(p.is_pake());
+    assert!(!p.is_version());
 }
 
 #[test]

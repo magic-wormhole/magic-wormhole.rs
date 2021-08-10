@@ -1,6 +1,6 @@
 use crate::{
     core::{
-        server_messages::{InboundMessage, OutboundMessage},
+        server_messages::{InboundMessage, OutboundMessage, EncryptedMessage},
         util::random_bytes,
         WormholeCoreError,
     },
@@ -111,14 +111,21 @@ impl<S: Into<String>> From<S> for EitherSide {
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
-pub struct Phase(pub String);
+pub struct Phase(pub std::borrow::Cow<'static, str>);
 
 impl Phase {
+    pub const VERSION: Self = Phase(std::borrow::Cow::Borrowed("version"));
+    pub const PAKE: Self = Phase(std::borrow::Cow::Borrowed("pake"));
+
+    pub fn numeric(phase: u64) -> Self {
+        Phase(phase.to_string().into())
+    }
+
     pub fn is_version(&self) -> bool {
-        &self.0[..] == "version"
+        self == &Self::VERSION
     }
     pub fn is_pake(&self) -> bool {
-        &self.0[..] == "pake"
+        self == &Self::PAKE
     }
     pub fn to_num(&self) -> Option<u64> {
         self.0.parse().ok()
@@ -129,7 +136,8 @@ impl Phase {
 #[serde(transparent)]
 pub struct Mailbox(pub String);
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct Nameplate(pub String);
 impl Nameplate {
     pub fn new(n: &str) -> Self {
@@ -166,27 +174,6 @@ impl Deref for Code {
 impl fmt::Display for Code {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.0)
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, derive_more::Display)]
-#[display(
-    fmt = "EncryptedMessage {{ side: {}, phase: {}, body: <{} encypted bytes>",
-    side,
-    phase,
-    "body.len()"
-)]
-pub struct EncryptedMessage {
-    pub side: TheirSide,
-    pub phase: Phase,
-    pub body: Vec<u8>,
-}
-
-impl EncryptedMessage {
-    pub fn decrypt(&self, key: &xsalsa20poly1305::Key) -> Option<Vec<u8>> {
-        use super::key;
-        let data_key = key::derive_phase_key(&self.side, key, &self.phase);
-        key::decrypt_data(&data_key, &self.body)
     }
 }
 

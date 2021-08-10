@@ -1,5 +1,8 @@
 use crate::{
-    core::{server_messages::OutboundMessage, *},
+    core::{
+        server_messages::{EncryptedMessage, OutboundMessage},
+        *,
+    },
     APIEvent,
 };
 use hkdf::Hkdf;
@@ -16,7 +19,7 @@ use xsalsa20poly1305::{
 
 use super::{
     events::{AppID, Code, EitherSide, MySide, Phase},
-    mailbox, util,
+    mailbox,
 };
 
 #[derive(Debug, PartialEq, derive_more::Display)]
@@ -53,7 +56,8 @@ pub(super) struct KeyMachine {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PhaseMessage {
-    pake_v1: String,
+    #[serde(with = "hex::serde")]
+    pake_v1: Vec<u8>,
 }
 
 impl KeyMachine {
@@ -68,7 +72,7 @@ impl KeyMachine {
     ) -> KeyMachine {
         let (pake_state, pake_msg_ser) = make_pake(code, &appid);
         let mut mailbox_machine = mailbox::MailboxMachine::new(&side, mailbox);
-        mailbox_machine.send_message(actions, Phase(String::from("pake")), pake_msg_ser);
+        mailbox_machine.send_message(actions, Phase::PAKE, pake_msg_ser);
 
         KeyMachine {
             versions,
@@ -93,10 +97,6 @@ impl KeyMachine {
                 if message.phase.is_pake() {
                     /* Got a pake message, derive key */
                     let key = extract_pake_msg(&message.body)
-                        .map_err(WormholeCoreError::ProtocolJson)
-                        .and_then(|pake_message| {
-                            hex::decode(pake_message).map_err(WormholeCoreError::ProtocolHex)
-                        })
                         .and_then(|pake_message| {
                             pake_state
                                 .finish(&pake_message)
@@ -224,8 +224,7 @@ fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
         &Password::new(code.as_bytes()),
         &Identity::new(appid.0.as_bytes()),
     );
-    let payload = util::bytes_to_hexstr(&msg1);
-    let pake_msg = PhaseMessage { pake_v1: payload };
+    let pake_msg = PhaseMessage { pake_v1: msg1 };
     let pake_msg_ser = serde_json::to_vec(&pake_msg).unwrap();
     (pake_state, pake_msg_ser)
 }
@@ -235,15 +234,17 @@ fn build_version_msg(
     key: &xsalsa20poly1305::Key,
     versions: &Value,
 ) -> (Phase, Vec<u8>) {
-    let phase = Phase(String::from("version"));
+    let phase = Phase::VERSION;
     let data_key = derive_phase_key(&side, &key, &phase);
     let plaintext = versions.to_string();
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
     (phase, encrypted)
 }
 
-fn extract_pake_msg(body: &[u8]) -> serde_json::Result<String> {
-    serde_json::from_slice(&body).map(|res: PhaseMessage| res.pake_v1)
+fn extract_pake_msg(body: &[u8]) -> Result<Vec<u8>, WormholeCoreError> {
+    serde_json::from_slice(&body)
+        .map(|res: PhaseMessage| res.pake_v1)
+        .map_err(WormholeCoreError::ProtocolJson)
 }
 
 fn encrypt_data_with_nonce(
@@ -328,9 +329,10 @@ mod test {
         let pake_msg = super::extract_pake_msg(&hex::decode(s1).unwrap());
         assert_eq!(
             pake_msg.ok(),
-            Some(String::from(
-                "537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e"
-            ))
+            Some(
+                hex::decode("537631dcfd0d3ad8a04b4f51d953a145c8e8bfc780dda984794ef4fa6ee60c9f6e")
+                    .unwrap()
+            )
         );
     }
 
@@ -361,38 +363,22 @@ mod test {
                 .unwrap(),
         )
         .unwrap();
-        let dk11 = derive_phase_key(
-            &EitherSide::from("side1"),
-            &main,
-            &Phase(String::from("phase1")),
-        );
+        let dk11 = derive_phase_key(&EitherSide::from("side1"), &main, &Phase("phase1".into()));
         assert_eq!(
             hex::encode(&*dk11),
             "3af6a61d1a111225cc8968c6ca6265efe892065c3ab46de79dda21306b062990"
         );
-        let dk12 = derive_phase_key(
-            &EitherSide::from("side1"),
-            &main,
-            &Phase(String::from("phase2")),
-        );
+        let dk12 = derive_phase_key(&EitherSide::from("side1"), &main, &Phase("phase2".into()));
         assert_eq!(
             hex::encode(&*dk12),
             "88a1dd12182d989ff498022a9656d1e2806f17328d8bf5d8d0c9753e4381a752"
         );
-        let dk21 = derive_phase_key(
-            &EitherSide::from("side2"),
-            &main,
-            &Phase(String::from("phase1")),
-        );
+        let dk21 = derive_phase_key(&EitherSide::from("side2"), &main, &Phase("phase1".into()));
         assert_eq!(
             hex::encode(&*dk21),
             "a306627b436ec23bdae3af8fa90c9ac927780d86be1831003e7f617c518ea689"
         );
-        let dk22 = derive_phase_key(
-            &EitherSide::from("side2"),
-            &main,
-            &Phase(String::from("phase2")),
-        );
+        let dk22 = derive_phase_key(&EitherSide::from("side2"), &main, &Phase("phase2".into()));
         assert_eq!(
             hex::encode(&*dk22),
             "bf99e3e16420f2dad33f9b1ccb0be1462b253d639dacdb50ed9496fa528d8758"
