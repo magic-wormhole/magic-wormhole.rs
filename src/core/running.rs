@@ -24,7 +24,7 @@ impl RunningMachine {
         actions: &mut VecDeque<Event>,
         plaintext: Vec<u8>,
     ) -> super::State {
-        let phase_string = Phase(format!("{}", self.phase));
+        let phase_string = Phase::numeric(self.phase);
         let data_key = key::derive_phase_key(&self.side, &self.key, &phase_string);
         let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
         self.mailbox_machine

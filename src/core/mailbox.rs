@@ -1,19 +1,21 @@
-use crate::core::{server_messages::OutboundMessage, EncryptedMessage, Event, Mood};
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::core::{
+    server_messages::{EncryptedMessage, OutboundMessage},
+    Event, Mood,
+};
+use std::collections::{HashSet, VecDeque};
 
 use super::events::{Mailbox, MySide, Phase};
 
 #[derive(Debug, derive_more::Display)]
-#[display(fmt = "MailboxMachine {{ mailbox: {}, side: {}, processed: [{}], pending_outbound: {{ {} }} }} ", mailbox, side, 
-    "processed.iter().map(|p| format!(\"{}\", p)).collect::<Vec<String>>().join(\", \")",
-    "pending_outbound.iter().map(|(phase, message)| format!(\"({}, {})\", phase, crate::util::DisplayBytes(message))).collect::<Vec<String>>().join(\", \")"
+#[display(
+    fmt = "MailboxMachine {{ mailbox: {}, side: {}, processed: [{}] }} ",
+    mailbox,
+    side,
+    "processed.iter().map(|p| format!(\"{}\", p)).collect::<Vec<String>>().join(\", \")"
 )]
 pub struct MailboxMachine {
     mailbox: Mailbox,
     processed: HashSet<Phase>,
-    // TODO what do we track these for, as we're never actually reading that hashmap?
-    // Maybe it was used for some reconnection logic. Do we still need that?
-    pending_outbound: HashMap<Phase, Vec<u8>>,
     side: MySide,
 }
 
@@ -22,14 +24,12 @@ impl MailboxMachine {
         MailboxMachine {
             mailbox,
             processed: HashSet::new(),
-            pending_outbound: HashMap::new(),
             side: side.clone(),
         }
     }
 
     pub fn send_message(&mut self, actions: &mut VecDeque<Event>, phase: Phase, body: Vec<u8>) {
-        actions.push_back(OutboundMessage::add(phase.clone(), &body).into());
-        self.pending_outbound.insert(phase, body);
+        actions.push_back(OutboundMessage::add(phase, body).into());
     }
 
     pub fn receive_message(&mut self, message: &EncryptedMessage) -> bool {
@@ -41,7 +41,6 @@ impl MailboxMachine {
             }
         } else {
             // Echo of ours. Ignore
-            self.pending_outbound.remove(&message.phase);
         }
         false
     }

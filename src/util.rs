@@ -36,11 +36,25 @@ impl std::fmt::Display for DisplayBytes<'_> {
 
         match string.parse::<serde_json::Value>() {
             Ok(serde_json::Value::Object(map)) => {
-                return f.write_fmt(format_args!(
-                    "<{}JSON dict with {} key(s)>",
-                    hex_param,
-                    map.len()
-                ));
+                if map.len() == 1 {
+                    return f.write_fmt(format_args!(
+                        "<{}JSON dict with key '{}'>",
+                        hex_param,
+                        map.keys().next().unwrap()
+                    ));
+                } else if map.contains_key("type") {
+                    return f.write_fmt(format_args!(
+                        "<{}JSON dict of type '{}'>",
+                        hex_param,
+                        map.get("type").unwrap()
+                    ));
+                } else {
+                    return f.write_fmt(format_args!(
+                        "<{}JSON dict with {} keys>",
+                        hex_param,
+                        map.len()
+                    ));
+                }
             },
             Ok(serde_json::Value::Array(list)) => {
                 return f.write_fmt(format_args!(
