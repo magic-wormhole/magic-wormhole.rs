@@ -16,6 +16,7 @@ mod wordlist;
 
 use self::events::*;
 pub use self::events::{AppID, Code};
+pub use self::server_messages::EncryptedMessage;
 use super::CodeProvider;
 use log::*;
 
@@ -397,12 +398,7 @@ pub async fn run(
                     ))));
                 },
             },
-            FromIO(InboundMessage::Message { side, phase, body }) => {
-                let message = EncryptedMessage {
-                    side,
-                    phase: Phase(phase),
-                    body: hex::decode(body).unwrap(),
-                };
+            FromIO(InboundMessage::Message(message)) => {
                 actions.push_back(Event::BounceMessage(message));
             },
             FromIO(InboundMessage::Allocated { nameplate }) => {
@@ -412,7 +408,6 @@ pub async fn run(
                     versions,
                 } = state
                 {
-                    let nameplate = Nameplate(nameplate);
                     let words = wordlist.choose_words();
                     // TODO: assert code.startswith(nameplate+"-")
                     let code = Code(format!("{}-{}", &nameplate, &words));

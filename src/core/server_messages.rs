@@ -1,13 +1,34 @@
 use super::{
-    events::{AppID, Mailbox, MySide, Phase, TheirSide},
-    util, Mood, WormholeCoreError,
+    events::{AppID, Mailbox, MySide, Nameplate, Phase, TheirSide},
+    Mood, WormholeCoreError,
 };
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Special encoding for the `nameplates` message
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct Nameplate {
+struct Nameplate_ {
     pub id: String,
+}
+
+impl Nameplate_ {
+    fn deserialize<'de, D>(de: D) -> Result<Vec<Nameplate>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value: Vec<Nameplate_> = serde::Deserialize::deserialize(de)?;
+        Ok(value.into_iter().map(|value| Nameplate(value.id)).collect())
+    }
+
+    #[allow(clippy::all, dead_code)]
+    fn serialize<S>(value: &Vec<Nameplate>, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        ser.collect_seq(value.iter().map(|value| Self {
+            id: value.to_string(),
+        }))
+    }
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq, derive_more::Display)]
@@ -88,6 +109,28 @@ pub struct HashcashPermission {
     pub resource: String,
 }
 
+#[derive(Debug, PartialEq, Clone, Deserialize, derive_more::Display)]
+#[display(
+    fmt = "EncryptedMessage {{ side: {}, phase: {}, body: {}",
+    side,
+    phase,
+    "crate::util::DisplayBytes(&body)"
+)]
+pub struct EncryptedMessage {
+    pub side: TheirSide,
+    pub phase: Phase,
+    #[serde(deserialize_with = "hex::serde::deserialize")]
+    pub body: Vec<u8>,
+}
+
+impl EncryptedMessage {
+    pub fn decrypt(&self, key: &xsalsa20poly1305::Key) -> Option<Vec<u8>> {
+        use super::key;
+        let data_key = key::derive_phase_key(&self.side, key, &self.phase);
+        key::decrypt_data(&data_key, &self.body)
+    }
+}
+
 // Client sends only these
 #[derive(Serialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
@@ -117,11 +160,12 @@ pub enum OutboundMessage {
     #[display(
         fmt = "Add {{ phase: {}, body: {} }}",
         phase,
-        "crate::util::DisplayBytes(body.as_bytes())"
+        "crate::util::DisplayBytes(body)"
     )]
     Add {
         phase: Phase,
-        body: String,
+        #[serde(serialize_with = "hex::serde::serialize")]
+        body: Vec<u8>,
     },
     #[display(fmt = "Close {{ mailbox: {}, mood: {} }}", mailbox, mood)]
     Close {
@@ -155,14 +199,8 @@ impl OutboundMessage {
         OutboundMessage::Open { mailbox }
     }
 
-    pub fn add(phase: Phase, body: &[u8]) -> Self {
-        // TODO: make this take Vec<u8>, do the hex-encoding internally
-        let hexstr = util::bytes_to_hexstr(body);
-
-        OutboundMessage::Add {
-            body: hexstr,
-            phase,
-        }
+    pub fn add(phase: Phase, body: Vec<u8>) -> Self {
+        OutboundMessage::Add { body, phase }
     }
 
     pub fn close(mailbox: Mailbox, mood: Mood) -> Self {
@@ -181,11 +219,12 @@ pub enum InboundMessage {
     },
     #[display(fmt = "Nameplates({:?})", nameplates)]
     Nameplates {
+        #[serde(with = "Nameplate_")]
         nameplates: Vec<Nameplate>,
     },
     #[display(fmt = "Allocated({})", nameplate)]
     Allocated {
-        nameplate: String,
+        nameplate: Nameplate,
     },
     #[display(fmt = "Claimed({})", mailbox)]
     Claimed {
@@ -194,16 +233,11 @@ pub enum InboundMessage {
     Released,
     #[display(
         fmt = "Message {{ side: {}, phase: {:?}, body: {} }}",
-        side,
-        phase,
-        "crate::util::DisplayBytes(body.as_bytes())"
+        _0.side,
+        _0.phase,
+        "crate::util::DisplayBytes(_0.body.as_bytes())"
     )]
-    Message {
-        side: TheirSide,
-        phase: String,
-        body: String,
-        //id: String,
-    },
+    Message(EncryptedMessage),
     Closed,
     Ack,
     #[display(fmt = "Pong({})", pong)]
@@ -285,7 +319,7 @@ mod test {
 
     #[test]
     fn test_add() {
-        let m1 = OutboundMessage::add(Phase(String::from("phase1")), b"body");
+        let m1 = OutboundMessage::add(Phase("phase1".into()), b"body".to_vec());
         let s = serde_json::to_string(&m1).unwrap();
         let m2: Value = from_str(&s).unwrap();
         assert_eq!(
@@ -371,6 +405,7 @@ mod test {
     // let's replace this cfg_attr with a change to our .rustfmt.toml
     #[test]
     #[rustfmt::skip]
+    #[allow(deprecated)]
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
         let m = deserialize(&s).unwrap();
@@ -433,12 +468,12 @@ mod test {
         let s = r#"{"body": "7b2270616b655f7631223a22353361346566366234363434303364376534633439343832663964373236646538396462366631336632613832313537613335646562393562366237633536353533227d", "server_rx": 1523468188.293486, "id": null, "phase": "pake", "server_tx": 1523498654.753594, "type": "message", "side": "side1"}"#;
         let m = deserialize(&s).unwrap();
         match m {
-            InboundMessage::Message {
+            InboundMessage::Message(EncryptedMessage {
                 side: _s,
                 phase: _p,
                 body: _b,
                 //id: i
-            } => (),
+            }) => (),
             _ => panic!(),
         }
     }
