@@ -1,6 +1,3 @@
-use async_std::{io, io::prelude::*};
-
-#[macro_export]
 macro_rules! ensure {
     ($cond:expr, $err:expr $(,)?) => {
         if !$cond {
@@ -9,7 +6,6 @@ macro_rules! ensure {
     };
 }
 
-#[macro_export]
 macro_rules! bail {
     ($err:expr $(,)?) => {
         return std::result::Result::Err($err.into());
@@ -99,37 +95,58 @@ pub fn sodium_increment_be(n: &mut [u8]) {
     }
 }
 
-pub async fn ask_user(message: String, default_answer: bool) -> bool {
-    let message = format!(
-        "{} ({}/{}) ",
-        message,
-        if default_answer { "Y" } else { "y" },
-        if default_answer { "n" } else { "N" }
+/** Mint a new hashcash token with a given difficulty and resource string. */
+pub fn hashcash(resource: String, bits: u32) -> String {
+    use rand::{distributions::Standard, Rng};
+    use sha1::{Digest, Sha1};
+
+    if bits > 32 {
+        log::warn!(
+            "Minting a hashcash token with {} bits. If the application is frozen, you'll know why",
+            bits
+        );
+    }
+
+    let date = base64::encode(chrono::Utc::today().format("%y%m%d").to_string());
+
+    let rand: String = base64::encode(
+        rand::thread_rng()
+            .sample_iter(&Standard)
+            .take(16)
+            .collect::<Vec<u8>>(),
     );
 
-    let mut stdout = io::stdout();
-    let stdin = io::stdin();
+    /* 64 bit counter should suffice */
+    let mut counter = [0; 8];
+    let mut hasher = Sha1::new();
 
     loop {
-        stdout.write(message.as_bytes()).await.unwrap();
+        sodium_increment_be(&mut counter);
 
-        stdout.flush().await.unwrap();
+        let stamp = format!(
+            "1:{}:{}:{}::{}:{}",
+            bits,
+            date,
+            resource,
+            rand,
+            base64::encode(counter)
+        );
 
-        let mut answer = String::new();
-        stdin.read_line(&mut answer).await.unwrap();
+        hasher.update(&stamp);
+        let result = hasher.finalize_reset();
 
-        match &*answer.to_lowercase().trim() {
-            "y" | "yes" => break true,
-            "n" | "no" => break false,
-            "" => break default_answer,
-            _ => {
-                stdout
-                    .write("Please type y or n!\n".as_bytes())
-                    .await
-                    .unwrap();
-                stdout.flush().await.unwrap();
-                continue;
-            },
-        };
+        let mut leading_zeros = 0;
+        for byte in result {
+            let front_zeros = byte.leading_zeros();
+            leading_zeros += front_zeros;
+
+            if front_zeros < 8 {
+                break;
+            }
+        }
+
+        if leading_zeros >= bits {
+            return stamp;
+        }
     }
 }
