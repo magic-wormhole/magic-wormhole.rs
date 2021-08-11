@@ -1,3 +1,5 @@
+mod util;
+
 use std::{
     ops::Deref,
     str,
@@ -11,9 +13,7 @@ use console::{style, Term};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 
-use magic_wormhole::{
-    transfer, transit::RelayUrl, util, CodeProvider, Wormhole, WormholeConnector, WormholeWelcome,
-};
+use magic_wormhole::{transfer, transit::RelayUrl, Wormhole};
 use std::str::FromStr;
 
 #[async_std::main]
@@ -227,52 +227,41 @@ async fn main() -> eyre::Result<()> {
             file_path
         );
 
-        let (welcome, connector, relay_server): (WormholeWelcome, WormholeConnector, RelayUrl) =
-            parse_and_connect(&matches, true).await?;
-        print_welcome(&mut term, &welcome)?;
-        sender_print_code(&mut term, &welcome.code)?;
-        let mut wormhole: Wormhole = connector.connect_to_client().await?;
-        writeln!(&term, "Successfully connected to peer.")?;
+        let (mut wormhole, _code, relay_server) =
+            parse_and_connect(&mut term, matches, true).await?;
 
-        send(&mut wormhole, &relay_server, &file_path, &file_name).await?;
+        send(&mut wormhole, &relay_server, file_path, &file_name).await?;
         wormhole.close().await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (welcome, connector, relay_server) = parse_and_connect(&matches, true).await?;
+        let (wormhole, code, relay_server) = parse_and_connect(&mut term, matches, true).await?;
         let timeout =
             Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
         let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
-
-        print_welcome(&mut term, &welcome)?;
-        sender_print_code(&mut term, &welcome.code)?;
 
         let file_path = matches.value_of_os("file").unwrap();
         let file_name = file_name(file_path)?;
 
         send_many(
             relay_server,
-            &welcome.code,
+            &code,
             file_path,
             &file_name,
             max_tries,
             timeout,
-            connector,
+            wormhole,
             &mut term,
         )
         .await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
-        let (welcome, connector, relay_server): (_, WormholeConnector, _) =
-            parse_and_connect(&matches, false).await?;
-        print_welcome(&mut term, &welcome)?;
-
-        let mut wormhole = connector.connect_to_client().await?;
-        writeln!(&term, "Successfully connected to peer.")?;
-
         let file_path = matches.value_of_os("file-path").unwrap();
+
+        let (mut wormhole, _code, relay_server) =
+            parse_and_connect(&mut term, matches, false).await?;
 
         receive(
             &mut wormhole,
             &relay_server,
-            &file_path,
+            file_path,
             matches.value_of_os("file-name"),
         )
         .await?;
@@ -312,9 +301,10 @@ async fn main() -> eyre::Result<()> {
  * Otherwise, the user will be prompted interactively to enter it.
  */
 async fn parse_and_connect(
+    term: &mut Term,
     matches: &clap::ArgMatches<'_>,
     is_send: bool,
-) -> eyre::Result<(WormholeWelcome, WormholeConnector, RelayUrl)> {
+) -> eyre::Result<(Wormhole, magic_wormhole::Code, RelayUrl)> {
     let relay_server: RelayUrl = matches
         .value_of("relay-server")
         .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER)
@@ -322,31 +312,48 @@ async fn parse_and_connect(
         .unwrap();
     let rendezvous_server = matches
         .value_of("rendezvous-server")
-        .unwrap_or(magic_wormhole::DEFAULT_MAILBOX_SERVER);
+        .unwrap_or(magic_wormhole::rendezvous::DEFAULT_RENDEZVOUS_SERVER)
+        .to_string();
     let code = matches
         .value_of("code")
         .map(ToOwned::to_owned)
-        .map(CodeProvider::SetCode)
-        .unwrap_or_else(|| {
+        .or_else(|| (!is_send).then(|| enter_code().expect("TODO handle this gracefully")))
+        .map(magic_wormhole::Code);
+    let (wormhole, code) = match code {
+        Some(code) => {
             if is_send {
-                let numwords = matches
-                    .value_of("code-length")
-                    .unwrap()
-                    .parse()
-                    .expect("TODO error handling");
-                CodeProvider::AllocateCode(numwords)
-            } else {
-                CodeProvider::SetCode(enter_code().expect("TODO handle this gracefully"))
+                sender_print_code(term, &code)?;
             }
-        });
-    let (welcome, connector) = magic_wormhole::connect_to_server(
-        magic_wormhole::transfer::APPID,
-        magic_wormhole::transfer::AppVersion::default(),
-        rendezvous_server,
-        code,
-    )
-    .await?;
-    eyre::Result::<_>::Ok((welcome, connector, relay_server))
+            let (server_welcome, wormhole) = magic_wormhole::Wormhole::connect_with_code(
+                transfer::APP_CONFIG.rendezvous_url(rendezvous_server.into()),
+                code,
+            )
+            .await?;
+            print_welcome(term, &server_welcome)?;
+            (wormhole, server_welcome.code)
+        },
+        None => {
+            let numwords = matches
+                .value_of("code-length")
+                .unwrap()
+                .parse()
+                .expect("TODO error handling");
+
+            let (server_welcome, connector) = magic_wormhole::Wormhole::connect_without_code(
+                transfer::APP_CONFIG.rendezvous_url(rendezvous_server.into()),
+                numwords,
+            )
+            .await?;
+            print_welcome(term, &server_welcome)?;
+            if is_send {
+                sender_print_code(term, &server_welcome.code)?;
+            }
+            let wormhole = connector.await?;
+            (wormhole, server_welcome.code)
+        },
+    };
+    writeln!(term, "Successfully connected to peer.")?;
+    eyre::Result::<_>::Ok((wormhole, code, relay_server))
 }
 
 fn _might_be_code(_code: Option<&str>) -> bool {
@@ -403,7 +410,7 @@ async fn send(
     let pb2 = pb.clone();
     transfer::send_file_or_folder(
         wormhole,
-        &relay_server,
+        relay_server,
         file_path,
         file_name,
         move |sent, total| {
@@ -422,12 +429,12 @@ async fn send(
 
 async fn send_many(
     relay_server: RelayUrl,
-    code: &str,
+    code: &magic_wormhole::Code,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
     max_tries: u64,
     timeout: Duration,
-    connector: WormholeConnector,
+    wormhole: Wormhole,
     term: &mut Term,
 ) -> eyre::Result<()> {
     /* Progress bar is commented out for now. See the issues about threading/async in
@@ -448,7 +455,7 @@ async fn send_many(
         Arc::clone(&url),
         Arc::clone(&file_path),
         Arc::clone(&file_name),
-        connector,
+        wormhole,
         term.clone(),
         // &mp,
     )
@@ -471,18 +478,13 @@ async fn send_many(
             break;
         }
 
-        let (_welcome, connector) = magic_wormhole::connect_to_server(
-            magic_wormhole::transfer::APPID,
-            magic_wormhole::transfer::AppVersion::default(),
-            magic_wormhole::DEFAULT_MAILBOX_SERVER,
-            CodeProvider::SetCode(code.to_owned()),
-        )
-        .await?;
+        let (_server_welcome, wormhole) =
+            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone()).await?;
         send_in_background(
             Arc::clone(&url),
             Arc::clone(&file_path),
             Arc::clone(&file_name),
-            connector,
+            wormhole,
             term.clone(),
             // &mp,
         )
@@ -493,11 +495,10 @@ async fn send_many(
         url: Arc<RelayUrl>,
         file_name: Arc<std::ffi::OsString>,
         file_path: Arc<std::ffi::OsString>,
-        connector: WormholeConnector,
+        mut wormhole: Wormhole,
         mut term: Term,
         // mp: &MultiProgress,
     ) -> eyre::Result<()> {
-        let mut wormhole = connector.connect_to_client().await?;
         writeln!(&mut term, "Sending file to peer").unwrap();
         // let pb = create_progress_bar(file_size);
         // let pb = mp.add(pb);
@@ -543,7 +544,7 @@ async fn receive(
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
 ) -> eyre::Result<()> {
-    let req = transfer::request_file(wormhole, &relay_server).await?;
+    let req = transfer::request_file(wormhole, relay_server).await?;
 
     /*
      * Control flow is a bit tricky here:

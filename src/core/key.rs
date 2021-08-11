@@ -1,57 +1,79 @@
-use crate::{
-    core::{
-        server_messages::{EncryptedMessage, OutboundMessage},
-        *,
-    },
-    APIEvent,
-};
+use crate::core::*;
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
-use serde_json::{self, json, Value};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
-use std::collections::VecDeque;
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
     aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
     XSalsa20Poly1305,
 };
 
-use super::{
-    events::{AppID, Code, EitherSide, MySide, Phase},
-    mailbox,
-};
+/// Marker trait to give encryption keys a "purpose", to not confuse them
+///
+/// See [`Key`].
+// TODO Once const generics are stabilized, try out if a const string generic may replace this.
+pub trait KeyPurpose: std::fmt::Debug {}
 
-#[derive(Debug, PartialEq, derive_more::Display)]
-enum State {
-    #[display(
-        fmt = "S1NoPake {{ pake: <censored>, message_queue: <{} items> }}",
-        "_1.len()"
-    )]
-    S1NoPake(SPAKE2<Ed25519Group>, Vec<EncryptedMessage>), // pake_state, message queue
-    #[display(
-        fmt = "S2Unverified {{ key: <censored>, message_queue: <{} items> }}",
-        "_1.len()"
-    )]
-    S2Unverified(xsalsa20poly1305::Key, Vec<EncryptedMessage>), // key, another message queue
-    Error, // Once an error happens, we don't do anything anymore
+/// The type of main key of the Wormhole
+#[derive(Debug)]
+pub struct WormholeKey;
+impl KeyPurpose for WormholeKey {}
+
+/// A generic key purpose for ad-hoc subkeys or if you don't care.
+#[derive(Debug)]
+pub struct GenericKey;
+impl KeyPurpose for GenericKey {}
+
+/**
+ * The symmetric encryption key used to communicate with the other side.
+ *
+ * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
+ */
+#[derive(Debug, Clone, derive_more::Display, derive_more::Deref)]
+#[display(fmt = "{:?}", _0)]
+#[deref(forward)]
+pub struct Key<P: KeyPurpose>(
+    #[deref] pub Box<secretbox::Key>,
+    #[deref(ignore)] std::marker::PhantomData<P>,
+);
+
+impl Key<WormholeKey> {
+    /**
+     * Derive the sub-key used for transit
+     *
+     * This one's a bit special, since the Wormhole's AppID is included in the purpose. Different kinds of applications
+     * can't talk to each other, not even accidentally, by design.
+     *
+     * The new key is derived with the `"{appid}/transit-key"` purpose.
+     */
+    pub fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
+        let transit_purpose = format!("{}/transit-key", &*appid);
+
+        let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
+        trace!(
+            "Input key: {}, Transit key: {}, Transit purpose: '{}'",
+            hex::encode(&**self),
+            hex::encode(&**derived_key),
+            &transit_purpose
+        );
+        derived_key
+    }
 }
 
-#[derive(Debug, derive_more::Display)]
-#[display(
-    fmt = "KeyMachine {{ side: {}, versions: {}, nameplate: {:?}, mailbox_machine: {}, state: {} }}",
-    side,
-    versions,
-    nameplate,
-    mailbox_machine,
-    state
-)]
-pub(super) struct KeyMachine {
-    side: MySide,
-    versions: serde_json::Value,
-    pub nameplate: Option<Nameplate>,
-    mailbox_machine: mailbox::MailboxMachine,
-    state: State,
+impl<P: KeyPurpose> Key<P> {
+    pub fn new(key: Box<secretbox::Key>) -> Self {
+        Self(key, std::marker::PhantomData)
+    }
+    /**
+     * Derive a new sub-key from this one
+     */
+    pub fn derive_subkey_from_purpose<NewP: KeyPurpose>(&self, purpose: &str) -> Key<NewP> {
+        Key(
+            Box::new(derive_key(&*self, purpose.as_bytes())),
+            std::marker::PhantomData,
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -60,168 +82,13 @@ struct PhaseMessage {
     pake_v1: Vec<u8>,
 }
 
-impl KeyMachine {
-    pub fn start(
-        actions: &mut VecDeque<Event>,
-        appid: &AppID,
-        side: MySide,
-        versions: serde_json::Value,
-        nameplate: Nameplate,
-        mailbox: Mailbox,
-        code: &Code,
-    ) -> KeyMachine {
-        let (pake_state, pake_msg_ser) = make_pake(code, &appid);
-        let mut mailbox_machine = mailbox::MailboxMachine::new(&side, mailbox);
-        mailbox_machine.send_message(actions, Phase::PAKE, pake_msg_ser);
-
-        KeyMachine {
-            versions,
-            state: State::S1NoPake(pake_state, Vec::new()),
-            side,
-            mailbox_machine,
-            nameplate: Some(nameplate),
-        }
-    }
-
-    pub(super) fn receive_message(
-        mut self: Box<Self>,
-        actions: &mut VecDeque<Event>,
-        message: EncryptedMessage,
-    ) -> super::State {
-        if !self.mailbox_machine.receive_message(&message) {
-            return super::State::Keying(self);
-        }
-
-        match self.state {
-            State::S1NoPake(pake_state, mut queue) => {
-                if message.phase.is_pake() {
-                    /* Got a pake message, derive key */
-                    let key = extract_pake_msg(&message.body)
-                        .and_then(|pake_message| {
-                            pake_state
-                                .finish(&pake_message)
-                                .map_err(|_| WormholeCoreError::PakeFailed)
-                        })
-                        .map(|key| *secretbox::Key::from_slice(&key));
-
-                    match key {
-                        Ok(key) => {
-                            /* Send versions message */
-                            let versions = json!({"app_versions": self.versions});
-                            let (version_phase, version_msg) =
-                                build_version_msg(&self.side, &key, &versions);
-                            self.mailbox_machine
-                                .send_message(actions, version_phase, version_msg);
-
-                            /* Release all queued messages */
-                            for message in queue {
-                                actions.push_back(Event::BounceMessage(message));
-                            }
-                            self.state = State::S2Unverified(key, Vec::new());
-                        },
-                        Err(e) => {
-                            actions.push_back(Event::ShutDown(Err(e)));
-                            self.state = State::Error;
-                        },
-                    }
-                } else {
-                    /* not a  pake message, queue it. */
-                    queue.push(message);
-                    self.state = State::S1NoPake(pake_state, queue);
-                }
-            },
-            State::S2Unverified(key, mut queue) => {
-                if message.phase.is_version() {
-                    /* Handle received message */
-                    let versions: Result<Value, _> = message
-                        .decrypt(&key)
-                        .ok_or(WormholeCoreError::PakeFailed)
-                        .and_then(|plaintext| {
-                            serde_json::from_slice(&plaintext)
-                                .map_err(WormholeCoreError::ProtocolJson)
-                        });
-
-                    match versions {
-                        Ok(versions) => {
-                            let app_versions = versions
-                                .get("app_versions")
-                                .cloned()
-                                .unwrap_or_else(|| serde_json::json!({}));
-
-                            /* Release old things */
-                            if let Some(nameplate) = self.nameplate {
-                                actions.push_back(OutboundMessage::release(nameplate).into());
-                            }
-                            for message in queue {
-                                actions.push_back(Event::BounceMessage(message));
-                            }
-
-                            /* We are now fully initialized! Up and running! :tada: */
-                            actions.push_back(
-                                APIEvent::ConnectedToClient {
-                                    verifier: Box::new(derive_verifier(&key)),
-                                    key: Box::new(key),
-                                    versions: app_versions,
-                                }
-                                .into(),
-                            );
-
-                            return super::State::Running(Box::new(
-                                super::running::RunningMachine {
-                                    phase: 0,
-                                    key,
-                                    side: self.side,
-                                    mailbox_machine: self.mailbox_machine,
-                                    await_nameplate_release: true,
-                                },
-                            ));
-                        },
-                        Err(e) => {
-                            actions.push_back(Event::ShutDown(Err(e)));
-                            self.state = State::Error;
-                        },
-                    }
-                } else {
-                    queue.push(message);
-                    self.state = State::S2Unverified(key, queue);
-                }
-            },
-            State::Error => (),
-        }
-
-        super::State::Keying(self)
-    }
-
-    pub(super) fn shutdown(
-        self,
-        actions: &mut VecDeque<Event>,
-        result: Result<(), WormholeCoreError>,
-    ) -> super::State {
-        let await_nameplate_release = if let Some(nameplate) = self.nameplate {
-            actions.push_back(OutboundMessage::release(nameplate).into());
-            true
-        } else {
-            false
-        };
-        self.mailbox_machine.close(
-            actions,
-            match &result {
-                Ok(_) => Mood::Happy,
-                Err(e) if e.is_scared() => Mood::Scared,
-                Err(_) => Mood::Errory,
-            },
-        );
-        super::State::Closing {
-            await_nameplate_release,
-            await_mailbox_close: true,
-            result,
-        }
-    }
-}
-
-fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
+/// TODO doc
+///
+/// The "password" usually is the code, but it needs not to. The only requirement
+/// is that both sides use the same value, and agree on that.
+pub fn make_pake(password: &str, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
-        &Password::new(code.as_bytes()),
+        &Password::new(password.as_bytes()),
         &Identity::new(appid.0.as_bytes()),
     );
     let pake_msg = PhaseMessage { pake_v1: msg1 };
@@ -229,22 +96,45 @@ fn make_pake(code: &Code, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
     (pake_state, pake_msg_ser)
 }
 
-fn build_version_msg(
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct VersionsMessage {
+    #[serde(default)]
+    pub abilities: Vec<String>,
+    #[serde(default)]
+    pub app_versions: serde_json::Value,
+    // resume: Option<WormholeResume>,
+}
+
+impl VersionsMessage {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn set_app_versions(&mut self, versions: serde_json::Value) {
+        self.app_versions = versions;
+    }
+
+    pub fn add_resume_ability(&mut self, _resume: ()) {
+        self.abilities.push("resume-v1".into())
+    }
+}
+
+pub fn build_version_msg(
     side: &MySide,
     key: &xsalsa20poly1305::Key,
-    versions: &Value,
+    versions: &VersionsMessage,
 ) -> (Phase, Vec<u8>) {
     let phase = Phase::VERSION;
-    let data_key = derive_phase_key(&side, &key, &phase);
-    let plaintext = versions.to_string();
-    let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext.as_bytes());
+    let data_key = derive_phase_key(side, key, &phase);
+    let plaintext = serde_json::to_vec(versions).unwrap();
+    let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext);
     (phase, encrypted)
 }
 
-fn extract_pake_msg(body: &[u8]) -> Result<Vec<u8>, WormholeCoreError> {
-    serde_json::from_slice(&body)
+pub fn extract_pake_msg(body: &[u8]) -> Result<Vec<u8>, WormholeError> {
+    serde_json::from_slice(body)
         .map(|res: PhaseMessage| res.pake_v1)
-        .map_err(WormholeCoreError::ProtocolJson)
+        .map_err(WormholeError::ProtocolJson)
 }
 
 fn encrypt_data_with_nonce(
@@ -252,10 +142,10 @@ fn encrypt_data_with_nonce(
     plaintext: &[u8],
     nonce: &xsalsa20poly1305::Nonce,
 ) -> Vec<u8> {
-    let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(&key));
+    let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(key));
     let mut ciphertext = cipher.encrypt(nonce, plaintext).unwrap();
     let mut nonce_and_ciphertext = vec![];
-    nonce_and_ciphertext.extend_from_slice(&nonce);
+    nonce_and_ciphertext.extend_from_slice(nonce);
     nonce_and_ciphertext.append(&mut ciphertext);
     nonce_and_ciphertext
 }
@@ -305,17 +195,17 @@ pub fn derive_phase_key(
     purpose_vec.extend(side_digest);
     purpose_vec.extend(phase_digest);
 
-    derive_key(&key, &purpose_vec)
+    derive_key(key, &purpose_vec)
 }
 
 pub fn derive_verifier(key: &xsalsa20poly1305::Key) -> xsalsa20poly1305::Key {
-    derive_key(&key, b"wormhole:verifier")
+    derive_key(key, b"wormhole:verifier")
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::core::events::EitherSide;
+    use crate::core::EitherSide;
 
     #[test]
     fn test_extract_pake_msg() {

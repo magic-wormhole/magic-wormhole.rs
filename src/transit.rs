@@ -13,14 +13,15 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{core::WormholeCoreError, ensure, Key, KeyPurpose};
+use crate::{core::WormholeError, Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
 use async_std::{
     io::{prelude::WriteExt, ReadExt},
     net::{TcpListener, TcpStream},
 };
-use futures::{future::TryFutureExt, StreamExt};
+#[allow(unused_imports)] /* We need them for the docs */
+use futures::{future::TryFutureExt, Sink, Stream, StreamExt};
 use log::*;
 use std::{net::ToSocketAddrs, str::FromStr, sync::Arc};
 use xsalsa20poly1305 as secretbox;
@@ -29,10 +30,13 @@ use xsalsa20poly1305::aead::{Aead, NewAead};
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
 
+#[derive(Debug)]
 pub struct TransitKey;
 impl KeyPurpose for TransitKey {}
+#[derive(Debug)]
 pub struct TransitRxKey;
 impl KeyPurpose for TransitRxKey {}
+#[derive(Debug)]
 pub struct TransitTxKey;
 impl KeyPurpose for TransitTxKey {}
 
@@ -45,7 +49,7 @@ pub enum TransitConnectError {
     Wormhole(
         #[from]
         #[source]
-        WormholeCoreError,
+        WormholeError,
     ),
     #[error("IO error")]
     IO(
@@ -68,7 +72,7 @@ enum TransitHandshakeError {
     Wormhole(
         #[from]
         #[source]
-        WormholeCoreError,
+        WormholeError,
     ),
     #[error("IO error")]
     IO(
@@ -278,7 +282,7 @@ impl TransitConnector {
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         // extract peer's ip/hostname from 'ttype'
-        let (mut direct_hosts, mut relay_hosts) = get_direct_relay_hosts(&ttype);
+        let (mut direct_hosts, mut relay_hosts) = get_direct_relay_hosts(ttype);
 
         let mut hosts: Vec<(HostType, &DirectHint)> = Vec::new();
         hosts.append(&mut direct_hosts);
@@ -391,7 +395,7 @@ impl TransitConnector {
 
         // 4. listen for connections on the port and simultaneously try connecting to the
         //    peer listening port.
-        let (mut direct_hosts, mut relay_hosts) = get_direct_relay_hosts(&ttype);
+        let (mut direct_hosts, mut relay_hosts) = get_direct_relay_hosts(ttype);
 
         let mut hosts: Vec<(HostType, &DirectHint)> = Vec::new();
         hosts.append(&mut direct_hosts);
@@ -543,7 +547,7 @@ impl Transit {
                 crate::util::sodium_increment_be(nonce);
             }
 
-            let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(&rkey));
+            let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(rkey));
             cipher
                 .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
                 /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
@@ -564,7 +568,7 @@ impl Transit {
         plaintext: &[u8],
         nonce: &mut secretbox::Nonce,
     ) -> Result<(), TransitError> {
-        let sodium_key = secretbox::Key::from_slice(&skey);
+        let sodium_key = secretbox::Key::from_slice(skey);
 
         let ciphertext = {
             let nonce_le = secretbox::Nonce::from_slice(nonce);

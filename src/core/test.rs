@@ -1,9 +1,12 @@
-use super::{events::Phase, Mood};
-use crate::CodeProvider;
+use super::{Mood, Phase};
 use std::time::Duration;
 
-const MAILBOX_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
-const APPID: &str = "lothar.com/wormhole/rusty-wormhole-test";
+use crate::{self as magic_wormhole, transfer, transit, AppID, Code, Wormhole};
+
+pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
+    "lothar.com/wormhole/rusty-wormhole-test",
+));
+
 const TIMEOUT: Duration = Duration::from_secs(60);
 
 fn init_logger() {
@@ -21,35 +24,24 @@ fn init_logger() {
 #[async_std::test]
 pub async fn test_file_rust2rust() -> eyre::Result<()> {
     init_logger();
-    use crate as magic_wormhole;
-    use magic_wormhole::{transfer, CodeProvider};
 
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
         .spawn(async {
-            let (welcome, connector) = magic_wormhole::connect_to_server(
-                magic_wormhole::transfer::APPID,
-                magic_wormhole::transfer::AppVersion::default(),
-                magic_wormhole::DEFAULT_MAILBOX_SERVER,
-                CodeProvider::AllocateCode(2),
-                &mut None,
-            )
-            .await?;
+            let (welcome, connector) =
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
             log::info!("This wormhole's code is: {}", &welcome.code);
-            code_tx.send(welcome.code.0).unwrap();
-            let mut w = connector.connect_to_client().await?;
-            log::info!("Got key: {}", &w.key);
+            code_tx.send(welcome.code).unwrap();
+            let mut wormhole = connector.await?;
             eyre::Result::<_>::Ok(
                 transfer::send_file(
-                    &mut w,
-                    &magic_wormhole::transit::DEFAULT_RELAY_SERVER
-                        .parse()
-                        .unwrap(),
+                    &mut wormhole,
+                    &transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
                     &mut async_std::fs::File::open("examples/example-file.bin").await?,
                     "example-file.bin",
                     std::fs::metadata("examples/example-file.bin")
@@ -67,25 +59,15 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
         .spawn(async {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
-            let (welcome, connector) = magic_wormhole::connect_to_server(
-                magic_wormhole::transfer::APPID,
-                magic_wormhole::transfer::AppVersion::default(),
-                magic_wormhole::DEFAULT_MAILBOX_SERVER,
-                CodeProvider::SetCode(code),
-                &mut None,
-            )
-            .await?;
+            let (welcome, mut wormhole) =
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
 
-            let mut w = connector.connect_to_client().await?;
-            log::info!("Got key: {}", &w.key);
             let req = transfer::request_file(
-                &mut w,
-                &magic_wormhole::transit::DEFAULT_RELAY_SERVER
-                    .parse()
-                    .unwrap(),
+                &mut wormhole,
+                &transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
             )
             .await?;
 
@@ -108,135 +90,6 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
     Ok(())
 }
 
-/** Start a connection from both sides, and then close one and check that the event loop stops. */
-#[async_std::test]
-pub async fn test_eventloop_exit1() {
-    init_logger();
-
-    use futures::{SinkExt, StreamExt};
-
-    let (code_tx, code_rx) = futures::channel::oneshot::channel();
-    let dummy_task = async_std::task::spawn(async move {
-        let (welcome, connector) = crate::connect_to_server(
-            APPID,
-            serde_json::json!({}),
-            MAILBOX_SERVER,
-            CodeProvider::default(),
-            &mut None,
-        )
-        .await
-        .unwrap();
-        code_tx.send(welcome.code).unwrap();
-        let _wormhole = connector.connect_to_client().await.unwrap();
-        log::info!("A Connected.");
-        async_std::task::sleep(Duration::from_secs(5)).await;
-        log::info!("A Done sleeping.");
-    });
-    async_std::future::timeout(TIMEOUT, async {
-        let (_welcome, connector) = crate::connect_to_server(
-            APPID,
-            serde_json::json!({}),
-            MAILBOX_SERVER,
-            CodeProvider::SetCode(code_rx.await.unwrap().to_string()),
-            &mut None,
-        )
-        .await
-        .unwrap();
-        let mut wormhole = connector.connect_to_client().await.unwrap();
-        log::info!("B Connected.");
-        wormhole.tx.close().await.unwrap();
-        log::info!("B Closed sender");
-        wormhole
-            .rx
-            .for_each(|e| async move {
-                log::info!("Received {:?}", e);
-            })
-            .await;
-    })
-    .await
-    .expect("Test failed");
-
-    dummy_task.cancel().await;
-}
-
-/** Start a connection from both sides, and then drop one and check that the event loop stops. */
-#[async_std::test]
-pub async fn test_eventloop_exit2() {
-    init_logger();
-
-    use futures::StreamExt;
-
-    let (code_tx, code_rx) = futures::channel::oneshot::channel();
-    let dummy_task = async_std::task::spawn(async move {
-        let (welcome, connector) = crate::connect_to_server(
-            APPID,
-            serde_json::json!({}),
-            MAILBOX_SERVER,
-            CodeProvider::default(),
-            &mut None,
-        )
-        .await
-        .unwrap();
-        code_tx.send(welcome.code).unwrap();
-        let _wormhole = connector.connect_to_client().await;
-        log::info!("A Connected.");
-        async_std::task::sleep(Duration::from_secs(5)).await;
-        log::info!("A Done sleeping.");
-    });
-    async_std::future::timeout(TIMEOUT, async {
-        let (_welcome, connector) = crate::connect_to_server(
-            APPID,
-            serde_json::json!({}),
-            MAILBOX_SERVER,
-            CodeProvider::SetCode(code_rx.await.unwrap().to_string()),
-            &mut None,
-        )
-        .await
-        .unwrap();
-        let wormhole = connector.connect_to_client().await.unwrap();
-        log::info!("B Connected.");
-        std::mem::drop(wormhole.tx);
-        wormhole
-            .rx
-            .for_each(|e| async move {
-                log::info!("Received {:?}", e);
-            })
-            .await;
-        log::info!("B Closed.");
-    })
-    .await
-    .expect("Test failed");
-
-    dummy_task.cancel().await;
-}
-
-/** Start a connection only to the server (no other client), drop the connector and assert that the event loop stops */
-#[async_std::test]
-pub async fn test_eventloop_exit3() {
-    init_logger();
-
-    async_std::future::timeout(TIMEOUT, async {
-        let mut eventloop_task = None;
-        let (_welcome, connector) = crate::connect_to_server(
-            APPID,
-            serde_json::json!({}),
-            MAILBOX_SERVER,
-            CodeProvider::AllocateCode(2),
-            &mut eventloop_task,
-        )
-        .await
-        .unwrap();
-        let eventloop_task = eventloop_task.unwrap();
-
-        log::info!("Connected.");
-        connector.cancel().await;
-        eventloop_task.await;
-        log::info!("Closed.");
-    })
-    .await
-    .expect("Test failed");
-}
-
 /** Test the functionality used by the `send-many` subcommand. It logically builds upon the
  * `test_eventloop_exit` tests. We send us a file five times, and check if it arrived.
  */
@@ -244,16 +97,10 @@ pub async fn test_eventloop_exit3() {
 pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
 
-    let (welcome, connector) = crate::connect_to_server(
-        APPID,
-        serde_json::json!({}),
-        MAILBOX_SERVER,
-        CodeProvider::AllocateCode(2),
-        &mut None,
-    )
-    .await?;
+    let (welcome, connector) =
+        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
 
-    let code = welcome.code.0;
+    let code = welcome.code;
     log::info!("The code is {:?}", code);
 
     let correct_data = std::fs::read("examples/example-file.bin")?;
@@ -267,7 +114,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         /* The first time, we reuse the current session for sending */
         {
             log::info!("Sending file #{}", 0);
-            let mut wormhole = connector.connect_to_client().await?;
+            let mut wormhole = connector.await?;
             senders.push(async_std::task::spawn(async move {
                 let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
                 crate::transfer::send_file(
@@ -286,15 +133,11 @@ pub async fn test_send_many() -> eyre::Result<()> {
 
         for i in 1..5usize {
             log::info!("Sending file #{}", i);
-            let (_welcome, connector) = crate::connect_to_server(
-                APPID,
-                serde_json::json!({}),
-                MAILBOX_SERVER,
-                CodeProvider::SetCode(sender_code.clone()),
-                &mut None,
+            let (_welcome, mut wormhole) = Wormhole::connect_with_code(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                sender_code.clone(),
             )
             .await?;
-            let mut wormhole = connector.connect_to_client().await?;
             senders.push(async_std::task::spawn(async move {
                 let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
                 crate::transfer::send_file(
@@ -318,15 +161,8 @@ pub async fn test_send_many() -> eyre::Result<()> {
     /* Receive many */
     for i in 0..5usize {
         log::info!("Receiving file #{}", i);
-        let (_welcome, connector) = crate::connect_to_server(
-            APPID,
-            serde_json::json!({}),
-            MAILBOX_SERVER,
-            CodeProvider::SetCode(code.clone()),
-            &mut None,
-        )
-        .await?;
-        let mut wormhole = connector.connect_to_client().await?;
+        let (_welcome, mut wormhole) =
+            Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone()).await?;
         log::info!("Got key: {}", &wormhole.key);
         let req = crate::transfer::request_file(
             &mut wormhole,
@@ -350,29 +186,21 @@ pub async fn test_send_many() -> eyre::Result<()> {
 #[async_std::test]
 pub async fn test_wrong_code() -> eyre::Result<()> {
     init_logger();
-    use crate as magic_wormhole;
-    use magic_wormhole::{transfer, CodeProvider};
 
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
         .spawn(async {
-            let (welcome, connector) = magic_wormhole::connect_to_server(
-                transfer::APPID,
-                transfer::AppVersion::default(),
-                magic_wormhole::DEFAULT_MAILBOX_SERVER,
-                CodeProvider::AllocateCode(2),
-                &mut None,
-            )
-            .await?;
+            let (welcome, connector) =
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
             log::info!("This wormhole's code is: {}", &welcome.code);
-            code_tx.send(welcome.code.0).unwrap();
+            code_tx.send(welcome.code.nameplate()).unwrap();
 
-            let result = connector.connect_to_client().await;
+            let result = connector.await;
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
             eyre::Result::<_>::Ok(())
@@ -380,22 +208,15 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
     let receiver_task = async_std::task::Builder::new()
         .name("receiver".to_owned())
         .spawn(async {
-            let code = code_rx.await?;
-            log::info!("Got code over local: {}", &code);
-            let (welcome, connector) = magic_wormhole::connect_to_server(
-                transfer::APPID,
-                transfer::AppVersion::default(),
-                magic_wormhole::DEFAULT_MAILBOX_SERVER,
+            let nameplate = code_rx.await?;
+            log::info!("Got nameplate over local: {}", &nameplate);
+            let result = Wormhole::connect_with_code(
+                transfer::APP_CONFIG.id(TEST_APPID),
                 /* Making a wrong code here by appending bullshit */
-                CodeProvider::SetCode(format!("{}-foo-bar", code)),
-                &mut None,
+                Code::new(&nameplate, "foo-bar"),
             )
-            .await?;
-            if let Some(welcome) = &welcome.welcome {
-                log::info!("Got welcome: {}", welcome);
-            }
+            .await;
 
-            let result = connector.connect_to_client().await;
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
             eyre::Result::<_>::Ok(())
@@ -403,6 +224,33 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
 
     async_std::future::timeout(TIMEOUT, sender_task).await??;
     async_std::future::timeout(TIMEOUT, receiver_task).await??;
+
+    Ok(())
+}
+
+/** Connect three people to the party and watch it explode … gracefully */
+#[async_std::test]
+pub async fn test_crowded() -> eyre::Result<()> {
+    init_logger();
+
+    let (welcome, connector1) =
+        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+    log::info!("This test's code is: {}", &welcome.code);
+
+    let connector2 =
+        Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), welcome.code.clone());
+
+    let connector3 =
+        Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), welcome.code.clone());
+
+    match futures::try_join!(connector1, connector2, connector3).unwrap_err() {
+        magic_wormhole::WormholeError::ServerError(
+            magic_wormhole::rendezvous::RendezvousError::Server(error),
+        ) => {
+            assert_eq!(&*error, "crowded")
+        },
+        other => panic!("Got wrong error message: {}, wanted 'crowded'", other),
+    }
 
     Ok(())
 }

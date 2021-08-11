@@ -1,7 +1,4 @@
-use super::{
-    events::{AppID, Mailbox, MySide, Nameplate, Phase, TheirSide},
-    Mood, WormholeCoreError,
-};
+use super::{AppID, Mailbox, Mood, MySide, Nameplate, Phase, TheirSide};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -114,7 +111,7 @@ pub struct HashcashPermission {
     fmt = "EncryptedMessage {{ side: {}, phase: {}, body: {}",
     side,
     phase,
-    "crate::util::DisplayBytes(&body)"
+    "crate::util::DisplayBytes(body)"
 )]
 pub struct EncryptedMessage {
     pub side: TheirSide,
@@ -253,10 +250,6 @@ pub enum InboundMessage {
     Unknown,
 }
 
-pub fn deserialize(s: &str) -> Result<InboundMessage, WormholeCoreError> {
-    serde_json::from_str(&s).map_err(WormholeCoreError::ProtocolJson)
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -369,7 +362,7 @@ mod test {
     #[allow(deprecated)]
     fn test_welcome3() {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
-        let m = deserialize(&s).unwrap();
+        let m = serde_json::from_str(s).unwrap();
         assert!(matches!(
             m,
             InboundMessage::Welcome {
@@ -387,7 +380,7 @@ mod test {
     #[allow(deprecated)]
     fn test_welcome4() {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
-        let m = deserialize(&s).unwrap();
+        let m = serde_json::from_str(s).unwrap();
         assert!(matches!(
             m,
             InboundMessage::Welcome {
@@ -408,7 +401,7 @@ mod test {
     #[allow(deprecated)]
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
-        let m = deserialize(&s).unwrap();
+        let m = serde_json::from_str(s).unwrap();
         assert!(matches!(m, InboundMessage::Welcome { welcome: WelcomeMessage { current_cli_version: None, motd: Some(_), error: None, permission_required: None }  }));
     }
 
@@ -417,7 +410,7 @@ mod test {
     #[allow(deprecated)]
     fn test_welcome6() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world", "permission-required": { "none": {}, "hashcash": { "bits": 6, "resource": "resource-string" }, "dark-ritual": { "hocrux": true } } } }"#;
-        let m = deserialize(&s).unwrap();
+        let m: InboundMessage = serde_json::from_str(s).unwrap();
         assert_eq!(
             m,
             InboundMessage::Welcome {
@@ -456,7 +449,7 @@ mod test {
     #[test]
     fn test_ack() {
         let s = r#"{"type": "ack", "id": null, "server_tx": 1234.56}"#;
-        let m = deserialize(&s).unwrap();
+        let m = serde_json::from_str(s).unwrap();
         match m {
             InboundMessage::Ack {} => (),
             _ => panic!(),
@@ -466,7 +459,7 @@ mod test {
     #[test]
     fn test_message() {
         let s = r#"{"body": "7b2270616b655f7631223a22353361346566366234363434303364376534633439343832663964373236646538396462366631336632613832313537613335646562393562366237633536353533227d", "server_rx": 1523468188.293486, "id": null, "phase": "pake", "server_tx": 1523498654.753594, "type": "message", "side": "side1"}"#;
-        let m = deserialize(&s).unwrap();
+        let m = serde_json::from_str(s).unwrap();
         match m {
             InboundMessage::Message(EncryptedMessage {
                 side: _s,

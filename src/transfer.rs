@@ -15,21 +15,31 @@ use serde_json::json;
 use std::sync::Arc;
 
 use super::{
-    bail,
-    core::WormholeCoreError,
-    ensure, transit,
+    core::WormholeError,
+    transit,
     transit::{RelayUrl, Transit},
-    Wormhole,
+    AppID, Wormhole,
 };
 use async_std::io::{prelude::WriteExt, ReadExt};
-use futures::{SinkExt, StreamExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use std::path::PathBuf;
 use transit::{TransitConnectError, TransitConnector, TransitError};
 
+const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
+
 /// The App ID associated with this protocol.
-pub const APPID: &str = "lothar.com/wormhole/text-or-file-xfer";
+pub const APPID: AppID = AppID(std::borrow::Cow::Borrowed(APPID_RAW));
+
+/// An [`crate::AppConfig`] with sane defaults for this protocol.
+///
+/// You **must not** change `id` and `rendezvous_url` to be interoperable.
+/// The `app_version` can be adjusted if you want to disable some features.
+pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersion> {
+    id: AppID(std::borrow::Cow::Borrowed(APPID_RAW)),
+    rendezvous_url: std::borrow::Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
+    app_version: AppVersion {},
+};
 
 // TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)
 
@@ -42,10 +52,7 @@ pub enum TransferError {
     #[error("Receive checksum error")]
     Checksum,
     #[error("The file contained a different amount of bytes than advertized! Sent {} bytes, but should have been {}", sent_size, file_size)]
-    FileSize {
-        sent_size: u64,
-        file_size: u64,
-    },
+    FileSize { sent_size: u64, file_size: u64 },
     #[error("The file(s) to send got modified during the transfer, and thus corrupted")]
     FilesystemSkew,
     // TODO be more specific
@@ -75,7 +82,7 @@ pub enum TransferError {
     Wormhole(
         #[from]
         #[source]
-        WormholeCoreError,
+        WormholeError,
     ),
     #[error("Internal error: wormhole core died")]
     WormholeClosed(
@@ -267,13 +274,7 @@ where
     let mut file = File::open(file_path).await?;
     let metadata = file.metadata().await?;
     if metadata.is_dir() {
-        send_folder(
-            wormhole,
-            relay_url,
-            file_path,
-            file_name,
-            progress_handler,
-        ).await?;
+        send_folder(wormhole, relay_url, file_path, file_name, progress_handler).await?;
     } else {
         let file_size = metadata.len();
         send_file(
@@ -283,7 +284,8 @@ where
             file_name,
             file_size,
             progress_handler,
-        ).await?;
+        )
+        .await?;
     }
     Ok(())
 }
@@ -310,20 +312,18 @@ where
     // We want to do some transit
     debug!("Sending transit message '{:?}", connector.our_side_ttype());
     wormhole
-        .tx
         .send(PeerMessage::Transit(connector.our_side_ttype().clone()).serialize_vec())
         .await?;
 
     // Send file offer message.
     debug!("Sending file offer");
     wormhole
-        .tx
         .send(PeerMessage::new_offer_file(file_name, file_size).serialize_vec())
         .await?;
 
     // Wait for their transit response
     let other_side_ttype = {
-        let maybe_transit = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+        let maybe_transit = serde_json::from_slice(&wormhole.receive().await?)?;
         debug!("received transit message: {:?}", maybe_transit);
 
         match maybe_transit {
@@ -334,7 +334,6 @@ where
             _ => {
                 let error = TransferError::unexpected_message("transit", maybe_transit);
                 let _ = wormhole
-                    .tx
                     .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
                     .await;
                 bail!(error)
@@ -344,7 +343,7 @@ where
 
     {
         // Wait for file_ack
-        let fileack_msg = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+        let fileack_msg = serde_json::from_slice(&wormhole.receive().await?)?;
         debug!("received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
@@ -357,7 +356,6 @@ where
             _ => {
                 let error = TransferError::unexpected_message("answer/file_ack", fileack_msg);
                 let _ = wormhole
-                    .tx
                     .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
                     .await;
                 bail!(error)
@@ -367,7 +365,7 @@ where
 
     let mut transit = connector
         .leader_connect(
-            wormhole.key.derive_transit_key(&wormhole.appid),
+            wormhole.key().derive_transit_key(wormhole.appid()),
             Arc::try_unwrap(other_side_ttype).unwrap(),
         )
         .await?;
@@ -390,7 +388,7 @@ where
 }
 
 /// Send a folder to the other side
-/// 
+///
 /// This isn't a proper folder transfer as per the Wormhole protocol
 /// because it sends it in a way so that the receiver still has to manually
 /// unpack it. But it's better than nothing
@@ -410,13 +408,15 @@ where
     let folder_path = folder_path.into();
 
     if !folder_path.is_dir() {
-        panic!("You should only call this method with directory paths, but '{}' is not", folder_path.display());
+        panic!(
+            "You should only call this method with directory paths, but '{}' is not",
+            folder_path.display()
+        );
     }
 
     // We want to do some transit
     debug!("Sending transit message '{:?}", connector.our_side_ttype());
     wormhole
-        .tx
         .send(PeerMessage::Transit(connector.our_side_ttype().clone()).serialize_vec())
         .await?;
 
@@ -424,7 +424,10 @@ where
     // use sha2::{digest::FixedOutput, Digest, Sha256};
 
     /* Helper struct stolen from https://docs.rs/count-write/0.1.0 */
-    struct CountWrite<W> { inner: W, count: u64, }
+    struct CountWrite<W> {
+        inner: W,
+        count: u64,
+    }
 
     impl<W: std::io::Write> std::io::Write for CountWrite<W> {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
@@ -432,7 +435,7 @@ where
             self.count += written as u64;
             Ok(written)
         }
-    
+
         fn flush(&mut self) -> std::io::Result<()> {
             self.inner.flush()
         }
@@ -442,11 +445,17 @@ where
      * tar file once, stream it into the void, and the second time we stream it over the
      * wire. Also hashing for future reference.
      */
-    log::info!("Tar'ing '{}' to see how big it'll be :)", folder_path.display());
+    log::info!(
+        "Tar'ing '{}' to see how big it'll be :)",
+        folder_path.display()
+    );
     let folder_path2 = folder_path.clone();
     let (length, sha256sum_initial) = async_std::task::spawn_blocking(move || {
         let mut hasher = Sha256::new();
-        let mut counter = CountWrite { inner: &mut hasher, count: 0, };
+        let mut counter = CountWrite {
+            inner: &mut hasher,
+            count: 0,
+        };
         let mut builder = Builder::new(&mut counter);
 
         builder.mode(tar::HeaderMode::Deterministic);
@@ -459,24 +468,18 @@ where
         let count = counter.count;
         std::mem::drop(counter);
         (count, hasher.finalize_fixed())
-    }).await;
+    })
+    .await;
 
     // Send file offer message.
     debug!("Sending file offer");
     wormhole
-        .tx
-        .send(
-            PeerMessage::new_offer_file(
-                folder_name,
-                length
-            )
-            .serialize_vec(),
-        )
+        .send(PeerMessage::new_offer_file(folder_name, length).serialize_vec())
         .await?;
 
     // Wait for their transit response
     let other_side_ttype = {
-        let maybe_transit = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+        let maybe_transit = serde_json::from_slice(&wormhole.receive().await?)?;
         debug!("received transit message: {:?}", maybe_transit);
 
         match maybe_transit {
@@ -484,7 +487,6 @@ where
             _ => {
                 let error = TransferError::unexpected_message("transit", maybe_transit);
                 let _ = wormhole
-                    .tx
                     .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
                     .await;
                 bail!(error)
@@ -494,7 +496,7 @@ where
 
     {
         // Wait for file_ack
-        let fileack_msg = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+        let fileack_msg = serde_json::from_slice(&wormhole.receive().await?)?;
         debug!("received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
@@ -507,7 +509,6 @@ where
             _ => {
                 let error = TransferError::unexpected_message("answer/file_ack", fileack_msg);
                 let _ = wormhole
-                    .tx
                     .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
                     .await;
                 bail!(error)
@@ -517,7 +518,7 @@ where
 
     let mut transit = connector
         .leader_connect(
-            wormhole.key.derive_transit_key(&wormhole.appid),
+            wormhole.key().derive_transit_key(wormhole.appid()),
             Arc::try_unwrap(other_side_ttype).unwrap(),
         )
         .await?;
@@ -536,7 +537,7 @@ where
             self.secondary.write_all(&data[..n]).unwrap();
             Ok(n)
         }
-    
+
         fn flush(&mut self) -> std::io::Result<()> {
             self.primary.flush().and(self.secondary.flush())
         }
@@ -547,8 +548,8 @@ where
     let (mut reader, mut writer) = futures_ringbuf::RingBuffer::new(4096).split();
 
     struct BlockingWrite<W>(std::pin::Pin<Box<W>>);
-    
-    impl <W: AsyncWrite + Send + Unpin> std::io::Write for BlockingWrite<W> {
+
+    impl<W: AsyncWrite + Send + Unpin> std::io::Write for BlockingWrite<W> {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             let mut writer = self.0.as_mut();
             futures::executor::block_on(AsyncWriteExt::write(&mut writer, buf))
@@ -562,7 +563,10 @@ where
 
     let file_sender = async_std::task::spawn_blocking(move || {
         let mut hasher = Sha256::new();
-        let mut hash_writer = BroadcastWriter { primary: BlockingWrite(Box::pin(&mut writer)), secondary: &mut hasher };
+        let mut hash_writer = BroadcastWriter {
+            primary: BlockingWrite(Box::pin(&mut writer)),
+            secondary: &mut hasher,
+        };
         let mut builder = Builder::new(&mut hash_writer);
 
         builder.mode(tar::HeaderMode::Deterministic);
@@ -576,7 +580,9 @@ where
         std::io::Result::Ok(hasher.finalize_fixed())
     });
 
-    let checksum = send_records(&mut transit, &mut reader, length, progress_handler).await.unwrap();
+    let checksum = send_records(&mut transit, &mut reader, length, progress_handler)
+        .await
+        .unwrap();
     /* This should always be ready by now, but just in case */
     let sha256sum = file_sender.await.unwrap();
 
@@ -584,7 +590,6 @@ where
     if sha256sum != sha256sum_initial {
         let error = TransferError::FilesystemSkew;
         let _ = wormhole
-            .tx
             .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
             .await;
         bail!(error)
@@ -594,7 +599,10 @@ where
     debug!("sent file. Waiting for ack");
     let transit_ack = transit.receive_record().await?;
     let transit_ack_msg = serde_json::from_slice::<TransitAck>(&transit_ack)?;
-    ensure!(transit_ack_msg.sha256 == hex::encode(checksum), TransferError::Checksum);
+    ensure!(
+        transit_ack_msg.sha256 == hex::encode(checksum),
+        TransferError::Checksum
+    );
     debug!("transfer complete!");
     Ok(())
 }
@@ -614,7 +622,6 @@ pub async fn request_file<'a>(
     // send the transit message
     debug!("Sending transit message '{:?}", connector.our_side_ttype());
     wormhole
-        .tx
         .send(
             crate::transfer::PeerMessage::Transit(connector.our_side_ttype().clone())
                 .serialize_vec(),
@@ -622,7 +629,7 @@ pub async fn request_file<'a>(
         .await?;
 
     // receive transit message
-    let other_side_ttype = match serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)? {
+    let other_side_ttype = match serde_json::from_slice(&wormhole.receive().await?)? {
         PeerMessage::Transit(transit) => {
             debug!("received transit message: {:?}", transit);
             transit
@@ -633,7 +640,6 @@ pub async fn request_file<'a>(
         other => {
             let error = TransferError::unexpected_message("transit", other);
             let _ = wormhole
-                .tx
                 .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
                 .await;
             bail!(error)
@@ -641,13 +647,17 @@ pub async fn request_file<'a>(
     };
 
     // 3. receive file offer message from peer
-    let maybe_offer = serde_json::from_slice(&wormhole.rx.next().await.unwrap()?)?;
+    let maybe_offer = serde_json::from_slice(&wormhole.receive().await?)?;
     debug!("Received offer message '{:?}'", &maybe_offer);
 
     let (filename, filesize) = match maybe_offer {
         PeerMessage::Offer(offer_type) => match offer_type {
             OfferType::File { filename, filesize } => (filename, filesize),
-            OfferType::Directory { mut dirname, zipsize, ..} => {
+            OfferType::Directory {
+                mut dirname,
+                zipsize,
+                ..
+            } => {
                 dirname.set_extension("zip");
                 (dirname, zipsize)
             },
@@ -659,7 +669,6 @@ pub async fn request_file<'a>(
         _ => {
             let error = TransferError::unexpected_message("offer", maybe_offer);
             let _ = wormhole
-                .tx
                 .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
                 .await;
             bail!(error)
@@ -710,14 +719,15 @@ impl<'a> ReceiveRequest<'a> {
         // send file ack.
         debug!("Sending ack");
         self.wormhole
-            .tx
             .send(PeerMessage::new_file_ack("ok").serialize_vec())
             .await?;
 
         let mut transit = self
             .connector
             .follower_connect(
-                self.wormhole.key.derive_transit_key(&self.wormhole.appid),
+                self.wormhole
+                    .key()
+                    .derive_transit_key(self.wormhole.appid()),
                 self.other_side_ttype.clone(),
             )
             .await?;
@@ -741,7 +751,6 @@ impl<'a> ReceiveRequest<'a> {
      */
     pub async fn reject(self) -> Result<(), TransferError> {
         self.wormhole
-            .tx
             .send(PeerMessage::new_error_message("transfer rejected").serialize_vec())
             .await?;
 
@@ -795,7 +804,13 @@ where
         }
     }
 
-    ensure!(sent_size == file_size, TransferError::FileSize { sent_size, file_size });
+    ensure!(
+        sent_size == file_size,
+        TransferError::FileSize {
+            sent_size,
+            file_size
+        }
+    );
 
     Ok(hasher.finalize_fixed().to_vec())
 }
