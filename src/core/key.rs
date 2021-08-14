@@ -53,8 +53,8 @@ impl Key<WormholeKey> {
         let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
         trace!(
             "Input key: {}, Transit key: {}, Transit purpose: '{}'",
-            hex::encode(&**self),
-            hex::encode(&**derived_key),
+            self.to_hex(),
+            derived_key.to_hex(),
             &transit_purpose
         );
         derived_key
@@ -65,6 +65,11 @@ impl<P: KeyPurpose> Key<P> {
     pub fn new(key: Box<secretbox::Key>) -> Self {
         Self(key, std::marker::PhantomData)
     }
+
+    pub fn to_hex(&self) -> String {
+        hex::encode(&**self)
+    }
+
     /**
      * Derive a new sub-key from this one
      */
