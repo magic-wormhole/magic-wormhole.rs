@@ -114,6 +114,7 @@ pub struct TransitType {
  */
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case", tag = "type")]
+#[non_exhaustive]
 pub enum Ability {
     /**
      * Try to connect directly to the other side.
@@ -137,6 +138,7 @@ impl Ability {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "kebab-case", tag = "type")]
+#[non_exhaustive]
 pub enum Hint {
     DirectTcpV1(DirectHint),
     RelayV1(RelayHint),
@@ -272,7 +274,7 @@ impl TransitConnector {
     ) -> Result<Transit, TransitConnectError> {
         let transit_key = Arc::new(transit_key);
         /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */
-        debug!("transit key {}", hex::encode(&***transit_key));
+        debug!("transit key {}", transit_key.to_hex());
 
         let port = self.port;
         let listener = self.listener;
@@ -386,7 +388,7 @@ impl TransitConnector {
     ) -> Result<Transit, TransitConnectError> {
         let transit_key = Arc::new(transit_key);
         /* TODO This Deref thing is getting out of hand. Maybe implementing AsRef or some other trait may help? */
-        debug!("transit key {}", hex::encode(&***transit_key));
+        debug!("transit key {}", transit_key.to_hex());
 
         let port = self.port;
         let listener = self.listener;
@@ -637,7 +639,7 @@ fn make_relay_handshake(key: &Key<TransitKey>, tside: &str) -> String {
     let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
     format!(
         "please relay {} for side {}\n",
-        hex::encode(&**sub_key),
+        sub_key.to_hex(),
         tside
     )
 }
@@ -677,9 +679,7 @@ async fn follower_handshake_exchange(
             .write_all(
                 format!(
                     "transit receiver {} ready\n\n",
-                    hex::encode(
-                        &**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
-                    )
+                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver").to_hex(),
                 )
                 .as_bytes(),
             )
@@ -693,7 +693,7 @@ async fn follower_handshake_exchange(
 
         let expected_tx_handshake = format!(
             "transit sender {} ready\n\ngo\n",
-            hex::encode(&**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender"))
+            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender").to_hex(),
         );
         ensure!(
             &rx[..] == expected_tx_handshake.as_bytes(),
@@ -739,9 +739,7 @@ async fn leader_handshake_exchange(
             .write_all(
                 format!(
                     "transit sender {} ready\n\n",
-                    hex::encode(
-                        &**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
-                    )
+                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender").to_hex()
                 )
                 .as_bytes(),
             )
@@ -754,7 +752,7 @@ async fn leader_handshake_exchange(
 
         let expected_rx_handshake = format!(
             "transit receiver {} ready\n\n",
-            hex::encode(&**key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver"))
+            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver").to_hex()
         );
         ensure!(
             &rx[..] == expected_rx_handshake.as_bytes(),
