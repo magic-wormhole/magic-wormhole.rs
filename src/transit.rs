@@ -13,7 +13,7 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{core::WormholeError, Key, KeyPurpose};
+use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
 use async_std::{
@@ -21,7 +21,7 @@ use async_std::{
     net::{TcpListener, TcpStream},
 };
 #[allow(unused_imports)] /* We need them for the docs */
-use futures::{future::TryFutureExt, Sink, Stream, StreamExt};
+use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use log::*;
 use std::{collections::HashSet, net::ToSocketAddrs, str::FromStr, sync::Arc};
 use xsalsa20poly1305 as secretbox;
@@ -43,14 +43,11 @@ impl KeyPurpose for TransitTxKey {}
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TransitConnectError {
-    #[error("All (relay) handshakes failed, could not establish a connection with the peer")]
+    /** Incompatible abilities, or wrong hints */
+    #[error("{}", _0)]
+    Protocol(Box<str>),
+    #[error("All (relay) handshakes failed or timed out; could not establish a connection with the peer")]
     Handshake,
-    #[error("Wormhole connection error")]
-    Wormhole(
-        #[from]
-        #[source]
-        WormholeError,
-    ),
     #[error("IO error")]
     IO(
         #[from]
@@ -68,12 +65,6 @@ enum TransitHandshakeError {
     HandshakeFailed,
     #[error("Relay handshake failed")]
     RelayHandshakeFailed,
-    #[error("Wormhole connection error")]
-    Wormhole(
-        #[from]
-        #[source]
-        WormholeError,
-    ),
     #[error("IO error")]
     IO(
         #[from]
@@ -241,7 +232,7 @@ pub async fn init(
 
     Ok(TransitConnector {
         listener,
-        our_abilities: abilities,
+        our_abilities: Arc::new(abilities),
         our_hints: Arc::new(our_hints),
     })
 }
@@ -256,12 +247,12 @@ pub async fn init(
 pub struct TransitConnector {
     /* Only `Some` if direct-tcp-v1 ability has been enabled. */
     listener: Option<TcpListener>,
-    our_abilities: Vec<Ability>,
+    our_abilities: Arc<Vec<Ability>>,
     our_hints: Arc<Hints>,
 }
 
 impl TransitConnector {
-    pub fn our_abilities(&self) -> &[Ability] {
+    pub fn our_abilities(&self) -> &Arc<Vec<Ability>> {
         &self.our_abilities
     }
 
@@ -276,6 +267,7 @@ impl TransitConnector {
     pub async fn leader_connect(
         self,
         transit_key: Key<TransitKey>,
+        their_abilities: Arc<Vec<Ability>>,
         their_hints: Arc<Hints>,
     ) -> Result<Transit, TransitConnectError> {
         let Self {
@@ -285,40 +277,67 @@ impl TransitConnector {
         } = self;
         let transit_key = Arc::new(transit_key);
 
-        let mut handshake_futures =
-            Self::connect(true, transit_key, our_hints, their_hints, listener).await?;
+        let start = std::time::Instant::now();
+        let mut connection_stream = Box::pin(
+            Self::connect(
+                true,
+                transit_key,
+                our_abilities.clone(),
+                our_hints,
+                their_abilities,
+                their_hints,
+                listener,
+            )
+            .filter_map(|result| async {
+                match result {
+                    Ok(val) => Some(val),
+                    Err(err) => {
+                        log::debug!("Some leader handshake failed: {}", err);
+                        None
+                    },
+                }
+            }),
+        );
 
-        /* Try to get a Transit out of the first handshake that succeeds. If all fail,
-         * we fail.
-         */
-        let transit;
-        loop {
-            ensure!(
-                !handshake_futures.is_empty(),
-                TransitConnectError::Handshake
+        let (mut transit, host_type) = connection_stream
+            .next()
+            .await
+            .ok_or(TransitConnectError::Handshake)?;
+
+        if host_type == HostType::Relay && our_abilities.contains(&Ability::DirectTcpV1) {
+            log::debug!(
+                "Established transit connection over relay. Trying to find a direct connection …"
             );
-
-            match futures::future::select_all(handshake_futures).await {
-                (Ok(transit2), _index, remaining) => {
-                    transit = transit2;
-                    handshake_futures = remaining;
-                    break;
-                },
-                (Err(e), _index, remaining) => {
-                    debug!("Some handshake failed {:#}", e);
-                    handshake_futures = remaining;
-                },
-            }
+            /* Measure the time it took us to get a response. Based on this, wait some more for more responses
+             * in case we like one better.
+             */
+            let elapsed = start.elapsed();
+            let to_wait = if elapsed.as_secs() > 5 {
+                /* If our RTT was *that* long, let's just be happy we even got one connection */
+                std::time::Duration::from_secs(1)
+            } else {
+                elapsed.mul_f32(0.3)
+            };
+            let _ = async_std::future::timeout(to_wait, async {
+                while let Some((new_transit, new_host_type)) = connection_stream.next().await {
+                    /* We already got a connection, so we're only interested in direct ones */
+                    if new_host_type == HostType::Direct {
+                        transit = new_transit;
+                        log::debug!("Found direct connection; using that instead.");
+                        break;
+                    }
+                }
+            })
+            .await;
+            log::debug!("Did not manage to establish a better connection in time.");
+        } else {
+            log::debug!("Established direct transit connection");
         }
-        let mut transit = transit;
 
         /* Cancel all remaining non-finished handshakes. We could send "nevermind" to explicitly tell
          * the other side (probably, this is mostly for relay server statistics), but eeh, nevermind :)
          */
-        handshake_futures
-            .into_iter()
-            .map(async_std::task::JoinHandle::cancel)
-            .for_each(std::mem::drop);
+        std::mem::drop(connection_stream);
 
         transit.socket.write_all(b"go\n").await?;
         info!(
@@ -335,6 +354,7 @@ impl TransitConnector {
     pub async fn follower_connect(
         self,
         transit_key: Key<TransitKey>,
+        their_abilities: Arc<Vec<Ability>>,
         their_hints: Arc<Hints>,
     ) -> Result<Transit, TransitConnectError> {
         let Self {
@@ -344,69 +364,94 @@ impl TransitConnector {
         } = self;
         let transit_key = Arc::new(transit_key);
 
-        let mut handshake_futures =
-            Self::connect(false, transit_key, our_hints, their_hints, listener).await?;
+        let mut connection_stream = Box::pin(
+            Self::connect(
+                false,
+                transit_key,
+                our_abilities,
+                our_hints,
+                their_abilities,
+                their_hints,
+                listener,
+            )
+            .filter_map(|result| async {
+                match result {
+                    Ok(val) => Some(val),
+                    Err(err) => {
+                        log::debug!("Some follower handshake failed: {}", err);
+                        None
+                    },
+                }
+            }),
+        );
 
-        /* Try to get a Transit out of the first handshake that succeeds. If all fail,
-         * we fail.
+        let transit = match async_std::future::timeout(
+            std::time::Duration::from_secs(60),
+            &mut connection_stream.next(),
+        )
+        .await
+        {
+            Ok(Some((transit, host_type))) => {
+                log::debug!(
+                    "Established a {} transit connection.",
+                    if host_type == HostType::Direct {
+                        "direct"
+                    } else {
+                        "relay"
+                    }
+                );
+                Ok(transit)
+            },
+            Ok(None) | Err(_) => Err(TransitConnectError::Handshake),
+        };
+
+        /* Cancel all remaining non-finished handshakes. We could send "nevermind" to explicitly tell
+         * the other side (probably, this is mostly for relay server statistics), but eeh, nevermind :)
          */
-        let transit;
-        loop {
-            ensure!(
-                !handshake_futures.is_empty(),
-                TransitConnectError::Handshake
-            );
+        std::mem::drop(connection_stream);
 
-            match futures::future::select_all(handshake_futures).await {
-                (Ok(transit2), _index, remaining) => {
-                    transit = transit2;
-                    handshake_futures = remaining;
-                    break;
-                },
-                (Err(e), _index, remaining) => {
-                    debug!("Some handshake failed {:#}", e);
-                    handshake_futures = remaining;
-                },
-            }
-        }
-
-        /* Cancel all remaining non-finished handshakes */
-        handshake_futures
-            .into_iter()
-            .map(async_std::task::JoinHandle::cancel)
-            .for_each(std::mem::drop);
-
-        Ok(transit)
+        transit
     }
 
     /** Try to establish a connection with the peer.
      *
      * This encapsulates code that is common to both the leader and the follower.
+     *
+     * ## Panics
+     *
+     * If the receiving end of the channel for the results is closed before all futures in the return
+     * value are cancelled/dropped.
      */
-    async fn connect(
+    fn connect(
         is_leader: bool,
         transit_key: Arc<Key<TransitKey>>,
+        our_abilities: Arc<Vec<Ability>>,
         our_hints: Arc<Hints>,
+        _their_abilities: Arc<Vec<Ability>>,
         their_hints: Arc<Hints>,
         listener: Option<TcpListener>,
-    ) -> Result<
-        Vec<async_std::task::JoinHandle<Result<Transit, TransitHandshakeError>>>,
-        TransitConnectError,
-    > {
+    ) -> impl Stream<Item = Result<(Transit, HostType), TransitHandshakeError>> {
+        assert!(listener.is_some() == our_abilities.contains(&Ability::DirectTcpV1));
+
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
+
+        /* Process the peer's information first. We only take up to 20 items to prevent DOS,
+         * this should be absolutely more than enough.
+         */
         let mut hosts: HashSet<(HostType, DirectHint)> = HashSet::new();
         hosts.extend(
             their_hints
                 .direct_tcp
                 .iter()
-                .map(|hint| (HostType::Direct, hint.clone())),
-        );
-        hosts.extend(
-            their_hints
-                .relay
-                .iter()
-                .map(|hint| (HostType::Relay, hint.clone())),
+                .map(|hint| (HostType::Direct, hint.clone()))
+                .chain(
+                    their_hints
+                        .relay
+                        .iter()
+                        .map(|hint| (HostType::Relay, hint.clone())),
+                )
+                .take(20),
         );
         hosts.extend(
             our_hints
@@ -415,62 +460,55 @@ impl TransitConnector {
                 .map(|hint| (HostType::Relay, hint.clone())),
         );
 
-        let mut handshake_futures = Vec::new();
-        for host in hosts {
-            let transit_key = transit_key.clone();
-            let tside = tside.clone();
-            let future = async_std::task::spawn(
-                //async_std::future::timeout(Duration::from_secs(5),
-                async move {
-                    debug!("host: {:?}", host);
-                    let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port)
-                        .to_socket_addrs()
-                        .unwrap();
-                    let direct_host = direct_host_iter.next().unwrap();
+        /* Now try to find a connection */
+        let mut iterator: Box<dyn Iterator<Item = _>> = Box::new(
+            hosts
+                .into_iter()
+                .map(|host| {
+                    let transit_key = transit_key.clone();
+                    let tside = tside.clone();
+                    async move {
+                        let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port)
+                            .to_socket_addrs()
+                            .unwrap();
+                        let direct_host = direct_host_iter.next().unwrap();
 
-                    debug!("peer host: {}", direct_host);
+                        let transit = TcpStream::connect(direct_host)
+                            .err_into::<TransitHandshakeError>()
+                            .and_then(|socket| {
+                                handshake_exchange(is_leader, tside, socket, host.0, transit_key)
+                            })
+                            .await?;
 
-                    TcpStream::connect(direct_host)
-                        .err_into::<TransitHandshakeError>()
-                        .and_then(|socket| {
-                            handshake_exchange(is_leader, &*tside, socket, host.0, &*transit_key)
-                        })
-                        .await
-                },
-            ); //);
-            handshake_futures.push(future);
-        }
+                        Ok((transit, host.0))
+                    }
+                })
+                .map(futures::stream::once)
+                .map(|stream| stream.left_stream()),
+        );
 
         /* If we allowed the other side to make direct connections to us, we have a listening
          * socket that will attempt to complete handshakes
          */
         if let Some(listener) = listener {
-            handshake_futures.push(async_std::task::spawn(async move {
-                /* Mixing and matching two different futures libraries probably isn't the
-                 * best idea, but here we are. Simply be careful about prelude::* imports
-                 * and don't have both StreamExt/FutureExt/… imported at once
-                 */
-                use futures::stream::TryStreamExt;
-                async_std::stream::StreamExt::skip_while(listener.incoming()
-                    .err_into::<TransitHandshakeError>()
-                    .and_then(move |socket| {
-                        /* Pinning a future + moving some value from outer scope is a bit painful */
-                        let transit_key = transit_key.clone();
-                        let tside = tside.clone();
-                        Box::pin(async move {
-                            handshake_exchange(is_leader, &*tside, socket, HostType::Direct, &*transit_key).await
-                        })
-                    }),
-                    Result::is_err)
-                    /* We only care about the first that succeeds */
-                    .next()
-                    .await
-                    /* Next always returns Some because Incoming is an infinite stream. We gotta succeed _sometime_. */
-                    .unwrap()
-            }));
+            let transit_key = transit_key.clone();
+            let tside = tside.clone();
+            let stream = futures::stream::unfold(listener, |listener| async move {
+                let next = listener.accept().await;
+                Some((next, listener))
+            })
+            .err_into::<TransitHandshakeError>()
+            .and_then(move |(socket, _listener)| {
+                /* We need to clone again because it will be moved into the returned future */
+                let transit_key = transit_key.clone();
+                let tside = tside.clone();
+                handshake_exchange(is_leader, tside, socket, HostType::Direct, transit_key)
+            })
+            .map(|result| result.map(|transit| (transit, HostType::Direct)));
+            iterator = Box::new(iterator.chain(std::iter::once(stream.right_stream())))
         }
 
-        Ok(handshake_futures)
+        futures::stream::select_all(iterator.map(Box::pin))
     }
 }
 
@@ -616,11 +654,6 @@ impl Transit {
     }
 }
 
-fn make_relay_handshake(key: &Key<TransitKey>, tside: &str) -> String {
-    let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
-    format!("please relay {} for side {}\n", sub_key.to_hex(), tside)
-}
-
 /**
  * Do a transit handshake exchange, to establish a direct connection.
  *
@@ -632,10 +665,10 @@ fn make_relay_handshake(key: &Key<TransitKey>, tside: &str) -> String {
  */
 async fn handshake_exchange(
     is_leader: bool,
-    tside: &str,
+    tside: Arc<String>,
     mut socket: TcpStream,
     host_type: HostType,
-    key: &Key<TransitKey>,
+    key: Arc<Key<TransitKey>>,
 ) -> Result<Transit, TransitHandshakeError> {
     // 9. create record keys
     let (rkey, skey) = if is_leader {
@@ -654,8 +687,10 @@ async fn handshake_exchange(
 
     if host_type == HostType::Relay {
         trace!("initiating relay handshake");
+
+        let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
         socket
-            .write_all(make_relay_handshake(key, tside).as_bytes())
+            .write_all(format!("please relay {} for side {}\n", sub_key.to_hex(), tside).as_bytes())
             .await?;
         let mut rx = [0u8; 3];
         socket.read_exact(&mut rx).await?;

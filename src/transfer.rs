@@ -275,6 +275,7 @@ where
     let mut transit = match connector
         .leader_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
+            Arc::new(their_abilities),
             Arc::new(their_hints),
         )
         .await
@@ -454,6 +455,7 @@ where
     let mut transit = match connector
         .leader_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
+            Arc::new(their_abilities),
             Arc::new(their_hints),
         )
         .await
@@ -635,6 +637,7 @@ pub async fn request_file<'a>(
         filename,
         filesize,
         connector,
+        their_abilities: Arc::new(their_abilities),
         their_hints: Arc::new(their_hints),
     };
 
@@ -653,6 +656,7 @@ pub struct ReceiveRequest<'a> {
     /// **Security warning:** this is untrusted and unverified input
     pub filename: PathBuf,
     pub filesize: u64,
+    their_abilities: Arc<Vec<transit::Ability>>,
     their_hints: Arc<transit::Hints>,
 }
 
@@ -683,6 +687,7 @@ impl<'a> ReceiveRequest<'a> {
                 self.wormhole
                     .key()
                     .derive_transit_key(self.wormhole.appid()),
+                self.their_abilities.clone(),
                 self.their_hints.clone(),
             )
             .await
