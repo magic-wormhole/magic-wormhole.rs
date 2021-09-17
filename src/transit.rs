@@ -23,7 +23,7 @@ use async_std::{
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use log::*;
-use std::{collections::HashSet, net::ToSocketAddrs, str::FromStr, sync::Arc};
+use std::{collections::HashSet, str::FromStr, sync::Arc};
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::aead::{Aead, NewAead};
 
@@ -65,6 +65,12 @@ enum TransitHandshakeError {
     HandshakeFailed,
     #[error("Relay handshake failed")]
     RelayHandshakeFailed,
+    #[error("Malformed peer address")]
+    BadAddress(
+        #[from]
+        #[source]
+        std::net::AddrParseError,
+    ),
     #[error("IO error")]
     IO(
         #[from]
@@ -105,6 +111,7 @@ pub enum Ability {
      */
     DirectTcpV1,
     /**
+     * UNSTABLE; NOT IMPLEMENTED!
      * Try to connect directly to the other side via UDT.
      *
      * This supersedes [`Ability::DirectTcpV1`] because it has several advantages:
@@ -156,13 +163,36 @@ pub struct Hints {
     pub relay: Vec<DirectHint>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, derive_more::Display)]
+#[display(fmt = "tcp://{}:{}", hostname, port)]
 pub struct DirectHint {
     // DirectHint also contains a `priority` field, but it is underspecified
     // and we won't use it
     // pub priority: f32,
     pub hostname: String,
     pub port: u16,
+}
+
+use std::convert::{TryFrom, TryInto};
+
+impl TryFrom<&DirectHint> for std::net::IpAddr {
+    type Error = std::net::AddrParseError;
+    fn try_from(hint: &DirectHint) -> Result<std::net::IpAddr, std::net::AddrParseError> {
+        hint.hostname.parse()
+    }
+}
+
+impl TryFrom<&DirectHint> for std::net::SocketAddr {
+    type Error = std::net::AddrParseError;
+    /** This does not do the obvious thing and also implicitly maps all V4 addresses into V6 */
+    fn try_from(hint: &DirectHint) -> Result<std::net::SocketAddr, std::net::AddrParseError> {
+        let addr = hint.try_into()?;
+        let addr = match addr {
+            std::net::IpAddr::V4(v4) => std::net::IpAddr::V6(v4.to_ipv6_mapped()),
+            std::net::IpAddr::V6(_) => addr,
+        };
+        Ok(std::net::SocketAddr::new(addr, hint.port))
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -196,6 +226,48 @@ impl FromStr for RelayUrl {
 }
 
 /**
+ * Bind to a port with SO_REUSEADDR, connect to the destination and then hide the blood behind a pretty [`async_std::net::TcpStream`]
+ *
+ * We want an `async_std::net::TcpStream`, but with SO_REUSEADDR set.
+ * The former is just a wrapper around `async_io::Async<std::net::TcpStream>`, of which we
+ * copy the `connect` method to add a statement that will set the socket flag.
+ * See https://github.com/smol-rs/async-net/issues/20.
+ */
+async fn connect_custom(
+    local_addr: &socket2::SockAddr,
+    dest_addr: &socket2::SockAddr,
+) -> std::io::Result<async_std::net::TcpStream> {
+    let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
+    socket.set_nonblocking(true)?;
+    /* Set our custum options */
+    socket.set_reuse_address(true)?;
+    socket.set_reuse_port(true)?;
+
+    socket.bind(local_addr)?;
+
+    /* Initiate connect */
+    match socket.connect(dest_addr) {
+        Ok(_) => {},
+        #[cfg(unix)]
+        Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) => {},
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {},
+        Err(err) => return Err(err),
+    }
+
+    let stream = async_io::Async::new(std::net::TcpStream::from(socket))?;
+    /* The stream becomes writable when connected. */
+    stream.writable().await?;
+
+    /* Check if there was an error while connecting. */
+    stream
+        .get_ref()
+        .take_error()
+        .and_then(|maybe_err| maybe_err.map_or(Ok(()), Result::Err))?;
+    /* Convert our mess to `async_std::net::TcpStream */
+    Ok(stream.into_inner()?.into())
+}
+
+/**
  * Initialize a relay handshake
  *
  * Bind a port and generate our [`Hints`]. This does not do any communication yet.
@@ -209,18 +281,45 @@ pub async fn init(
 
     /* Detect our local IP addresses if the ability is enabled */
     if abilities.contains(&Ability::DirectTcpV1) {
-        listener = Some(TcpListener::bind("[::]:0").await?);
-        let port = listener.as_ref().unwrap().local_addr()?.port();
+        /* Bind a port and find out which addresses it has */
+        let socket =
+            socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None).unwrap();
+        socket.set_nonblocking(false).unwrap();
+        socket.set_reuse_address(true).unwrap();
+        socket.set_reuse_port(true).unwrap();
+
+        socket
+            .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
+            .unwrap();
+
+        let port = socket.local_addr().unwrap().as_socket().unwrap().port();
+
+        /* Do the same thing again, but this time open a listener on that port.
+         * This sadly doubles the number of hints, but the method above doesn't work
+         * for systems which don't have any firewalls.
+         */
+        let socket2 = TcpListener::bind("[::]:0").await?;
+        let port2 = socket2.local_addr().unwrap().port();
 
         our_hints.direct_tcp.extend(
             get_if_addrs::get_if_addrs()?
                 .iter()
                 .filter(|iface| !iface.is_loopback())
-                .map(|ip| DirectHint {
-                    hostname: ip.ip().to_string(),
-                    port,
-                }),
+                .flat_map(|ip|
+                    /* TODO replace with array once into_iter works as it should */
+                    vec![
+                        DirectHint {
+                            hostname: ip.ip().to_string(),
+                            port,
+                        },
+                        DirectHint {
+                            hostname: ip.ip().to_string(),
+                            port: port2,
+                        },
+                    ].into_iter()),
         );
+
+        listener = Some((socket, socket2));
     }
 
     if abilities.contains(&Ability::RelayV1) {
@@ -231,7 +330,7 @@ pub async fn init(
     }
 
     Ok(TransitConnector {
-        listener,
+        sockets: listener,
         our_abilities: Arc::new(abilities),
         our_hints: Arc::new(our_hints),
     })
@@ -245,8 +344,11 @@ pub async fn init(
  * are protocol agnostic.
  */
 pub struct TransitConnector {
-    /* Only `Some` if direct-tcp-v1 ability has been enabled. */
-    listener: Option<TcpListener>,
+    /* Only `Some` if direct-tcp-v1 ability has been enabled.
+     * The first socket is the port from which we will start connection attempts.
+     * For in case the user is behind no firewalls, we must also listen to the second socket.
+     */
+    sockets: Option<(socket2::Socket, TcpListener)>,
     our_abilities: Arc<Vec<Ability>>,
     our_hints: Arc<Hints>,
 }
@@ -271,7 +373,7 @@ impl TransitConnector {
         their_hints: Arc<Hints>,
     ) -> Result<Transit, TransitConnectError> {
         let Self {
-            listener,
+            sockets,
             our_abilities,
             our_hints,
         } = self;
@@ -286,23 +388,29 @@ impl TransitConnector {
                 our_hints,
                 their_abilities,
                 their_hints,
-                listener,
+                sockets,
             )
             .filter_map(|result| async {
                 match result {
                     Ok(val) => Some(val),
                     Err(err) => {
-                        log::debug!("Some leader handshake failed: {}", err);
+                        log::debug!("Some leader handshake failed: {:?}", err);
                         None
                     },
                 }
             }),
         );
 
-        let (mut transit, host_type) = connection_stream
-            .next()
-            .await
-            .ok_or(TransitConnectError::Handshake)?;
+        let (mut transit, host_type) = async_std::future::timeout(
+            std::time::Duration::from_secs(60),
+            connection_stream.next(),
+        )
+        .await
+        .map_err(|_| {
+            log::debug!("`leader_connect` timed out");
+            TransitConnectError::Handshake
+        })?
+        .ok_or(TransitConnectError::Handshake)?;
 
         if host_type == HostType::Relay && our_abilities.contains(&Ability::DirectTcpV1) {
             log::debug!(
@@ -358,7 +466,7 @@ impl TransitConnector {
         their_hints: Arc<Hints>,
     ) -> Result<Transit, TransitConnectError> {
         let Self {
-            listener,
+            sockets,
             our_abilities,
             our_hints,
         } = self;
@@ -372,13 +480,13 @@ impl TransitConnector {
                 our_hints,
                 their_abilities,
                 their_hints,
-                listener,
+                sockets,
             )
             .filter_map(|result| async {
                 match result {
                     Ok(val) => Some(val),
                     Err(err) => {
-                        log::debug!("Some follower handshake failed: {}", err);
+                        log::debug!("Some follower handshake failed: {:?}", err);
                         None
                     },
                 }
@@ -402,7 +510,10 @@ impl TransitConnector {
                 );
                 Ok(transit)
             },
-            Ok(None) | Err(_) => Err(TransitConnectError::Handshake),
+            Ok(None) | Err(_) => {
+                log::debug!("`follower_connect` timed out");
+                Err(TransitConnectError::Handshake)
+            },
         };
 
         /* Cancel all remaining non-finished handshakes. We could send "nevermind" to explicitly tell
@@ -427,88 +538,155 @@ impl TransitConnector {
         transit_key: Arc<Key<TransitKey>>,
         our_abilities: Arc<Vec<Ability>>,
         our_hints: Arc<Hints>,
-        _their_abilities: Arc<Vec<Ability>>,
+        their_abilities: Arc<Vec<Ability>>,
         their_hints: Arc<Hints>,
-        listener: Option<TcpListener>,
-    ) -> impl Stream<Item = Result<(Transit, HostType), TransitHandshakeError>> {
-        assert!(listener.is_some() == our_abilities.contains(&Ability::DirectTcpV1));
+        socket: Option<(socket2::Socket, TcpListener)>,
+    ) -> impl Stream<Item = Result<(Transit, HostType), TransitHandshakeError>> + 'static {
+        assert!(socket.is_some() == our_abilities.contains(&Ability::DirectTcpV1));
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
 
-        /* Process the peer's information first. We only take up to 20 items to prevent DOS,
-         * this should be absolutely more than enough.
+        /* Iterator of futures yielding a connection. They'll be then mapped with the handshake, collected into
+         * a Vec and polled concurrently.
          */
-        let mut hosts: HashSet<(HostType, DirectHint)> = HashSet::new();
-        hosts.extend(
-            their_hints
-                .direct_tcp
-                .iter()
-                .map(|hint| (HostType::Direct, hint.clone()))
-                .chain(
+        use futures::future::BoxFuture;
+        type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
+        type ConnectorFuture =
+            BoxFuture<'static, Result<(TcpStream, HostType), TransitHandshakeError>>;
+        // type ConnectorIterator = Box<dyn Iterator<Item = ConnectorFuture>>;
+        let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
+
+        /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
+         * be empty and no entries will be pushed.
+         */
+        let socket2 = if let Some((socket, socket2)) = socket {
+            let local_addr = Arc::new(socket.local_addr().unwrap());
+            dbg!(&their_hints.direct_tcp);
+            /* Connect to each hint of the peer */
+            connectors = Box::new(
+                connectors.chain(
                     their_hints
-                        .relay
-                        .iter()
-                        .map(|hint| (HostType::Relay, hint.clone())),
-                )
-                .take(20),
-        );
-        hosts.extend(
-            our_hints
-                .relay
-                .iter()
-                .map(|hint| (HostType::Relay, hint.clone())),
-        );
+                        .direct_tcp
+                        .clone()
+                        .into_iter()
+                        /* Nobody should have that many IP addresses, even with NATing */
+                        .take(10)
+                        .map(move |hint| {
+                            let local_addr = local_addr.clone();
+                            async move {
+                                let dest_addr = std::net::SocketAddr::try_from(&hint)?;
+                                log::debug!("Connecting directly to {}", dest_addr);
+                                let socket = connect_custom(&local_addr, &dest_addr.into()).await?;
+                                log::debug!("Connected to {}!", dest_addr);
+                                Ok((socket, HostType::Direct))
+                            }
+                        })
+                        .map(|fut| Box::pin(fut) as ConnectorFuture),
+                ),
+            ) as BoxIterator<ConnectorFuture>;
+            Some(socket2)
+        } else {
+            None
+        };
 
-        /* Now try to find a connection */
-        let mut iterator: Box<dyn Iterator<Item = _>> = Box::new(
-            hosts
-                .into_iter()
-                .map(|host| {
-                    let transit_key = transit_key.clone();
-                    let tside = tside.clone();
-                    async move {
-                        let mut direct_host_iter = format!("{}:{}", host.1.hostname, host.1.port)
-                            .to_socket_addrs()
-                            .unwrap();
-                        let direct_host = direct_host_iter.next().unwrap();
-
-                        let transit = TcpStream::connect(direct_host)
+        /* Relay hints. Make sure that both sides adverize it, since it is fine to support it without providing own hints. */
+        if our_abilities.contains(&Ability::RelayV1) && their_abilities.contains(&Ability::RelayV1)
+        {
+            connectors = Box::new(
+                connectors.chain(
+                /* TODO maybe take 2 at random instead of always the first two? */
+                /* TODO also deduplicate the results list */
+                our_hints
+                    .relay
+                    .clone()
+                    .into_iter()
+                    .take(2)
+                    .chain(
+                        their_hints
+                            .relay
+                            .clone()
+                            .into_iter()
+                            .take(2)
+                    )
+                    .map(|host| async move {
+                        log::debug!("Connecting to relay {}", host);
+                        let transit = TcpStream::connect((host.hostname.as_str(), host.port))
                             .err_into::<TransitHandshakeError>()
-                            .and_then(|socket| {
-                                handshake_exchange(is_leader, tside, socket, host.0, transit_key)
-                            })
                             .await?;
+                        log::debug!("Connected to {}!", host);
 
-                        Ok((transit, host.0))
-                    }
-                })
-                .map(futures::stream::once)
-                .map(|stream| stream.left_stream()),
-        );
-
-        /* If we allowed the other side to make direct connections to us, we have a listening
-         * socket that will attempt to complete handshakes
-         */
-        if let Some(listener) = listener {
-            let transit_key = transit_key.clone();
-            let tside = tside.clone();
-            let stream = futures::stream::unfold(listener, |listener| async move {
-                let next = listener.accept().await;
-                Some((next, listener))
-            })
-            .err_into::<TransitHandshakeError>()
-            .and_then(move |(socket, _listener)| {
-                /* We need to clone again because it will be moved into the returned future */
-                let transit_key = transit_key.clone();
-                let tside = tside.clone();
-                handshake_exchange(is_leader, tside, socket, HostType::Direct, transit_key)
-            })
-            .map(|result| result.map(|transit| (transit, HostType::Direct)));
-            iterator = Box::new(iterator.chain(std::iter::once(stream.right_stream())))
+                        Ok((transit, HostType::Relay))
+                    })
+                    .map(|fut| Box::pin(fut) as ConnectorFuture)
+            ),
+            ) as BoxIterator<ConnectorFuture>;
         }
 
-        futures::stream::select_all(iterator.map(Box::pin))
+        /* Do a handshake on all our found connections */
+        let transit_key2 = transit_key.clone();
+        let tside2 = tside.clone();
+        let mut connectors = Box::new(
+            connectors
+                .map(move |fut| {
+                    let transit_key = transit_key2.clone();
+                    let tside = tside2.clone();
+                    async move {
+                        let (socket, host_type) = fut.await?;
+                        let transit =
+                            handshake_exchange(is_leader, tside, socket, host_type, transit_key)
+                                .await?;
+                        Ok((transit, host_type))
+                    }
+                })
+                .map(|fut| {
+                    Box::pin(fut) as BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>
+                }),
+        )
+            as BoxIterator<BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>>;
+
+        /* Also listen on some port just in case. */
+        if let Some(socket2) = socket2 {
+            connectors = Box::new(
+                connectors.chain(
+                    std::iter::once(async move {
+                        let transit_key = transit_key.clone();
+                        let tside = tside.clone();
+                        let connect = || async {
+                            let (stream, peer) = socket2.accept().await?;
+                            log::debug!("Got connection from {}!", peer);
+                            let transit = handshake_exchange(
+                                is_leader,
+                                tside.clone(),
+                                stream,
+                                HostType::Direct,
+                                transit_key.clone(),
+                            )
+                            .await?;
+                            Result::<_, TransitHandshakeError>::Ok((transit, HostType::Direct))
+                        };
+                        loop {
+                            match connect().await {
+                                Ok(success) => break Ok(success),
+                                Err(err) => {
+                                    log::debug!(
+                                        "Some handshake failed on the listening port: {:?}",
+                                        err
+                                    );
+                                    continue;
+                                },
+                            }
+                        }
+                    })
+                    .map(|fut| {
+                        Box::pin(fut)
+                            as BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>
+                    }),
+                ),
+            )
+                as BoxIterator<BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>>;
+        }
+        connectors.collect::<futures::stream::futures_unordered::FuturesUnordered<_>>()
     }
 }
 
