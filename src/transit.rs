@@ -734,7 +734,12 @@ impl Transit {
 
             // 2. read that many bytes into an array (or a vector?)
             let mut buffer = Vec::with_capacity(length);
-            socket.take(length as u64).read_to_end(&mut buffer).await?;
+            let len = socket.take(length as u64).read_to_end(&mut buffer).await?;
+            use std::io::{Error, ErrorKind};
+            ensure!(
+                len == length,
+                Error::new(ErrorKind::UnexpectedEof, "failed to read whole message")
+            );
             buffer
         };
 
