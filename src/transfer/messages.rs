@@ -1,13 +1,13 @@
 //! Over-the-wire messages for the file transfer (including transit)
 //!
 //! The transit protocol does not specify how to deliver the information to
-//! the other side, so it is up to the file transfer to do that.
+//! the other side, so it is up to the file transfer to do that. hfoo
 
 use crate::transit::{self, Ability, DirectHint};
 use serde_derive::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 /**
  * The type of message exchanged over the wormhole for this protocol
@@ -131,15 +131,17 @@ impl From<transit::Hints> for Vec<Hint> {
 
 impl Into<transit::Hints> for Vec<Hint> {
     fn into(self) -> transit::Hints {
-        let mut direct_tcp = Vec::new();
-        let mut relay = Vec::new();
+        let mut direct_tcp = HashSet::new();
+        let mut relay = HashSet::new();
 
         /* There is only one "relay hint", though it may contain multiple
          * items. Yes, this is inconsistent and weird, watch your step.
          */
         for hint in self {
             match hint {
-                Hint::DirectTcpV1(hint) => direct_tcp.push(hint),
+                Hint::DirectTcpV1(hint) => {
+                    direct_tcp.insert(hint);
+                },
                 Hint::DirectUdtV1(_) => unimplemented!(),
                 Hint::RelayV1(RelayHint { hints }) => relay.extend(hints),
             }
@@ -163,22 +165,24 @@ pub enum Hint {
 }
 
 impl Hint {
-    pub fn new_direct_tcp(priority: f32, hostname: &str, port: u16) -> Self {
+    pub fn new_direct_tcp(_priority: f32, hostname: &str, port: u16) -> Self {
         Hint::DirectTcpV1(DirectHint {
             hostname: hostname.to_string(),
             port,
         })
     }
 
-    pub fn new_direct_udt(priority: f32, hostname: &str, port: u16) -> Self {
+    pub fn new_direct_udt(_priority: f32, hostname: &str, port: u16) -> Self {
         Hint::DirectUdtV1(DirectHint {
             hostname: hostname.to_string(),
             port,
         })
     }
 
-    pub fn new_relay(h: Vec<DirectHint>) -> Self {
-        Hint::RelayV1(RelayHint { hints: h })
+    pub fn new_relay(h: HashSet<DirectHint>) -> Self {
+        Hint::RelayV1(RelayHint {
+            hints: h.into_iter().collect(),
+        })
     }
 }
 
@@ -196,10 +200,14 @@ mod test {
         let abilities = vec![Ability::DirectTcpV1, Ability::RelayV1];
         let hints = vec![
             Hint::new_direct_tcp(0.0, "192.168.1.8", 46295),
-            Hint::new_relay(vec![DirectHint {
-                hostname: "magic-wormhole-transit.debian.net".to_string(),
-                port: 4001,
-            }]),
+            Hint::new_relay(
+                vec![DirectHint {
+                    hostname: "magic-wormhole-transit.debian.net".to_string(),
+                    port: 4001,
+                }]
+                .into_iter()
+                .collect(),
+            ),
         ];
         let t = crate::transfer::PeerMessage::new_transit(abilities, hints);
         assert_eq!(t.serialize(), "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001}],\"type\":\"relay-v1\"}]}}")
