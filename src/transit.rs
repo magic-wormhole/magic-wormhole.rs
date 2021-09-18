@@ -267,6 +267,96 @@ async fn connect_custom(
     Ok(stream.into_inner()?.into())
 }
 
+/** Perform a STUN query to get the external IP address */
+async fn get_external_ip() -> std::io::Result<(std::net::SocketAddr, TcpStream)> {
+    let mut socket = connect_custom(
+        &"[::]:0".parse::<std::net::SocketAddr>().unwrap().into(),
+        &"stun.stunprotocol.org:3478"
+            .to_socket_addrs()?
+            /* If you find yourself behind a NAT66, open an issue */
+            .find(|x| x.is_ipv4())
+            /* TODO add a helper method to stdlib for this */
+            .map(|addr| match addr {
+                std::net::SocketAddr::V4(v4) => std::net::SocketAddr::new(
+                    std::net::IpAddr::V6(v4.ip().to_ipv6_mapped()),
+                    v4.port(),
+                ),
+                std::net::SocketAddr::V6(_) => unreachable!(),
+            })
+            .unwrap()
+            .into(),
+    )
+    .await?;
+
+    use bytecodec::{DecodeExt, EncodeExt};
+    use std::net::{SocketAddr, ToSocketAddrs};
+    use stun_codec::{
+        rfc5389::{
+            self,
+            attributes::{MappedAddress, Software, XorMappedAddress},
+            Attribute,
+        },
+        Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
+    };
+
+    fn get_binding_request() -> Result<Vec<u8>, bytecodec::Error> {
+        use rand::Rng;
+        let random_bytes = rand::thread_rng().gen::<[u8; 12]>();
+
+        let mut message = Message::new(
+            MessageClass::Request,
+            rfc5389::methods::BINDING,
+            TransactionId::new(random_bytes),
+        );
+
+        message.add_attribute(Attribute::Software(Software::new(
+            "magic-wormhole-rust".to_owned(),
+        )?));
+
+        // Encodes the message
+        let mut encoder = MessageEncoder::new();
+        let bytes = encoder.encode_into_bytes(message.clone())?;
+        Ok(bytes)
+    }
+
+    fn decode_address(buf: &[u8]) -> Result<SocketAddr, bytecodec::Error> {
+        let mut decoder = MessageDecoder::<Attribute>::new();
+        let decoded = decoder.decode_from_bytes(buf)??;
+
+        println!("Decoded message: {:?}", decoded);
+
+        let external_addr1 = decoded
+            .get_attribute::<XorMappedAddress>()
+            .map(|x| x.address());
+        //let external_addr2 = decoded.get_attribute::<XorMappedAddress2>().map(|x|x.address());
+        let external_addr3 = decoded
+            .get_attribute::<MappedAddress>()
+            .map(|x| x.address());
+        let external_addr = external_addr1
+            // .or(external_addr2)
+            .or(external_addr3);
+        let external_addr = external_addr.unwrap();
+
+        Ok(external_addr)
+    }
+
+    /* Connect the plugs */
+
+    socket
+        .write_all(get_binding_request().expect("TODO").as_ref())
+        .await?;
+
+    let mut buf = [0u8; 256];
+    /* Read header first */
+    socket.read_exact(&mut buf[..20]).await?;
+    let len: u16 = u16::from_be_bytes([buf[2], buf[3]]);
+    /* Read the rest of the message */
+    socket.read_exact(&mut buf[20..][..len as usize]).await?;
+    let external_addr = decode_address(&buf[..20 + len as usize]).expect("TODO");
+
+    Ok((external_addr, socket))
+}
+
 /**
  * Initialize a relay handshake
  *
@@ -279,28 +369,49 @@ pub async fn init(
     let mut our_hints = Hints::default();
     let mut listener = None;
 
-    /* Detect our local IP addresses if the ability is enabled */
+    /* Detect our IP addresses if the ability is enabled */
     if abilities.contains(&Ability::DirectTcpV1) {
-        /* Bind a port and find out which addresses it has */
-        let socket =
-            socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None).unwrap();
-        socket.set_nonblocking(false).unwrap();
-        socket.set_reuse_address(true).unwrap();
-        socket.set_reuse_port(true).unwrap();
+        /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
+         * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
+         * and use that instead.
+         */
+        let socket: MaybeConnectedSocket = match get_external_ip().await {
+            Ok((external_ip, stream)) => {
+                log::debug!("Our external IP address is {}", external_ip);
+                our_hints.direct_tcp.push(DirectHint {
+                    hostname: external_ip.ip().to_string(),
+                    port: external_ip.port(),
+                });
+                stream.into()
+            },
+            Err(err) => {
+                log::debug!("Failed to get external address via STUN, {}", err);
+                let socket =
+                    socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
+                        .unwrap();
+                socket.set_nonblocking(false).unwrap();
+                socket.set_reuse_address(true).unwrap();
+                socket.set_reuse_port(true).unwrap();
 
-        socket
-            .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
-            .unwrap();
+                socket
+                    .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
+                    .unwrap();
 
-        let port = socket.local_addr().unwrap().as_socket().unwrap().port();
+                socket.into()
+            },
+        };
 
-        /* Do the same thing again, but this time open a listener on that port.
+        /* Get a second socket, but this time open a listener on that port.
          * This sadly doubles the number of hints, but the method above doesn't work
-         * for systems which don't have any firewalls.
+         * for systems which don't have any firewalls. Also, this time we can't reuse
+         * the port. In theory, we could, but it really confused the kernel to the point
+         * of `accept` calls never returning again.
          */
         let socket2 = TcpListener::bind("[::]:0").await?;
-        let port2 = socket2.local_addr().unwrap().port();
 
+        /* Find our ports, iterate all our local addresses, combine them with the ports and that's our hints */
+        let port = socket.local_addr()?.as_socket().unwrap().port();
+        let port2 = socket2.local_addr()?.port();
         our_hints.direct_tcp.extend(
             get_if_addrs::get_if_addrs()?
                 .iter()
@@ -336,6 +447,23 @@ pub async fn init(
     })
 }
 
+#[derive(derive_more::From)]
+enum MaybeConnectedSocket {
+    #[from]
+    Socket(socket2::Socket),
+    #[from]
+    Stream(TcpStream),
+}
+
+impl MaybeConnectedSocket {
+    fn local_addr(&self) -> std::io::Result<socket2::SockAddr> {
+        match &self {
+            Self::Socket(socket) => socket.local_addr(),
+            Self::Stream(stream) => Ok(stream.local_addr()?.into()),
+        }
+    }
+}
+
 /**
  * A partially set up [`Transit`] connection.
  *
@@ -348,7 +476,7 @@ pub struct TransitConnector {
      * The first socket is the port from which we will start connection attempts.
      * For in case the user is behind no firewalls, we must also listen to the second socket.
      */
-    sockets: Option<(socket2::Socket, TcpListener)>,
+    sockets: Option<(MaybeConnectedSocket, TcpListener)>,
     our_abilities: Arc<Vec<Ability>>,
     our_hints: Arc<Hints>,
 }
@@ -540,7 +668,7 @@ impl TransitConnector {
         our_hints: Arc<Hints>,
         their_abilities: Arc<Vec<Ability>>,
         their_hints: Arc<Hints>,
-        socket: Option<(socket2::Socket, TcpListener)>,
+        socket: Option<(MaybeConnectedSocket, TcpListener)>,
     ) -> impl Stream<Item = Result<(Transit, HostType), TransitHandshakeError>> + 'static {
         assert!(socket.is_some() == our_abilities.contains(&Ability::DirectTcpV1));
 
