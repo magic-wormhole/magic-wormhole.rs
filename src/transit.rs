@@ -159,8 +159,8 @@ impl Ability {
 
 #[derive(Clone, Debug, Default)]
 pub struct Hints {
-    pub direct_tcp: Vec<DirectHint>,
-    pub relay: Vec<DirectHint>,
+    pub direct_tcp: HashSet<DirectHint>,
+    pub relay: HashSet<DirectHint>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, derive_more::Display)]
@@ -289,8 +289,26 @@ async fn connect_custom(
     Ok(stream.into_inner()?.into())
 }
 
+#[derive(Debug, thiserror::Error)]
+enum StunError {
+    #[error("No V4 addresses were found for the selected STUN server")]
+    ServerIsV4Only,
+    #[error("IO error")]
+    IO(
+        #[from]
+        #[source]
+        std::io::Error,
+    ),
+    #[error("Malformed STUN packet")]
+    Codec(
+        #[from]
+        #[source]
+        bytecodec::Error,
+    ),
+}
+
 /** Perform a STUN query to get the external IP address */
-async fn get_external_ip() -> std::io::Result<(std::net::SocketAddr, TcpStream)> {
+async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunError> {
     let mut socket = connect_custom(
         &"[::]:0".parse::<std::net::SocketAddr>().unwrap().into(),
         &"stun.stunprotocol.org:3478"
@@ -305,7 +323,7 @@ async fn get_external_ip() -> std::io::Result<(std::net::SocketAddr, TcpStream)>
                 ),
                 std::net::SocketAddr::V6(_) => unreachable!(),
             })
-            .unwrap()
+            .ok_or(StunError::ServerIsV4Only)?
             .into(),
     )
     .await?;
@@ -364,9 +382,7 @@ async fn get_external_ip() -> std::io::Result<(std::net::SocketAddr, TcpStream)>
 
     /* Connect the plugs */
 
-    socket
-        .write_all(get_binding_request().expect("TODO").as_ref())
-        .await?;
+    socket.write_all(get_binding_request()?.as_ref()).await?;
 
     let mut buf = [0u8; 256];
     /* Read header first */
@@ -374,7 +390,7 @@ async fn get_external_ip() -> std::io::Result<(std::net::SocketAddr, TcpStream)>
     let len: u16 = u16::from_be_bytes([buf[2], buf[3]]);
     /* Read the rest of the message */
     socket.read_exact(&mut buf[20..][..len as usize]).await?;
-    let external_addr = decode_address(&buf[..20 + len as usize]).expect("TODO");
+    let external_addr = decode_address(&buf[..20 + len as usize])?;
 
     Ok((external_addr, socket))
 }
@@ -400,7 +416,7 @@ pub async fn init(
         let socket: MaybeConnectedSocket = match get_external_ip().await {
             Ok((external_ip, stream)) => {
                 log::debug!("Our external IP address is {}", external_ip);
-                our_hints.direct_tcp.push(DirectHint {
+                our_hints.direct_tcp.insert(DirectHint {
                     hostname: external_ip.ip().to_string(),
                     port: external_ip.port(),
                 });
@@ -454,7 +470,7 @@ pub async fn init(
     }
 
     if abilities.contains(&Ability::RelayV1) {
-        our_hints.relay.push(DirectHint {
+        our_hints.relay.insert(DirectHint {
             hostname: relay_url.host.clone(),
             port: relay_url.port,
         });
@@ -702,7 +718,6 @@ impl TransitConnector {
         type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
         type ConnectorFuture =
             BoxFuture<'static, Result<(TcpStream, HostType), TransitHandshakeError>>;
-        // type ConnectorIterator = Box<dyn Iterator<Item = ConnectorFuture>>;
         let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
 
         /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
@@ -710,7 +725,6 @@ impl TransitConnector {
          */
         let socket2 = if let Some((socket, socket2)) = socket {
             let local_addr = Arc::new(socket.local_addr().unwrap());
-            dbg!(&their_hints.direct_tcp);
             /* Connect to each hint of the peer */
             connectors = Box::new(
                 connectors.chain(
@@ -741,33 +755,29 @@ impl TransitConnector {
         /* Relay hints. Make sure that both sides adverize it, since it is fine to support it without providing own hints. */
         if our_abilities.contains(&Ability::RelayV1) && their_abilities.contains(&Ability::RelayV1)
         {
+            /* Collect intermediate into HashSet for deduplication */
+            let relay_hints = our_hints
+                .relay
+                .clone()
+                .into_iter()
+                .take(2)
+                .chain(their_hints.relay.clone().into_iter().take(2))
+                .collect::<HashSet<DirectHint>>();
             connectors = Box::new(
                 connectors.chain(
-                /* TODO maybe take 2 at random instead of always the first two? */
-                /* TODO also deduplicate the results list */
-                our_hints
-                    .relay
-                    .clone()
-                    .into_iter()
-                    .take(2)
-                    .chain(
-                        their_hints
-                            .relay
-                            .clone()
-                            .into_iter()
-                            .take(2)
-                    )
-                    .map(|host| async move {
-                        log::debug!("Connecting to relay {}", host);
-                        let transit = TcpStream::connect((host.hostname.as_str(), host.port))
-                            .err_into::<TransitHandshakeError>()
-                            .await?;
-                        log::debug!("Connected to {}!", host);
+                    relay_hints
+                        .into_iter()
+                        .map(|host| async move {
+                            log::debug!("Connecting to relay {}", host);
+                            let transit = TcpStream::connect((host.hostname.as_str(), host.port))
+                                .err_into::<TransitHandshakeError>()
+                                .await?;
+                            log::debug!("Connected to {}!", host);
 
-                        Ok((transit, HostType::Relay))
-                    })
-                    .map(|fut| Box::pin(fut) as ConnectorFuture)
-            ),
+                            Ok((transit, HostType::Relay))
+                        })
+                        .map(|fut| Box::pin(fut) as ConnectorFuture),
+                ),
             ) as BoxIterator<ConnectorFuture>;
         }
 
