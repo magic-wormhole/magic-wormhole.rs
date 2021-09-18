@@ -37,7 +37,7 @@ futures_ringbuf = "0.3.1"
 tar = "0.4.33"
 chrono = "0.4.19"
 
-derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref"] }
+derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
 thiserror = "1.0.24"
 
 futures = "0.3.12"
@@ -46,6 +46,8 @@ async-tungstenite = { version = "0.14.0", features = ["async-std-runtime", "asyn
 async-io = "1.6.0"
 socket2 = "0.4.1"
 libc = "0.2.101"
+stun_codec = "0.1.13"
+bytecodec = "0.4.15"
 
 # for "bin" feature
 clap = { version = "2.33.3", optional = true }
