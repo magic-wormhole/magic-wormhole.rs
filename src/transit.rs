@@ -225,6 +225,30 @@ impl FromStr for RelayUrl {
     }
 }
 
+fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
+    socket.set_nonblocking(true)?;
+
+    /* See https://stackoverflow.com/a/14388707/6094756.
+     * On most BSD and Linux systems, we need both REUSEADDR and REUSEPORT;
+     * and if they don't support the latter we won't compile.
+     * On Windows, there is only REUSEADDR but it does what we want.
+     */
+    socket.set_reuse_address(true)?;
+    #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
+    {
+        socket.set_reuse_port(true)?;
+    }
+    #[cfg(not(any(
+        all(unix, not(any(target_os = "solaris", target_os = "illumos"))),
+        target_os = "windows"
+    )))]
+    {
+        compile_error!("Your system is not supported yet, please raise an error");
+    }
+
+    Ok(())
+}
+
 /**
  * Bind to a port with SO_REUSEADDR, connect to the destination and then hide the blood behind a pretty [`async_std::net::TcpStream`]
  *
@@ -238,10 +262,8 @@ async fn connect_custom(
     dest_addr: &socket2::SockAddr,
 ) -> std::io::Result<async_std::net::TcpStream> {
     let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
-    socket.set_nonblocking(true)?;
     /* Set our custum options */
-    socket.set_reuse_address(true)?;
-    socket.set_reuse_port(true)?;
+    set_socket_opts(&socket)?;
 
     socket.bind(local_addr)?;
 
@@ -389,9 +411,7 @@ pub async fn init(
                 let socket =
                     socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
                         .unwrap();
-                socket.set_nonblocking(false).unwrap();
-                socket.set_reuse_address(true).unwrap();
-                socket.set_reuse_port(true).unwrap();
+                set_socket_opts(&socket)?;
 
                 socket
                     .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
