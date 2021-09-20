@@ -29,6 +29,10 @@ use xsalsa20poly1305::aead::{Aead, NewAead};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
+// No need to make public, it's hard-coded anyways (:
+// Open an issue if you want an API for this
+// Use <stun.stunprotocol.org:3478> for non-production testing
+const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 #[derive(Debug)]
 pub struct TransitKey;
@@ -293,6 +297,8 @@ async fn connect_custom(
 enum StunError {
     #[error("No V4 addresses were found for the selected STUN server")]
     ServerIsV4Only,
+    #[error("Connection timed out")]
+    Timeout,
     #[error("IO error")]
     IO(
         #[from]
@@ -311,7 +317,7 @@ enum StunError {
 async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunError> {
     let mut socket = connect_custom(
         &"[::]:0".parse::<std::net::SocketAddr>().unwrap().into(),
-        &"stun.stunprotocol.org:3478"
+        &PUBLIC_STUN_SERVER
             .to_socket_addrs()?
             /* If you find yourself behind a NAT66, open an issue */
             .find(|x| x.is_ipv4())
@@ -413,29 +419,35 @@ pub async fn init(
          * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
          * and use that instead.
          */
-        let socket: MaybeConnectedSocket = match get_external_ip().await {
-            Ok((external_ip, stream)) => {
-                log::debug!("Our external IP address is {}", external_ip);
-                our_hints.direct_tcp.insert(DirectHint {
-                    hostname: external_ip.ip().to_string(),
-                    port: external_ip.port(),
-                });
-                stream.into()
-            },
-            Err(err) => {
-                log::debug!("Failed to get external address via STUN, {}", err);
-                let socket =
-                    socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
+        let socket: MaybeConnectedSocket =
+            match async_std::future::timeout(std::time::Duration::from_secs(4), get_external_ip())
+                .await
+                .map_err(|_| StunError::Timeout)
+            {
+                Ok(Ok((external_ip, stream))) => {
+                    log::debug!("Our external IP address is {}", external_ip);
+                    our_hints.direct_tcp.insert(DirectHint {
+                        hostname: external_ip.ip().to_string(),
+                        port: external_ip.port(),
+                    });
+                    stream.into()
+                },
+                // TODO replace with .flatten() once stable
+                // https://github.com/rust-lang/rust/issues/70142
+                Err(err) | Ok(Err(err)) => {
+                    log::debug!("Failed to get external address via STUN, {}", err);
+                    let socket =
+                        socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
+                            .unwrap();
+                    set_socket_opts(&socket)?;
+
+                    socket
+                        .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
                         .unwrap();
-                set_socket_opts(&socket)?;
 
-                socket
-                    .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
-                    .unwrap();
-
-                socket.into()
-            },
-        };
+                    socket.into()
+                },
+            };
 
         /* Get a second socket, but this time open a listener on that port.
          * This sadly doubles the number of hints, but the method above doesn't work
