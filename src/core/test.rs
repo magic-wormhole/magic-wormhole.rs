@@ -47,9 +47,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                     std::fs::metadata("examples/example-file.bin")
                         .unwrap()
                         .len(),
-                    |sent, total| {
-                        log::info!("Sent {} of {} bytes", sent, total);
-                    },
+                    |_sent, _total| {},
                 )
                 .await?,
             )
@@ -72,13 +70,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             .await?;
 
             let mut buffer = Vec::<u8>::new();
-            req.accept(
-                |received, total| {
-                    log::info!("Received {} of {} bytes", received, total);
-                },
-                &mut buffer,
-            )
-            .await?;
+            req.accept(|_received, _total| {}, &mut buffer).await?;
             Ok(buffer)
         })?;
 
