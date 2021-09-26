@@ -160,7 +160,6 @@ async fn main() -> eyre::Result<()> {
     let clap = App::new(crate_name!())
         .version(crate_version!())
         .about(crate_description!())
-        .setting(AppSettings::AllowExternalSubcommands)
         .setting(AppSettings::ArgRequiredElseHelp)
         .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::DisableHelpSubcommand)
@@ -175,6 +174,7 @@ async fn main() -> eyre::Result<()> {
         .subcommand(send_command)
         .subcommand(send_many_command)
         .subcommand(receive_command)
+        .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
         .arg(log_arg);
     let matches = clap.get_matches();
 
@@ -266,28 +266,11 @@ async fn main() -> eyre::Result<()> {
         )
         .await?;
         wormhole.close().await?;
+    } else if let Some(_matches) = matches.subcommand_matches("help") {
+        println!("Use --help to get help");
+        std::process::exit(1);
     } else {
-        let _code = matches.subcommand_name();
-        // TODO implement this properly once clap 3.0 is out
-        // if might_be_code(code) {
-        writeln!(
-            &term,
-            "No command provided, assuming you simply want to receive a file."
-        )?;
-        writeln!(&term, "To receive files, use `wormhole receive <CODE>`.")?;
-        writeln!(
-            &term,
-            "To list all available commands and options, type `wormhole --help`"
-        )?;
-        writeln!(
-            &term,
-            "Please refer to `{} --help` for further usage instructions.",
-            crate_name!()
-        )?;
-        // } else {
-        // clap.print_long_help();
-        // }
-        unimplemented!();
+        unreachable!()
     }
 
     Ok(())
@@ -354,14 +337,6 @@ async fn parse_and_connect(
     };
     writeln!(term, "Successfully connected to peer.")?;
     eyre::Result::<_>::Ok((wormhole, code, relay_server))
-}
-
-fn _might_be_code(_code: Option<&str>) -> bool {
-    // let re = Regex::new(r"\d+-\w+-\w+").unwrap();
-    // if !re.is_match(&line) {
-    //     panic!("Not a valid code format");
-    // }
-    unimplemented!()
 }
 
 fn create_progress_bar(file_size: u64) -> ProgressBar {
