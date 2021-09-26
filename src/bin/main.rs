@@ -560,7 +560,7 @@ async fn receive(
             req.filename.display(),
             req.filesize
         ),
-        false,
+        true,
     )
     .await
     {
