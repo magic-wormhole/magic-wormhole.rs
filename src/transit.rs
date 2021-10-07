@@ -23,12 +23,12 @@ use async_std::{
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use log::*;
-use std::{collections::HashSet, str::FromStr, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::aead::{Aead, NewAead};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
-pub const DEFAULT_RELAY_SERVER: &str = "tcp:transit.magic-wormhole.io:4001";
+pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 // No need to make public, it's hard-coded anyways (:
 // Open an issue if you want an API for this
 // Use <stun.stunprotocol.org:3478> for non-production testing
@@ -128,6 +128,8 @@ pub enum Ability {
     DirectUdtV1,
     /** Try to meet the other side at a relay. */
     RelayV1,
+    /** Like v1, but with better hint encoding and WebSockets support */
+    RelayV2,
     /* TODO Fix once https://github.com/serde-rs/serde/issues/912 is done */
     #[serde(other)]
     Other,
@@ -164,7 +166,7 @@ impl Ability {
 #[derive(Clone, Debug, Default)]
 pub struct Hints {
     pub direct_tcp: HashSet<DirectHint>,
-    pub relay: HashSet<DirectHint>,
+    pub relay: Vec<RelayHint>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, derive_more::Display)]
@@ -175,6 +177,82 @@ pub struct DirectHint {
     // pub priority: f32,
     pub hostname: String,
     pub port: u16,
+}
+
+/** Hint describing a relay server
+ *
+ * A server may be reachable at multiple locations. Any two must be relayable
+ * over that server, therefore a client may pick only one of these per hint.
+ *
+ * All locations are URLs, but here they are already deconstructed and grouped
+ * by schema out of convenience.
+ */
+/* RelayHint::default() gives the empty server (cannot be reached), and is only there for struct update syntax */
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct RelayHint {
+    pub tcp: HashSet<DirectHint>,
+    pub ws: HashSet<url::Url>,
+    pub other: HashSet<url::Url>,
+}
+
+impl RelayHint {
+    pub fn from_url(url: url::Url) -> Self {
+        Self::new(std::iter::once(url))
+    }
+
+    pub fn new(urls: impl IntoIterator<Item = url::Url>) -> Self {
+        let mut tcp = HashSet::new();
+        let mut ws = HashSet::new();
+        let mut other = HashSet::new();
+        for hint in urls {
+            match hint.scheme() {
+                "tcp" => {
+                    tcp.insert(DirectHint {
+                        hostname: hint.host_str().expect("TODO Error handling").into(),
+                        port: hint.port().expect("TODO Error handling"),
+                    });
+                },
+                "ws" | "wss" => {
+                    ws.insert(hint);
+                },
+                _ => {
+                    other.insert(hint);
+                },
+            }
+        }
+        RelayHint { tcp, ws, other }
+    }
+
+    pub fn can_merge(&self, other: &Self) -> bool {
+        !self.tcp.is_disjoint(&other.tcp) || !self.ws.is_disjoint(&other.ws)
+    }
+
+    pub fn merge(mut self, other: Self) -> Self {
+        self.merge_mut(other);
+        self
+    }
+
+    pub fn merge_mut(&mut self, other: Self) {
+        self.tcp.extend(other.tcp);
+        self.ws.extend(other.ws);
+        self.other.extend(other.other);
+    }
+
+    pub fn merge_into(self, collection: &mut Vec<RelayHint>) {
+        for item in collection.iter_mut() {
+            if item.can_merge(&self) {
+                item.merge_mut(self);
+                return;
+            }
+        }
+        collection.push(self);
+    }
+}
+
+impl From<HashSet<url::Url>> for RelayHint {
+    fn from(urls: HashSet<url::Url>) -> RelayHint {
+        Self::new(urls)
+    }
 }
 
 use std::convert::{TryFrom, TryInto};
@@ -203,30 +281,6 @@ impl TryFrom<&DirectHint> for std::net::SocketAddr {
 enum HostType {
     Direct,
     Relay,
-}
-
-pub struct RelayUrl {
-    pub host: String,
-    pub port: u16,
-}
-
-impl FromStr for RelayUrl {
-    type Err = &'static str;
-
-    fn from_str(url: &str) -> Result<Self, &'static str> {
-        // TODO use proper URL parsing
-        let v: Vec<&str> = url.split(':').collect();
-        if v.len() == 3 && v[0] == "tcp" {
-            v[2].parse()
-                .map(|port| RelayUrl {
-                    host: v[1].to_string(),
-                    port,
-                })
-                .map_err(|_| "Cannot parse relay url port")
-        } else {
-            Err("Incorrect relay server url format")
-        }
-    }
 }
 
 fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
@@ -407,11 +461,16 @@ async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunErro
  * Bind a port and generate our [`Hints`]. This does not do any communication yet.
  */
 pub async fn init(
-    abilities: Vec<Ability>,
-    relay_url: &RelayUrl,
+    mut abilities: Vec<Ability>,
+    peer_abilities: Option<&[Ability]>,
+    relay_hints: Vec<RelayHint>,
 ) -> Result<TransitConnector, std::io::Error> {
     let mut our_hints = Hints::default();
     let mut listener = None;
+
+    if let Some(peer_abilities) = peer_abilities {
+        abilities.retain(|a| peer_abilities.contains(a));
+    }
 
     /* Detect our IP addresses if the ability is enabled */
     if abilities.contains(&Ability::DirectTcpV1) {
@@ -482,10 +541,7 @@ pub async fn init(
     }
 
     if abilities.contains(&Ability::RelayV1) {
-        our_hints.relay.insert(DirectHint {
-            hostname: relay_url.host.clone(),
-            port: relay_url.port,
-        });
+        our_hints.relay.extend(relay_hints);
     }
 
     Ok(TransitConnector {
@@ -765,28 +821,49 @@ impl TransitConnector {
         };
 
         /* Relay hints. Make sure that both sides adverize it, since it is fine to support it without providing own hints. */
-        if our_abilities.contains(&Ability::RelayV1) && their_abilities.contains(&Ability::RelayV1)
+        if (our_abilities.contains(&Ability::RelayV1) || our_abilities.contains(&Ability::RelayV2))
+            && (their_abilities.contains(&Ability::RelayV1)
+                || their_abilities.contains(&Ability::RelayV2))
         {
             /* Collect intermediate into HashSet for deduplication */
-            let relay_hints = our_hints
-                .relay
-                .clone()
-                .into_iter()
-                .take(2)
-                .chain(their_hints.relay.clone().into_iter().take(2))
-                .collect::<HashSet<DirectHint>>();
+            let mut relay_hints = Vec::<RelayHint>::new();
+            relay_hints.extend(our_hints.relay.iter().take(2).cloned());
+            for hint in their_hints.relay.iter().take(2).cloned() {
+                hint.merge_into(&mut relay_hints);
+            }
+
+            /* Take a relay hint and try to connect to it */
+            async fn hint_connector(
+                host: DirectHint,
+            ) -> Result<(TcpStream, HostType), TransitHandshakeError> {
+                log::debug!("Connecting to relay {}", host);
+                let transit = TcpStream::connect((host.hostname.as_str(), host.port))
+                    .err_into::<TransitHandshakeError>()
+                    .await?;
+                log::debug!("Connected to {}!", host);
+
+                Ok((transit, HostType::Relay))
+            }
+
             connectors = Box::new(
                 connectors.chain(
                     relay_hints
                         .into_iter()
-                        .map(|host| async move {
-                            log::debug!("Connecting to relay {}", host);
-                            let transit = TcpStream::connect((host.hostname.as_str(), host.port))
-                                .err_into::<TransitHandshakeError>()
-                                .await?;
-                            log::debug!("Connected to {}!", host);
-
-                            Ok((transit, HostType::Relay))
+                        /* A hint may have multiple addresses pointing towards the server. This may be multiple
+                         * domain aliases or different ports or an IPv6 or IPv4 address. We only need
+                         * to connect to one of them, since they are considered equivalent. However, we
+                         * also want to be prepared for the rare case of one failing, thus we try to reach
+                         * up to three different addresses. To not flood the system with requests, we
+                         * start them in a 5 seconds interval spread. If one of them succeeds, the remaining ones
+                         * will be cancelled anyways. Note that a hint might not necessarily be reachable via TCP.
+                         */
+                        .flat_map(|hint| hint.tcp.into_iter().take(3).enumerate())
+                        .map(|(index, host)| async move {
+                            async_std::task::sleep(std::time::Duration::from_secs(
+                                index as u64 * 5,
+                            ))
+                            .await;
+                            hint_connector(host).await
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
                 ),
