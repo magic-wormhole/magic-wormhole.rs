@@ -179,7 +179,11 @@ mod test {
         let abilities = Abilities::ALL_ABILITIES;
         let hints = transit::Hints::new(
             [DirectHint::new("192.168.1.8", 46295)],
-            [RelayHint::from_url("tcp://magic-wormhole-transit.debian.net:4001".parse().unwrap())],
+            [RelayHint::from_url(
+                "tcp://magic-wormhole-transit.debian.net:4001"
+                    .parse()
+                    .unwrap(),
+            )],
         );
         let t =
             serde_json::json!(crate::transfer::PeerMessage::transit(abilities, hints)).to_string();

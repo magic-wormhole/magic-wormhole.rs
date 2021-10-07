@@ -316,6 +316,7 @@ impl Wormhole {
     }
 
     pub async fn close(self) -> Result<(), WormholeError> {
+        log::debug!("Closing Wormhole…");
         self.server.shutdown(Mood::Happy).await.map_err(Into::into)
     }
 

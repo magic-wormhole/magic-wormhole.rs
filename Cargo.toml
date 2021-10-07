@@ -41,7 +41,8 @@ derive_more = { version = "0.99.0", default-features = false, features = ["displ
 thiserror = "1.0.24"
 
 futures = "0.3.12"
-async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
+# async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
+async-std = { version = "1.9.0", features = ["attributes", "unstable"], git = "https://github.com/piegamesde/async-std" }
 async-tungstenite = { version = "0.14.0", features = ["async-std-runtime", "async-tls"] }
 async-io = "1.6.0"
 socket2 = "0.4.1"
@@ -59,6 +60,7 @@ color-eyre = { version = "0.5.7", optional = true }
 url = { version = "2.2.2", features = ["serde"] }
 uri = "0.4.0"
 rmp-serde = "0.15.5"
+http = "0.2.5"
 
 # for some tests
 [dev-dependencies]
