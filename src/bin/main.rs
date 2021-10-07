@@ -2,7 +2,6 @@ mod util;
 
 use std::{
     ops::Deref,
-    str,
     time::{Duration, Instant},
 };
 
@@ -13,7 +12,7 @@ use console::{style, Term};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 
-use magic_wormhole::{transfer, transit::RelayUrl, Wormhole};
+use magic_wormhole::{transfer, Wormhole};
 use std::str::FromStr;
 
 #[async_std::main]
@@ -227,11 +226,9 @@ async fn main() -> eyre::Result<()> {
             file_path
         );
 
-        let (mut wormhole, _code, relay_server) =
-            parse_and_connect(&mut term, matches, true).await?;
+        let (wormhole, _code, relay_server) = parse_and_connect(&mut term, matches, true).await?;
 
-        send(&mut wormhole, &relay_server, file_path, &file_name).await?;
-        wormhole.close().await?;
+        send(wormhole, relay_server, file_path, &file_name).await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
         let (wormhole, code, relay_server) = parse_and_connect(&mut term, matches, true).await?;
         let timeout =
@@ -255,17 +252,15 @@ async fn main() -> eyre::Result<()> {
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let file_path = matches.value_of_os("file-path").unwrap();
 
-        let (mut wormhole, _code, relay_server) =
-            parse_and_connect(&mut term, matches, false).await?;
+        let (wormhole, _code, relay_server) = parse_and_connect(&mut term, matches, false).await?;
 
         receive(
-            &mut wormhole,
-            &relay_server,
+            wormhole,
+            relay_server,
             file_path,
             matches.value_of_os("file-name"),
         )
         .await?;
-        wormhole.close().await?;
     } else if let Some(_matches) = matches.subcommand_matches("help") {
         println!("Use --help to get help");
         std::process::exit(1);
@@ -287,8 +282,8 @@ async fn parse_and_connect(
     term: &mut Term,
     matches: &clap::ArgMatches<'_>,
     is_send: bool,
-) -> eyre::Result<(Wormhole, magic_wormhole::Code, RelayUrl)> {
-    let relay_server: RelayUrl = matches
+) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
+    let relay_server: url::Url = matches
         .value_of("relay-server")
         .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER)
         .parse()
@@ -376,8 +371,8 @@ fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Resu
 }
 
 async fn send(
-    wormhole: &mut Wormhole,
-    relay_server: &RelayUrl,
+    wormhole: Wormhole,
+    relay_server: url::Url,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
 ) -> eyre::Result<()> {
@@ -403,7 +398,7 @@ async fn send(
 }
 
 async fn send_many(
-    relay_server: RelayUrl,
+    relay_server: url::Url,
     code: &magic_wormhole::Code,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
@@ -421,13 +416,14 @@ async fn send_many(
 
     let file_path = Arc::new(file_path.to_owned());
     let file_name = Arc::new(file_name.to_owned());
-    let url = Arc::new(relay_server);
+    // TODO go back to reference counting again
+    //let url = Arc::new(relay_server);
 
     let time = Instant::now();
 
     /* Special-case the first send with reusing the existing connection */
     send_in_background(
-        Arc::clone(&url),
+        relay_server.clone(),
         Arc::clone(&file_path),
         Arc::clone(&file_name),
         wormhole,
@@ -456,7 +452,7 @@ async fn send_many(
         let (_server_welcome, wormhole) =
             magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone()).await?;
         send_in_background(
-            Arc::clone(&url),
+            relay_server.clone(),
             Arc::clone(&file_path),
             Arc::clone(&file_name),
             wormhole,
@@ -467,10 +463,10 @@ async fn send_many(
     }
 
     async fn send_in_background(
-        url: Arc<RelayUrl>,
+        url: url::Url,
         file_name: Arc<std::ffi::OsString>,
         file_path: Arc<std::ffi::OsString>,
-        mut wormhole: Wormhole,
+        wormhole: Wormhole,
         mut term: Term,
         // mp: &MultiProgress,
     ) -> eyre::Result<()> {
@@ -481,8 +477,8 @@ async fn send_many(
             // let pb2 = pb.clone();
             let result = async move {
                 transfer::send_file_or_folder(
-                    &mut wormhole,
-                    &url,
+                    wormhole,
+                    url,
                     file_path.deref(),
                     file_name.deref(),
                     move |_sent, _total| {
@@ -494,7 +490,7 @@ async fn send_many(
                     },
                 )
                 .await?;
-                eyre::Result::<_>::Ok(wormhole.close().await?)
+                eyre::Result::<_>::Ok(())
             };
             match result.await {
                 Ok(_) => {
@@ -514,8 +510,8 @@ async fn send_many(
 }
 
 async fn receive(
-    wormhole: &mut Wormhole,
-    relay_server: &RelayUrl,
+    wormhole: Wormhole,
+    relay_server: url::Url,
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
 ) -> eyre::Result<()> {

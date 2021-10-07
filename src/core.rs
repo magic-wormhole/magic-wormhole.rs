@@ -45,10 +45,6 @@ pub enum WormholeError {
 }
 
 impl WormholeError {
-    pub(self) fn protocol(error: impl Into<Box<str>>) -> Self {
-        Self::Protocol(error.into())
-    }
-
     /** Should we tell the server that we are "errory" or "scared"? */
     pub fn is_scared(&self) -> bool {
         matches!(self, Self::PakeFailed)
@@ -264,6 +260,23 @@ impl Wormhole {
         Ok(())
     }
 
+    /**
+     * Serialize and send an encrypted message to peer
+     *
+     * This will serialize the message as `json` string, which is most commonly
+     * used by upper layer protocols. The serialization may not fail
+     *
+     * ## Panics
+     *
+     * If the serialization fails
+     */
+    pub async fn send_json<T: serde::Serialize>(
+        &mut self,
+        message: &T,
+    ) -> Result<(), WormholeError> {
+        self.send(serde_json::to_vec(message).unwrap()).await
+    }
+
     /** Receive an encrypted message from peer */
     pub async fn receive(&mut self) -> Result<Vec<u8>, WormholeError> {
         loop {
@@ -284,6 +297,22 @@ impl Wormhole {
             // Send to client
             return Ok(decrypted_message);
         }
+    }
+
+    /**
+     * Receive an encrypted message from peer
+     *
+     * This will deserialize the message as `json` string, which is most commonly
+     * used by upper layer protocols. We distinguish between the different layers
+     * on which a serialization error happened, hence the double `Result`.
+     */
+    pub async fn receive_json<T>(&mut self) -> Result<Result<T, serde_json::Error>, WormholeError>
+    where
+        T: for<'a> serde::Deserialize<'a>,
+    {
+        self.receive()
+            .await
+            .map(|data: Vec<u8>| serde_json::from_slice(&data))
     }
 
     pub async fn close(self) -> Result<(), WormholeError> {

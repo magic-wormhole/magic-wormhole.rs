@@ -37,11 +37,11 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             }
             log::info!("This wormhole's code is: {}", &welcome.code);
             code_tx.send(welcome.code).unwrap();
-            let mut wormhole = connector.await?;
+            let wormhole = connector.await?;
             eyre::Result::<_>::Ok(
                 transfer::send_file(
-                    &mut wormhole,
-                    &transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                    wormhole,
+                    transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
                     &mut async_std::fs::File::open("examples/example-file.bin").await?,
                     "example-file.bin",
                     std::fs::metadata("examples/example-file.bin")
@@ -57,17 +57,15 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
         .spawn(async {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
-            let (welcome, mut wormhole) =
+            let (welcome, wormhole) =
                 Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
 
-            let req = transfer::request_file(
-                &mut wormhole,
-                &transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
-            )
-            .await?;
+            let req =
+                transfer::request_file(wormhole, transit::DEFAULT_RELAY_SERVER.parse().unwrap())
+                    .await?;
 
             let mut buffer = Vec::<u8>::new();
             req.accept(|_received, _total| {}, &mut buffer).await?;
@@ -106,12 +104,12 @@ pub async fn test_send_many() -> eyre::Result<()> {
         /* The first time, we reuse the current session for sending */
         {
             log::info!("Sending file #{}", 0);
-            let mut wormhole = connector.await?;
+            let wormhole = connector.await?;
             senders.push(async_std::task::spawn(async move {
                 let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
                 crate::transfer::send_file(
-                    &mut wormhole,
-                    &url,
+                    wormhole,
+                    url,
                     &mut async_std::fs::File::open("examples/example-file.bin").await?,
                     "example-file.bin",
                     std::fs::metadata("examples/example-file.bin")
@@ -125,7 +123,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
 
         for i in 1..5usize {
             log::info!("Sending file #{}", i);
-            let (_welcome, mut wormhole) = Wormhole::connect_with_code(
+            let (_welcome, wormhole) = Wormhole::connect_with_code(
                 transfer::APP_CONFIG.id(TEST_APPID),
                 sender_code.clone(),
             )
@@ -133,8 +131,8 @@ pub async fn test_send_many() -> eyre::Result<()> {
             senders.push(async_std::task::spawn(async move {
                 let url = crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap();
                 crate::transfer::send_file(
-                    &mut wormhole,
-                    &url,
+                    wormhole,
+                    url,
                     &mut async_std::fs::File::open("examples/example-file.bin").await?,
                     "example-file.bin",
                     std::fs::metadata("examples/example-file.bin")
@@ -153,12 +151,12 @@ pub async fn test_send_many() -> eyre::Result<()> {
     /* Receive many */
     for i in 0..5usize {
         log::info!("Receiving file #{}", i);
-        let (_welcome, mut wormhole) =
+        let (_welcome, wormhole) =
             Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone()).await?;
         log::info!("Got key: {}", &wormhole.key);
         let req = crate::transfer::request_file(
-            &mut wormhole,
-            &crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+            wormhole,
+            crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
         )
         .await?;
 

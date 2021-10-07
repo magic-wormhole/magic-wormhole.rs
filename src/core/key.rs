@@ -119,9 +119,9 @@ impl VersionsMessage {
         self.app_versions = versions;
     }
 
-    pub fn add_resume_ability(&mut self, _resume: ()) {
-        self.abilities.push("resume-v1".into())
-    }
+    // pub fn add_resume_ability(&mut self, _resume: ()) {
+    //     self.abilities.push("resume-v1".into())
+    // }
 }
 
 pub fn build_version_msg(
