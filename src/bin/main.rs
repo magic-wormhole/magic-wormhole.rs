@@ -7,12 +7,12 @@ use std::{
 
 use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
-use color_eyre::eyre;
+use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 
-use magic_wormhole::{transfer, Wormhole};
+use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::str::FromStr;
 
 #[async_std::main]
@@ -50,7 +50,16 @@ async fn main() -> eyre::Result<()> {
         .takes_value(true)
         .value_name("FILE_NAME")
         .help("Suggest a different name to the receiver. They won't know the file's actual name on your disk.");
+    let code_send = Arg::with_name("code")
+        .long("code")
+        .takes_value(true)
+        .value_name("CODE")
+        .help("Enter a code instead of generating one automatically");
     /* Use in receive commands */
+    let code = Arg::with_name("code")
+        .index(1)
+        .value_name("CODE")
+        .help("Provide the code now rather than typing it interactively");
     let file_rename = Arg::with_name("file-name")
         .long("rename")
         .visible_alias("name")
@@ -71,13 +80,7 @@ async fn main() -> eyre::Result<()> {
         .visible_alias("tx")
         .about("Send a file or a folder")
         .arg(code_length_arg.clone())
-        .arg(
-            Arg::with_name("code")
-                .long("code")
-                .takes_value(true)
-                .value_name("CODE")
-                .help("Enter a code instead of generating one automatically"),
-        )
+        .arg(code_send.clone())
         .arg(relay_server_arg.clone())
         .arg(rendezvous_server_arg.clone())
         .arg(file_name.clone())
@@ -87,7 +90,8 @@ async fn main() -> eyre::Result<()> {
                 .required(true)
                 .value_name("FILENAME|DIRNAME")
                 .help("The file or directory to send"),
-        );
+        )
+        .help_message("Print this help message");
     let send_many_command = SubCommand::with_name("send-many")
         .about("Send a file to many recipients. READ HELP PAGE FIRST!")
         .after_help(
@@ -99,7 +103,7 @@ async fn main() -> eyre::Result<()> {
             number of sent files, whichever comes first. It will always try to send
             at least one file, regardless of the limits.",
         )
-        .arg(code_length_arg.default_value("4"))
+        .arg(code_length_arg.clone().default_value("4"))
         .arg(
             Arg::with_name("code")
                 .long("code")
@@ -134,7 +138,8 @@ async fn main() -> eyre::Result<()> {
                 .value_name("MINUTES")
                 .default_value("60")
                 .help("Automatically stop providing the file after a certain amount of time."),
-        );
+        )
+        .help_message("Print this help message");
     let receive_command = SubCommand::with_name("receive")
         .visible_alias("rx")
         .about("Receive a file or a folder")
@@ -146,22 +151,65 @@ async fn main() -> eyre::Result<()> {
         )
         .arg(file_rename)
         .arg(file_path)
-        .arg(
-            Arg::with_name("code")
-                .index(1)
-                .value_name("CODE")
-                .help("Provide the code now rather than typing it interactively"),
-        )
+        .arg(code.clone())
         .arg(relay_server_arg)
-        .arg(rendezvous_server_arg);
+        .arg(rendezvous_server_arg)
+        .help_message("Print this help message");
+    let forward_command = SubCommand::with_name("forward")
+        .about("Forward ports from one machine to another")
+        .setting(AppSettings::ArgRequiredElseHelp)
+        .subcommand(SubCommand::with_name("serve")
+            .visible_alias("open")
+            .alias("server") /* Muscle memory <3 */
+            .about("Make the following ports of your system available to your peer")
+            .arg(
+                Arg::with_name("targets")
+                    .index(1)
+                    .multiple(true)
+                    .required(true)
+                    .value_name("[DOMAIN:]PORT")
+                    .help("List of ports to open up. You can optionally specify a domain/address to forward remote ports")
+            )
+            .arg(code_length_arg)
+            .arg(code_send)
+        )
+        .subcommand(SubCommand::with_name("connect")
+            .about("Connect to some ports forwarded to you")
+            .arg(code)
+            .arg(
+                Arg::with_name("port")
+                    .long("port")
+                    .short("p")
+                    .takes_value(true)
+                    .multiple(true)
+                    .value_name("PORT")
+                    .help("Bind to specific ports instead of taking random free high ports. Can be provided multiple times.")
+            )
+            .arg(
+                Arg::with_name("bind")
+                    .long("bind")
+                    .takes_value(true)
+                    .value_name("ADDRESS")
+                    .default_value("::")
+                    .help("Bind to a specific address to accept the forwarding. Depending on your system and firewall, this may make the forwarded ports accessible from the outside.")
+            )
+            .arg(
+                Arg::with_name("noconfirm")
+                    .long("noconfirm")
+                    .visible_alias("yes")
+                    .help("Accept the forwarding without asking for confirmation"),
+            )
+        )
+        .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
+        .help_message("Print this help message");
 
     /* The Clap application */
     let clap = App::new(crate_name!())
         .version(crate_version!())
         .about(crate_description!())
         .setting(AppSettings::ArgRequiredElseHelp)
-        .setting(AppSettings::VersionlessSubcommands)
-        .setting(AppSettings::DisableHelpSubcommand)
+        .global_setting(AppSettings::DisableHelpSubcommand)
+        .global_setting(AppSettings::VersionlessSubcommands)
         .global_setting(AppSettings::ColoredHelp)
         .global_setting(AppSettings::ColorAuto)
         .global_setting(AppSettings::UnifiedHelpMessage)
@@ -173,8 +221,10 @@ async fn main() -> eyre::Result<()> {
         .subcommand(send_command)
         .subcommand(send_many_command)
         .subcommand(receive_command)
+        .subcommand(forward_command)
         .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
-        .arg(log_arg);
+        .arg(log_arg)
+        .help_message("Print this help message");
     let matches = clap.get_matches();
 
     let mut term = Term::stdout();
@@ -226,11 +276,13 @@ async fn main() -> eyre::Result<()> {
             file_path
         );
 
-        let (wormhole, _code, relay_server) = parse_and_connect(&mut term, matches, true).await?;
+        let (wormhole, _code, relay_server) =
+            parse_and_connect(&mut term, matches, true, transfer::APP_CONFIG).await?;
 
         send(wormhole, relay_server, file_path, &file_name).await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (wormhole, code, relay_server) = parse_and_connect(&mut term, matches, true).await?;
+        let (wormhole, code, relay_server) =
+            parse_and_connect(&mut term, matches, true, transfer::APP_CONFIG).await?;
         let timeout =
             Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
         let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
@@ -252,7 +304,8 @@ async fn main() -> eyre::Result<()> {
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let file_path = matches.value_of_os("file-path").unwrap();
 
-        let (wormhole, _code, relay_server) = parse_and_connect(&mut term, matches, false).await?;
+        let (wormhole, _code, relay_server) =
+            parse_and_connect(&mut term, matches, false, transfer::APP_CONFIG).await?;
 
         receive(
             wormhole,
@@ -261,6 +314,70 @@ async fn main() -> eyre::Result<()> {
             matches.value_of_os("file-name"),
         )
         .await?;
+    } else if let Some(matches) = matches.subcommand_matches("forward") {
+        // TODO make fancy
+        println!("Warning: this is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
+        if let Some(matches) = matches.subcommand_matches("serve") {
+            /* Map the CLI argument to Strings. Use the occasion to inspect them and fail early on malformed input. */
+            let targets = matches
+                .values_of("targets")
+                .unwrap()
+                .enumerate()
+                .map(|(index, target)| {
+                    let result = (|| {
+                        /* Either HOST:PORT or PORT */
+                        if target.contains(':') {
+                            /* Extract the :PORT at the end */
+                            let port = target.split(':').last().unwrap();
+                            let host = url::Host::parse(&target[..target.len() - port.len() - 1])
+                                .map_err(eyre::Error::from)
+                                .context("Invalid host")?;
+                            let port: u16 = port.parse().context("Invalid port")?;
+                            Ok((Some(host), port))
+                        } else {
+                            /* It's just a port */
+                            target
+                                .parse::<u16>()
+                                .map(|port| (None, port))
+                                .map_err(eyre::Error::from)
+                                .context("Invalid port")
+                        }
+                    })();
+                    result.context(format!(
+                        "Invalid {}{} target argument ('{}') ",
+                        index + 1,
+                        match (index + 1) % 10 {
+                            1 => "st",
+                            2 => "nd",
+                            3 => "rd",
+                            _ => "th",
+                        },
+                        target
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            loop {
+                let (wormhole, _code, relay_server) =
+                    parse_and_connect(&mut term, matches, true, forwarding::APP_CONFIG).await?;
+                let relay_server = vec![transit::RelayHint::from_url(relay_server)];
+                async_std::task::spawn(forwarding::serve(wormhole, relay_server, targets.clone()));
+            }
+        } else if let Some(matches) = matches.subcommand_matches("connect") {
+            let custom_ports: Vec<u16> = matches
+                .values_of("port")
+                .into_iter()
+                .flatten()
+                .map(|port| port.parse().map_err(eyre::Error::from))
+                .collect::<Result<_, _>>()?;
+            let bind_address: std::net::IpAddr = matches.value_of("bind").unwrap().parse()?;
+            let (wormhole, _code, relay_server) =
+                parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG).await?;
+            let relay_server = vec![transit::RelayHint::from_url(relay_server)];
+
+            forwarding::connect(wormhole, relay_server, Some(bind_address), &custom_ports).await?;
+        } else {
+            unreachable!()
+        }
     } else if let Some(_matches) = matches.subcommand_matches("help") {
         println!("Use --help to get help");
         std::process::exit(1);
@@ -282,31 +399,30 @@ async fn parse_and_connect(
     term: &mut Term,
     matches: &clap::ArgMatches<'_>,
     is_send: bool,
+    mut app_config: magic_wormhole::AppConfig<impl serde::Serialize>,
 ) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
     let relay_server: url::Url = matches
         .value_of("relay-server")
         .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER)
         .parse()
         .unwrap();
-    let rendezvous_server = matches
-        .value_of("rendezvous-server")
-        .unwrap_or(magic_wormhole::rendezvous::DEFAULT_RENDEZVOUS_SERVER)
-        .to_string();
+    let rendezvous_server = matches.value_of("rendezvous-server");
     let code = matches
         .value_of("code")
         .map(ToOwned::to_owned)
         .or_else(|| (!is_send).then(|| enter_code().expect("TODO handle this gracefully")))
         .map(magic_wormhole::Code);
+
+    if let Some(rendezvous_server) = rendezvous_server {
+        app_config = app_config.rendezvous_url(rendezvous_server.to_owned().into());
+    }
     let (wormhole, code) = match code {
         Some(code) => {
             if is_send {
                 sender_print_code(term, &code)?;
             }
-            let (server_welcome, wormhole) = magic_wormhole::Wormhole::connect_with_code(
-                transfer::APP_CONFIG.rendezvous_url(rendezvous_server.into()),
-                code,
-            )
-            .await?;
+            let (server_welcome, wormhole) =
+                magic_wormhole::Wormhole::connect_with_code(app_config, code).await?;
             print_welcome(term, &server_welcome)?;
             (wormhole, server_welcome.code)
         },
@@ -317,11 +433,8 @@ async fn parse_and_connect(
                 .parse()
                 .expect("TODO error handling");
 
-            let (server_welcome, connector) = magic_wormhole::Wormhole::connect_without_code(
-                transfer::APP_CONFIG.rendezvous_url(rendezvous_server.into()),
-                numwords,
-            )
-            .await?;
+            let (server_welcome, connector) =
+                magic_wormhole::Wormhole::connect_without_code(app_config, numwords).await?;
             print_welcome(term, &server_welcome)?;
             if is_send {
                 sender_print_code(term, &server_welcome.code)?;

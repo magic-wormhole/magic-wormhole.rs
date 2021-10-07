@@ -23,6 +23,7 @@
 #[macro_use]
 mod util;
 mod core;
+pub mod forwarding;
 pub mod transfer;
 pub mod transit;
 

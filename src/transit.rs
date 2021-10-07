@@ -299,7 +299,10 @@ pub struct Hints {
 }
 
 impl Hints {
-    pub fn new(direct_tcp: impl IntoIterator<Item = DirectHint>, relay: impl IntoIterator<Item = RelayHint>) -> Self {
+    pub fn new(
+        direct_tcp: impl IntoIterator<Item = DirectHint>,
+        relay: impl IntoIterator<Item = RelayHint>,
+    ) -> Self {
         Self {
             direct_tcp: direct_tcp.into_iter().collect(),
             relay: relay.into_iter().collect(),
@@ -307,8 +310,7 @@ impl Hints {
     }
 
     fn iter_serde(&self) -> impl IntoIterator<Item = HintSerde> + '_ {
-        self
-            .direct_tcp
+        self.direct_tcp
             .iter()
             .cloned()
             .map(HintSerde::DirectTcpV1)
@@ -321,7 +323,7 @@ impl Hints {
     }
 }
 
-impl <'de> serde::Deserialize<'de> for Hints {
+impl<'de> serde::Deserialize<'de> for Hints {
     fn deserialize<D>(de: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -332,9 +334,9 @@ impl <'de> serde::Deserialize<'de> for Hints {
 }
 
 impl serde::Serialize for Hints {
-    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error> 
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer
+        S: serde::Serializer,
     {
         ser.collect_seq(self.iter_serde())
     }
@@ -354,7 +356,7 @@ impl DirectHint {
     pub fn new(hostname: impl Into<String>, port: u16) -> Self {
         Self {
             hostname: hostname.into(),
-            port
+            port,
         }
     }
 }
@@ -429,7 +431,13 @@ impl RelayHint {
     }
 
     pub fn iter_urls(&self) -> impl IntoIterator<Item = url::Url> + '_ {
-        self.tcp.iter().map(|hint| format!("tcp://{}:{}", hint.hostname, hint.port).parse().unwrap())
+        self.tcp
+            .iter()
+            .map(|hint| {
+                format!("tcp://{}:{}", hint.hostname, hint.port)
+                    .parse()
+                    .unwrap()
+            })
             .chain(self.other.iter().cloned())
             .chain(self.ws.iter().cloned())
     }
@@ -439,7 +447,11 @@ impl From<RelayHint> for HashSet<url::Url> {
     fn from(hint: RelayHint) -> HashSet<url::Url> {
         let mut urls = hint.other;
         urls.extend(hint.ws);
-        urls.extend(hint.tcp.into_iter().map(|hint| format!("tcp://{}:{}", hint.hostname, hint.port).parse().unwrap()));
+        urls.extend(hint.tcp.into_iter().map(|hint| {
+            format!("tcp://{}:{}", hint.hostname, hint.port)
+                .parse()
+                .unwrap()
+        }));
         urls
     }
 }
