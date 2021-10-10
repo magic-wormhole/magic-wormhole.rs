@@ -22,6 +22,10 @@ If you don't fear touching code and want to contribute, `./src/lib.rs`, `./src/t
 
 However before diving into the `core` module, you should definitively read the [spec](https://magic-wormhole.readthedocs.io/en/latest/) and the [implementation notes](https://github.com/magic-wormhole/magic-wormhole.rs/wiki) first. Maybe having a bit of understanding of the Python implementation doesn't hurt either.
 
+## License
+
+This work is licensed under the EUPL v1.2 or later. Contact the owner(s) for use in proprietary software.
+
 ----------
 
 ![Build Status][build-status-image]
