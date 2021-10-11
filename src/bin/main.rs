@@ -26,12 +26,12 @@ async fn main() -> eyre::Result<()> {
         .visible_alias("relay")
         .takes_value(true)
         .multiple(true)
-        .value_name("tcp:HOSTNAME:PORT")
+        .value_name("tcp://HOSTNAME:PORT")
         .help("Use a custom relay server (specify multiple times for multiple relays)");
     let rendezvous_server_arg = Arg::with_name("rendezvous-server")
         .long("rendezvous-server")
         .takes_value(true)
-        .value_name("ws:URL")
+        .value_name("ws://example.org")
         .help("Use a custom rendezvous server. Both sides need to use the same value in order to find each other.");
     let log_arg = Arg::with_name("log")
         .long("log")
