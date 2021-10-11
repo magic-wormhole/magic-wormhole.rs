@@ -137,7 +137,7 @@ pub enum Ability {
 
 impl Ability {
     pub fn all_abilities() -> Vec<Ability> {
-        vec![Self::DirectTcpV1, Self::DirectUdtV1, Self::RelayV1]
+        vec![Self::DirectTcpV1, Self::DirectUdtV1, Self::RelayV1, Self::RelayV2]
     }
 
     /**
@@ -159,7 +159,63 @@ impl Ability {
      * the Rust implementation yet).
      */
     pub fn force_relay() -> Vec<Ability> {
-        vec![Self::RelayV1]
+        vec![Self::RelayV1, Self::RelayV2]
+    }
+}
+
+/* Wire representation of a single hint */
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+#[non_exhaustive]
+enum HintSerde {
+    DirectTcpV1(DirectHint),
+    /* Weirdness alarm: a "relay hint" contains multiple "direct hints". This means
+     * that there may be multiple direct hints, but if there are multiple relay hints
+     * it's still only one item because it internally has a list.
+     */
+    RelayV1 {
+        hints: HashSet<DirectHint>,
+    },
+    RelayV2 {
+        urls: HashSet<url::Url>,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+impl From<Vec<HintSerde>> for Hints {
+    fn from(hints: Vec<HintSerde>) -> Hints {
+        let mut direct_tcp = HashSet::new();
+        let mut relay = Vec::<RelayHint>::new();
+        let mut relay_v2 = Vec::<RelayHint>::new();
+
+        for hint in hints {
+            match hint {
+                HintSerde::DirectTcpV1(hint) => {
+                    direct_tcp.insert(hint);
+                },
+                HintSerde::RelayV1 { hints } => {
+                    relay.push(RelayHint {
+                        tcp: hints,
+                        ..RelayHint::default()
+                    });
+                },
+                HintSerde::RelayV2 { urls } => {
+                    let hint = RelayHint::new(urls);
+                    hint.merge_into(&mut relay_v2);
+                },
+                /* Ignore unknown hints */
+                _ => {},
+            }
+        }
+
+        /* If there are any relay-v2 hints, there relay-v1 are redundant */
+        if !relay_v2.is_empty() {
+            relay.clear();
+        }
+        relay.extend(relay_v2.into_iter().map(Into::into));
+
+        Hints { direct_tcp, relay }
     }
 }
 
@@ -167,6 +223,48 @@ impl Ability {
 pub struct Hints {
     pub direct_tcp: HashSet<DirectHint>,
     pub relay: Vec<RelayHint>,
+}
+
+impl Hints {
+    pub fn new(direct_tcp: impl IntoIterator<Item = DirectHint>, relay: impl IntoIterator<Item = RelayHint>) -> Self {
+        Self {
+            direct_tcp: direct_tcp.into_iter().collect(),
+            relay: relay.into_iter().collect(),
+        }
+    }
+
+    fn iter_serde(&self) -> impl IntoIterator<Item = HintSerde> + '_ {
+        self
+            .direct_tcp
+            .iter()
+            .cloned()
+            .map(HintSerde::DirectTcpV1)
+            .chain(self.relay.iter().flat_map(
+                |hint| [
+                    HintSerde::RelayV1 { hints: hint.tcp.clone() },
+                    HintSerde::RelayV2 { urls: hint.iter_urls().into_iter().collect() },
+                ]
+            ))
+    }
+}
+
+impl <'de> serde::Deserialize<'de> for Hints {
+    fn deserialize<D>(de: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let hints: Vec<HintSerde> = serde::Deserialize::deserialize(de)?;
+        Ok(hints.into())
+    }
+}
+
+impl serde::Serialize for Hints {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error> 
+    where
+        S: serde::Serializer
+    {
+        ser.collect_seq(self.iter_serde())
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, derive_more::Display)]
@@ -177,6 +275,15 @@ pub struct DirectHint {
     // pub priority: f32,
     pub hostname: String,
     pub port: u16,
+}
+
+impl DirectHint {
+    pub fn new(hostname: impl Into<String>, port: u16) -> Self {
+        Self {
+            hostname: hostname.into(),
+            port
+        }
+    }
 }
 
 /** Hint describing a relay server
@@ -246,6 +353,21 @@ impl RelayHint {
             }
         }
         collection.push(self);
+    }
+
+    pub fn iter_urls(&self) -> impl IntoIterator<Item = url::Url> + '_ {
+        self.tcp.iter().map(|hint| format!("tcp://{}:{}", hint.hostname, hint.port).parse().unwrap())
+            .chain(self.other.iter().cloned())
+            .chain(self.ws.iter().cloned())
+    }
+}
+
+impl From<RelayHint> for HashSet<url::Url> {
+    fn from(hint: RelayHint) -> HashSet<url::Url> {
+        let mut urls = hint.other;
+        urls.extend(hint.ws);
+        urls.extend(hint.tcp.into_iter().map(|hint| format!("tcp://{}:{}", hint.hostname, hint.port).parse().unwrap()));
+        urls
     }
 }
 
@@ -801,7 +923,7 @@ impl TransitConnector {
                         .clone()
                         .into_iter()
                         /* Nobody should have that many IP addresses, even with NATing */
-                        .take(10)
+                        .take(50)
                         .map(move |hint| {
                             let local_addr = local_addr.clone();
                             async move {
@@ -1053,6 +1175,10 @@ impl Transit {
         crate::util::sodium_increment_be(nonce);
 
         Ok(())
+    }
+
+    pub async fn flush(&mut self) -> Result<(), TransitError> {
+        self.socket.flush().await.map_err(Into::into)
     }
 
     /** Convert the transit connection to a [`Stream`]/[`Sink`] pair */

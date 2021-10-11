@@ -146,7 +146,7 @@ where
     wormhole
         .send_json(&PeerMessage::transit(
             connector.our_abilities().to_vec(),
-            (**connector.our_hints()).clone().into(),
+            (**connector.our_hints()).clone(),
         ))
         .await?;
 
@@ -212,7 +212,7 @@ where
         match wormhole.receive_json().await?? {
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
-                (transit.abilities_v1, transit.hints_v1.into())
+                (transit.abilities_v1, transit.hints_v1)
             },
             PeerMessage::Error(err) => {
                 bail!(TransferError::PeerError(err));
@@ -353,7 +353,7 @@ where
         transit_ack_msg.sha256 == hex::encode(checksum),
         TransferError::Checksum
     );
-    debug!("transfer complete!");
+    debug!("Transfer complete!");
     Ok(())
 }
 
@@ -401,6 +401,7 @@ where
             break;
         }
     }
+    transit.flush().await?;
 
     ensure!(
         sent_size == file_size,

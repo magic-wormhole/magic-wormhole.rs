@@ -3,7 +3,7 @@
 //! The transit protocol does not specify how to deliver the information to
 //! the other side, so it is up to the file transfer to do that. hfoo
 
-use crate::transit::{self, Ability, DirectHint};
+use crate::transit::{self, Ability, DirectHint, RelayHint, };
 use serde_derive::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -72,7 +72,7 @@ impl PeerMessage {
         PeerMessage::Error(msg.into())
     }
 
-    pub fn transit(abilities: Vec<transit::Ability>, hints: Vec<Hint>) -> Self {
+    pub fn transit(abilities: Vec<transit::Ability>, hints: transit::Hints) -> Self {
         PeerMessage::Transit(TransitV1 {
             abilities_v1: abilities,
             hints_v1: hints,
@@ -80,8 +80,8 @@ impl PeerMessage {
     }
 
     #[allow(dead_code)]
-    pub fn transit_v2(hints: Vec<Hint>) -> Self {
-        PeerMessage::TransitV2(TransitV2 { hints_v2: hints })
+    pub fn transit_v2(hints: transit::Hints) -> Self {
+        PeerMessage::TransitV2(TransitV2 { hints })
     }
 
     #[allow(dead_code)]
@@ -156,100 +156,20 @@ pub struct AnswerV2 {
 /**
  * A set of hints for both sides to find each other
  */
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TransitV1 {
     pub abilities_v1: Vec<Ability>,
-    pub hints_v1: Vec<Hint>,
+    pub hints_v1: transit::Hints,
 }
 
 /**
  * A set of hints for both sides to find each other
  */
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TransitV2 {
-    pub hints_v2: Vec<Hint>,
-}
-
-impl From<transit::Hints> for Vec<Hint> {
-    fn from(hints: transit::Hints) -> Self {
-        hints
-            .direct_tcp
-            .into_iter()
-            .map(Hint::DirectTcpV1)
-            .chain(hints.relay.into_iter().map(|hint| Hint::relay_v1(hint.tcp)))
-            .collect()
-    }
-}
-
-impl Into<transit::Hints> for Vec<Hint> {
-    fn into(self) -> transit::Hints {
-        let mut direct_tcp = HashSet::new();
-        let mut relay = Vec::<transit::RelayHint>::new();
-        let mut relay_v2 = Vec::<transit::RelayHint>::new();
-
-        for hint in self {
-            match hint {
-                Hint::DirectTcpV1(hint) => {
-                    direct_tcp.insert(hint);
-                },
-                Hint::RelayV1 { hints } => {
-                    relay.push(transit::RelayHint {
-                        tcp: hints,
-                        ..transit::RelayHint::default()
-                    });
-                },
-                Hint::RelayV2 { urls } => {
-                    let hint = transit::RelayHint::new(urls);
-                    hint.merge_into(&mut relay_v2);
-                },
-                /* Ignore unknown hints */
-                _ => {},
-            }
-        }
-
-        if !relay_v2.is_empty() {
-            relay.clear();
-        }
-        relay.extend(relay_v2.into_iter().map(Into::into));
-
-        transit::Hints { direct_tcp, relay }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case", tag = "type")]
-#[non_exhaustive]
-pub enum Hint {
-    DirectTcpV1(DirectHint),
-    /* Weirdness alarm: a "relay hint" contains multiple "direct hints". This means
-     * that there may be multiple direct hints, but if there are multiple relay hints
-     * it's still only one item because it internally has a list.
-     */
-    RelayV1 {
-        hints: HashSet<DirectHint>,
-    },
-    RelayV2 {
-        urls: HashSet<url::Url>,
-    },
-    #[serde(other)]
-    Unknown,
-}
-
-impl Hint {
-    pub fn direct_tcp(_priority: f32, hostname: &str, port: u16) -> Self {
-        Hint::DirectTcpV1(DirectHint {
-            hostname: hostname.to_string(),
-            port,
-        })
-    }
-
-    pub fn relay_v1(h: impl IntoIterator<Item = DirectHint>) -> Self {
-        Hint::RelayV1 {
-            hints: h.into_iter().collect(),
-        }
-    }
+    pub hints: transit::Hints,
 }
 
 #[cfg(test)]
@@ -259,13 +179,10 @@ mod test {
     #[test]
     fn test_transit() {
         let abilities = vec![Ability::DirectTcpV1, Ability::RelayV1];
-        let hints = vec![
-            Hint::direct_tcp(0.0, "192.168.1.8", 46295),
-            Hint::relay_v1(vec![DirectHint {
-                hostname: "magic-wormhole-transit.debian.net".to_string(),
-                port: 4001,
-            }]),
-        ];
+        let hints = transit::Hints::new(
+            [DirectHint::new("192.168.1.8", 46295)],
+            [RelayHint::from_url("tcp://magic-wormhole-transit.debian.net:4001".parse().unwrap())],
+        );
         let t =
             serde_json::json!(crate::transfer::PeerMessage::transit(abilities, hints)).to_string();
         assert_eq!(t, "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001}],\"type\":\"relay-v1\"}]}}")
