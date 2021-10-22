@@ -3,12 +3,9 @@
 //! The transit protocol does not specify how to deliver the information to
 //! the other side, so it is up to the file transfer to do that. hfoo
 
-use crate::transit::{self, Ability, DirectHint, RelayHint, };
+use crate::transit::{self, Abilities as TransitAbilities};
 use serde_derive::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
 
 /**
  * The type of message exchanged over the wormhole for this protocol
@@ -72,7 +69,7 @@ impl PeerMessage {
         PeerMessage::Error(msg.into())
     }
 
-    pub fn transit(abilities: Vec<transit::Ability>, hints: transit::Hints) -> Self {
+    pub fn transit(abilities: TransitAbilities, hints: transit::Hints) -> Self {
         PeerMessage::Transit(TransitV1 {
             abilities_v1: abilities,
             hints_v1: hints,
@@ -159,7 +156,7 @@ pub struct AnswerV2 {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TransitV1 {
-    pub abilities_v1: Vec<Ability>,
+    pub abilities_v1: TransitAbilities,
     pub hints_v1: transit::Hints,
 }
 
@@ -175,17 +172,18 @@ pub struct TransitV2 {
 #[cfg(test)]
 mod test {
     use super::*;
+    use transit::{Abilities, DirectHint, RelayHint};
 
     #[test]
     fn test_transit() {
-        let abilities = vec![Ability::DirectTcpV1, Ability::RelayV1];
+        let abilities = Abilities::ALL_ABILITIES;
         let hints = transit::Hints::new(
             [DirectHint::new("192.168.1.8", 46295)],
             [RelayHint::from_url("tcp://magic-wormhole-transit.debian.net:4001".parse().unwrap())],
         );
         let t =
             serde_json::json!(crate::transfer::PeerMessage::transit(abilities, hints)).to_string();
-        assert_eq!(t, "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\"}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001}],\"type\":\"relay-v1\"}]}}")
+        assert_eq!(t, "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\",\"url-hints\":true}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001}],\"type\":\"relay-v1\",\"urls\":[\"tcp://magic-wormhole-transit.debian.net:4001\"]}]}}")
     }
 
     #[test]

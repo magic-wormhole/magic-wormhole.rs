@@ -18,13 +18,13 @@ where
     N: Into<PathBuf>,
     H: FnMut(u64, u64) + 'static,
 {
-    let connector = transit::init(transit::Ability::all_abilities(), None, relay_hints).await?;
+    let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
 
     // We want to do some transit
     debug!("Sending transit message '{:?}", connector.our_hints());
     wormhole
         .send_json(&PeerMessage::transit(
-            connector.our_abilities().to_vec(),
+            *connector.our_abilities(),
             (**connector.our_hints()).clone().into(),
         ))
         .await?;
@@ -36,7 +36,7 @@ where
         .await?;
 
     // Wait for their transit response
-    let (their_abilities, their_hints): (Vec<transit::Ability>, transit::Hints) =
+    let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
         match wormhole.receive_json().await?? {
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
@@ -79,7 +79,7 @@ where
     let mut transit = match connector
         .leader_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
-            Arc::new(their_abilities),
+            their_abilities,
             Arc::new(their_hints),
         )
         .await
@@ -131,7 +131,7 @@ where
     M: Into<PathBuf>,
     H: FnMut(u64, u64) + 'static,
 {
-    let connector = transit::init(transit::Ability::all_abilities(), None, relay_hints).await?;
+    let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
     let folder_path = folder_path.into();
 
     if !folder_path.is_dir() {
@@ -145,7 +145,7 @@ where
     debug!("Sending transit message '{:?}", connector.our_hints());
     wormhole
         .send_json(&PeerMessage::transit(
-            connector.our_abilities().to_vec(),
+            *connector.our_abilities(),
             (**connector.our_hints()).clone(),
         ))
         .await?;
@@ -208,7 +208,7 @@ where
         .await?;
 
     // Wait for their transit response
-    let (their_abilities, their_hints): (Vec<transit::Ability>, transit::Hints) =
+    let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
         match wormhole.receive_json().await?? {
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
@@ -251,7 +251,7 @@ where
     let mut transit = match connector
         .leader_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
-            Arc::new(their_abilities),
+            their_abilities,
             Arc::new(their_hints),
         )
         .await
