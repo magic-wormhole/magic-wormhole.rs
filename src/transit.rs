@@ -98,47 +98,34 @@ pub enum TransitError {
     ),
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct RelayAbility {
+    pub url_hints: bool,
+}
+
+impl Default for RelayAbility {
+    fn default() -> Self {
+        Self { url_hints: true }
+    }
+}
+
 /**
  * Defines a way to find the other side.
  *
  * Each ability comes with a set of [`Hints`] to encode how to meet up.
  */
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", tag = "type")]
-#[non_exhaustive]
-pub enum Ability {
-    /**
-     * Try to connect directly to the other side via TCP.
-     *
-     * This usually requires both participants to be in the same network. [`DirectHint`s](DirectHint) are sent,
-     * which encode all local IP addresses for the other side to find us.
-     */
-    DirectTcpV1,
-    /**
-     * UNSTABLE; NOT IMPLEMENTED!
-     * Try to connect directly to the other side via UDT.
-     *
-     * This supersedes [`Ability::DirectTcpV1`] because it has several advantages:
-     *
-     * - Works with stateful firewalls, no need to open up ports
-     * - Works despite many NAT types if combined with STUN
-     * - UDT has a few other interesting performance-related properties that make it better
-     *   suited than TCP (it's literally called "UDP-based Data Transfer Protocol")
-     */
-    DirectUdtV1,
-    /** Try to meet the other side at a relay. */
-    RelayV1,
-    /** Like v1, but with better hint encoding and WebSockets support */
-    RelayV2,
-    /* TODO Fix once https://github.com/serde-rs/serde/issues/912 is done */
-    #[serde(other)]
-    Other,
+#[derive(Copy, Clone, Debug)]
+pub struct Abilities {
+    pub direct_tcp_v1: bool,
+    pub relay_v1: Option<RelayAbility>,
 }
 
-impl Ability {
-    pub fn all_abilities() -> Vec<Ability> {
-        vec![Self::DirectTcpV1, Self::DirectUdtV1, Self::RelayV1, Self::RelayV2]
-    }
+impl Abilities {
+    pub const ALL_ABILITIES: Self = Self {
+        direct_tcp_v1: true,
+        relay_v1: Some(RelayAbility { url_hints: true }),
+    };
 
     /**
      * If you absolutely don't want to use any relay servers.
@@ -146,9 +133,10 @@ impl Ability {
      * If the other side forces relay usage or doesn't support any of your connection modes
      * the attempt will fail.
      */
-    pub fn force_direct() -> Vec<Ability> {
-        vec![Self::DirectTcpV1, Self::DirectUdtV1]
-    }
+    pub const FORCE_DIRECT: Self = Self {
+        direct_tcp_v1: true,
+        relay_v1: None,
+    };
 
     /**
      * If you don't want to disclose your IP address to your peer
@@ -158,8 +146,94 @@ impl Ability {
      * don't want your IP to potentially be disclosed use TOR instead (not supported by
      * the Rust implementation yet).
      */
-    pub fn force_relay() -> Vec<Ability> {
-        vec![Self::RelayV1, Self::RelayV2]
+    pub const FORCE_RELAY: Self = Self {
+        direct_tcp_v1: false,
+        relay_v1: Some(RelayAbility { url_hints: true }),
+    };
+
+    pub fn can_direct(&self) -> bool {
+        self.direct_tcp_v1
+    }
+
+    pub fn can_relay(&self) -> bool {
+        self.relay_v1.is_some()
+    }
+
+    /** Keep only abilities that both sides support */
+    pub fn intersect(mut self, other: &Self) -> Self {
+        self.direct_tcp_v1 &= other.direct_tcp_v1;
+        self.relay_v1 = match (self.relay_v1, other.relay_v1) {
+            (Some(RelayAbility { url_hints: true }), Some(RelayAbility { url_hints: true })) => {
+                Some(RelayAbility { url_hints: true })
+            },
+            (Some(_), Some(_)) => Some(RelayAbility { url_hints: false }),
+            _ => None,
+        };
+        self
+    }
+}
+
+impl Default for Abilities {
+    fn default() -> Self {
+        Self {
+            direct_tcp_v1: false,
+            relay_v1: None,
+        }
+    }
+}
+
+impl serde::Serialize for Abilities {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut hints = Vec::new();
+        if self.direct_tcp_v1 {
+            hints.push(serde_json::json!({
+                "type": "direct-tcp-v1",
+            }));
+        }
+        if let Some(relay_v1) = self.relay_v1 {
+            hints.push(serde_json::json!({
+                "type": "relay-v1",
+                "url-hints": relay_v1.url_hints,
+            }));
+        }
+        serde_json::Value::Array(hints).serialize(ser)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Abilities {
+    fn deserialize<D>(de: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "kebab-case", tag = "type")]
+        enum Ability {
+            DirectTcpV1,
+            RelayV1 {
+                #[serde(default)]
+                url_hints: bool,
+            },
+            #[serde(other)]
+            Other,
+        }
+
+        let mut abilities = Self::default();
+        /* Specifying a hint multiple times is undefined behavior. Here, we simply merge all features. */
+        for ability in <Vec<Ability> as serde::Deserialize>::deserialize(de)? {
+            match ability {
+                Ability::DirectTcpV1 => {
+                    abilities.direct_tcp_v1 = true;
+                },
+                Ability::RelayV1 { url_hints } => {
+                    abilities.relay_v1 = Some(RelayAbility { url_hints });
+                },
+                _ => (),
+            }
+        }
+        Ok(abilities)
     }
 }
 
@@ -169,15 +243,11 @@ impl Ability {
 #[non_exhaustive]
 enum HintSerde {
     DirectTcpV1(DirectHint),
-    /* Weirdness alarm: a "relay hint" contains multiple "direct hints". This means
-     * that there may be multiple direct hints, but if there are multiple relay hints
-     * it's still only one item because it internally has a list.
-     */
     RelayV1 {
         hints: HashSet<DirectHint>,
-    },
-    RelayV2 {
-        urls: HashSet<url::Url>,
+        /** Newer encoding. When present, the `hints` field is redundant.
+         */
+        urls: Option<HashSet<url::Url>>,
     },
     #[serde(other)]
     Unknown,
@@ -194,13 +264,16 @@ impl From<Vec<HintSerde>> for Hints {
                 HintSerde::DirectTcpV1(hint) => {
                     direct_tcp.insert(hint);
                 },
-                HintSerde::RelayV1 { hints } => {
+                HintSerde::RelayV1 { hints, urls: None } => {
                     relay.push(RelayHint {
                         tcp: hints,
                         ..RelayHint::default()
                     });
                 },
-                HintSerde::RelayV2 { urls } => {
+                HintSerde::RelayV1 {
+                    hints: _,
+                    urls: Some(urls),
+                } => {
                     let hint = RelayHint::new(urls);
                     hint.merge_into(&mut relay_v2);
                 },
@@ -239,12 +312,12 @@ impl Hints {
             .iter()
             .cloned()
             .map(HintSerde::DirectTcpV1)
-            .chain(self.relay.iter().flat_map(
-                |hint| [
-                    HintSerde::RelayV1 { hints: hint.tcp.clone() },
-                    HintSerde::RelayV2 { urls: hint.iter_urls().into_iter().collect() },
-                ]
-            ))
+            .chain(self.relay.iter().flat_map(|hint| {
+                [HintSerde::RelayV1 {
+                    hints: hint.tcp.clone(),
+                    urls: Some(hint.iter_urls().into_iter().collect()),
+                }]
+            }))
     }
 }
 
@@ -583,19 +656,19 @@ async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunErro
  * Bind a port and generate our [`Hints`]. This does not do any communication yet.
  */
 pub async fn init(
-    mut abilities: Vec<Ability>,
-    peer_abilities: Option<&[Ability]>,
+    mut abilities: Abilities,
+    peer_abilities: Option<Abilities>,
     relay_hints: Vec<RelayHint>,
 ) -> Result<TransitConnector, std::io::Error> {
     let mut our_hints = Hints::default();
     let mut listener = None;
 
     if let Some(peer_abilities) = peer_abilities {
-        abilities.retain(|a| peer_abilities.contains(a));
+        abilities = abilities.intersect(&peer_abilities);
     }
 
     /* Detect our IP addresses if the ability is enabled */
-    if abilities.contains(&Ability::DirectTcpV1) {
+    if abilities.can_direct() {
         /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
          * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
          * and use that instead.
@@ -662,13 +735,13 @@ pub async fn init(
         listener = Some((socket, socket2));
     }
 
-    if abilities.contains(&Ability::RelayV1) {
+    if abilities.can_relay() {
         our_hints.relay.extend(relay_hints);
     }
 
     Ok(TransitConnector {
         sockets: listener,
-        our_abilities: Arc::new(abilities),
+        our_abilities: abilities,
         our_hints: Arc::new(our_hints),
     })
 }
@@ -703,12 +776,12 @@ pub struct TransitConnector {
      * For in case the user is behind no firewalls, we must also listen to the second socket.
      */
     sockets: Option<(MaybeConnectedSocket, TcpListener)>,
-    our_abilities: Arc<Vec<Ability>>,
+    our_abilities: Abilities,
     our_hints: Arc<Hints>,
 }
 
 impl TransitConnector {
-    pub fn our_abilities(&self) -> &Arc<Vec<Ability>> {
+    pub fn our_abilities(&self) -> &Abilities {
         &self.our_abilities
     }
 
@@ -723,7 +796,7 @@ impl TransitConnector {
     pub async fn leader_connect(
         self,
         transit_key: Key<TransitKey>,
-        their_abilities: Arc<Vec<Ability>>,
+        their_abilities: Abilities,
         their_hints: Arc<Hints>,
     ) -> Result<Transit, TransitConnectError> {
         let Self {
@@ -738,7 +811,7 @@ impl TransitConnector {
             Self::connect(
                 true,
                 transit_key,
-                our_abilities.clone(),
+                our_abilities,
                 our_hints,
                 their_abilities,
                 their_hints,
@@ -766,7 +839,7 @@ impl TransitConnector {
         })?
         .ok_or(TransitConnectError::Handshake)?;
 
-        if host_type == HostType::Relay && our_abilities.contains(&Ability::DirectTcpV1) {
+        if host_type == HostType::Relay && our_abilities.can_direct() {
             log::debug!(
                 "Established transit connection over relay. Trying to find a direct connection …"
             );
@@ -816,7 +889,7 @@ impl TransitConnector {
     pub async fn follower_connect(
         self,
         transit_key: Key<TransitKey>,
-        their_abilities: Arc<Vec<Ability>>,
+        their_abilities: Abilities,
         their_hints: Arc<Hints>,
     ) -> Result<Transit, TransitConnectError> {
         let Self {
@@ -890,13 +963,13 @@ impl TransitConnector {
     fn connect(
         is_leader: bool,
         transit_key: Arc<Key<TransitKey>>,
-        our_abilities: Arc<Vec<Ability>>,
+        our_abilities: Abilities,
         our_hints: Arc<Hints>,
-        their_abilities: Arc<Vec<Ability>>,
+        their_abilities: Abilities,
         their_hints: Arc<Hints>,
         socket: Option<(MaybeConnectedSocket, TcpListener)>,
     ) -> impl Stream<Item = Result<(Transit, HostType), TransitHandshakeError>> + 'static {
-        assert!(socket.is_some() == our_abilities.contains(&Ability::DirectTcpV1));
+        assert!(socket.is_some() == our_abilities.can_direct());
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
@@ -943,10 +1016,7 @@ impl TransitConnector {
         };
 
         /* Relay hints. Make sure that both sides adverize it, since it is fine to support it without providing own hints. */
-        if (our_abilities.contains(&Ability::RelayV1) || our_abilities.contains(&Ability::RelayV2))
-            && (their_abilities.contains(&Ability::RelayV1)
-                || their_abilities.contains(&Ability::RelayV2))
-        {
+        if our_abilities.can_relay() && their_abilities.can_relay() {
             /* Collect intermediate into HashSet for deduplication */
             let mut relay_hints = Vec::<RelayHint>::new();
             relay_hints.extend(our_hints.relay.iter().take(2).cloned());

@@ -310,19 +310,19 @@ pub async fn request_file(
     relay_url: url::Url,
 ) -> Result<ReceiveRequest, TransferError> {
     let relay_hints = vec![transit::RelayHint::from_url(relay_url)];
-    let connector = transit::init(transit::Ability::all_abilities(), None, relay_hints).await?;
+    let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
 
     // send the transit message
     debug!("Sending transit message '{:?}", connector.our_hints());
     wormhole
         .send_json(&PeerMessage::transit(
-            connector.our_abilities().to_vec(),
+            *connector.our_abilities(),
             (**connector.our_hints()).clone().into(),
         ))
         .await?;
 
     // receive transit message
-    let (their_abilities, their_hints): (Vec<transit::Ability>, transit::Hints) =
+    let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
         match serde_json::from_slice(&wormhole.receive().await?)? {
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
@@ -374,7 +374,7 @@ pub async fn request_file(
         filename,
         filesize,
         connector,
-        their_abilities: Arc::new(their_abilities),
+        their_abilities,
         their_hints: Arc::new(their_hints),
     };
 
@@ -393,7 +393,7 @@ pub struct ReceiveRequest {
     /// **Security warning:** this is untrusted and unverified input
     pub filename: PathBuf,
     pub filesize: u64,
-    their_abilities: Arc<Vec<transit::Ability>>,
+    their_abilities: transit::Abilities,
     their_hints: Arc<transit::Hints>,
 }
 
