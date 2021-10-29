@@ -51,6 +51,12 @@ async fn main() -> eyre::Result<()> {
         .takes_value(true)
         .value_name("FILE_NAME")
         .help("Suggest a different name to the receiver. They won't know the file's actual name on your disk.");
+    let shell_command = Arg::with_name("shell-command")
+        .long("handle-code")
+        .conflicts_with("code")
+        .takes_value(true)
+        .value_name("COMMAND")
+        .help("Execute a shell command and pass the codeword via stdin.");
     /* Use in receive commands */
     let file_rename = Arg::with_name("file-name")
         .long("rename")
@@ -82,6 +88,7 @@ async fn main() -> eyre::Result<()> {
         .arg(relay_server_arg.clone())
         .arg(rendezvous_server_arg.clone())
         .arg(file_name.clone())
+        .arg(shell_command.clone())
         .arg(
             Arg::with_name("file")
                 .index(1)
@@ -111,6 +118,7 @@ async fn main() -> eyre::Result<()> {
         .arg(relay_server_arg.clone())
         .arg(rendezvous_server_arg.clone())
         .arg(file_name)
+        .arg(shell_command)
         .arg(
             Arg::with_name("file")
                 .index(1)
@@ -329,6 +337,7 @@ async fn parse_and_connect(
             .await?;
             print_welcome(term, &server_welcome)?;
             if is_send {
+                execute_shell_command(term, matches, &server_welcome.code)?;
                 sender_print_code(term, &server_welcome.code)?;
             }
             let wormhole = connector.await?;
@@ -372,6 +381,41 @@ fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Resu
     writeln!(term, "This wormhole's code is: {}", &code)?;
     writeln!(term, "On the other computer, please run:\n")?;
     writeln!(term, "wormhole receive {}\n", &code)?;
+    Ok(())
+}
+
+fn execute_shell_command(
+    term: &mut Term,
+    matches: &clap::ArgMatches<'_>,
+    code: &magic_wormhole::Code
+) -> eyre::Result<()> {
+    use eyre::{ WrapErr, ContextCompat };
+    if let Some(shell_command) = matches.value_of_os("shell-command") {
+        #[cfg(target_os = "windows")]
+        let mut child = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg(shell_command)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .context("failed execute shell-command")?;
+        #[cfg(not(target_os = "windows"))]
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(shell_command)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .context("failed execute shell-command")?;
+        let mut stdin = child.stdin.take().context("failed to open stdin of shell-command")?;
+        stdin.write_all(code.as_bytes()).context("failed to write to stdin of shell-command")?;
+        drop(stdin);
+        let status = child.wait().context("failed to wait for shell-command exit")?;
+        if !status.success() {
+            let rc = status.code().context("failed to get rc")?;
+            return Err(eyre::eyre!("Codeword handling command exited with RC {}", rc));
+        } else {
+            writeln!(term, "Codeword piped to command.")?;
+        }
+    }
     Ok(())
 }
 
