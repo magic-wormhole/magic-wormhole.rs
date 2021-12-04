@@ -25,7 +25,7 @@ where
     wormhole
         .send_json(&PeerMessage::transit(
             *connector.our_abilities(),
-            (**connector.our_hints()).clone().into(),
+            (**connector.our_hints()).clone(),
         ))
         .await?;
 
@@ -39,8 +39,8 @@ where
     let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
         match wormhole.receive_json().await?? {
             PeerMessage::Transit(transit) => {
-                debug!("received transit message: {:?}", transit);
-                (transit.abilities_v1, transit.hints_v1.into())
+                debug!("Received transit message: {:?}", transit);
+                (transit.abilities_v1, transit.hints_v1)
             },
             PeerMessage::Error(err) => {
                 bail!(TransferError::PeerError(err));
@@ -57,7 +57,7 @@ where
     {
         // Wait for file_ack
         let fileack_msg = wormhole.receive_json().await??;
-        debug!("received file ack message: {:?}", fileack_msg);
+        debug!("Received file ack message: {:?}", fileack_msg);
 
         match fileack_msg {
             PeerMessage::Answer(Answer::FileAck(msg)) => {

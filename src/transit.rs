@@ -630,8 +630,6 @@ async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunErro
         let mut decoder = MessageDecoder::<Attribute>::new();
         let decoded = decoder.decode_from_bytes(buf)??;
 
-        println!("Decoded message: {:?}", decoded);
-
         let external_addr1 = decoded
             .get_attribute::<XorMappedAddress>()
             .map(|x| x.address());
