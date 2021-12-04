@@ -235,7 +235,7 @@ impl Wormhole {
             server.release_nameplate().await?;
         }
 
-        log::info!("Connected to peer (PAKE successful)");
+        log::info!("Successfully connected to peer.");
 
         /* We are now fully initialized! Up and running! :tada: */
         Ok(Self {
@@ -310,9 +310,15 @@ impl Wormhole {
     where
         T: for<'a> serde::Deserialize<'a>,
     {
-        self.receive()
-            .await
-            .map(|data: Vec<u8>| serde_json::from_slice(&data))
+        self.receive().await.map(|data: Vec<u8>| {
+            serde_json::from_slice(&data).map_err(|e| {
+                log::error!(
+                    "Received invalid data from peer: '{}'",
+                    String::from_utf8_lossy(&data)
+                );
+                e
+            })
+        })
     }
 
     pub async fn close(self) -> Result<(), WormholeError> {

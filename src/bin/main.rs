@@ -35,6 +35,7 @@ async fn main() -> eyre::Result<()> {
         .help("Use a custom rendezvous server. Both sides need to use the same value in order to find each other.");
     let log_arg = Arg::with_name("log")
         .long("log")
+        .global(true)
         .help("Enable logging to stdout, for debugging purposes");
     let code_length_arg = Arg::with_name("code-length")
         .short("c")
@@ -235,8 +236,15 @@ async fn main() -> eyre::Result<()> {
             .filter_module("magic_wormhole::core", log::LevelFilter::Trace)
             .filter_module("mio", log::LevelFilter::Debug)
             .filter_module("ws", log::LevelFilter::Error)
-            .init();
+            .try_init()?;
         log::debug!("Logging enabled.");
+    } else {
+        env_logger::builder()
+            .filter_level(log::LevelFilter::Info)
+            .filter_module("ws", log::LevelFilter::Error)
+            .format_timestamp(None)
+            .format_target(false)
+            .try_init()?;
     }
 
     let file_name = |file_path| {
@@ -316,7 +324,7 @@ async fn main() -> eyre::Result<()> {
         .await?;
     } else if let Some(matches) = matches.subcommand_matches("forward") {
         // TODO make fancy
-        println!("Warning: this is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
+        log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
         if let Some(matches) = matches.subcommand_matches("serve") {
             /* Map the CLI argument to Strings. Use the occasion to inspect them and fail early on malformed input. */
             let targets = matches
@@ -443,7 +451,6 @@ async fn parse_and_connect(
             (wormhole, server_welcome.code)
         },
     };
-    writeln!(term, "Successfully connected to peer.")?;
     eyre::Result::<_>::Ok((wormhole, code, relay_server))
 }
 
@@ -477,7 +484,7 @@ fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> 
 }
 
 fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
-    writeln!(term, "This wormhole's code is: {}", &code)?;
+    writeln!(term, "\nThis wormhole's code is: {}", &code)?;
     writeln!(term, "On the other computer, please run:\n")?;
     writeln!(term, "wormhole receive {}\n", &code)?;
     Ok(())
@@ -505,7 +512,8 @@ async fn send(
             pb.set_position(sent);
         },
     )
-    .await?;
+    .await
+    .context("Send process failed")?;
     pb2.finish();
     Ok(())
 }
@@ -628,7 +636,9 @@ async fn receive(
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
 ) -> eyre::Result<()> {
-    let req = transfer::request_file(wormhole, relay_server).await?;
+    let req = transfer::request_file(wormhole, relay_server)
+        .await
+        .context("Could get an offer")?;
 
     /*
      * Control flow is a bit tricky here:
@@ -648,7 +658,7 @@ async fn receive(
     )
     .await
     {
-        return Ok(req.reject().await?);
+        return req.reject().await.context("Could not reject offer");
     }
 
     let file_name = file_name
@@ -668,8 +678,12 @@ async fn receive(
             .write(true)
             .create_new(true)
             .open(&file_path)
-            .await?;
-        return Ok(req.accept(on_progress, &mut file).await?);
+            .await
+            .context("Failed to create destination file")?;
+        return req
+            .accept(on_progress, &mut file)
+            .await
+            .context("Receive process failed");
     }
 
     /* If there is a collision, ask whether to overwrite */
@@ -679,7 +693,7 @@ async fn receive(
     )
     .await
     {
-        return Ok(req.reject().await?);
+        return req.reject().await.context("Could not reject offer");
     }
 
     let mut file = OpenOptions::new()
@@ -688,5 +702,8 @@ async fn receive(
         .truncate(true)
         .open(&file_path)
         .await?;
-    Ok(req.accept(on_progress, &mut file).await?)
+    Ok(req
+        .accept(on_progress, &mut file)
+        .await
+        .context("Receive process failed")?)
 }
