@@ -901,6 +901,13 @@ impl Transit {
                 socket.read_exact(&mut length_arr[..]).await?;
                 u32::from_be_bytes(length_arr) as usize
             };
+            ensure!(
+                length >= secretbox::NONCE_SIZE,
+                Error::new(
+                    ErrorKind::InvalidData,
+                    "Message must be long enough to contain at least the nonce"
+                )
+            );
 
             // 2. read that many bytes into an array (or a vector?)
             let mut buffer = Vec::with_capacity(length);
@@ -975,7 +982,7 @@ impl Transit {
     pub fn split(
         self,
     ) -> (
-        impl futures::sink::Sink<Box<[u8]>>,
+        impl futures::sink::Sink<Box<[u8]>, Error = TransitError>,
         impl futures::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
     ) {
         use futures::io::AsyncReadExt;
