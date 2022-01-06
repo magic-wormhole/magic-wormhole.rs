@@ -315,6 +315,154 @@ where
     Ok(())
 }
 
+/// Sends a pre-computed zip file.
+///
+/// This is separated out for applications (e.g, GUIs) that might want to construct the zip file(s)
+/// themselves.
+pub async fn send_zip_file<F, N, H>(
+    wormhole: &mut Wormhole,
+    relay_url: &RelayUrl,
+    zip_file: &mut F,
+    zipped_file_size: u64,
+    uncompressed_file_size: u64,
+    num_files: u64,
+    dir_name: N,
+    progress_handler: H,
+) -> Result<(), TransferError>
+where
+    F: AsyncRead + Unpin,
+    N: Into<PathBuf>,
+    H: FnMut(u64, u64) + 'static,
+{
+    let connector = transit::init(transit::Ability::all_abilities(), relay_url).await?;
+
+    // We want to do some transit
+    debug!("Sending transit message '{:?}", connector.our_hints());
+    wormhole
+        .send(
+            PeerMessage::new_transit(
+                connector.our_abilities().to_vec(),
+                (**connector.our_hints()).clone().into(),
+            )
+            .serialize_vec(),
+        )
+        .await?;
+
+    // Send file offer message.
+    debug!("Sending zip offer");
+
+    // Zips in Wormhole represent directories, more or less. Here we create and send over a message
+    // indicating what we're sending - namely, that it's really a "directory" transfer and that
+    // Wormhole should do its thing on the other side (if the client supports it) to decompress in
+    // place.
+    let dir_offer = PeerMessage::new_offer_directory(
+        dir_name,
+        "zipfile/deflated",
+        zipped_file_size,
+        uncompressed_file_size,
+        num_files
+    );
+
+    wormhole.send(dir_offer.serialize_vec()).await?;
+
+    // Wait for their transit response
+    let (their_abilities, their_hints): (Vec<transit::Ability>, transit::Hints) =
+        match serde_json::from_slice(&wormhole.receive().await?)? {
+            PeerMessage::Transit(transit) => {
+                debug!("received transit message: {:?}", transit);
+                (transit.abilities_v1, transit.hints_v1.into())
+            },
+            
+            PeerMessage::Error(err) => {
+                bail!(TransferError::PeerError(err));
+            },
+            
+            other => {
+                let error = TransferError::unexpected_message("transit", other);
+                let _ = wormhole
+                    .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+                    .await;
+                bail!(error)
+            },
+        };
+
+    {
+        // Wait for file_ack
+        let fileack_msg = serde_json::from_slice(&wormhole.receive().await?)?;
+        debug!("received file ack message: {:?}", fileack_msg);
+
+        match fileack_msg {
+            PeerMessage::Answer(AnswerType::FileAck(msg)) => {
+                ensure!(msg == "ok", TransferError::AckError);
+            },
+            
+            PeerMessage::Error(err) => {
+                bail!(TransferError::PeerError(err));
+            },
+            
+            _ => {
+                let error = TransferError::unexpected_message("answer/file_ack", fileack_msg);
+                let _ = wormhole
+                    .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+                    .await;
+                bail!(error)
+            },
+        }
+    }
+
+    let mut transit = match connector
+        .leader_connect(
+            wormhole.key().derive_transit_key(wormhole.appid()),
+            Arc::new(their_abilities),
+            Arc::new(their_hints),
+        )
+        .await
+    {
+        Ok(transit) => transit,
+
+        Err(error) => {
+            let error = TransferError::TransitConnect(error);
+            
+            let _ = wormhole
+                .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+                .await;
+            
+            return Err(error);
+        },
+    };
+
+    debug!("Beginning zip transfer");
+
+    // 11. send the file as encrypted records.
+    let checksum = match send_records(&mut transit, zip_file, zipped_file_size, progress_handler).await {
+        Err(TransferError::Transit(error)) => {
+            let _ = wormhole
+                .send(PeerMessage::Error(format!("{}", error)).serialize_vec())
+                .await;
+            
+            Err(TransferError::Transit(error))
+        },
+
+        other => other,
+    }?;
+
+
+    // 13. wait for the transit ack with sha256 sum from the peer.
+    debug!("sent zip. Waiting for ack");
+    
+    let transit_ack = transit.receive_record().await?;
+    let transit_ack_msg = serde_json::from_slice::<TransitAck>(&transit_ack)?;
+    
+    ensure!(
+        transit_ack_msg.sha256 == hex::encode(checksum),
+        TransferError::Checksum
+    );
+
+    debug!("transfer complete!");
+    
+    Ok(())
+}
+
 /// Send a folder to the other side
 ///
 /// This isn't a proper folder transfer as per the Wormhole protocol
