@@ -7,9 +7,9 @@ macro_rules! ensure {
 }
 
 macro_rules! bail {
-    ($err:expr $(,)?) => {
+    ($err:expr $(,)?) => {{
         return std::result::Result::Err($err.into());
-    };
+    }};
 }
 
 /// A warpper around `&[u8]` that implements [`std::fmt::Display`] in a more intelligent+ way.
