@@ -367,7 +367,7 @@ async fn main() -> eyre::Result<()> {
             loop {
                 let (wormhole, _code, relay_server) =
                     parse_and_connect(&mut term, matches, true, forwarding::APP_CONFIG).await?;
-                let relay_server = vec![transit::RelayHint::from_url(relay_server)];
+                let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
                 async_std::task::spawn(forwarding::serve(wormhole, relay_server, targets.clone()));
             }
         } else if let Some(matches) = matches.subcommand_matches("connect") {
@@ -380,7 +380,7 @@ async fn main() -> eyre::Result<()> {
             let bind_address: std::net::IpAddr = matches.value_of("bind").unwrap().parse()?;
             let (wormhole, _code, relay_server) =
                 parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG).await?;
-            let relay_server = vec![transit::RelayHint::from_url(relay_server)];
+            let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
             forwarding::connect(wormhole, relay_server, Some(bind_address), &custom_ports).await?;
         } else {

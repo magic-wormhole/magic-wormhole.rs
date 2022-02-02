@@ -179,15 +179,36 @@ mod test {
         let abilities = Abilities::ALL_ABILITIES;
         let hints = transit::Hints::new(
             [DirectHint::new("192.168.1.8", 46295)],
-            [RelayHint::from_url(
-                "tcp://magic-wormhole-transit.debian.net:4001"
-                    .parse()
-                    .unwrap(),
+            [RelayHint::new(
+                None,
+                [DirectHint::new("magic-wormhole-transit.debian.net", 4001)],
+                [],
             )],
         );
-        let t =
-            serde_json::json!(crate::transfer::PeerMessage::transit(abilities, hints)).to_string();
-        assert_eq!(t, "{\"transit\":{\"abilities-v1\":[{\"type\":\"direct-tcp-v1\"},{\"type\":\"relay-v1\",\"url-hints\":true}],\"hints-v1\":[{\"hostname\":\"192.168.1.8\",\"port\":46295,\"type\":\"direct-tcp-v1\"},{\"hints\":[{\"hostname\":\"magic-wormhole-transit.debian.net\",\"port\":4001}],\"type\":\"relay-v1\",\"urls\":[\"tcp://magic-wormhole-transit.debian.net:4001\"]}]}}")
+        assert_eq!(
+            serde_json::json!(crate::transfer::PeerMessage::transit(abilities, hints)),
+            serde_json::json!({
+                "transit": {
+                    "abilities-v1": [{"type":"direct-tcp-v1"},{"type":"relay-v1"},{"type":"relay-v2"}],
+                    "hints-v1": [
+                        {"hostname":"192.168.1.8","port":46295,"type":"direct-tcp-v1"},
+                        {
+                            "type": "relay-v1",
+                            "hints": [
+                                {"hostname": "magic-wormhole-transit.debian.net", "port": 4001 }
+                            ]
+                        },
+                        {
+                            "type": "relay-v2",
+                            "hints": [
+                                {"type": "tcp", "hostname": "magic-wormhole-transit.debian.net", "port": 4001}
+                            ],
+                            "name": null
+                        }
+                    ],
+                }
+            })
+        );
     }
 
     #[test]
