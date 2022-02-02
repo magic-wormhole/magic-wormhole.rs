@@ -107,7 +107,26 @@ pub fn hashcash(resource: String, bits: u32) -> String {
         );
     }
 
-    let date = base64::encode(chrono::Utc::today().format("%y%m%d").to_string());
+    /* This is the `[year][month][day]` format, but without activating the parser */
+    use time::format_description::{Component, FormatItem};
+    let format = [
+        FormatItem::Component(Component::Year(
+            time::format_description::modifier::Year::default(),
+        )),
+        FormatItem::Component(Component::Month(
+            time::format_description::modifier::Month::default(),
+        )),
+        FormatItem::Component(Component::Day(
+            time::format_description::modifier::Day::default(),
+        )),
+    ];
+    /* I'm pretty sure HashCash should work with any time zone */
+    let date = base64::encode(
+        time::OffsetDateTime::now_utc()
+            .date()
+            .format(&format[..])
+            .unwrap(),
+    );
 
     let rand: String = base64::encode(
         rand::thread_rng()

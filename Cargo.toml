@@ -8,7 +8,7 @@ authors = [
 license = "MIT"
 homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/warner/magic-wormhole.rs"
-edition = "2018"
+edition = "2021"
 description = "Get things from one computer to another, safely"
 readme = "README.md"
 default-run = "wormhole"
@@ -20,11 +20,11 @@ travis-ci = { repository = "warner/magic-wormhole.rs" }
 serde = { version = "1.0.120", features = ["rc"] }
 serde_json = "1.0.61"
 serde_derive = "1.0.120"
-xsalsa20poly1305 = "0.7.1"
+xsalsa20poly1305 = "0.8.0"
 spake2 = "0.2.0"
-sha-1 = "0.9.7"
-sha2 = "0.9.2"
-hkdf = "0.11.0"
+sha-1 = "0.9.8"
+sha2 = "0.10.0"
+hkdf = "0.12.2"
 hex = { version = "0.4.2", features = ["serde"] }
 rand = "0.8.3"
 regex = "1.4.3"
@@ -35,7 +35,7 @@ byteorder = "1.4.2"
 base64 = "0.13.0"
 futures_ringbuf = "0.3.1"
 tar = "0.4.33"
-chrono = "0.4.19"
+time = { version = "0.3.7", features = ["formatting"] }
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
 thiserror = "1.0.24"
@@ -43,7 +43,7 @@ thiserror = "1.0.24"
 futures = "0.3.12"
 # async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
 async-std = { version = "1.9.0", features = ["attributes", "unstable"], git = "https://github.com/piegamesde/async-std" }
-async-tungstenite = { version = "0.14.0", features = ["async-std-runtime", "async-tls"] }
+async-tungstenite = { version = "0.16.1", features = ["async-std-runtime", "async-tls"] }
 async-io = "1.6.0"
 socket2 = "0.4.1"
 libc = "0.2.101"
@@ -51,12 +51,12 @@ stun_codec = "0.1.13"
 bytecodec = "0.4.15"
 
 # for "bin" feature
-clap = { version = "2.33.3", optional = true }
+clap = { version = "2.34.0", optional = true }
 env_logger = { version = "0.9.0", optional = true }
-console = { version = "0.14.1", optional = true }
+console = { version = "0.15.0", optional = true }
 indicatif = { version = "0.16.0", optional = true }
-dialoguer = { version = "0.8.0", optional = true }
-color-eyre = { version = "0.5.7", optional = true }
+dialoguer = { version = "0.9.0", optional = true }
+color-eyre = { version = "0.6.0", optional = true }
 url = { version = "2.2.2", features = ["serde"] }
 uri = "0.4.0"
 rmp-serde = "0.15.5"
