@@ -254,7 +254,7 @@ where
     H: FnMut(u64, u64) + 'static,
 {
     let _peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
-    let relay_hints = vec![transit::RelayHint::from_url(relay_url)];
+    let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
     // if peer_version.supports_v2() && false {
     //     v2::send_file(wormhole, relay_url, file, file_name, file_size, progress_handler, peer_version).await
     // } else {
@@ -288,7 +288,7 @@ where
     M: Into<PathBuf>,
     H: FnMut(u64, u64) + 'static,
 {
-    let relay_hints = vec![transit::RelayHint::from_url(relay_url)];
+    let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
     v1::send_folder(
         wormhole,
         relay_hints,
@@ -309,7 +309,7 @@ pub async fn request_file(
     mut wormhole: Wormhole,
     relay_url: url::Url,
 ) -> Result<ReceiveRequest, TransferError> {
-    let relay_hints = vec![transit::RelayHint::from_url(relay_url)];
+    let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
     let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
 
     // send the transit message
