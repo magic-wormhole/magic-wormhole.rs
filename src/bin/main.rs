@@ -375,7 +375,7 @@ async fn main() -> eyre::Result<()> {
                 .values_of("port")
                 .into_iter()
                 .flatten()
-                .map(|port| port.parse().map_err(eyre::Error::from))
+                .map(|port| port.parse::<u16>().map_err(eyre::Error::from))
                 .collect::<Result<_, _>>()?;
             let bind_address: std::net::IpAddr = matches.value_of("bind").unwrap().parse()?;
             let (wormhole, _code, relay_server) =
