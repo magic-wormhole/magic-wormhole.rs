@@ -469,7 +469,6 @@ impl ReceiveRequest {
      * Reject the file offer
      *
      * This will send an error message to the other side so that it knows the transfer failed.
-     * You can close the wormhole afterwards.
      */
     pub async fn reject(mut self) -> Result<(), TransferError> {
         self.wormhole
