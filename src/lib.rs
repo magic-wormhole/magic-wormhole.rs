@@ -9,8 +9,10 @@
 //! Two clients that are connected to each other need to know beforehand how to communicate with each other once the connection is established.
 //! This why they have an [`AppID`]. The protocol they use to talk to each other is bound to the AppID. Clients with different AppIDs cannot communicate.
 //!
-//! Magic Wormhole is known for its ability to transfer files. This is implemented in the [`transfer`] module, which builds upon the womrhole
+//! Magic Wormhole is known for its ability to transfer files. This is implemented in the [`transfer`] module, which builds upon the wormhole
 //! protocol and thus requires a [`Wormhole`].
+//!
+//! As an alternative to file transfer, there is the [`forwarding`] module, which allows to forward arbitrary TCP connections over the Wormhole/Transit tunnel.
 //!
 //! Transferring large amounts of data should not be done over the rendezvous server. Instead, you have to set up a [`transit`]
 //! connection. A transit is little more than an encrypted TcpConnection. If a direct connection between both clients is not possible,

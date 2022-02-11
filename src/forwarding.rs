@@ -1,3 +1,18 @@
+//! Client-to-Client protocol to forward TCP connections
+//!
+//! This is a new (and still slightly experimental feature) that allows you to forward TCP connections over a wormhole
+//! `transit` connection.
+//!
+//! It is bound to an [`APPID`](APPID), which is distinct to the one used for file transfer. Therefore, the codes used
+//! for port forwarding are in an independent namespace than those for sending files.
+//!
+//! At its core, "peer messages" are exchanged over an established wormhole connection with the other side.
+//! They are used to set up a [`transit`] portal that will be used instead of the wormhole connection, which will be closed.
+//! Connections are tracked via an identifier, and multiplexed over the transit channel. The forwarding is
+//! "logical" and not "raw"; because "TCP in TCP" tunneling is known to be problematic. Packages are sent
+//! and received as they come in, no additional buffering is applied. (Under the assumption that those applications
+//! that need buffering already do it on their side, and those who don't, don't.)
+
 use super::*;
 use async_std::net::{TcpListener, TcpStream};
 use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
@@ -108,6 +123,16 @@ impl ForwardingError {
     }
 }
 
+/// Offer to forward some ports
+///
+/// `targets` is a mapping of (host, port) pairs. If no target host is provided, then
+/// a local port will be forwarded (`localhost`). Forwarding remote ports only works well
+/// when the protocol being forwarded is not host-aware. HTTP, for example, is host aware.
+///
+/// The port forwarding will run until an error occurs, the peer terminates the connection
+/// or `cancel` resolves. The last one can be used to provide timeouts or to inject CTRL-C
+/// handling. If you want the forward to never (successfully) stop, pass [`futures::future::pending()`]
+/// as the value.
 pub async fn serve(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -471,6 +496,20 @@ impl ForwardingServe {
     }
 }
 
+/// Request a port forwarding offer from the other side
+///
+/// You can optionally specify a `bind_address` where the port forwarding
+/// will be made available. You can also specify a list of `custom_ports` that
+/// will be used for the forwarding. The mapping between custom ports and forwarded
+/// targets is 1:1 and order preserving. If more ports are forwarded than custom
+/// ports were specified, then the remaining ports will be arbitrary.
+///
+/// The method returns a [`ConnectOffer`] from which the resulting port mapping can
+/// be queried. That struct also has an `accept` and `reject` method, of which one
+/// must be used.
+///
+/// This method already binds to all the necessary ports up-front. To limit abuse potential
+/// no more than 1024 ports may be forwarded at once.
 pub async fn connect(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -547,7 +586,7 @@ pub async fn connect(
 
         /* Sanity check on untrusted input */
         if addresses.len() > 1024 {
-            return Err(ForwardingError::Protocol("Too many forwarded ports".into()));
+            return Err(ForwardingError::protocol("Too many forwarded ports"));
         }
 
         /* self => remote
@@ -590,6 +629,9 @@ pub async fn connect(
     }
 }
 
+/// A pending forwarding offer from the other side
+///
+/// You *should* consume this object, either by calling [`accept`](ConnectOffer::accept) or [`reject`](ConnectOffer::reject).
 #[must_use]
 pub struct ConnectOffer {
     pub mapping: Vec<(u16, Rc<String>)>,
@@ -602,6 +644,12 @@ pub struct ConnectOffer {
 }
 
 impl ConnectOffer {
+    /// Accept the offer and start the forwarding
+    ///
+    /// The method will run until an error occurs, the peer terminates the connection
+    /// or `cancel` resolves. The last one can be used to provide timeouts or to inject CTRL-C
+    /// handling. If you want the forward to never (successfully) stop, pass [`futures::future::pending()`]
+    /// as the value.
     pub async fn accept(self, cancel: impl Future<Output = ()>) -> Result<(), ForwardingError> {
         let (transit_tx, transit_rx) = self.transit.split();
         let transit_rx = transit_rx.fuse();
@@ -650,6 +698,9 @@ impl ConnectOffer {
         }
     }
 
+    /// Reject the offer
+    ///
+    /// This will send an error message to the other side so that it knows the transfer failed.
     pub async fn reject(mut self) -> Result<(), ForwardingError> {
         self.transit
             .send_record(&PeerMessage::Error("transfer rejected".into()).ser_msgpack())
