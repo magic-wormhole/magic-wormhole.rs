@@ -1,6 +1,6 @@
 use async_std::{io, io::prelude::*};
 
-pub async fn ask_user(message: String, default_answer: bool) -> bool {
+pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> bool {
     let message = format!(
         "{} ({}/{}) ",
         message,

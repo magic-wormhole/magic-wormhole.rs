@@ -386,7 +386,12 @@ async fn main() -> eyre::Result<()> {
                 )
                 .await?;
                 let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
-                async_std::task::spawn(forwarding::serve(wormhole, relay_server, targets.clone()));
+                async_std::task::spawn(forwarding::serve(
+                    wormhole,
+                    relay_server,
+                    targets.clone(),
+                    futures::future::pending(),
+                ));
             }
         } else if let Some(matches) = matches.subcommand_matches("connect") {
             let custom_ports: Vec<u16> = matches
@@ -400,7 +405,19 @@ async fn main() -> eyre::Result<()> {
                 parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG, None).await?;
             let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
-            forwarding::connect(wormhole, relay_server, Some(bind_address), &custom_ports).await?;
+            let offer =
+                forwarding::connect(wormhole, relay_server, Some(bind_address), &custom_ports)
+                    .await?;
+            log::info!("Mapping the following open ports to targets:");
+            log::info!("  local port -> remote target (no address = localhost on remote)");
+            for (port, target) in &offer.mapping {
+                log::info!("  {} -> {}", port, target);
+            }
+            if util::ask_user("Accept forwarded ports?", true).await {
+                offer.accept(futures::future::pending()).await?;
+            } else {
+                offer.reject().await?;
+            }
         } else {
             unreachable!()
         }
