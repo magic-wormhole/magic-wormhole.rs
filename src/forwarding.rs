@@ -1,6 +1,6 @@
 use super::*;
 use async_std::net::{TcpListener, TcpStream};
-use futures::{AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt, TryStreamExt};
+use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -38,7 +38,6 @@ pub struct AppVersion {
     other: serde_json::Value,
 }
 
-// TODO send peer errors when something went wrong (if possible)
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ForwardingError {
@@ -113,6 +112,7 @@ pub async fn serve(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     targets: Vec<(Option<url::Host>, u16)>,
+    cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
     let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     let connector = transit::init(
@@ -195,8 +195,11 @@ pub async fn serve(
 
     let (transit_tx, transit_rx) = transit.split();
     let transit_rx = transit_rx.fuse();
+    use futures::future::FutureExt;
+    let cancel = cancel.fuse();
     futures::pin_mut!(transit_tx);
     futures::pin_mut!(transit_rx);
+    futures::pin_mut!(cancel);
 
     /* Main processing loop. Catch errors */
     let result = ForwardingServe {
@@ -206,7 +209,7 @@ pub async fn serve(
         backchannel_tx,
         backchannel_rx,
     }
-    .run(&mut transit_tx, &mut transit_rx)
+    .run(&mut transit_tx, &mut transit_rx, &mut cancel)
     .await;
     /* If the error is not a PeerError (i.e. coming from the other side), try notifying the other side before quitting. */
     match result {
@@ -392,10 +395,11 @@ impl ForwardingServe {
         transit_tx: &mut (impl futures::sink::Sink<Box<[u8]>, Error = TransitError> + Unpin),
         transit_rx: &mut (impl futures::stream::FusedStream<Item = Result<Box<[u8]>, TransitError>>
                   + Unpin),
+        cancel: &mut (impl futures::future::FusedFuture<Output = ()> + Unpin),
     ) -> Result<(), ForwardingError> {
         /* Event processing loop */
         log::debug!("Entered processing loop");
-        loop {
+        let ret = loop {
             futures::select! {
                 message = transit_rx.next() => {
                     match PeerMessage::de_msgpack(&message.unwrap()?)? {
@@ -416,6 +420,7 @@ impl ForwardingServe {
                             self.remove_connection(transit_tx, connection_id, false).await?;
                         },
                         PeerMessage::Close => {
+                            log::info!("Peer gracefully closed connection");
                             self.shutdown().await;
                             break Ok(());
                         },
@@ -447,8 +452,22 @@ impl ForwardingServe {
                         },
                     }
                 },
+                /* We are done */
+                () = &mut *cancel => {
+                    log::info!("Closing connection");
+                    transit_tx.send(
+                        PeerMessage::Close.ser_msgpack()
+                        .into_boxed_slice()
+                    )
+                    .await?;
+                    transit_tx.close().await?;
+                    self.shutdown().await;
+                    break Ok(());
+                },
             }
-        }
+        };
+        log::debug!("Exited processing loop");
+        ret
     }
 }
 
@@ -457,7 +476,7 @@ pub async fn connect(
     relay_hints: Vec<transit::RelayHint>,
     bind_address: Option<std::net::IpAddr>,
     custom_ports: &[u16],
-) -> Result<(), ForwardingError> {
+) -> Result<ConnectOffer, ForwardingError> {
     let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     let connector = transit::init(
         transit::Abilities::ALL_ABILITIES, // TODO use the ones we actually sent
@@ -492,7 +511,7 @@ pub async fn connect(
         },
     };
 
-    let transit = match connector
+    let mut transit = match connector
         .follower_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
@@ -513,16 +532,10 @@ pub async fn connect(
     /* We got a transit, now close the Wormhole */
     wormhole.close().await?;
 
-    let (transit_tx, transit_rx) = transit.split();
-    let transit_rx = transit_rx.fuse();
-    futures::pin_mut!(transit_tx);
-    futures::pin_mut!(transit_rx);
-
-    /* Error handling catcher (see below) */
     let run = async {
         /* Receive offer and ask user */
 
-        let addresses = match PeerMessage::de_msgpack(&transit_rx.next().await.unwrap()?)? {
+        let addresses = match PeerMessage::de_msgpack(&transit.receive_record().await?)? {
             PeerMessage::Offer { addresses } => addresses,
             PeerMessage::Error(err) => {
                 bail!(ForwardingError::PeerError(err));
@@ -532,8 +545,10 @@ pub async fn connect(
             },
         };
 
-        // TODO ask user here
-        // TODO proper port mapping
+        /* Sanity check on untrusted input */
+        if addresses.len() > 1024 {
+            return Err(ForwardingError::Protocol("Too many forwarded ports".into()));
+        }
 
         /* self => remote
          *                  (address, connection)
@@ -545,59 +560,102 @@ pub async fn connect(
             std::rc::Rc<std::string::String>,
         )> = futures::stream::iter(
             addresses
-                .iter()
-                .cloned()
+                .into_iter()
                 .map(Rc::new)
                 .zip(custom_ports.iter().copied().chain(std::iter::repeat(0))),
         )
         .then(|(address, port)| async move {
             let connection = TcpListener::bind((bind_address, port)).await?;
             let port = connection.local_addr()?.port();
-            Result::<_, std::io::Error>::Ok((connection, port, address.clone()))
+            Result::<_, std::io::Error>::Ok((connection, port, address))
         })
         .try_collect()
         .await?;
-
-        log::info!("Mapping the following open ports to targets:");
-        log::info!("  local port -> remote target (no address = localhost on remote)");
-        for (_, port, target) in &listeners {
-            log::info!("  {} -> {}", port, target);
-        }
-
-        let (backchannel_tx, backchannel_rx) =
-            futures::channel::mpsc::channel::<(u64, Option<Vec<u8>>)>(20);
-
-        ForwardConnect {
-            incoming: futures::stream::select_all(listeners.into_iter().map(
-                |(connection, _, address)| {
-                    connection
-                        .into_incoming()
-                        .map_ok(move |stream| (address.clone(), stream))
-                        .boxed_local()
-                },
-            )),
-            connection_counter: 0,
-            connections: HashMap::new(),
-            backchannel_tx,
-            backchannel_rx,
-        }
-        .run(&mut transit_tx, &mut transit_rx)
-        .await
+        Ok(listeners)
     };
 
     match run.await {
-        Ok(()) => Ok(()),
+        Ok(listeners) => Ok(ConnectOffer {
+            transit,
+            mapping: listeners.iter().map(|(_, b, c)| (*b, c.clone())).collect(),
+            listeners,
+        }),
         Err(error @ ForwardingError::PeerError(_)) => Err(error),
         Err(error) => {
-            let _ = transit_tx
-                .send(
-                    PeerMessage::Error(format!("{}", error))
-                        .ser_msgpack()
-                        .into_boxed_slice(),
-                )
+            let _ = transit
+                .send_record(&PeerMessage::Error(format!("{}", error)).ser_msgpack())
                 .await;
             Err(error)
         },
+    }
+}
+
+#[must_use]
+pub struct ConnectOffer {
+    pub mapping: Vec<(u16, Rc<String>)>,
+    transit: transit::Transit,
+    listeners: Vec<(
+        async_std::net::TcpListener,
+        u16,
+        std::rc::Rc<std::string::String>,
+    )>,
+}
+
+impl ConnectOffer {
+    pub async fn accept(self, cancel: impl Future<Output = ()>) -> Result<(), ForwardingError> {
+        let (transit_tx, transit_rx) = self.transit.split();
+        let transit_rx = transit_rx.fuse();
+        use futures::FutureExt;
+        let cancel = cancel.fuse();
+        futures::pin_mut!(transit_tx);
+        futures::pin_mut!(transit_rx);
+        futures::pin_mut!(cancel);
+
+        /* Error handling catcher (see below) */
+        let run = async {
+            let (backchannel_tx, backchannel_rx) =
+                futures::channel::mpsc::channel::<(u64, Option<Vec<u8>>)>(20);
+
+            ForwardConnect {
+                incoming: futures::stream::select_all(self.listeners.into_iter().map(
+                    |(connection, _, address)| {
+                        connection
+                            .into_incoming()
+                            .map_ok(move |stream| (address.clone(), stream))
+                            .boxed_local()
+                    },
+                )),
+                connection_counter: 0,
+                connections: HashMap::new(),
+                backchannel_tx,
+                backchannel_rx,
+            }
+            .run(&mut transit_tx, &mut transit_rx, &mut cancel)
+            .await
+        };
+
+        match run.await {
+            Ok(()) => Ok(()),
+            Err(error @ ForwardingError::PeerError(_)) => Err(error),
+            Err(error) => {
+                let _ = transit_tx
+                    .send(
+                        PeerMessage::Error(format!("{}", error))
+                            .ser_msgpack()
+                            .into_boxed_slice(),
+                    )
+                    .await;
+                Err(error)
+            },
+        }
+    }
+
+    pub async fn reject(mut self) -> Result<(), ForwardingError> {
+        self.transit
+            .send_record(&PeerMessage::Error("transfer rejected".into()).ser_msgpack())
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -753,10 +811,11 @@ impl ForwardConnect {
         transit_tx: &mut (impl futures::sink::Sink<Box<[u8]>, Error = TransitError> + Unpin),
         transit_rx: &mut (impl futures::stream::FusedStream<Item = Result<Box<[u8]>, TransitError>>
                   + Unpin),
+        cancel: &mut (impl futures::future::FusedFuture<Output = ()> + Unpin),
     ) -> Result<(), ForwardingError> {
         /* Event processing loop */
         log::debug!("Entered processing loop");
-        loop {
+        let ret = loop {
             futures::select! {
                 message = transit_rx.next() => {
                     match PeerMessage::de_msgpack(&message.unwrap()?)? {
@@ -767,6 +826,7 @@ impl ForwardConnect {
                             self.remove_connection(transit_tx, connection_id, false).await?;
                         },
                         PeerMessage::Close => {
+                            log::info!("Peer gracefully closed connection");
                             self.shutdown().await;
                             break Ok(())
                         },
@@ -803,9 +863,23 @@ impl ForwardConnect {
                 connection = self.incoming.next() => {
                     let (target, connection): (Rc<String>, TcpStream) = connection.unwrap()?;
                     self.spawn_connection(transit_tx, target, connection).await?;
-                }
+                },
+                /* We are done */
+                () = &mut *cancel => {
+                    log::info!("Closing connection");
+                    transit_tx.send(
+                        PeerMessage::Close.ser_msgpack()
+                        .into_boxed_slice()
+                    )
+                    .await?;
+                    transit_tx.close().await?;
+                    self.shutdown().await;
+                    break Ok(());
+                },
             }
-        }
+        };
+        log::debug!("Exited processing loop");
+        ret
     }
 }
 
