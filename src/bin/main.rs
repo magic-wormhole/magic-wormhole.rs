@@ -9,15 +9,53 @@ use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
+use futures::{Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::str::FromStr;
 
+fn install_ctrlc_handler() -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()>> {
+    use async_std::sync::{Condvar, Mutex};
+
+    let notifier = Arc::new((Mutex::new(false), Condvar::new()));
+
+    /* Register the handler */
+    let notifier2 = notifier.clone();
+    ctrlc::set_handler(move || {
+        futures::executor::block_on(async {
+            let mut has_notified = notifier2.0.lock().await;
+            if *has_notified {
+                /* Second signal. Exit */
+                std::process::exit(0);
+            }
+            /* First signal. */
+            log::info!("Got Ctrl-C event. Press again to exit immediately");
+            *has_notified = true;
+            notifier2.1.notify_all();
+        })
+    })
+    .context("Error setting Ctrl-C handler")?;
+
+    Ok(move || {
+        /* Transform the notification into a future that waits */
+        let notifier = notifier.clone();
+        async move {
+            let (lock, cvar) = &*notifier;
+            let mut started = lock.lock().await;
+            while !*started {
+                started = cvar.wait(started).await;
+            }
+        }
+        .boxed()
+    })
+}
+
 #[async_std::main]
 async fn main() -> eyre::Result<()> {
     color_eyre::install()?;
+    let ctrl_c = install_ctrlc_handler()?;
 
     /* Define some common arguments first */
 
@@ -377,20 +415,26 @@ async fn main() -> eyre::Result<()> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             loop {
-                let (wormhole, _code, relay_server) = parse_and_connect(
+                use futures::future::Either;
+                let connect_fut = parse_and_connect(
                     &mut term,
                     matches,
                     true,
                     forwarding::APP_CONFIG,
                     Some(&server_print_code),
-                )
-                .await?;
+                );
+                futures::pin_mut!(connect_fut);
+                let (wormhole, _code, relay_server) =
+                    match futures::future::select(connect_fut, ctrl_c()).await {
+                        Either::Left((result, _)) => result?,
+                        Either::Right(((), _)) => break,
+                    };
                 let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
                 async_std::task::spawn(forwarding::serve(
                     wormhole,
                     relay_server,
                     targets.clone(),
-                    futures::future::pending(),
+                    ctrl_c(),
                 ));
             }
         } else if let Some(matches) = matches.subcommand_matches("connect") {
@@ -414,7 +458,7 @@ async fn main() -> eyre::Result<()> {
                 log::info!("  {} -> {}", port, target);
             }
             if util::ask_user("Accept forwarded ports?", true).await {
-                offer.accept(futures::future::pending()).await?;
+                offer.accept(ctrl_c()).await?;
             } else {
                 offer.reject().await?;
             }
