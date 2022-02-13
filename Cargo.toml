@@ -60,6 +60,7 @@ url = { version = "2.2.2", features = ["serde"] }
 uri = "0.4.0"
 rmp-serde = "0.15.5"
 http = "0.2.5"
+ctrlc = "3.2.1"
 
 # for some tests
 [dev-dependencies]
