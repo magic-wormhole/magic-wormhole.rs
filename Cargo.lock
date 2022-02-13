@@ -180,7 +180,7 @@ dependencies = [
 [[package]]
 name = "async-std"
 version = "1.10.0"
-source = "git+https://github.com/piegamesde/async-std#d3133c04be9dc4f8e465a90cffe44064dec491ca"
+source = "git+https://github.com/async-rs/async-std#4ee4bebac7eda64b9d6e39261427063bd22cfb65"
 dependencies = [
  "async-attributes",
  "async-channel",
@@ -1141,7 +1141,7 @@ name = "magic-wormhole"
 version = "0.2.0"
 dependencies = [
  "async-io",
- "async-std 1.10.0 (git+https://github.com/piegamesde/async-std)",
+ "async-std 1.10.0 (git+https://github.com/async-rs/async-std)",
  "async-tungstenite",
  "base64",
  "bytecodec",
