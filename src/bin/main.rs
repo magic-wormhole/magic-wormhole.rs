@@ -284,13 +284,25 @@ async fn main() -> eyre::Result<()> {
             file_path
         );
 
-        let (wormhole, _code, relay_server) =
-            parse_and_connect(&mut term, matches, true, transfer::APP_CONFIG).await?;
+        let (wormhole, _code, relay_server) = parse_and_connect(
+            &mut term,
+            matches,
+            true,
+            transfer::APP_CONFIG,
+            Some(&sender_print_code),
+        )
+        .await?;
 
         send(wormhole, relay_server, file_path, &file_name).await?;
     } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (wormhole, code, relay_server) =
-            parse_and_connect(&mut term, matches, true, transfer::APP_CONFIG).await?;
+        let (wormhole, code, relay_server) = parse_and_connect(
+            &mut term,
+            matches,
+            true,
+            transfer::APP_CONFIG,
+            Some(&sender_print_code),
+        )
+        .await?;
         let timeout =
             Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
         let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
@@ -313,7 +325,7 @@ async fn main() -> eyre::Result<()> {
         let file_path = matches.value_of_os("file-path").unwrap();
 
         let (wormhole, _code, relay_server) =
-            parse_and_connect(&mut term, matches, false, transfer::APP_CONFIG).await?;
+            parse_and_connect(&mut term, matches, false, transfer::APP_CONFIG, None).await?;
 
         receive(
             wormhole,
@@ -365,8 +377,14 @@ async fn main() -> eyre::Result<()> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             loop {
-                let (wormhole, _code, relay_server) =
-                    parse_and_connect(&mut term, matches, true, forwarding::APP_CONFIG).await?;
+                let (wormhole, _code, relay_server) = parse_and_connect(
+                    &mut term,
+                    matches,
+                    true,
+                    forwarding::APP_CONFIG,
+                    Some(&server_print_code),
+                )
+                .await?;
                 let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
                 async_std::task::spawn(forwarding::serve(wormhole, relay_server, targets.clone()));
             }
@@ -379,7 +397,7 @@ async fn main() -> eyre::Result<()> {
                 .collect::<Result<_, _>>()?;
             let bind_address: std::net::IpAddr = matches.value_of("bind").unwrap().parse()?;
             let (wormhole, _code, relay_server) =
-                parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG).await?;
+                parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG, None).await?;
             let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
             forwarding::connect(wormhole, relay_server, Some(bind_address), &custom_ports).await?;
@@ -408,6 +426,7 @@ async fn parse_and_connect(
     matches: &clap::ArgMatches<'_>,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize>,
+    print_code: Option<&dyn Fn(&mut Term, &magic_wormhole::Code) -> eyre::Result<()>>,
 ) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
     let relay_server: url::Url = matches
         .value_of("relay-server")
@@ -427,7 +446,9 @@ async fn parse_and_connect(
     let (wormhole, code) = match code {
         Some(code) => {
             if is_send {
-                sender_print_code(term, &code)?;
+                print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
+                    term, &code,
+                )?;
             }
             let (server_welcome, wormhole) =
                 magic_wormhole::Wormhole::connect_with_code(app_config, code).await?;
@@ -445,7 +466,10 @@ async fn parse_and_connect(
                 magic_wormhole::Wormhole::connect_without_code(app_config, numwords).await?;
             print_welcome(term, &server_welcome)?;
             if is_send {
-                sender_print_code(term, &server_welcome.code)?;
+                print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
+                    term,
+                    &server_welcome.code,
+                )?;
             }
             let wormhole = connector.await?;
             (wormhole, server_welcome.code)
@@ -483,10 +507,19 @@ fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> 
     Ok(())
 }
 
+// For file transfer
 fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
     writeln!(term, "\nThis wormhole's code is: {}", &code)?;
     writeln!(term, "On the other computer, please run:\n")?;
     writeln!(term, "wormhole receive {}\n", &code)?;
+    Ok(())
+}
+
+// For port forwarding
+fn server_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
+    writeln!(term, "\nThis wormhole's code is: {}", &code)?;
+    writeln!(term, "On the other computer, please run:\n")?;
+    writeln!(term, "wormhole forward connect {}\n", &code)?;
     Ok(())
 }
 
