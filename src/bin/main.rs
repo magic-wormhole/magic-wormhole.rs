@@ -9,7 +9,7 @@ use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
-use futures::{Future, FutureExt};
+use futures::FutureExt;
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 

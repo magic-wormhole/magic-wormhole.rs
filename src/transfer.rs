@@ -317,7 +317,7 @@ pub async fn request_file(
     wormhole
         .send_json(&PeerMessage::transit(
             *connector.our_abilities(),
-            (**connector.our_hints()).clone().into(),
+            (**connector.our_hints()).clone(),
         ))
         .await?;
 
@@ -326,7 +326,7 @@ pub async fn request_file(
         match serde_json::from_slice(&wormhole.receive().await?)? {
             PeerMessage::Transit(transit) => {
                 debug!("received transit message: {:?}", transit);
-                (transit.abilities_v1, transit.hints_v1.into())
+                (transit.abilities_v1, transit.hints_v1)
             },
             PeerMessage::Error(err) => {
                 bail!(TransferError::PeerError(err));
@@ -424,7 +424,7 @@ impl ReceiveRequest {
                 self.wormhole
                     .key()
                     .derive_transit_key(self.wormhole.appid()),
-                self.their_abilities.clone(),
+                self.their_abilities,
                 self.their_hints.clone(),
             )
             .await

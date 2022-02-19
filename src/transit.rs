@@ -115,7 +115,7 @@ pub struct Abilities {
 
 impl Abilities {
     pub const ALL_ABILITIES: Self = Self {
-        direct_tcp_v1: true,
+        direct_tcp_v1: false,
         relay_v1: true,
         relay_v2: true,
     };
@@ -514,11 +514,13 @@ impl TryFrom<&DirectHint> for std::net::SocketAddr {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-enum HostType {
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TransitInfo {
     Direct,
-    Relay,
+    Relay { name: Option<String> },
 }
+
+type TransitConnection = (TcpStream, TransitInfo);
 
 fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
@@ -729,7 +731,7 @@ pub async fn init(
                 // TODO replace with .flatten() once stable
                 // https://github.com/rust-lang/rust/issues/70142
                 Err(err) | Ok(Err(err)) => {
-                    log::debug!("Failed to get external address via STUN, {}", err);
+                    log::warn!("Failed to get external address via STUN, {}", err);
                     let socket =
                         socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
                             .unwrap();
@@ -868,7 +870,7 @@ impl TransitConnector {
             }),
         );
 
-        let (mut transit, host_type) = async_std::future::timeout(
+        let (mut transit, mut host_type) = async_std::future::timeout(
             std::time::Duration::from_secs(60),
             connection_stream.next(),
         )
@@ -879,7 +881,7 @@ impl TransitConnector {
         })?
         .ok_or(TransitConnectError::Handshake)?;
 
-        if host_type == HostType::Relay && our_abilities.can_direct() {
+        if host_type != TransitInfo::Direct && our_abilities.can_direct() {
             log::debug!(
                 "Established transit connection over relay. Trying to find a direct connection …"
             );
@@ -896,8 +898,9 @@ impl TransitConnector {
             let _ = async_std::future::timeout(to_wait, async {
                 while let Some((new_transit, new_host_type)) = connection_stream.next().await {
                     /* We already got a connection, so we're only interested in direct ones */
-                    if new_host_type == HostType::Direct {
+                    if new_host_type == TransitInfo::Direct {
                         transit = new_transit;
+                        host_type = new_host_type;
                         log::debug!("Found direct connection; using that instead.");
                         break;
                     }
@@ -915,10 +918,27 @@ impl TransitConnector {
         std::mem::drop(connection_stream);
 
         transit.socket.write_all(b"go\n").await?;
-        info!(
-            "Established transit connection to '{}'",
-            transit.socket.peer_addr().unwrap()
-        );
+        match host_type {
+            TransitInfo::Direct => {
+                log::info!(
+                    "Established direct transit connection to '{}'",
+                    transit.socket.peer_addr().unwrap()
+                );
+            },
+            TransitInfo::Relay { name: Some(name) } => {
+                log::info!(
+                    "Established transit connection via relay '{}' ({})",
+                    name,
+                    transit.socket.peer_addr().unwrap()
+                );
+            },
+            TransitInfo::Relay { name: None } => {
+                log::info!(
+                    "Established transit connection via relay ({})",
+                    transit.socket.peer_addr().unwrap()
+                );
+            },
+        }
 
         Ok(transit)
     }
@@ -967,14 +987,27 @@ impl TransitConnector {
         .await
         {
             Ok(Some((transit, host_type))) => {
-                log::debug!(
-                    "Established a {} transit connection.",
-                    if host_type == HostType::Direct {
-                        "direct"
-                    } else {
-                        "relay"
-                    }
-                );
+                match host_type {
+                    TransitInfo::Direct => {
+                        log::info!(
+                            "Established direct transit connection to '{}'",
+                            transit.socket.peer_addr().unwrap()
+                        );
+                    },
+                    TransitInfo::Relay { name: Some(name) } => {
+                        log::info!(
+                            "Established transit connection via relay '{}' ({})",
+                            name,
+                            transit.socket.peer_addr().unwrap()
+                        );
+                    },
+                    TransitInfo::Relay { name: None } => {
+                        log::info!(
+                            "Established transit connection via relay ({})",
+                            transit.socket.peer_addr().unwrap()
+                        );
+                    },
+                }
                 Ok(transit)
             },
             Ok(None) | Err(_) => {
@@ -1008,7 +1041,7 @@ impl TransitConnector {
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
         socket: Option<(MaybeConnectedSocket, TcpListener)>,
-    ) -> impl Stream<Item = Result<(Transit, HostType), TransitHandshakeError>> + 'static {
+    ) -> impl Stream<Item = Result<(Transit, TransitInfo), TransitHandshakeError>> + 'static {
         assert!(socket.is_some() == our_abilities.can_direct());
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
@@ -1019,8 +1052,7 @@ impl TransitConnector {
          */
         use futures::future::BoxFuture;
         type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
-        type ConnectorFuture =
-            BoxFuture<'static, Result<(TcpStream, HostType), TransitHandshakeError>>;
+        type ConnectorFuture = BoxFuture<'static, Result<TransitConnection, TransitHandshakeError>>;
         let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
 
         /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
@@ -1044,7 +1076,7 @@ impl TransitConnector {
                                 log::debug!("Connecting directly to {}", dest_addr);
                                 let socket = connect_custom(&local_addr, &dest_addr.into()).await?;
                                 log::debug!("Connected to {}!", dest_addr);
-                                Ok((socket, HostType::Direct))
+                                Ok((socket, TransitInfo::Direct))
                             }
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
@@ -1067,14 +1099,15 @@ impl TransitConnector {
             /* Take a relay hint and try to connect to it */
             async fn hint_connector(
                 host: DirectHint,
-            ) -> Result<(TcpStream, HostType), TransitHandshakeError> {
+                name: Option<String>,
+            ) -> Result<TransitConnection, TransitHandshakeError> {
                 log::debug!("Connecting to relay {}", host);
                 let transit = TcpStream::connect((host.hostname.as_str(), host.port))
                     .err_into::<TransitHandshakeError>()
                     .await?;
                 log::debug!("Connected to {}!", host);
 
-                Ok((transit, HostType::Relay))
+                Ok((transit, TransitInfo::Relay { name }))
             }
 
             connectors = Box::new(
@@ -1089,13 +1122,30 @@ impl TransitConnector {
                          * start them in a 5 seconds interval spread. If one of them succeeds, the remaining ones
                          * will be cancelled anyways. Note that a hint might not necessarily be reachable via TCP.
                          */
-                        .flat_map(|hint| hint.tcp.into_iter().take(3).enumerate())
-                        .map(|(index, host)| async move {
+                        .flat_map(|hint| {
+                            /* If the hint has no name, take the first domain name as fallback */
+                            let name = hint.name
+                                .or_else(|| {
+                                    /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
+                                    hint.tcp.iter()
+                                        .filter_map(|hint| match url::Host::parse(&hint.hostname) {
+                                            Ok(url::Host::Domain(_)) => Some(hint.hostname.clone()),
+                                            _ => None,
+                                        })
+                                        .next()
+                                });
+                            hint.tcp
+                                .into_iter()
+                                .take(3)
+                                .enumerate()
+                                .map(move |(i, h)| (i, h, name.clone()))
+                        })
+                        .map(|(index, host, name)| async move {
                             async_std::task::sleep(std::time::Duration::from_secs(
                                 index as u64 * 5,
                             ))
                             .await;
-                            hint_connector(host).await
+                            hint_connector(host, name).await
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
                 ),
@@ -1113,16 +1163,17 @@ impl TransitConnector {
                     async move {
                         let (socket, host_type) = fut.await?;
                         let transit =
-                            handshake_exchange(is_leader, tside, socket, host_type, transit_key)
+                            handshake_exchange(is_leader, tside, socket, &host_type, transit_key)
                                 .await?;
                         Ok((transit, host_type))
                     }
                 })
                 .map(|fut| {
-                    Box::pin(fut) as BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>
+                    Box::pin(fut)
+                        as BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>
                 }),
         )
-            as BoxIterator<BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>>;
+            as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
 
         /* Also listen on some port just in case. */
         if let Some(socket2) = socket2 {
@@ -1138,11 +1189,11 @@ impl TransitConnector {
                                 is_leader,
                                 tside.clone(),
                                 stream,
-                                HostType::Direct,
+                                &TransitInfo::Direct,
                                 transit_key.clone(),
                             )
                             .await?;
-                            Result::<_, TransitHandshakeError>::Ok((transit, HostType::Direct))
+                            Result::<_, TransitHandshakeError>::Ok((transit, TransitInfo::Direct))
                         };
                         loop {
                             match connect().await {
@@ -1159,11 +1210,11 @@ impl TransitConnector {
                     })
                     .map(|fut| {
                         Box::pin(fut)
-                            as BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>
+                            as BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>
                     }),
                 ),
             )
-                as BoxIterator<BoxFuture<Result<(Transit, HostType), TransitHandshakeError>>>;
+                as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
         }
         connectors.collect::<futures::stream::futures_unordered::FuturesUnordered<_>>()
     }
@@ -1340,7 +1391,7 @@ async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
     mut socket: TcpStream,
-    host_type: HostType,
+    host_type: &TransitInfo,
     key: Arc<Key<TransitKey>>,
 ) -> Result<Transit, TransitHandshakeError> {
     // 9. create record keys
@@ -1358,7 +1409,7 @@ async fn handshake_exchange(
         (rkey, skey)
     };
 
-    if host_type == HostType::Relay {
+    if host_type != &TransitInfo::Direct {
         trace!("initiating relay handshake");
 
         let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
