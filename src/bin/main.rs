@@ -370,6 +370,7 @@ async fn main() -> eyre::Result<()> {
             relay_server,
             file_path,
             matches.value_of_os("file-name"),
+            matches.is_present("noconfirm"),
         )
         .await?;
     } else if let Some(matches) = matches.subcommand_matches("forward") {
@@ -444,6 +445,7 @@ async fn main() -> eyre::Result<()> {
                 .flatten()
                 .map(|port| port.parse::<u16>().map_err(eyre::Error::from))
                 .collect::<Result<_, _>>()?;
+            let noconfirm = matches.is_present("noconfirm");
             let bind_address: std::net::IpAddr = matches.value_of("bind").unwrap().parse()?;
             let (wormhole, _code, relay_server) =
                 parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG, None).await?;
@@ -457,7 +459,7 @@ async fn main() -> eyre::Result<()> {
             for (port, target) in &offer.mapping {
                 log::info!("  {} -> {}", port, target);
             }
-            if util::ask_user("Accept forwarded ports?", true).await {
+            if noconfirm || util::ask_user("Accept forwarded ports?", true).await {
                 offer.accept(ctrl_c()).await?;
             } else {
                 offer.reject().await?;
@@ -729,6 +731,7 @@ async fn receive(
     relay_server: url::Url,
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
+    noconfirm: bool,
 ) -> eyre::Result<()> {
     let req = transfer::request_file(wormhole, relay_server)
         .await
@@ -742,15 +745,16 @@ async fn receive(
      * - If it doesn't, directly accept, but DON'T overwrite any files
      */
 
-    if !util::ask_user(
-        format!(
-            "Receive file '{}' (size: {} bytes)?",
-            req.filename.display(),
-            req.filesize
-        ),
-        true,
-    )
-    .await
+    if !(noconfirm
+        || util::ask_user(
+            format!(
+                "Receive file '{}' (size: {} bytes)?",
+                req.filename.display(),
+                req.filesize
+            ),
+            true,
+        )
+        .await)
     {
         return req.reject().await.context("Could not reject offer");
     }
@@ -767,7 +771,7 @@ async fn receive(
     };
 
     /* Then, accept if the file exists */
-    if !file_path.exists() {
+    if !file_path.exists() || noconfirm {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
