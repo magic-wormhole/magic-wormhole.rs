@@ -309,76 +309,77 @@ pub async fn request_file(
     mut wormhole: Wormhole,
     relay_url: url::Url,
 ) -> Result<ReceiveRequest, TransferError> {
-    let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
-    let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
+    // Error handling
+    let run = async {
+        let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
+        let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
 
-    // send the transit message
-    debug!("Sending transit message '{:?}", connector.our_hints());
-    wormhole
-        .send_json(&PeerMessage::transit(
-            *connector.our_abilities(),
-            (**connector.our_hints()).clone(),
-        ))
-        .await?;
+        // send the transit message
+        debug!("Sending transit message '{:?}", connector.our_hints());
+        wormhole
+            .send_json(&PeerMessage::transit(
+                *connector.our_abilities(),
+                (**connector.our_hints()).clone(),
+            ))
+            .await?;
 
-    // receive transit message
-    let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
-        match serde_json::from_slice(&wormhole.receive().await?)? {
-            PeerMessage::Transit(transit) => {
-                debug!("received transit message: {:?}", transit);
-                (transit.abilities_v1, transit.hints_v1)
+        // receive transit message
+        let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
+            match wormhole.receive_json().await?? {
+                PeerMessage::Transit(transit) => {
+                    debug!("received transit message: {:?}", transit);
+                    (transit.abilities_v1, transit.hints_v1)
+                },
+                PeerMessage::Error(err) => {
+                    bail!(TransferError::PeerError(err));
+                },
+                other => {
+                    bail!(TransferError::unexpected_message("transit", other));
+                },
+            };
+
+        // 3. receive file offer message from peer
+        let (filename, filesize) = match wormhole.receive_json().await?? {
+            PeerMessage::Offer(offer_type) => match offer_type {
+                Offer::File { filename, filesize } => (filename, filesize),
+                Offer::Directory {
+                    mut dirname,
+                    zipsize,
+                    ..
+                } => {
+                    dirname.set_extension("zip");
+                    (dirname, zipsize)
+                },
+                _ => bail!(TransferError::UnsupportedOffer),
             },
             PeerMessage::Error(err) => {
                 bail!(TransferError::PeerError(err));
             },
             other => {
-                let error = TransferError::unexpected_message("transit", other);
-                let _ = wormhole
-                    .send_json(&PeerMessage::Error(format!("{}", error)))
-                    .await;
-                bail!(error)
+                bail!(TransferError::unexpected_message("offer", other));
             },
         };
 
-    // 3. receive file offer message from peer
-    let maybe_offer = serde_json::from_slice(&wormhole.receive().await?)?;
-    debug!("Received offer message '{:?}'", &maybe_offer);
+        Ok((filename, filesize, connector, their_abilities, their_hints))
+    };
 
-    let (filename, filesize) = match maybe_offer {
-        PeerMessage::Offer(offer_type) => match offer_type {
-            Offer::File { filename, filesize } => (filename, filesize),
-            Offer::Directory {
-                mut dirname,
-                zipsize,
-                ..
-            } => {
-                dirname.set_extension("zip");
-                (dirname, zipsize)
-            },
-            _ => bail!(TransferError::UnsupportedOffer),
-        },
-        PeerMessage::Error(err) => {
-            bail!(TransferError::PeerError(err));
-        },
-        _ => {
-            let error = TransferError::unexpected_message("offer", maybe_offer);
+    match run.await {
+        Ok((filename, filesize, connector, their_abilities, their_hints)) => Ok(ReceiveRequest {
+            wormhole,
+            filename,
+            filesize,
+            connector,
+            their_abilities,
+            their_hints: Arc::new(their_hints),
+        }),
+        Err(error @ TransferError::PeerError(_)) => Err(error),
+        Err(error) => {
             let _ = wormhole
                 .send_json(&PeerMessage::Error(format!("{}", error)))
                 .await;
-            bail!(error)
+            Err(error)
         },
-    };
-
-    let req = ReceiveRequest {
-        wormhole,
-        filename,
-        filesize,
-        connector,
-        their_abilities,
-        their_hints: Arc::new(their_hints),
-    };
-
-    Ok(req)
+    }
 }
 
 /**
@@ -412,53 +413,47 @@ impl ReceiveRequest {
         F: FnMut(u64, u64) + 'static,
         W: AsyncWrite + Unpin,
     {
-        // send file ack.
-        debug!("Sending ack");
-        self.wormhole
-            .send_json(&PeerMessage::file_ack("ok"))
-            .await?;
+        let run = async {
+            // send file ack.
+            debug!("Sending ack");
+            self.wormhole
+                .send_json(&PeerMessage::file_ack("ok"))
+                .await?;
 
-        let mut transit = match self
-            .connector
-            .follower_connect(
-                self.wormhole
-                    .key()
-                    .derive_transit_key(self.wormhole.appid()),
-                self.their_abilities,
-                self.their_hints.clone(),
+            let mut transit = self
+                .connector
+                .follower_connect(
+                    self.wormhole
+                        .key()
+                        .derive_transit_key(self.wormhole.appid()),
+                    self.their_abilities,
+                    self.their_hints.clone(),
+                )
+                .await?;
+
+            debug!("Beginning file transfer");
+            // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
+            v1::tcp_file_receive(
+                &mut transit,
+                self.filesize,
+                progress_handler,
+                content_handler,
             )
-            .await
-        {
-            Ok(transit) => transit,
-            Err(error) => {
-                let error = TransferError::TransitConnect(error);
-                let _ = self
-                    .wormhole
-                    .send_json(&PeerMessage::Error(format!("{}", error)))
-                    .await;
-                return Err(error);
-            },
+            .await?;
+            Ok(())
         };
 
-        debug!("Beginning file transfer");
-        // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
-        match v1::tcp_file_receive(
-            &mut transit,
-            self.filesize,
-            progress_handler,
-            content_handler,
-        )
-        .await
-        {
-            Err(TransferError::Transit(error)) => {
+        match run.await {
+            Ok(()) => (),
+            Err(error @ TransferError::PeerError(_)) => bail!(error),
+            Err(error) => {
                 let _ = self
                     .wormhole
                     .send_json(&PeerMessage::Error(format!("{}", error)))
                     .await;
-                Err(TransferError::Transit(error))
+                bail!(error);
             },
-            other => other,
-        }?;
+        };
 
         self.wormhole.close().await?;
 
