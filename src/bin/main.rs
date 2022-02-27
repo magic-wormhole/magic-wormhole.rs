@@ -72,7 +72,9 @@ async fn main() -> eyre::Result<()> {
         .value_name("ws://example.org")
         .help("Use a custom rendezvous server. Both sides need to use the same value in order to find each other.");
     let log_arg = Arg::with_name("log")
-        .long("log")
+        .short("-v")
+        .long("verbose")
+        .alias("log") // Legacy, remove in the future
         .global(true)
         .help("Enable logging to stdout, for debugging purposes");
     let code_length_arg = Arg::with_name("code-length")
@@ -88,7 +90,7 @@ async fn main() -> eyre::Result<()> {
         .visible_alias("name")
         .takes_value(true)
         .value_name("FILE_NAME")
-        .help("Suggest a different name to the receiver. They won't know the file's actual name on your disk.");
+        .help("Suggest a different name to the receiver to keep the file's actual name secret.");
     let code_send = Arg::with_name("code")
         .long("code")
         .takes_value(true)
