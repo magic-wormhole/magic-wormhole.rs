@@ -115,7 +115,7 @@ pub struct Abilities {
 
 impl Abilities {
     pub const ALL_ABILITIES: Self = Self {
-        direct_tcp_v1: false,
+        direct_tcp_v1: true,
         relay_v1: true,
         relay_v2: true,
     };
