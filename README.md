@@ -6,11 +6,20 @@ Get things from one computer to another, safely.
 
 This is a Rust port of the Python version at <https://github.com/magic-wormhole/magic-wormhole>.
 
-## This is a work in progress
+## Comparison with the Python implementation
 
-As of version `0.1.0`, most of the major protocols are implemented. The library part can be deemed "usable", although the API is far away from being "stable". There is still a lot of work to be done here, notably error handling and code documentation.
+Features that are missing:
 
-The CLI is in a "proof of concept" state at the moment. Basic file sending and receiving is implemented, but everything else is missing. Note that this is not a 1:1 port of the Python CLI; and it won't be a drop-in replacement for it.
+- Tab completion
+- Text message sending
+- Folder sending (we can send folders, but it will send a tar ball which the other side will have to manually unpack)
+- Tor support
+
+New features that exceed the other implementations:
+
+- Can do direct connections across the internet and firewalls
+- Port forwarding in addition to file transfer (experimental)
+- Send a file to multiple people (experimental)
 
 ## Getting started
 
@@ -18,9 +27,7 @@ If you want to toy with the CLI, `cargo run -- --help` will get you started. The
 
 If you'd like to use Wormhole in your application, `cargo doc --open` will tell you how to use it. There aren't any hosted docs at the moment.
 
-If you don't fear touching code and want to contribute, `./src/lib.rs`, `./src/transfer.rs` and `./src/transit.rs` are rather easy to get into.
-
-However before diving into the `core` module, you should definitively read the [spec](https://magic-wormhole.readthedocs.io/en/latest/) and the [implementation notes](https://github.com/magic-wormhole/magic-wormhole.rs/wiki) first. Maybe having a bit of understanding of the Python implementation doesn't hurt either.
+If you don't fear touching code and want to contribute, `./src/lib.rs`, `./src/transfer.rs` and `./src/transit.rs` are rather easy to get into. The [protocol specification](https://github.com/magic-wormhole/magic-wormhole-protocols) will probably be useful to you.
 
 ## License
 
