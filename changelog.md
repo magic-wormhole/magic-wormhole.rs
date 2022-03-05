@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- When sending, the code will now aumatically be copied into clipboard. So you don't have to select it in the terminal anymore before pasting!
+
 ## Version 0.3.1
 
 - Added `--force-relay` and `--force-direct` CLI flags that control the transit connection
