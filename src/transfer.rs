@@ -458,7 +458,6 @@ impl ReceiveRequest {
                 .await?;
 
             debug!("Beginning file transfer");
-            // TODO here's the right position for applying the output directory and to check for malicious (relative) file paths
             v1::tcp_file_receive(
                 &mut transit,
                 self.filesize,

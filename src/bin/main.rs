@@ -531,7 +531,9 @@ async fn parse_and_connect(
     let code = matches
         .value_of("code")
         .map(ToOwned::to_owned)
-        .or_else(|| (!is_send).then(|| enter_code().expect("TODO handle this gracefully")))
+        .map(Result::Ok)
+        .or_else(|| (!is_send).then(enter_code))
+        .transpose()?
         .map(magic_wormhole::Code);
 
     if let Some(rendezvous_server) = rendezvous_server {
@@ -647,6 +649,7 @@ async fn send(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn send_many(
     relay_server: url::Url,
     code: &magic_wormhole::Code,
