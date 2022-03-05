@@ -422,8 +422,7 @@ mod test {
                             bits: 6,
                             resource: "resource-string".into(),
                         }),
-                        // TODO replace with array once stable
-                        other: vec![("dark-ritual".to_string(), json!({ "hocrux": true }))]
+                        other: [("dark-ritual".to_string(), json!({ "hocrux": true }))]
                             .into_iter()
                             .collect()
                     }),

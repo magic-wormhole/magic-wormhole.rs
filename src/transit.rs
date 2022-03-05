@@ -760,9 +760,8 @@ pub async fn init(
             get_if_addrs::get_if_addrs()?
                 .iter()
                 .filter(|iface| !iface.is_loopback())
-                .flat_map(|ip|
-                    /* TODO replace with array once into_iter works as it should */
-                    vec![
+                .flat_map(|ip| {
+                    [
                         DirectHint {
                             hostname: ip.ip().to_string(),
                             port,
@@ -771,7 +770,9 @@ pub async fn init(
                             hostname: ip.ip().to_string(),
                             port: port2,
                         },
-                    ].into_iter()),
+                    ]
+                    .into_iter()
+                }),
         );
 
         listener = Some((socket, socket2));
