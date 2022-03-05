@@ -9,14 +9,15 @@ use async_std::{fs::OpenOptions, sync::Arc};
 use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
-use futures::FutureExt;
+use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use std::io::Write;
 
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::str::FromStr;
 
-fn install_ctrlc_handler() -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()>> {
+fn install_ctrlc_handler(
+) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
     use async_std::sync::{Condvar, Mutex};
 
     let notifier = Arc::new((Mutex::new(false), Condvar::new()));
@@ -28,7 +29,7 @@ fn install_ctrlc_handler() -> eyre::Result<impl Fn() -> futures::future::BoxFutu
             let mut has_notified = notifier2.0.lock().await;
             if *has_notified {
                 /* Second signal. Exit */
-                std::process::exit(0);
+                std::process::exit(130);
             }
             /* First signal. */
             log::info!("Got Ctrl-C event. Press again to exit immediately");
@@ -324,25 +325,45 @@ async fn main() -> eyre::Result<()> {
             file_path
         );
 
-        let (wormhole, _code, relay_server) = parse_and_connect(
-            &mut term,
-            matches,
-            true,
-            transfer::APP_CONFIG,
-            Some(&sender_print_code),
+        let (wormhole, _code, relay_server) = match util::cancellable(
+            parse_and_connect(
+                &mut term,
+                matches,
+                true,
+                transfer::APP_CONFIG,
+                Some(&sender_print_code),
+            ),
+            ctrl_c(),
         )
-        .await?;
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => return Ok(()),
+        };
 
-        send(wormhole, relay_server, file_path, &file_name).await?;
-    } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (wormhole, code, relay_server) = parse_and_connect(
-            &mut term,
-            matches,
-            true,
-            transfer::APP_CONFIG,
-            Some(&sender_print_code),
+        send(
+            wormhole,
+            relay_server,
+            file_path,
+            &file_name,
+            ctrl_c.clone(),
         )
         .await?;
+    } else if let Some(matches) = matches.subcommand_matches("send-many") {
+        let (wormhole, code, relay_server) = {
+            let connect_fut = parse_and_connect(
+                &mut term,
+                matches,
+                true,
+                transfer::APP_CONFIG,
+                Some(&sender_print_code),
+            );
+            futures::pin_mut!(connect_fut);
+            match futures::future::select(connect_fut, ctrl_c()).await {
+                Either::Left((result, _)) => result?,
+                Either::Right(((), _)) => return Ok(()),
+            }
+        };
         let timeout =
             Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
         let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
@@ -359,13 +380,21 @@ async fn main() -> eyre::Result<()> {
             timeout,
             wormhole,
             &mut term,
+            ctrl_c,
         )
         .await?;
     } else if let Some(matches) = matches.subcommand_matches("receive") {
         let file_path = matches.value_of_os("file-path").unwrap();
 
-        let (wormhole, _code, relay_server) =
-            parse_and_connect(&mut term, matches, false, transfer::APP_CONFIG, None).await?;
+        let (wormhole, _code, relay_server) = {
+            let connect_fut =
+                parse_and_connect(&mut term, matches, false, transfer::APP_CONFIG, None);
+            futures::pin_mut!(connect_fut);
+            match futures::future::select(connect_fut, ctrl_c()).await {
+                Either::Left((result, _)) => result?,
+                Either::Right(((), _)) => return Ok(()),
+            }
+        };
 
         receive(
             wormhole,
@@ -373,6 +402,7 @@ async fn main() -> eyre::Result<()> {
             file_path,
             matches.value_of_os("file-name"),
             matches.is_present("noconfirm"),
+            ctrl_c,
         )
         .await?;
     } else if let Some(matches) = matches.subcommand_matches("forward") {
@@ -418,7 +448,6 @@ async fn main() -> eyre::Result<()> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             loop {
-                use futures::future::Either;
                 let connect_fut = parse_and_connect(
                     &mut term,
                     matches,
@@ -593,6 +622,7 @@ async fn send(
     relay_server: url::Url,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
+    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     let pb = create_progress_bar(0);
     let pb2 = pb.clone();
@@ -609,6 +639,7 @@ async fn send(
             }
             pb.set_position(sent);
         },
+        ctrl_c(),
     )
     .await
     .context("Send process failed")?;
@@ -625,6 +656,7 @@ async fn send_many(
     timeout: Duration,
     wormhole: Wormhole,
     term: &mut Term,
+    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     /* Progress bar is commented out for now. See the issues about threading/async in
      * the Indicatif repository for more information. Multiple progress bars are not usable
@@ -648,6 +680,7 @@ async fn send_many(
         wormhole,
         term.clone(),
         // &mp,
+        ctrl_c(),
     )
     .await?;
 
@@ -677,6 +710,7 @@ async fn send_many(
             wormhole,
             term.clone(),
             // &mp,
+            ctrl_c(),
         )
         .await?;
     }
@@ -688,6 +722,7 @@ async fn send_many(
         wormhole: Wormhole,
         mut term: Term,
         // mp: &MultiProgress,
+        cancel: impl Future<Output = ()> + Send + 'static,
     ) -> eyre::Result<()> {
         writeln!(&mut term, "Sending file to peer").unwrap();
         // let pb = create_progress_bar(file_size);
@@ -707,6 +742,7 @@ async fn send_many(
                         // }
                         // pb2.set_position(sent);
                     },
+                    cancel,
                 )
                 .await?;
                 eyre::Result::<_>::Ok(())
@@ -734,10 +770,16 @@ async fn receive(
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
     noconfirm: bool,
+    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
-    let req = transfer::request_file(wormhole, relay_server)
+    let req = transfer::request_file(wormhole, relay_server, ctrl_c())
         .await
-        .context("Could get an offer")?;
+        .context("Could not get an offer")?;
+    /* If None, the task got cancelled */
+    let req = match req {
+        Some(req) => req,
+        None => return Ok(()),
+    };
 
     /*
      * Control flow is a bit tricky here:
@@ -781,7 +823,7 @@ async fn receive(
             .await
             .context("Failed to create destination file")?;
         return req
-            .accept(on_progress, &mut file)
+            .accept(on_progress, &mut file, ctrl_c())
             .await
             .context("Receive process failed");
     }
@@ -803,7 +845,7 @@ async fn receive(
         .open(&file_path)
         .await?;
     Ok(req
-        .accept(on_progress, &mut file)
+        .accept(on_progress, &mut file, ctrl_c())
         .await
         .context("Receive process failed")?)
 }
