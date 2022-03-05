@@ -5,13 +5,13 @@ authors = [
     "piegames <info@piegames.de>",
     "Brian Warner <warner@lothar.com>"
 ]
-license = "MIT"
+license = "EUPL"
 homepage = "http://magic-wormhole.io/"
-repository = "https://github.com/warner/magic-wormhole.rs"
+repository = "https://github.com/magic-wormhole/magic-wormhole.rs"
 edition = "2021"
 description = "Get things from one computer to another, safely"
 readme = "README.md"
-default-run = "wormhole"
+default-run = "wormhole-rs"
 
 [badges]
 travis-ci = { repository = "warner/magic-wormhole.rs" }
@@ -76,7 +76,7 @@ bin = ["clap", "env_logger", "console", "indicatif", "dialoguer", "color-eyre" ]
 default = ["bin"]
 
 [[bin]]
-name = "wormhole"
+name = "wormhole-rs"
 path = "src/bin/main.rs"
 required-features = ["bin"]
 
