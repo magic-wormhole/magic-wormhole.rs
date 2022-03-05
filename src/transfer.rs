@@ -15,6 +15,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use super::{core::WormholeError, transit, transit::Transit, AppID, Wormhole};
+use futures::Future;
 use log::*;
 use std::{borrow::Cow, path::PathBuf};
 use transit::{TransitConnectError, TransitConnector, TransitError};
@@ -41,7 +42,6 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
 
 // TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)
 
-// TODO send peer errors when something went wrong (if possible)
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TransferError {
@@ -207,6 +207,7 @@ pub async fn send_file_or_folder<N, M, H>(
     file_path: N,
     file_name: M,
     progress_handler: H,
+    cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     N: AsRef<async_std::path::Path>,
@@ -220,7 +221,15 @@ where
     let mut file = File::open(file_path).await?;
     let metadata = file.metadata().await?;
     if metadata.is_dir() {
-        send_folder(wormhole, relay_url, file_path, file_name, progress_handler).await?;
+        send_folder(
+            wormhole,
+            relay_url,
+            file_path,
+            file_name,
+            progress_handler,
+            cancel,
+        )
+        .await?;
     } else {
         let file_size = metadata.len();
         send_file(
@@ -230,6 +239,7 @@ where
             file_name,
             file_size,
             progress_handler,
+            cancel,
         )
         .await?;
     }
@@ -247,6 +257,7 @@ pub async fn send_file<F, N, H>(
     file_name: N,
     file_size: u64,
     progress_handler: H,
+    cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     F: AsyncRead + Unpin,
@@ -266,6 +277,7 @@ where
         file_name,
         file_size,
         progress_handler,
+        cancel,
     )
     .await
     // }
@@ -282,6 +294,7 @@ pub async fn send_folder<N, M, H>(
     folder_path: N,
     folder_name: M,
     progress_handler: H,
+    cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     N: Into<PathBuf>,
@@ -295,6 +308,7 @@ where
         folder_path,
         folder_name,
         progress_handler,
+        cancel,
     )
     .await
 }
@@ -304,11 +318,14 @@ where
  *
  * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
  * It will also start building a TCP connection to the other side using the transit protocol.
+ *
+ * Returns `None` if the task got cancelled.
  */
 pub async fn request_file(
     mut wormhole: Wormhole,
     relay_url: url::Url,
-) -> Result<ReceiveRequest, TransferError> {
+    cancel: impl Future<Output = ()>,
+) -> Result<Option<ReceiveRequest>, TransferError> {
     // Error handling
     let run = async {
         let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
@@ -363,21 +380,29 @@ pub async fn request_file(
         Ok((filename, filesize, connector, their_abilities, their_hints))
     };
 
-    match run.await {
-        Ok((filename, filesize, connector, their_abilities, their_hints)) => Ok(ReceiveRequest {
-            wormhole,
-            filename,
-            filesize,
-            connector,
-            their_abilities,
-            their_hints: Arc::new(their_hints),
-        }),
-        Err(error @ TransferError::PeerError(_)) => Err(error),
-        Err(error) => {
+    match crate::util::cancellable(run, cancel).await {
+        Ok(Ok((filename, filesize, connector, their_abilities, their_hints))) => {
+            Ok(Some(ReceiveRequest {
+                wormhole,
+                filename,
+                filesize,
+                connector,
+                their_abilities,
+                their_hints: Arc::new(their_hints),
+            }))
+        },
+        Ok(Err(error @ TransferError::PeerError(_))) => Err(error),
+        Ok(Err(error)) => {
             let _ = wormhole
                 .send_json(&PeerMessage::Error(format!("{}", error)))
                 .await;
             Err(error)
+        },
+        Err(cancelled) => {
+            let _ = wormhole
+                .send_json(&PeerMessage::Error(format!("{}", cancelled)))
+                .await;
+            Ok(None)
         },
     }
 }
@@ -408,6 +433,7 @@ impl ReceiveRequest {
         mut self,
         progress_handler: F,
         content_handler: &mut W,
+        cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
     where
         F: FnMut(u64, u64) + 'static,
@@ -443,21 +469,45 @@ impl ReceiveRequest {
             Ok(())
         };
 
-        match run.await {
-            Ok(()) => (),
-            Err(error @ TransferError::PeerError(_)) => bail!(error),
-            Err(error) => {
+        match crate::util::cancellable(run, cancel).await {
+            Ok(Ok(())) => {
+                self.wormhole.close().await?;
+                Ok(())
+            },
+            Ok(Err(error @ TransferError::PeerError(_))) => {
+                let _ = self.wormhole.close().await;
+                Err(error)
+            },
+            Ok(Err(error @ TransferError::Transit(_))) => {
+                /* If transit failed, ask for a proper error and potentially use that instead */
+                match self.wormhole.receive_json().await {
+                    Ok(Ok(PeerMessage::Error(error))) => Err(TransferError::PeerError(error)),
+                    _ => {
+                        let _ = self
+                            .wormhole
+                            .send_json(&PeerMessage::Error(format!("{}", error)))
+                            .await;
+                        Err(error)
+                    },
+                }
+            },
+            Ok(Err(error)) => {
                 let _ = self
                     .wormhole
                     .send_json(&PeerMessage::Error(format!("{}", error)))
                     .await;
-                bail!(error);
+                let _ = self.wormhole.close().await;
+                Err(error)
             },
-        };
-
-        self.wormhole.close().await?;
-
-        Ok(())
+            Err(cancelled) => {
+                let _ = self
+                    .wormhole
+                    .send_json(&PeerMessage::Error(format!("{}", cancelled)))
+                    .await;
+                self.wormhole.close().await?;
+                Ok(())
+            },
+        }
     }
 
     /**
