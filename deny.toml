@@ -16,11 +16,15 @@ copyleft = "deny"
 allow-osi-fsf-free = "both"
 default = "deny"
 confidence-threshold = 0.8
-exceptions = []
 
 [licenses.private]
 ignore = false
 registries = []
+
+[[licenses.exceptions]]
+allow = ["EUPL-1.2"]
+name = "magic-wormhole"
+version = "*"
 
 [[licenses.clarify]]
 name = "ring"
