@@ -87,6 +87,44 @@ jobs:
           command: test
           args: --verbose
 
+  dist:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Cache ~/.cargo
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: ${{ runner.os }}-test-dotcargo-stable
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-test-build-target-stable
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bins --locked --release
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: wormhole-${{ matrix.os }}-${{ github.sha }}
+          path: ./target/release/wormhole-rs{,.exe}
+          if-no-files-found: error
+        continue-on-error: true
+
   coverage:
     runs-on: ubuntu-latest
     steps:
