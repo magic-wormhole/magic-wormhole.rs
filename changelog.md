@@ -2,9 +2,14 @@
 
 ## Unreleased
 
+## Version 0.3.0
+
+- Added experimental port forwarding feature
 - Improved user experience with better logging and messages
+- Improved error and cancellation handling
 - Cleaned up CLI args and implemented previous placeholders
 - Fixed `send-many` subcommand
+- Many internal refactorings to accomodate the changes. The public API did not change that much though.
 
 ## Version 0.2.0
 
