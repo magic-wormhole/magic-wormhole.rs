@@ -48,6 +48,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                         .unwrap()
                         .len(),
                     |_sent, _total| {},
+                    futures::future::pending(),
                 )
                 .await?,
             )
@@ -63,12 +64,21 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 log::info!("Got welcome: {}", welcome);
             }
 
-            let req =
-                transfer::request_file(wormhole, transit::DEFAULT_RELAY_SERVER.parse().unwrap())
-                    .await?;
+            let req = transfer::request_file(
+                wormhole,
+                transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                futures::future::pending(),
+            )
+            .await?
+            .unwrap();
 
             let mut buffer = Vec::<u8>::new();
-            req.accept(|_received, _total| {}, &mut buffer).await?;
+            req.accept(
+                |_received, _total| {},
+                &mut buffer,
+                futures::future::pending(),
+            )
+            .await?;
             Ok(buffer)
         })?;
 
@@ -116,6 +126,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                         .unwrap()
                         .len(),
                     |_, _| {},
+                    futures::future::pending(),
                 )
                 .await
             }));
@@ -139,6 +150,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                         .unwrap()
                         .len(),
                     |_, _| {},
+                    futures::future::pending(),
                 )
                 .await
             }));
@@ -157,11 +169,14 @@ pub async fn test_send_many() -> eyre::Result<()> {
         let req = crate::transfer::request_file(
             wormhole,
             crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+            futures::future::pending(),
         )
-        .await?;
+        .await?
+        .unwrap();
 
         let mut buffer = Vec::<u8>::new();
-        req.accept(|_, _| {}, &mut buffer).await?;
+        req.accept(|_, _| {}, &mut buffer, futures::future::pending())
+            .await?;
         assert_eq!(correct_data, buffer, "Files #{} differ", i);
     }
 
