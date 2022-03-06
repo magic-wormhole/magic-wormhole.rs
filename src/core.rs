@@ -92,19 +92,6 @@ pub struct Wormhole {
     key: key::Key<key::WormholeKey>,
     appid: AppID,
     /**
-     * If you're paranoid, let both sides check that they calculated the same verifier.
-     *
-     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
-     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
-     * the passwords usually are not of hight entropy, there is a low-probability possible of
-     * an attacker guessing the password correctly, enabling them to MitM the connection.
-     *
-     * Not only is that probability low, but they also have only one try per connection and a failed
-     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
-     * attack vector.
-     */
-    pub verifier: Box<secretbox::Key>,
-    /**
      * Protocol version information from the other side.
      * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
      * (e.g. by the file transfer API).
@@ -243,7 +230,6 @@ impl Wormhole {
             appid,
             phase: 0,
             key: key::Key::new(key.into()),
-            verifier: Box::new(key::derive_verifier(&key)),
             peer_version,
         })
     }
@@ -341,6 +327,23 @@ impl Wormhole {
     pub fn key(&self) -> &key::Key<key::WormholeKey> {
         &self.key
     }
+
+    /**
+     * If you're paranoid, let both sides check that they calculated the same verifier.
+     *
+     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
+     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
+     * the passwords usually are not of hight entropy, there is a low-probability possible of
+     * an attacker guessing the password correctly, enabling them to MitM the connection.
+     *
+     * Not only is that probability low, but they also have only one try per connection and a failed
+     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
+     * attack vector.
+     */
+    pub fn verifier(&self) -> secretbox::Key {
+        key::derive_verifier(&self.key)
+    }
+
 }
 
 // the serialized forms of these variants are part of the wire protocol, so
@@ -540,6 +543,6 @@ impl Code {
     }
 
     pub fn nameplate(&self) -> Nameplate {
-        Nameplate::new(self.0.splitn(2, '-').next().unwrap())
+        Nameplate::new(self.0.split_once('-').unwrap().0)
     }
 }
