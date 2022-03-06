@@ -6,12 +6,13 @@ mod test;
 mod wordlist;
 
 use serde_derive::{Deserialize, Serialize};
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashSet};
 
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
 use log::*;
 
+use hex::{FromHex, ToHex};
 use xsalsa20poly1305 as secretbox;
 
 #[derive(Debug, thiserror::Error)]
@@ -98,6 +99,10 @@ pub struct Wormhole {
      * (e.g. by the file transfer API).
      */
     pub peer_version: serde_json::Value,
+    /** We managed to create a seed to use in the future
+     * If this is `Some`, the application should store this in their database persistently
+     */
+    seed: Option<SeedResult>,
 }
 
 impl Wormhole {
@@ -113,6 +118,7 @@ impl Wormhole {
     pub async fn connect_without_code(
         config: AppConfig<impl serde::Serialize>,
         code_length: usize,
+        seed_ability: Option<key::SeedAbility<false>>,
     ) -> Result<
         (
             WormholeWelcome,
@@ -140,7 +146,7 @@ impl Wormhole {
                 welcome,
                 code: code.clone(),
             },
-            Self::connect_custom(server, appid, code.0, versions),
+            Self::connect_custom(server, appid, code.0, versions, seed_ability),
         ))
     }
 
@@ -150,6 +156,7 @@ impl Wormhole {
     pub async fn connect_with_code(
         config: AppConfig<impl serde::Serialize>,
         code: Code,
+        seed_ability: Option<key::SeedAbility<false>>,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
         let AppConfig {
             id: appid,
@@ -168,13 +175,34 @@ impl Wormhole {
                 welcome,
                 code: code.clone(),
             },
-            Self::connect_custom(server, appid, code.0, versions).await?,
+            Self::connect_custom(server, appid, code.0, versions, seed_ability).await?,
         ))
     }
 
-    /** TODO */
-    pub async fn connect_with_seed() {
-        todo!()
+    pub async fn connect_with_seed(
+        config: AppConfig<impl serde::Serialize>,
+        seed: xsalsa20poly1305::Key,
+    ) -> Result<Self, WormholeError> {
+        // TODO map to better types
+        let seed = key::WormholeSeed {
+            seed,
+            display_names: vec![],
+        };
+        let AppConfig {
+            id: appid,
+            rendezvous_url,
+            app_version: versions,
+        } = config;
+        let versions = serde_json::to_value(versions).unwrap();
+        let (mut server, _welcome) = RendezvousServer::connect(&appid, &rendezvous_url).await?;
+
+        let nameplate = Nameplate(seed.mailbox().encode_hex());
+        // let mailbox = Mailbox(seed.mailbox().encode_hex());
+        // server.open_directly(mailbox.clone()).await?;
+        let mailbox = server.claim_open(nameplate).await?;
+        log::debug!("Connected to mailbox {}", mailbox);
+
+        Ok(Self::connect_custom(server, appid, seed.code().encode_hex(), versions, None).await?)
     }
 
     /// Do only the client-client part of the connection setup
@@ -190,13 +218,27 @@ impl Wormhole {
         appid: AppID,
         password: String,
         app_versions: impl serde::Serialize,
+        seed_ability: Option<key::SeedAbility<false>>,
     ) -> Result<Self, WormholeError> {
         /* Send PAKE */
         let (pake_state, pake_msg_ser) = key::make_pake(&password, &appid);
         server.send_peer_message(Phase::PAKE, pake_msg_ser).await?;
 
         /* Receive PAKE */
-        let peer_pake = key::extract_pake_msg(&server.next_peer_message_some().await?.body)?;
+        let pake_message = server.next_peer_message_some().await?;
+        ensure!(
+            pake_message.phase == Phase::PAKE,
+            WormholeError::Protocol(
+                format!(
+                    "Got phase '{}', but expected '{}'",
+                    pake_message.phase,
+                    Phase::PAKE
+                )
+                .into()
+            )
+        );
+        let peer_pake = key::extract_pake_msg(&pake_message.body)?;
+        let peer_side = pake_message.side;
         let key = pake_state
             .finish(&peer_pake)
             .map_err(|_| WormholeError::PakeFailed)
@@ -206,15 +248,21 @@ impl Wormhole {
         let mut versions = key::VersionsMessage::new();
         versions.set_app_versions(serde_json::to_value(app_versions).unwrap());
         let session_id = if ***server.side() > **peer_side {
-            Vec::<u8>::from_hex(format!("{}{}", &***server.side(), &**peer_side)).expect("TODO error handling")
+            Vec::<u8>::from_hex(format!("{}{}", &***server.side(), &**peer_side))
+                .expect("TODO error handling")
         } else {
-            Vec::<u8>::from_hex(format!("{}{}", &**peer_side, &***server.side())).expect("TODO error handling")
+            Vec::<u8>::from_hex(format!("{}{}", &**peer_side, &***server.side()))
+                .expect("TODO error handling")
         };
 
+        if let Some(seed_ability) = seed_ability.as_ref() {
+            versions.add_seeds_ability(seed_ability.hash(&session_id));
+        }
+
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
+
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
-
         /* Handle received message */
         let versions: key::VersionsMessage = peer_version
             .decrypt(&key)
@@ -224,6 +272,23 @@ impl Wormhole {
             })?;
 
         let peer_version = versions.app_versions;
+        let seed = seed_ability
+            .zip(versions.seed)
+            .map(|(seed_ability, peer_seed_ability)| {
+                let common_seeds: HashSet<_> = seed_ability
+                    .intersect(&peer_seed_ability, &session_id)
+                    .collect();
+
+                #[allow(clippy::wildcard_in_or_patterns)]
+                SeedResult {
+                    /* Derive a new seed */
+                    session_seed: key::WormholeSeed {
+                        display_names: peer_seed_ability.display_names,
+                        seed: key::derive_key(&key, b"wormhole:seed"),
+                    },
+                    existing_seeds: common_seeds,
+                }
+            });
 
         if server.needs_nameplate_release() {
             server.release_nameplate().await?;
@@ -239,6 +304,7 @@ impl Wormhole {
             key: key::Key::new(key.into()),
             peer_version,
             session_id: session_id.into_boxed_slice(),
+            seed,
         })
     }
 
@@ -357,6 +423,28 @@ impl Wormhole {
         &self.session_id
     }
 
+    /**
+     * Derive a seed that will grow a new
+     */
+    pub fn seed(&self) -> Option<&SeedResult> {
+        self.seed.as_ref()
+    }
+
+    /**
+     * Derive a seed that will grow a new
+     */
+    pub fn take_seed(&mut self) -> Option<SeedResult> {
+        self.seed.take()
+    }
+}
+
+// TODO use newtypes around the keys
+#[derive(Clone, Debug)]
+pub struct SeedResult {
+    /** Seed derived from the current session */
+    pub session_seed: key::WormholeSeed,
+    /** We may already have a seed (or multiple) in common with peer */
+    pub existing_seeds: HashSet<xsalsa20poly1305::Key>,
 }
 
 // the serialized forms of these variants are part of the wire protocol, so

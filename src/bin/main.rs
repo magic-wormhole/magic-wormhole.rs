@@ -1,3 +1,4 @@
+mod seeds;
 mod util;
 
 use std::{
@@ -6,7 +7,7 @@ use std::{
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
-use clap::{crate_description, crate_name, crate_version, Arg, Args, Command, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
@@ -17,7 +18,6 @@ use std::{
 };
 
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
-use std::str::FromStr;
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -73,8 +73,47 @@ struct CommonLeaderArgs {
     #[clap(long, value_name = "CODE")]
     code: Option<String>,
     /// Length of code (in bytes/words)
-    #[clap(short = 'c', long, value_name = "NUMWORDS", default_value = "2")]
+    #[clap(
+        short = 'c',
+        long,
+        value_name = "NUMWORDS",
+        default_value = "2",
+        conflicts_with = "code"
+    )]
     code_length: usize,
+    /// Send to one of your contacts instead of using a code
+    #[clap(long, value_name = "NAME", conflicts_with_all = &["code", "code-length"])]
+    to: Option<String>,
+}
+
+impl CommonLeaderArgs {
+    fn into_connect_options<'a, 'b>(
+        self,
+        seeds: &'a seeds::Database,
+        follower_command: &'b str,
+    ) -> eyre::Result<ConnectOptions<'b>> {
+        Ok(match (self.code, self.to) {
+            (None, None) => ConnectOptions::GenerateCode {
+                size: self.code_length,
+                follower_command,
+            },
+            (Some(code), None) => ConnectOptions::ProvideCode(code),
+            (None, Some(to)) if to == "myself" => ConnectOptions::ProvideSeed {
+                seed: seeds.myself.into(),
+                follower_command: Some(follower_command),
+            },
+            (None, Some(to)) => {
+                let peer = seeds
+                    .find(&to)
+                    .ok_or_else(|| eyre::format_err!("Contact '{to}' not found"))?;
+                ConnectOptions::ProvideSeed {
+                    seed: peer.seed.into(),
+                    follower_command: Some(follower_command),
+                }
+            },
+            (Some(_), Some(_)) => unreachable!(),
+        })
+    }
 }
 
 // receive
@@ -94,6 +133,35 @@ struct CommonFollowerArgs {
     /// Provide the code now rather than typing it interactively
     #[clap(value_name = "CODE")]
     code: Option<String>,
+    /// Receive from one of your contacts instead of using a code
+    #[clap(long, value_name = "NAME", conflicts_with = "code")]
+    from: Option<String>,
+}
+
+impl CommonFollowerArgs {
+    fn into_connect_options<'a, 'b>(
+        self,
+        seeds: &'a seeds::Database,
+    ) -> eyre::Result<ConnectOptions<'b>> {
+        Ok(match (self.code, self.from) {
+            (None, None) => ConnectOptions::EnterCode,
+            (Some(code), None) => ConnectOptions::ProvideCode(code),
+            (None, Some(from)) if from == "myself" => ConnectOptions::ProvideSeed {
+                seed: seeds.myself.into(),
+                follower_command: None,
+            },
+            (None, Some(from)) => {
+                let peer = seeds
+                    .find(&from)
+                    .ok_or_else(|| eyre::format_err!("Contact '{from}' not found"))?;
+                ConnectOptions::ProvideSeed {
+                    seed: peer.seed.into(),
+                    follower_command: None,
+                }
+            },
+            (Some(_), Some(_)) => unreachable!(),
+        })
+    }
 }
 
 // send, send-mane, receive, serve, connect
@@ -153,6 +221,32 @@ enum ForwardCommand {
         common: CommonArgs,
         #[clap(flatten)]
         common_follower: CommonFollowerArgs,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+#[clap(arg_required_else_help = true)]
+enum ContactCommand {
+    /// List your existing contacts
+    #[clap(
+        visible_alias = "show",
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    List,
+    /// Store a previously made connection in your contacts
+    #[clap(
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    Add {
+        /// The ID of the previous connection
+        #[clap(value_name = "ID")]
+        id: String,
+        /// The name under which to add the contact
+        #[clap(value_name = "NAME")]
+        name: String,
+        /// Overwrite contacts with the same name
+        #[clap(short, long)]
+        force: bool,
     },
 }
 
@@ -217,6 +311,9 @@ enum WormholeCommand {
     /// Forward ports from one machine to another
     #[clap(subcommand)]
     Forward(ForwardCommand),
+    /// Manage your contacts to which you may send files without having to enter a code
+    #[clap(subcommand, visible_alias = "contact")]
+    Contacts(ContactCommand),
     #[clap(hide = true)]
     Help,
 }
@@ -268,6 +365,50 @@ async fn main() -> eyre::Result<()> {
             .try_init()?;
     }
 
+    let directories = directories::ProjectDirs::from("io", "magic-wormhole", "wormhole-rs")
+        .ok_or_else(|| eyre::format_err!("Could not find the data storage location"))?;
+    std::fs::create_dir_all(directories.data_dir()).context(format!(
+        "Failed to create data dir at '{}'",
+        directories.data_dir().display()
+    ))?;
+    let database_path = directories.data_dir().join("seeds.json");
+    let mut seeds = if database_path.exists() {
+        seeds::Database::load(&database_path).context(format!(
+            "Failed to load '{}'. Please delete or fix it and try again",
+            database_path.display()
+        ))?
+    } else {
+        let mut seeds = seeds::Database::default();
+        seeds.myself = rand::random();
+        seeds
+    };
+    if seeds.our_names.is_empty() {
+        let username =
+            std::env::var("USER").context("Failed to fetch $USER environment variable")?;
+        log::warn!(
+            "No name configured yet. You will be identified to the other side as '{username}'."
+        );
+        log::warn!("If you are not comfortable with this, abort and use `wormhole-rs TODO` to set a differnt name. This warning won't be shown again.");
+        seeds.our_names.push(username);
+    }
+    {
+        let now = std::time::SystemTime::now();
+        let old_size = seeds.peers.len();
+        seeds.peers.retain(|_, peer| peer.expires() >= now);
+        let new_size = seeds.peers.len();
+        if old_size > new_size {
+            log::info!("Removed {} old contacts from database", old_size - new_size);
+        }
+    }
+    seeds.save(&database_path).context(format!(
+        "Failed to write seeds database to '{}'",
+        &database_path.display()
+    ))?;
+    let seed_ability = magic_wormhole::SeedAbility::<false> {
+        display_names: seeds.our_names.clone(),
+        known_seeds: seeds.iter_known_peers().collect(),
+    };
+
     let concat_file_name = |file_path: &Path, file_name: Option<_>| {
         // TODO this has gotten out of hand (it ugly)
         // The correct solution would be to make `file_name` an Option everywhere and
@@ -294,7 +435,7 @@ async fn main() -> eyre::Result<()> {
     match app.command {
         WormholeCommand::Send {
             common,
-            common_leader: CommonLeaderArgs { code, code_length },
+            common_leader,
             common_send:
                 CommonSenderArgs {
                     file_name,
@@ -310,11 +451,11 @@ async fn main() -> eyre::Result<()> {
                 parse_and_connect(
                     &mut term,
                     common,
-                    code,
-                    Some(code_length),
-                    true,
+                    common_leader.into_connect_options(&seeds, "receive")?,
                     transfer::APP_CONFIG,
-                    Some(&sender_print_code),
+                    Some(seed_ability),
+                    &mut seeds,
+                    &database_path,
                 ),
                 ctrl_c(),
             )
@@ -337,19 +478,18 @@ async fn main() -> eyre::Result<()> {
             tries,
             timeout,
             common,
-            common_leader: CommonLeaderArgs { code, code_length },
+            common_leader,
             common_send: CommonSenderArgs { file_name, file },
-            ..
         } => {
             let (wormhole, code, relay_server) = {
                 let connect_fut = parse_and_connect(
                     &mut term,
                     common,
-                    code,
-                    Some(code_length),
-                    true,
+                    common_leader.into_connect_options(&seeds, "receive")?,
                     transfer::APP_CONFIG,
-                    Some(&sender_print_code),
+                    None,
+                    &mut seeds,
+                    &database_path,
                 );
                 futures::pin_mut!(connect_fut);
                 match futures::future::select(connect_fut, ctrl_c()).await {
@@ -363,7 +503,7 @@ async fn main() -> eyre::Result<()> {
 
             send_many(
                 relay_server,
-                &code,
+                &code.unwrap(),
                 file.as_ref(),
                 &file_name,
                 tries,
@@ -377,7 +517,7 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Receive {
             noconfirm,
             common,
-            common_follower: CommonFollowerArgs { code },
+            common_follower,
             common_receiver:
                 CommonReceiverArgs {
                     file_name,
@@ -389,11 +529,11 @@ async fn main() -> eyre::Result<()> {
                 let connect_fut = parse_and_connect(
                     &mut term,
                     common,
-                    code,
-                    None,
-                    false,
+                    common_follower.into_connect_options(&seeds)?,
                     transfer::APP_CONFIG,
-                    None,
+                    Some(seed_ability),
+                    &mut seeds,
+                    &database_path,
                 );
                 futures::pin_mut!(connect_fut);
                 match futures::future::select(connect_fut, ctrl_c()).await {
@@ -415,7 +555,7 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Forward(ForwardCommand::Serve {
             targets,
             common,
-            common_leader: CommonLeaderArgs { code, code_length },
+            common_leader,
             ..
         }) => {
             // TODO make fancy
@@ -457,15 +597,16 @@ async fn main() -> eyre::Result<()> {
                     ))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            let connect_options = common_leader.into_connect_options(&seeds, "forward connect")?;
             loop {
                 let connect_fut = parse_and_connect(
                     &mut term,
                     common.clone(),
-                    code.clone(),
-                    Some(code_length),
-                    true,
+                    connect_options.clone(),
                     forwarding::APP_CONFIG,
-                    Some(&server_print_code),
+                    None,
+                    &mut seeds,
+                    &database_path,
                 );
                 futures::pin_mut!(connect_fut);
                 let (wormhole, _code, relay_server) =
@@ -487,19 +628,18 @@ async fn main() -> eyre::Result<()> {
             noconfirm,
             bind_address,
             common,
-            common_follower: CommonFollowerArgs { code },
-            ..
+            common_follower,
         }) => {
             // TODO make fancy
             log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
             let (wormhole, _code, relay_server) = parse_and_connect(
                 &mut term,
                 common,
-                code,
-                None,
-                false,
+                common_follower.into_connect_options(&seeds)?,
                 forwarding::APP_CONFIG,
                 None,
+                &mut seeds,
+                &database_path,
             )
             .await?;
             let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
@@ -517,6 +657,106 @@ async fn main() -> eyre::Result<()> {
                 offer.reject().await?;
             }
         },
+        WormholeCommand::Contacts(ContactCommand::List) => {
+            use time::format_description::{Component, FormatItem};
+            /* YYYY-mm-dd */
+            let format = [
+                FormatItem::Component(Component::Year(
+                    time::format_description::modifier::Year::default(),
+                )),
+                FormatItem::Literal(b"-"),
+                FormatItem::Component(Component::Month(
+                    time::format_description::modifier::Month::default(),
+                )),
+                FormatItem::Literal(b"-"),
+                FormatItem::Component(Component::Day(
+                    time::format_description::modifier::Day::default(),
+                )),
+            ];
+
+            #[allow(clippy::print_literal)]
+            {
+                let contacts = seeds
+                    .peers
+                    .iter()
+                    .filter(|(_id, peer)| peer.contact_name.is_some())
+                    .collect::<Vec<_>>();
+                if contacts.is_empty() {
+                    println!("You have no stored contacts yet!");
+                } else {
+                    println!("Known contacts:\n");
+                    println!("{:8} {:12} {}", "ID", "NAME", "EXPIRES");
+                    for (id, peer) in &contacts {
+                        println!(
+                            "{:8} {:12} {}",
+                            id,
+                            peer.contact_name.as_ref().unwrap(),
+                            time::OffsetDateTime::from(peer.expires())
+                                .date()
+                                .format(&format[..])
+                                .unwrap(),
+                        );
+                    }
+                }
+            }
+            #[allow(clippy::print_literal)]
+            {
+                let contacts = seeds
+                    .peers
+                    .iter()
+                    .filter(|(_id, peer)| peer.contact_name.is_none())
+                    .collect::<Vec<_>>();
+                if !contacts.is_empty() {
+                    println!("\nContacts you haven't stored yet:");
+                    println!("{:8} {:12} {}", "ID", "ALSO KNOWN AS", "EXPIRES");
+                    for (id, peer) in &contacts {
+                        println!(
+                            "{:8} {:12} {}",
+                            id,
+                            peer.names.join(", "),
+                            time::OffsetDateTime::from(peer.expires())
+                                .date()
+                                .format(&format[..])
+                                .unwrap(),
+                        );
+                    }
+                    println!("\nRun `wormhole-rs contact add <ID> <NAME>` to add them. Remember that both sides need to do this.");
+                }
+            }
+        },
+        WormholeCommand::Contacts(ContactCommand::Add { id, name, force }) => {
+            eyre::ensure!(
+                name != "myself",
+                "'myself' is a reserved contact name, to send files between two clients on the same machine (mostly useful for testing)",
+            );
+            eyre::ensure!(
+                !name.chars().any(|c| ['\'', '"', ','].contains(&c)),
+                "For practical purposes, please choose a name without quotes or commas in it",
+            );
+            if !force {
+                eyre::ensure!(
+                    !seeds.peers.values().any(|peer| peer.contact_name.as_ref() == Some(&name)),
+                    "You already stored a contact under that name. Either use --force to overwrite it, or chose another name",
+                );
+            }
+            let peer = seeds
+                .find_mut(&id)
+                .ok_or_else(|| eyre::format_err!("No connection with that ID known"))?;
+            if !force {
+                eyre::ensure!(
+                    peer.contact_name.is_none(),
+                    "This contact is already known as {}. Use --force to rename it.",
+                    peer.contact_name.as_ref().unwrap(),
+                );
+            }
+            peer.contact_name = Some(name.clone());
+            seeds.save(&database_path).context(format!(
+                "Failed to write seeds database to '{}'",
+                &database_path.display()
+            ))?;
+            log::info!("Successfully added '{name}' to your contacts.");
+            log::info!("You can now use '--to {name}' or '--from {name}'");
+        },
         WormholeCommand::Help => {
             println!("Use --help to get help");
             std::process::exit(2);
@@ -524,6 +764,24 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Clone)]
+enum ConnectOptions<'a> {
+    /* Leader/follower */
+    ProvideCode(String),
+    /* Leader only */
+    GenerateCode {
+        size: usize,
+        follower_command: &'a str,
+    },
+    /* Follower only */
+    EnterCode,
+    /* Leader/follower */
+    ProvideSeed {
+        seed: xsalsa20poly1305::Key,
+        follower_command: Option<&'a str>,
+    },
 }
 
 /**
@@ -534,15 +792,15 @@ async fn main() -> eyre::Result<()> {
  * Otherwise, the user will be prompted interactively to enter it.
  */
 #[allow(deprecated)]
-async fn parse_and_connect(
-    term: &mut Term,
+async fn parse_and_connect<'a>(
+    term: &'a mut Term,
     common_args: CommonArgs,
-    code: Option<String>,
-    code_length: Option<usize>,
-    is_send: bool,
+    connect_options: ConnectOptions<'_>,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize>,
-    print_code: Option<&dyn Fn(&mut Term, &magic_wormhole::Code) -> eyre::Result<()>>,
-) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
+    seed_ability: Option<magic_wormhole::SeedAbility<false>>,
+    seeds: &mut seeds::Database,
+    database_path: &Path,
+) -> eyre::Result<(Wormhole, Option<magic_wormhole::Code>, url::Url)> {
     // TODO handle multiple relay servers correctly
     let relay_server: url::Url = common_args
         .relay_server
@@ -553,43 +811,135 @@ async fn parse_and_connect(
                 .parse()
                 .unwrap()
         });
-    let code = code
-        .map(Result::Ok)
-        .or_else(|| (!is_send).then(enter_code))
-        .transpose()?
-        .map(magic_wormhole::Code);
 
     if let Some(rendezvous_server) = common_args.rendezvous_server {
         app_config = app_config.rendezvous_url(rendezvous_server.into_string().into());
     }
-    let (wormhole, code) = match code {
-        Some(code) => {
-            if is_send {
-                print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
-                    term, &code,
-                )?;
-            }
-            let (server_welcome, wormhole) =
-                magic_wormhole::Wormhole::connect_with_code(app_config, code).await?;
-            print_welcome(term, &server_welcome)?;
-            (wormhole, server_welcome.code)
-        },
-        None => {
-            let numwords = code_length.unwrap();
 
-            let (server_welcome, connector) =
-                magic_wormhole::Wormhole::connect_without_code(app_config, numwords).await?;
+    let (mut wormhole, code, relay_server) = match connect_options {
+        /* Leader/follower */
+        ConnectOptions::ProvideCode(code) => {
+            let (server_welcome, wormhole) = magic_wormhole::Wormhole::connect_with_code(
+                app_config,
+                magic_wormhole::Code(code),
+                seed_ability,
+            )
+            .await?;
             print_welcome(term, &server_welcome)?;
-            if is_send {
-                print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
-                    term,
-                    &server_welcome.code,
-                )?;
-            }
+            (wormhole, Some(server_welcome.code), relay_server)
+        },
+        /* Leader only */
+        ConnectOptions::GenerateCode {
+            size,
+            follower_command,
+        } => {
+            let (server_welcome, connector) =
+                magic_wormhole::Wormhole::connect_without_code(app_config, size, seed_ability)
+                    .await?;
+            print_welcome(term, &server_welcome)?;
+            print_code(term, &server_welcome.code, follower_command)?;
             let wormhole = connector.await?;
-            (wormhole, server_welcome.code)
+            (wormhole, Some(server_welcome.code), relay_server)
+        },
+        /* Follower only */
+        ConnectOptions::EnterCode => {
+            let code = magic_wormhole::Code(enter_code()?);
+            let (server_welcome, wormhole) =
+                magic_wormhole::Wormhole::connect_with_code(app_config, code, seed_ability).await?;
+            print_welcome(term, &server_welcome)?;
+            (wormhole, Some(server_welcome.code), relay_server)
+        },
+        /* Leader/follower */
+        ConnectOptions::ProvideSeed {
+            seed,
+            follower_command,
+        } => {
+            if let Some(follower_command) = follower_command {
+                print_seed(term, follower_command)?;
+            }
+            let mut wormhole =
+                magic_wormhole::Wormhole::connect_with_seed(app_config, seed).await?;
+            /* We don't want to execute the code block below if the connection came from a seed */
+            wormhole.take_seed();
+            (wormhole, None, relay_server)
         },
     };
+
+    /* Handle the seeds result */
+    if let Some(result) = wormhole.take_seed() {
+        /* Sending to ourselves, are we? */
+        if result
+            .existing_seeds
+            .contains(&xsalsa20poly1305::Key::from(seeds.myself))
+        {
+            log::info!(
+                "You appear to be sending a file to yourself. You may use `--to myself` and `--from myself` instead.",
+            );
+        } else {
+            /* We are interested in common seeds that we've already given a name */
+            match seeds
+                .peers
+                .values_mut()
+                .filter(|peer| {
+                    result
+                        .existing_seeds
+                        .contains(&xsalsa20poly1305::Key::from(peer.seed))
+                })
+                .find(|peer| peer.contact_name.is_some())
+            {
+                /* We only care about the first one and ignore the others. It should be rare enough to see duplicate contacts */
+                Some(peer) => {
+                    peer.seen();
+                    log::info!(
+                        "You already know your peer as '{}'. You may use the appropriate `--to` and `--from` arguments for connecting to that person without having to enter a code.",
+                        peer.contact_name.as_ref().unwrap(),
+                    );
+                },
+                None => {
+                    /* Check if we have at least one that wasn't saved */
+                    match seeds.peers.iter_mut().find(|(_, peer)| {
+                        result
+                            .existing_seeds
+                            .contains(&xsalsa20poly1305::Key::from(peer.seed))
+                    }) {
+                        Some((id, peer)) => {
+                            peer.seen();
+                            let name = if !peer.names.is_empty() && !peer.names[0].contains(' ') {
+                                peer.names[0].clone()
+                            } else {
+                                "<contact name>".into()
+                            };
+                            log::info!(
+                                "If you want to connect to your peer without password the next time, run"
+                            );
+                            log::info!("wormhole-rs contacts add {} {}", id, name);
+                        },
+                        None => {
+                            /* New seed, store it in database */
+                            let seed = result.session_seed;
+                            let name = if !seed.display_names.is_empty()
+                                && !seed.display_names[0].contains(' ')
+                            {
+                                seed.display_names[0].clone()
+                            } else {
+                                "<contact name>".into()
+                            };
+                            let id = seeds.insert_peer(seed);
+                            log::info!(
+                                "If you want to connect to your peer without password the next time, run"
+                            );
+                            log::info!("wormhole-rs contacts add {} {}", id, name);
+                        },
+                    }
+                },
+            }
+            seeds.save(database_path).context(format!(
+                "Failed to write seeds database to '{}'",
+                &database_path.display()
+            ))?;
+        }
+    }
+
     eyre::Result::<_>::Ok((wormhole, code, relay_server))
 }
 
@@ -623,18 +973,17 @@ fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> 
 }
 
 // For file transfer
-fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
+fn print_code(term: &mut Term, code: &magic_wormhole::Code, command: &str) -> eyre::Result<()> {
     writeln!(term, "\nThis wormhole's code is: {}", &code)?;
     writeln!(term, "On the other computer, please run:\n")?;
-    writeln!(term, "wormhole receive {}\n", &code)?;
+    writeln!(term, "wormhole {} {}\n", command, &code)?;
     Ok(())
 }
 
 // For port forwarding
-fn server_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
-    writeln!(term, "\nThis wormhole's code is: {}", &code)?;
-    writeln!(term, "On the other computer, please run:\n")?;
-    writeln!(term, "wormhole forward connect {}\n", &code)?;
+fn print_seed(term: &mut Term, command: &str) -> eyre::Result<()> {
+    writeln!(term, "\nOn the other computer, please run (replace <NAME> with the corresponding name of the contact):\n")?;
+    writeln!(term, "wormhole {} --from <NAME>\n", command)?;
     Ok(())
 }
 
@@ -724,7 +1073,8 @@ async fn send_many(
         }
 
         let (_server_welcome, wormhole) =
-            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone()).await?;
+            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone(), None)
+                .await?;
         send_in_background(
             relay_server.clone(),
             Arc::clone(&file_path),
