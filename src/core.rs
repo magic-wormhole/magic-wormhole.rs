@@ -91,6 +91,7 @@ pub struct Wormhole {
     phase: u64,
     key: key::Key<key::WormholeKey>,
     appid: AppID,
+    session_id: Box<[u8]>,
     /**
      * Protocol version information from the other side.
      * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
@@ -204,6 +205,12 @@ impl Wormhole {
         /* Send versions message */
         let mut versions = key::VersionsMessage::new();
         versions.set_app_versions(serde_json::to_value(app_versions).unwrap());
+        let session_id = if ***server.side() > **peer_side {
+            Vec::<u8>::from_hex(format!("{}{}", &***server.side(), &**peer_side)).expect("TODO error handling")
+        } else {
+            Vec::<u8>::from_hex(format!("{}{}", &**peer_side, &***server.side())).expect("TODO error handling")
+        };
+
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
@@ -231,6 +238,7 @@ impl Wormhole {
             phase: 0,
             key: key::Key::new(key.into()),
             peer_version,
+            session_id: session_id.into_boxed_slice(),
         })
     }
 
@@ -342,6 +350,11 @@ impl Wormhole {
      */
     pub fn verifier(&self) -> secretbox::Key {
         key::derive_verifier(&self.key)
+    }
+
+    /** Generated from our and the peer's side */
+    pub fn session_id(&self) -> &[u8] {
+        &self.session_id
     }
 
 }
