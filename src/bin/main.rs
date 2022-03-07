@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
-use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
+use clap::{crate_description, crate_name, crate_version, Arg, Command};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
@@ -60,55 +60,55 @@ async fn main() -> eyre::Result<()> {
 
     /* Define some common arguments first */
 
-    let relay_server_arg = Arg::with_name("relay-server")
+    let relay_server_arg = Arg::new("relay-server")
         .long("relay-server")
         .visible_alias("relay")
         .takes_value(true)
-        .multiple(true)
+        .multiple_occurrences(true)
         .value_name("tcp://HOSTNAME:PORT")
         .help("Use a custom relay server (specify multiple times for multiple relays)");
-    let rendezvous_server_arg = Arg::with_name("rendezvous-server")
+    let rendezvous_server_arg = Arg::new("rendezvous-server")
         .long("rendezvous-server")
         .takes_value(true)
         .value_name("ws://example.org")
         .help("Use a custom rendezvous server. Both sides need to use the same value in order to find each other.");
-    let log_arg = Arg::with_name("log")
-        .short("-v")
+    let log_arg = Arg::new("log")
+        .short('v')
         .long("verbose")
         .alias("log") // Legacy, remove in the future
         .global(true)
         .help("Enable logging to stdout, for debugging purposes");
-    let code_length_arg = Arg::with_name("code-length")
-        .short("c")
+    let code_length_arg = Arg::new("code-length")
+        .short('c')
         .long("code-length")
         .takes_value(true)
         .value_name("NUMWORDS")
         .default_value("2")
         .help("Length of code (in bytes/words)");
     /* Use in send commands */
-    let file_name = Arg::with_name("file-name")
+    let file_name = Arg::new("file-name")
         .long("rename")
         .visible_alias("name")
         .takes_value(true)
         .value_name("FILE_NAME")
         .help("Suggest a different name to the receiver to keep the file's actual name secret.");
-    let code_send = Arg::with_name("code")
+    let code_send = Arg::new("code")
         .long("code")
         .takes_value(true)
         .value_name("CODE")
         .help("Enter a code instead of generating one automatically");
     /* Use in receive commands */
-    let code = Arg::with_name("code")
+    let code = Arg::new("code")
         .index(1)
         .value_name("CODE")
         .help("Provide the code now rather than typing it interactively");
-    let file_rename = Arg::with_name("file-name")
+    let file_rename = Arg::new("file-name")
         .long("rename")
         .visible_alias("name")
         .takes_value(true)
         .value_name("FILE_NAME")
         .help("Rename the received file or folder, overriding the name suggested by the sender.");
-    let file_path = Arg::with_name("file-path")
+    let file_path = Arg::new("file-path")
         .long("out-dir")
         .takes_value(true)
         .value_name("PATH")
@@ -118,7 +118,7 @@ async fn main() -> eyre::Result<()> {
 
     /* The subcommands here */
 
-    let send_command = SubCommand::with_name("send")
+    let send_command = Command::new("send")
         .visible_alias("tx")
         .about("Send a file or a folder")
         .arg(code_length_arg.clone())
@@ -127,14 +127,13 @@ async fn main() -> eyre::Result<()> {
         .arg(rendezvous_server_arg.clone())
         .arg(file_name.clone())
         .arg(
-            Arg::with_name("file")
+            Arg::new("file")
                 .index(1)
                 .required(true)
                 .value_name("FILENAME|DIRNAME")
                 .help("The file or directory to send"),
-        )
-        .help_message("Print this help message");
-    let send_many_command = SubCommand::with_name("send-many")
+        );
+    let send_many_command = Command::new("send-many")
         .about("Send a file to many recipients. READ HELP PAGE FIRST!")
         .after_help(
             "This works by sending the file in a loop with the same code over \
@@ -147,7 +146,7 @@ async fn main() -> eyre::Result<()> {
         )
         .arg(code_length_arg.clone().default_value("4"))
         .arg(
-            Arg::with_name("code")
+            Arg::new("code")
                 .long("code")
                 .takes_value(true)
                 .value_name("CODE")
@@ -157,16 +156,16 @@ async fn main() -> eyre::Result<()> {
         .arg(rendezvous_server_arg.clone())
         .arg(file_name)
         .arg(
-            Arg::with_name("file")
+            Arg::new("file")
                 .index(1)
                 .required(true)
                 .value_name("FILENAME|DIRNAME")
                 .help("The file or directory to send"),
         )
         .arg(
-            Arg::with_name("tries")
+            Arg::new("tries")
                 .long("tries")
-                .short("n")
+                .short('n')
                 .takes_value(true)
                 .value_name("N")
                 .default_value("30")
@@ -174,19 +173,19 @@ async fn main() -> eyre::Result<()> {
                        These are also the number of tries a potential attacker gets at guessing the password."),
         )
         .arg(
-            Arg::with_name("timeout")
+            Arg::new("timeout")
                 .long("timeout")
                 .takes_value(true)
                 .value_name("MINUTES")
                 .default_value("60")
                 .help("Automatically stop providing the file after a certain amount of time."),
         )
-        .help_message("Print this help message");
-    let receive_command = SubCommand::with_name("receive")
+        .mut_arg("help", |a| a.help("Print this help message"));
+    let receive_command = Command::new("receive")
         .visible_alias("rx")
         .about("Receive a file or a folder")
         .arg(
-            Arg::with_name("noconfirm")
+            Arg::new("noconfirm")
                 .long("noconfirm")
                 .visible_alias("yes")
                 .help("Accept file transfer without asking for confirmation"),
@@ -196,18 +195,18 @@ async fn main() -> eyre::Result<()> {
         .arg(code.clone())
         .arg(relay_server_arg)
         .arg(rendezvous_server_arg)
-        .help_message("Print this help message");
-    let forward_command = SubCommand::with_name("forward")
+        .mut_arg("help", |a| a.help("Print this help message"));
+    let forward_command = Command::new("forward")
         .about("Forward ports from one machine to another")
-        .setting(AppSettings::ArgRequiredElseHelp)
-        .subcommand(SubCommand::with_name("serve")
+        .arg_required_else_help(true)
+        .subcommand(Command::new("serve")
             .visible_alias("open")
             .alias("server") /* Muscle memory <3 */
             .about("Make the following ports of your system available to your peer")
             .arg(
-                Arg::with_name("targets")
+                Arg::new("targets")
                     .index(1)
-                    .multiple(true)
+                    .multiple_occurrences(true)
                     .required(true)
                     .value_name("[DOMAIN:]PORT")
                     .help("List of ports to open up. You can optionally specify a domain/address to forward remote ports")
@@ -215,20 +214,20 @@ async fn main() -> eyre::Result<()> {
             .arg(code_length_arg)
             .arg(code_send)
         )
-        .subcommand(SubCommand::with_name("connect")
+        .subcommand(Command::new("connect")
             .about("Connect to some ports forwarded to you")
             .arg(code)
             .arg(
-                Arg::with_name("port")
+                Arg::new("port")
                     .long("port")
-                    .short("p")
+                    .short('p')
                     .takes_value(true)
-                    .multiple(true)
+                    .multiple_occurrences(true)
                     .value_name("PORT")
                     .help("Bind to specific ports instead of taking random free high ports. Can be provided multiple times.")
             )
             .arg(
-                Arg::with_name("bind")
+                Arg::new("bind")
                     .long("bind")
                     .takes_value(true)
                     .value_name("ADDRESS")
@@ -236,25 +235,22 @@ async fn main() -> eyre::Result<()> {
                     .help("Bind to a specific address to accept the forwarding. Depending on your system and firewall, this may make the forwarded ports accessible from the outside.")
             )
             .arg(
-                Arg::with_name("noconfirm")
+                Arg::new("noconfirm")
                     .long("noconfirm")
                     .visible_alias("yes")
                     .help("Accept the forwarding without asking for confirmation"),
             )
         )
-        .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
-        .help_message("Print this help message");
+        .subcommand(Command::new("help").hide(true))
+        .mut_arg("help", |a| a.help("Print this help message"));
 
     /* The Clap application */
-    let clap = App::new(crate_name!())
+    let clap = Command::new(crate_name!())
         .version(crate_version!())
         .about(crate_description!())
-        .setting(AppSettings::ArgRequiredElseHelp)
-        .global_setting(AppSettings::DisableHelpSubcommand)
-        .global_setting(AppSettings::VersionlessSubcommands)
-        .global_setting(AppSettings::ColoredHelp)
-        .global_setting(AppSettings::ColorAuto)
-        .global_setting(AppSettings::UnifiedHelpMessage)
+        .arg_required_else_help(true)
+        .disable_help_subcommand(true)
+        .propagate_version(true)
         .after_help(
             "Run a subcommand with `--help` to know how it's used.\n\
                      To send files, use `wormhole send <PATH>`.\n\
@@ -264,9 +260,9 @@ async fn main() -> eyre::Result<()> {
         .subcommand(send_many_command)
         .subcommand(receive_command)
         .subcommand(forward_command)
-        .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
+        .subcommand(Command::new("help").hide(true))
         .arg(log_arg)
-        .help_message("Print this help message");
+        .mut_arg("help", |a| a.help("Print this help message"));
     let matches = clap.get_matches();
 
     let mut term = Term::stdout();
@@ -517,7 +513,7 @@ async fn main() -> eyre::Result<()> {
  */
 async fn parse_and_connect(
     term: &mut Term,
-    matches: &clap::ArgMatches<'_>,
+    matches: &clap::ArgMatches,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize>,
     print_code: Option<&dyn Fn(&mut Term, &magic_wormhole::Code) -> eyre::Result<()>>,
