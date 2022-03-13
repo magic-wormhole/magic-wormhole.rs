@@ -235,7 +235,7 @@ impl Wormhole {
             server.release_nameplate().await?;
         }
 
-        log::info!("Successfully connected to peer.");
+        log::info!("Found peer on the rendezvous server.");
 
         /* We are now fully initialized! Up and running! :tada: */
         Ok(Self {

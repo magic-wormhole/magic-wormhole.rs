@@ -792,12 +792,17 @@ async fn receive(
      * - If it doesn't, directly accept, but DON'T overwrite any files
      */
 
+    use number_prefix::NumberPrefix;
     if !(noconfirm
         || util::ask_user(
             format!(
-                "Receive file '{}' (size: {} bytes)?",
+                "Receive file '{}' ({})?",
                 req.filename.display(),
-                req.filesize
+                match NumberPrefix::binary(req.filesize as f64) {
+                    NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                    NumberPrefix::Prefixed(prefix, n) =>
+                        format!("{:.1} {}B in size", n, prefix.symbol()),
+                },
             ),
             true,
         )
