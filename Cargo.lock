@@ -1175,6 +1175,7 @@ dependencies = [
  "indicatif",
  "libc",
  "log",
+ "number_prefix",
  "rand 0.8.5",
  "regex",
  "rmp-serde",
