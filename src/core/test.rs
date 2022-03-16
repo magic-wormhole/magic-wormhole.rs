@@ -272,6 +272,92 @@ pub async fn test_crowded() -> eyre::Result<()> {
     Ok(())
 }
 
+/** Generate a seed and then use it */
+#[async_std::test]
+pub async fn test_seeds() -> eyre::Result<()> {
+    init_logger();
+
+    /* Generate the seed */
+
+    let seed_ability = magic_wormhole::SeedAbility::<false> {
+        display_names: vec!["foo".into(), "bar".into()],
+        known_seeds: [Default::default()].into_iter().collect(),
+    };
+    let seed_ability2 = seed_ability.clone();
+
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let seed_1 = async_std::task::Builder::new()
+        .name("leader".to_owned())
+        .spawn(async {
+            let (welcome, connector) = Wormhole::connect_without_code(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                2,
+                Some(seed_ability),
+            )
+            .await?;
+            code_tx.send(welcome.code).unwrap();
+            let mut wormhole = connector.await?;
+            let seed = wormhole.take_seed();
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(seed)
+        })?;
+    let seed_2 = async_std::task::Builder::new()
+        .name("follower".to_owned())
+        .spawn(async {
+            let code = code_rx.await?;
+            let (_welcome, mut wormhole) = Wormhole::connect_with_code(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                code,
+                Some(seed_ability2),
+            )
+            .await?;
+            let seed = wormhole.take_seed();
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(seed)
+        })?;
+
+    let seed_1 = seed_1.await?.expect("Seed must be Some");
+    let seed_2 = seed_2.await?.expect("Seed must be Some");
+
+    assert_eq!(seed_1.session_seed.seed, seed_2.session_seed.seed);
+    assert_eq!(
+        seed_1.session_seed.display_names,
+        seed_2.session_seed.display_names
+    );
+    assert_eq!(seed_1.existing_seeds, seed_2.existing_seeds);
+
+    /* Resume the seed */
+
+    let task_1 = async_std::task::Builder::new()
+        .name("leader".to_owned())
+        .spawn(async move {
+            let wormhole = Wormhole::connect_with_seed(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                seed_1.session_seed.seed,
+            )
+            .await?;
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(())
+        })?;
+    let task_2 = async_std::task::Builder::new()
+        .name("follower".to_owned())
+        .spawn(async move {
+            let wormhole = Wormhole::connect_with_seed(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                seed_2.session_seed.seed,
+            )
+            .await?;
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(())
+        })?;
+
+    task_1.await?;
+    task_2.await?;
+
+    Ok(())
+}
+
 #[test]
 fn test_phase() {
     let p = Phase::PAKE;
