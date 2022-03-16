@@ -118,12 +118,13 @@ jobs:
           command: build
           args: --bins --locked --release
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: wormhole-${{ matrix.os }}-${{ github.sha }}
-          path: ./target/release/wormhole-rs{,.exe}
+          path: |
+            ./target/release/wormhole-rs
+            ./target/release/wormhole-rs.exe
           if-no-files-found: error
-        continue-on-error: true
 
   coverage:
     runs-on: ubuntu-latest
