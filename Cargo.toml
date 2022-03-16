@@ -83,3 +83,5 @@ required-features = ["bin"]
 
 [profile.release]
 overflow-checks = true
+strip = "debuginfo"
+lto = "thin"
