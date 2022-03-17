@@ -15,10 +15,6 @@ documentation = "https://docs.rs/magic-wormhole/latest/"
 license = "EUPL-1.2"
 edition = "2021"
 rust-version = "1.59" # MSRV
-default-run = "wormhole-rs"
-
-[badges]
-travis-ci = { repository = "warner/magic-wormhole.rs" }
 
 [dependencies]
 serde = { version = "1.0.120", features = ["rc"] }
@@ -52,40 +48,20 @@ socket2 = "0.4.1"
 libc = "0.2.101"
 stun_codec = "0.2.0"
 bytecodec = "0.4.15"
-
-# for "bin" feature
-clap = { version = "3.1.5", optional = true, features = ["cargo", "derive", "wrap_help"] }
-env_logger = { version = "0.9.0", optional = true }
-console = { version = "0.15.0", optional = true }
-indicatif = { version = "0.16.0", optional = true }
-dialoguer = { version = "0.10.0", optional = true }
-color-eyre = { version = "0.6.0", optional = true }
-number_prefix = { version = "0.4.0", optional = true }
 url = { version = "2.2.2", features = ["serde"] }
-uri = "0.4.0"
 rmp-serde = "1.0.0"
 http = "0.2.5"
-ctrlc = "3.2.1"
 
 # for some tests
 [dev-dependencies]
 env_logger = "0.9.0"
 eyre = "0.6.5"
 
-[features]
-bin = ["clap", "env_logger", "console", "indicatif", "dialoguer", "color-eyre", "number_prefix"]
-# TODO remove this one day
-# - Removing it now requires all cargo calls to have --features=bin which is annoying
-# - There is a cargo issue that would allow proper bin dependencies and thus would resolve it
-# - We could separate bin and lib into separate workspace projects
-default = ["bin"]
-
-[[bin]]
-name = "wormhole-rs"
-path = "src/bin/main.rs"
-required-features = ["bin"]
-
 [profile.release]
 overflow-checks = true
 strip = "debuginfo"
 lto = "thin"
+
+[workspace]
+members = [".", "cli"]
+default-members = ["cli"]

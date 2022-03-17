@@ -85,7 +85,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose
+          args: --verbose --all
 
   dist:
     runs-on: ${{ matrix.os }}
@@ -145,6 +145,8 @@ jobs:
           path: target
           key: ${{ runner.os }}-coverage-cargo-build-target
       - uses: actions-rs/tarpaulin@v0.1
+        with:
+          args: --all
       - name: upload coverage
         uses: codecov/codecov-action@v1
         with:

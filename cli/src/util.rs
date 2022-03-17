@@ -62,8 +62,3 @@ impl std::fmt::Display for Cancelled {
         write!(f, "Task has been cancelled")
     }
 }
-
-#[allow(dead_code)]
-fn main() {
-    panic!("This ought to be a helper module, no idea why Rust thinks it's a crate");
-}

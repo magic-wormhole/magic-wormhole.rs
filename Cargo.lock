@@ -171,6 +171,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-std"
+version = "1.11.0"
+source = "git+https://github.com/async-rs/async-std#2c6304662b96aab64feb20f7d727bfc8e070453e"
+dependencies = [
+ "async-attributes",
+ "async-channel",
+ "async-global-executor",
+ "async-io",
+ "async-lock",
+ "async-process",
+ "crossbeam-utils",
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-lite",
+ "gloo-timers",
+ "kv-log-macro",
+ "log",
+ "memchr",
+ "num_cpus",
+ "once_cell",
+ "pin-project-lite",
+ "pin-utils",
+ "slab",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "async-task"
 version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,7 +223,7 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7922abeade7dd8948c20dfa1f85dc48cc952d2e0791f7c42b8b1cbb07a57129d"
 dependencies = [
- "async-std",
+ "async-std 1.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-tls",
  "futures-io",
  "futures-util",
@@ -1038,17 +1066,12 @@ name = "magic-wormhole"
 version = "0.3.1"
 dependencies = [
  "async-io",
- "async-std",
+ "async-std 1.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-tungstenite",
  "base64",
  "bytecodec",
  "byteorder",
- "clap",
- "color-eyre",
- "console",
- "ctrlc",
  "derive_more",
- "dialoguer",
  "env_logger",
  "eyre",
  "futures",
@@ -1057,10 +1080,8 @@ dependencies = [
  "hex",
  "hkdf",
  "http",
- "indicatif",
  "libc",
  "log",
- "number_prefix",
  "rand",
  "regex",
  "rmp-serde",
@@ -1075,7 +1096,6 @@ dependencies = [
  "tar",
  "thiserror",
  "time",
- "uri",
  "url",
  "xsalsa20poly1305",
 ]
@@ -1887,12 +1907,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
-name = "uri"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5c61fea9e6205d0d14c7e6efe252f15ed404da4cbdbe4ecd1de0a4d7241829f"
-
-[[package]]
 name = "url"
 version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2091,6 +2105,28 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "wormhole-rs"
+version = "0.3.0"
+dependencies = [
+ "async-std 1.11.0 (git+https://github.com/async-rs/async-std)",
+ "clap",
+ "color-eyre",
+ "console",
+ "ctrlc",
+ "dialoguer",
+ "env_logger",
+ "futures",
+ "indicatif",
+ "log",
+ "magic-wormhole",
+ "number_prefix",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "url",
+]
 
 [[package]]
 name = "xattr"
