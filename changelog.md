@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added a contact book and session resumption
+	- If you send a file to somebody, a "seed" will be stored on both sides.
+	- Afterwards, you can you `wormhole send --to <person>` and `wormhole receive --from <person>`
+	- The secure connection will then be established without having to enter a code.
+
 ## Version 0.3.0
 
 - Added experimental port forwarding feature

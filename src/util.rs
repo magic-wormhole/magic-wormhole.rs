@@ -198,3 +198,13 @@ impl std::fmt::Display for Cancelled {
         write!(f, "Task has been cancelled")
     }
 }
+
+/// Workaround for https://github.com/KokaKiwi/rust-hex/issues/69
+pub fn deserialize_key_hex<'de, D>(de: D) -> Result<xsalsa20poly1305::Key, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: [u8; xsalsa20poly1305::KEY_SIZE] =
+        hex::serde::deserialize(de).map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value.into())
+}

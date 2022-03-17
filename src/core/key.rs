@@ -3,6 +3,7 @@ use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, SPAKE2};
+use std::collections::HashSet;
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
     aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
@@ -107,7 +108,9 @@ pub struct VersionsMessage {
     pub abilities: Vec<String>,
     #[serde(default)]
     pub app_versions: serde_json::Value,
-    // resume: Option<WormholeResume>,
+    /** Only ever send the [obfuscated](SeedAbility::Hash) variant over the wire! */
+    #[serde(default)]
+    pub seed: Option<SeedAbility<true>>,
 }
 
 impl VersionsMessage {
@@ -119,9 +122,113 @@ impl VersionsMessage {
         self.app_versions = versions;
     }
 
-    // pub fn add_resume_ability(&mut self, _resume: ()) {
-    //     self.abilities.push("resume-v1".into())
-    // }
+    pub fn add_seeds_ability(&mut self, seed: SeedAbility<true>) {
+        self.abilities.push("seeds-v1".into());
+        self.seed = Some(seed);
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SeedAbility<const HASHED: bool> {
+    /// List of human readable names for a peer
+    pub display_names: Vec<String>,
+    /// List of known seeds of a peer
+    ///
+    /// Note that the values are blinded by a hash function in order to keep the actual seeds secret
+    /// The type parameter `hashed` is used to distinguish both cases in the type system
+    #[serde(with = "SeedAbility::<false>")]
+    pub known_seeds: HashSet<xsalsa20poly1305::Key>,
+}
+
+impl SeedAbility<true> {
+    pub fn new_hashed<'a>(
+        display_names: Vec<String>,
+        known_seeds: impl Iterator<Item = &'a xsalsa20poly1305::Key>,
+        session_id: &[u8],
+    ) -> Self {
+        Self {
+            display_names,
+            known_seeds: known_seeds
+                .map(|seed| derive_key(seed, session_id))
+                .collect(),
+        }
+    }
+}
+
+impl SeedAbility<false> {
+    /** We obfuscate the list of known mailboxed to not leak our contact graph */
+    pub fn hash(&self, session_id: &[u8]) -> SeedAbility<true> {
+        SeedAbility::<true>::new_hashed(
+            self.display_names.clone(),
+            self.known_seeds.iter(),
+            session_id,
+        )
+    }
+
+    /** Intersect self with the peer's set of seeds,
+     * execpt that the peer's seeds are hashed so we don't actually know them.
+     */
+    pub fn intersect<'a>(
+        &'a self,
+        other: &'a SeedAbility<true>,
+        session_id: &'a [u8],
+    ) -> impl Iterator<Item = xsalsa20poly1305::Key> + 'a {
+        self.known_seeds
+            .iter()
+            .map(|seed| (*seed, derive_key(seed, session_id)))
+            .filter(|(_seed, hash)| other.known_seeds.contains(hash))
+            .map(|(seed, _)| seed)
+    }
+
+    // Serialize the `sessions` attribute
+    pub fn serialize<S: serde::Serializer>(
+        data: &HashSet<xsalsa20poly1305::Key>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(
+            data.iter()
+                .map(<xsalsa20poly1305::Key as hex::ToHex>::encode_hex::<String>),
+        )
+    }
+
+    // Deserialize the `sessions` attribute
+    fn deserialize<'de, D>(de: D) -> Result<HashSet<xsalsa20poly1305::Key>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let values: Vec<String> = serde::Deserialize::deserialize(de)?;
+        values
+            .into_iter()
+            .map(|value: String| {
+                <[u8; xsalsa20poly1305::KEY_SIZE]>::from_hex(value)
+                    .map(Into::into)
+                    .map_err(<D::Error as serde::de::Error>::custom)
+            })
+            .collect()
+    }
+}
+
+/** "Grow" a new Wormhole connection */
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct WormholeSeed {
+    /// List of human readable names
+    pub display_names: Vec<String>,
+    /// The seed. Should be kept secret
+    #[serde(
+        serialize_with = "hex::serde::serialize",
+        deserialize_with = "crate::util::deserialize_key_hex"
+    )]
+    pub seed: xsalsa20poly1305::Key,
+}
+
+impl WormholeSeed {
+    pub fn code(&self) -> xsalsa20poly1305::Key {
+        derive_key(&self.seed, b"wormhole:seed:code")
+    }
+
+    pub fn mailbox(&self) -> xsalsa20poly1305::Key {
+        derive_key(&self.seed, b"wormhole:seed:mailbox")
+    }
 }
 
 pub fn build_version_msg(

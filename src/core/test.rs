@@ -31,7 +31,8 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
         .name("sender".to_owned())
         .spawn(async {
             let (welcome, connector) =
-                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2, None)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -59,7 +60,8 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
             let (welcome, wormhole) =
-                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code, None)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -98,7 +100,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
 
     let (welcome, connector) =
-        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2, None).await?;
 
     let code = welcome.code;
     log::info!("The code is {:?}", code);
@@ -137,6 +139,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
             let (_welcome, wormhole) = Wormhole::connect_with_code(
                 transfer::APP_CONFIG.id(TEST_APPID),
                 sender_code.clone(),
+                None,
             )
             .await?;
             senders.push(async_std::task::spawn(async move {
@@ -164,7 +167,8 @@ pub async fn test_send_many() -> eyre::Result<()> {
     for i in 0..5usize {
         log::info!("Receiving file #{}", i);
         let (_welcome, wormhole) =
-            Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone()).await?;
+            Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone(), None)
+                .await?;
         log::info!("Got key: {}", &wormhole.key);
         let req = crate::transfer::request_file(
             wormhole,
@@ -198,7 +202,8 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
         .name("sender".to_owned())
         .spawn(async {
             let (welcome, connector) =
-                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2, None)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -219,6 +224,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
                 transfer::APP_CONFIG.id(TEST_APPID),
                 /* Making a wrong code here by appending bullshit */
                 Code::new(&nameplate, "foo-bar"),
+                None,
             )
             .await;
 
@@ -239,14 +245,20 @@ pub async fn test_crowded() -> eyre::Result<()> {
     init_logger();
 
     let (welcome, connector1) =
-        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2, None).await?;
     log::info!("This test's code is: {}", &welcome.code);
 
-    let connector2 =
-        Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), welcome.code.clone());
+    let connector2 = Wormhole::connect_with_code(
+        transfer::APP_CONFIG.id(TEST_APPID),
+        welcome.code.clone(),
+        None,
+    );
 
-    let connector3 =
-        Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), welcome.code.clone());
+    let connector3 = Wormhole::connect_with_code(
+        transfer::APP_CONFIG.id(TEST_APPID),
+        welcome.code.clone(),
+        None,
+    );
 
     match futures::try_join!(connector1, connector2, connector3).unwrap_err() {
         magic_wormhole::WormholeError::ServerError(
@@ -256,6 +268,92 @@ pub async fn test_crowded() -> eyre::Result<()> {
         },
         other => panic!("Got wrong error message: {}, wanted 'crowded'", other),
     }
+
+    Ok(())
+}
+
+/** Generate a seed and then use it */
+#[async_std::test]
+pub async fn test_seeds() -> eyre::Result<()> {
+    init_logger();
+
+    /* Generate the seed */
+
+    let seed_ability = magic_wormhole::SeedAbility::<false> {
+        display_names: vec!["foo".into(), "bar".into()],
+        known_seeds: [Default::default()].into_iter().collect(),
+    };
+    let seed_ability2 = seed_ability.clone();
+
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let seed_1 = async_std::task::Builder::new()
+        .name("leader".to_owned())
+        .spawn(async {
+            let (welcome, connector) = Wormhole::connect_without_code(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                2,
+                Some(seed_ability),
+            )
+            .await?;
+            code_tx.send(welcome.code).unwrap();
+            let mut wormhole = connector.await?;
+            let seed = wormhole.take_seed();
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(seed)
+        })?;
+    let seed_2 = async_std::task::Builder::new()
+        .name("follower".to_owned())
+        .spawn(async {
+            let code = code_rx.await?;
+            let (_welcome, mut wormhole) = Wormhole::connect_with_code(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                code,
+                Some(seed_ability2),
+            )
+            .await?;
+            let seed = wormhole.take_seed();
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(seed)
+        })?;
+
+    let seed_1 = seed_1.await?.expect("Seed must be Some");
+    let seed_2 = seed_2.await?.expect("Seed must be Some");
+
+    assert_eq!(seed_1.session_seed.seed, seed_2.session_seed.seed);
+    assert_eq!(
+        seed_1.session_seed.display_names,
+        seed_2.session_seed.display_names
+    );
+    assert_eq!(seed_1.existing_seeds, seed_2.existing_seeds);
+
+    /* Resume the seed */
+
+    let task_1 = async_std::task::Builder::new()
+        .name("leader".to_owned())
+        .spawn(async move {
+            let wormhole = Wormhole::connect_with_seed(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                seed_1.session_seed.seed,
+            )
+            .await?;
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(())
+        })?;
+    let task_2 = async_std::task::Builder::new()
+        .name("follower".to_owned())
+        .spawn(async move {
+            let wormhole = Wormhole::connect_with_seed(
+                transfer::APP_CONFIG.id(TEST_APPID),
+                seed_2.session_seed.seed,
+            )
+            .await?;
+            wormhole.close().await?;
+            eyre::Result::<_>::Ok(())
+        })?;
+
+    task_1.await?;
+    task_2.await?;
 
     Ok(())
 }

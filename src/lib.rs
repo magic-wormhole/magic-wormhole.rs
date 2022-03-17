@@ -30,6 +30,6 @@ pub mod transfer;
 pub mod transit;
 
 pub use crate::core::{
-    key::{GenericKey, Key, KeyPurpose, WormholeKey},
-    rendezvous, AppConfig, AppID, Code, Wormhole, WormholeError, WormholeWelcome,
+    key::{GenericKey, Key, KeyPurpose, SeedAbility, WormholeKey, WormholeSeed},
+    rendezvous, AppConfig, AppID, Code, SeedResult, Wormhole, WormholeError, WormholeWelcome,
 };

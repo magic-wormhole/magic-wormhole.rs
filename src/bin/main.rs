@@ -1,3 +1,4 @@
+mod seeds;
 mod util;
 
 use std::{
@@ -6,15 +7,17 @@ use std::{
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
-use clap::{crate_description, crate_name, crate_version, App, AppSettings, Arg, SubCommand};
+use clap::{Args, Parser, Subcommand};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
-use std::io::Write;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
-use std::str::FromStr;
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -53,225 +56,299 @@ fn install_ctrlc_handler(
     })
 }
 
+// send, send-many
+#[derive(Debug, Args)]
+struct CommonSenderArgs {
+    /// Suggest a different name to the receiver to keep the file's actual name secret.
+    #[clap(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
+    file_name: Option<PathBuf>,
+    #[clap(index = 1, required = true, value_name = "FILENAME|DIRNAME")]
+    file: PathBuf,
+}
+
+// send, send-many, serve
+#[derive(Debug, Args)]
+struct CommonLeaderArgs {
+    /// Enter a code instead of generating one automatically
+    #[clap(long, value_name = "CODE")]
+    code: Option<String>,
+    /// Length of code (in bytes/words)
+    #[clap(
+        short = 'c',
+        long,
+        value_name = "NUMWORDS",
+        default_value = "2",
+        conflicts_with = "code"
+    )]
+    code_length: usize,
+    /// Send to one of your contacts instead of using a code
+    #[clap(long, value_name = "NAME", conflicts_with_all = &["code", "code-length"])]
+    to: Option<String>,
+}
+
+impl CommonLeaderArgs {
+    fn into_connect_options<'a, 'b>(
+        self,
+        seeds: &'a seeds::Database,
+        follower_command: &'b str,
+    ) -> eyre::Result<ConnectOptions<'b>> {
+        Ok(match (self.code, self.to) {
+            (None, None) => ConnectOptions::GenerateCode {
+                size: self.code_length,
+                follower_command,
+            },
+            (Some(code), None) => ConnectOptions::ProvideCode(code),
+            (None, Some(to)) if to == "myself" => ConnectOptions::ProvideSeed {
+                seed: seeds.myself.into(),
+                follower_command: Some(follower_command),
+            },
+            (None, Some(to)) => {
+                let peer = seeds
+                    .find(&to)
+                    .ok_or_else(|| eyre::format_err!("Contact '{to}' not found"))?;
+                ConnectOptions::ProvideSeed {
+                    seed: peer.seed.into(),
+                    follower_command: Some(follower_command),
+                }
+            },
+            (Some(_), Some(_)) => unreachable!(),
+        })
+    }
+}
+
+// receive
+#[derive(Debug, Args)]
+struct CommonReceiverArgs {
+    /// Rename the received file or folder, overriding the name suggested by the sender.
+    #[clap(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
+    file_name: Option<PathBuf>,
+    /// Store transferred file or folder in the specified directory. Defaults to $PWD.
+    #[clap(long = "out-dir", value_name = "PATH", default_value = ".")]
+    file_path: PathBuf,
+}
+
+// receive, connect
+#[derive(Debug, Args)]
+struct CommonFollowerArgs {
+    /// Provide the code now rather than typing it interactively
+    #[clap(value_name = "CODE")]
+    code: Option<String>,
+    /// Receive from one of your contacts instead of using a code
+    #[clap(long, value_name = "NAME", conflicts_with = "code")]
+    from: Option<String>,
+}
+
+impl CommonFollowerArgs {
+    fn into_connect_options<'a, 'b>(
+        self,
+        seeds: &'a seeds::Database,
+    ) -> eyre::Result<ConnectOptions<'b>> {
+        Ok(match (self.code, self.from) {
+            (None, None) => ConnectOptions::EnterCode,
+            (Some(code), None) => ConnectOptions::ProvideCode(code),
+            (None, Some(from)) if from == "myself" => ConnectOptions::ProvideSeed {
+                seed: seeds.myself.into(),
+                follower_command: None,
+            },
+            (None, Some(from)) => {
+                let peer = seeds
+                    .find(&from)
+                    .ok_or_else(|| eyre::format_err!("Contact '{from}' not found"))?;
+                ConnectOptions::ProvideSeed {
+                    seed: peer.seed.into(),
+                    follower_command: None,
+                }
+            },
+            (Some(_), Some(_)) => unreachable!(),
+        })
+    }
+}
+
+// send, send-mane, receive, serve, connect
+#[derive(Debug, Clone, Args)]
+struct CommonArgs {
+    /// Use a custom relay server (specify multiple times for multiple relays)
+    #[clap(
+        long = "relay-server",
+        visible_alias = "relay",
+        multiple_occurrences = true,
+        value_name = "tcp://HOSTNAME:PORT"
+    )]
+    relay_server: Vec<url::Url>,
+    /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
+    #[clap(long, value_name = "ws://example.org")]
+    rendezvous_server: Option<url::Url>,
+}
+
+#[derive(Debug, Subcommand)]
+#[clap(arg_required_else_help = true)]
+enum ForwardCommand {
+    /// Make the following ports of your system available to your peer
+    #[clap(
+        visible_alias = "open",
+        alias = "server", /* Muscle memory <3 */
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    Serve {
+        /// List of ports to open up. You can optionally specify a domain/address to forward remote ports
+        #[clap(value_name = "[DOMAIN:]PORT", multiple_occurrences = true)]
+        targets: Vec<String>,
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_leader: CommonLeaderArgs,
+    },
+    /// Connect to some ports forwarded to you
+    #[clap(
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    Connect {
+        /// Bind to specific ports instead of taking random free high ports. Can be provided multiple times.
+        #[clap(
+            short = 'p',
+            long = "port",
+            multiple_occurrences = true,
+            value_name = "PORT"
+        )]
+        ports: Vec<u16>,
+        /// Bind to a specific address to accept the forwarding. Depending on your system and firewall, this may make the forwarded ports accessible from the outside.
+        #[clap(long = "bind", value_name = "ADDRESS", default_value = "::")]
+        bind_address: std::net::IpAddr,
+        /// Accept the forwarding without asking for confirmation
+        #[clap(long, visible_alias = "yes")]
+        noconfirm: bool,
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_follower: CommonFollowerArgs,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+#[clap(arg_required_else_help = true)]
+enum ContactCommand {
+    /// List your existing contacts
+    #[clap(
+        visible_alias = "show",
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    List,
+    /// Store a previously made connection in your contacts
+    #[clap(
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    Add {
+        /// The ID of the previous connection
+        #[clap(value_name = "ID")]
+        id: String,
+        /// The name under which to add the contact
+        #[clap(value_name = "NAME")]
+        name: String,
+        /// Overwrite contacts with the same name
+        #[clap(short, long)]
+        force: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WormholeCommand {
+    /// Send a file or a folder
+    #[clap(
+        visible_alias = "tx",
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    Send {
+        /// The file or directory to send
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_leader: CommonLeaderArgs,
+        #[clap(flatten)]
+        common_send: CommonSenderArgs,
+    },
+    /// Send a file to many recipients. READ HELP PAGE FIRST!
+    #[clap(
+        mut_arg("help", |a| a.help("Print this help message")),
+        after_help = "This works by sending the file in a loop with the same code over \
+        and over again. Note that this also gives an attacker multiple tries \
+        to guess the code, whereas normally they have only one. This can be \
+        countered by using a longer than usual code (default 4 bytes entropy).\n\n\
+        The application terminates on interruption, after a timeout or after a
+        number of sent files, whichever comes first. It will always try to send
+        at least one file, regardless of the limits."
+    )]
+    SendMany {
+        /// Only send the file up to n times, limiting the number of people that may receive it.
+        /// These are also the number of tries a potential attacker gets at guessing the password.
+        #[clap(short = 'n', long, value_name = "N", default_value = "30")]
+        tries: u64,
+        /// Automatically stop providing the file after a certain amount of time.
+        #[clap(long, value_name = "MINUTES", default_value = "60")]
+        timeout: u64,
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_leader: CommonLeaderArgs,
+        #[clap(flatten)]
+        common_send: CommonSenderArgs,
+    },
+    /// Receive a file or a folder
+    #[clap(
+        visible_alias = "rx",
+        mut_arg("help", |a| a.help("Print this help message")),
+    )]
+    Receive {
+        /// Accept file transfer without asking for confirmation
+        #[clap(long, visible_alias = "yes")]
+        noconfirm: bool,
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_follower: CommonFollowerArgs,
+        #[clap(flatten)]
+        common_receiver: CommonReceiverArgs,
+    },
+    /// Forward ports from one machine to another
+    #[clap(subcommand)]
+    Forward(ForwardCommand),
+    /// Manage your contacts to which you may send files without having to enter a code
+    #[clap(subcommand, visible_alias = "contact")]
+    Contacts(ContactCommand),
+    #[clap(hide = true)]
+    Help,
+}
+
+#[derive(Debug, Parser)]
+#[clap(
+    version,
+    author,
+    about,
+    arg_required_else_help = true,
+    disable_help_subcommand = true,
+    propagate_version = true,
+    after_help = "Run a subcommand with `--help` to know how it's used.\n\
+                 To send files, use `wormhole send <PATH>`.\n\
+                 To receive files, use `wormhole receive <CODE>`.",
+    mut_arg("help", |a| a.help("Print this help message")),
+)]
+struct WormholeCli {
+    /// Enable logging to stdout, for debugging purposes
+    #[clap(short = 'v', long = "verbose", alias = "log", global = true)]
+    log: bool,
+    #[clap(subcommand)]
+    command: WormholeCommand,
+}
+
 #[async_std::main]
 async fn main() -> eyre::Result<()> {
     color_eyre::install()?;
     let ctrl_c = install_ctrlc_handler()?;
 
-    /* Define some common arguments first */
-
-    let relay_server_arg = Arg::with_name("relay-server")
-        .long("relay-server")
-        .visible_alias("relay")
-        .takes_value(true)
-        .multiple(true)
-        .value_name("tcp://HOSTNAME:PORT")
-        .help("Use a custom relay server (specify multiple times for multiple relays)");
-    let rendezvous_server_arg = Arg::with_name("rendezvous-server")
-        .long("rendezvous-server")
-        .takes_value(true)
-        .value_name("ws://example.org")
-        .help("Use a custom rendezvous server. Both sides need to use the same value in order to find each other.");
-    let log_arg = Arg::with_name("log")
-        .short("-v")
-        .long("verbose")
-        .alias("log") // Legacy, remove in the future
-        .global(true)
-        .help("Enable logging to stdout, for debugging purposes");
-    let code_length_arg = Arg::with_name("code-length")
-        .short("c")
-        .long("code-length")
-        .takes_value(true)
-        .value_name("NUMWORDS")
-        .default_value("2")
-        .help("Length of code (in bytes/words)");
-    /* Use in send commands */
-    let file_name = Arg::with_name("file-name")
-        .long("rename")
-        .visible_alias("name")
-        .takes_value(true)
-        .value_name("FILE_NAME")
-        .help("Suggest a different name to the receiver to keep the file's actual name secret.");
-    let code_send = Arg::with_name("code")
-        .long("code")
-        .takes_value(true)
-        .value_name("CODE")
-        .help("Enter a code instead of generating one automatically");
-    /* Use in receive commands */
-    let code = Arg::with_name("code")
-        .index(1)
-        .value_name("CODE")
-        .help("Provide the code now rather than typing it interactively");
-    let file_rename = Arg::with_name("file-name")
-        .long("rename")
-        .visible_alias("name")
-        .takes_value(true)
-        .value_name("FILE_NAME")
-        .help("Rename the received file or folder, overriding the name suggested by the sender.");
-    let file_path = Arg::with_name("file-path")
-        .long("out-dir")
-        .takes_value(true)
-        .value_name("PATH")
-        .required(true)
-        .default_value(".")
-        .help("Store transferred file or folder in the specified directory. Defaults to $PWD.");
-
-    /* The subcommands here */
-
-    let send_command = SubCommand::with_name("send")
-        .visible_alias("tx")
-        .about("Send a file or a folder")
-        .arg(code_length_arg.clone())
-        .arg(code_send.clone())
-        .arg(relay_server_arg.clone())
-        .arg(rendezvous_server_arg.clone())
-        .arg(file_name.clone())
-        .arg(
-            Arg::with_name("file")
-                .index(1)
-                .required(true)
-                .value_name("FILENAME|DIRNAME")
-                .help("The file or directory to send"),
-        )
-        .help_message("Print this help message");
-    let send_many_command = SubCommand::with_name("send-many")
-        .about("Send a file to many recipients. READ HELP PAGE FIRST!")
-        .after_help(
-            "This works by sending the file in a loop with the same code over \
-            and over again. Note that this also gives an attacker multiple tries \
-            to guess the code, whereas normally they have only one. This can be \
-            countered by using a longer than usual code (default 4 bytes entropy).\n\n\
-            The application terminates on interruption, after a timeout or after a
-            number of sent files, whichever comes first. It will always try to send
-            at least one file, regardless of the limits.",
-        )
-        .arg(code_length_arg.clone().default_value("4"))
-        .arg(
-            Arg::with_name("code")
-                .long("code")
-                .takes_value(true)
-                .value_name("CODE")
-                .help("Enter a code instead of generating one automatically"),
-        )
-        .arg(relay_server_arg.clone())
-        .arg(rendezvous_server_arg.clone())
-        .arg(file_name)
-        .arg(
-            Arg::with_name("file")
-                .index(1)
-                .required(true)
-                .value_name("FILENAME|DIRNAME")
-                .help("The file or directory to send"),
-        )
-        .arg(
-            Arg::with_name("tries")
-                .long("tries")
-                .short("n")
-                .takes_value(true)
-                .value_name("N")
-                .default_value("30")
-                .help("Only send the file up to n times, limiting the number of people that may receive it. \
-                       These are also the number of tries a potential attacker gets at guessing the password."),
-        )
-        .arg(
-            Arg::with_name("timeout")
-                .long("timeout")
-                .takes_value(true)
-                .value_name("MINUTES")
-                .default_value("60")
-                .help("Automatically stop providing the file after a certain amount of time."),
-        )
-        .help_message("Print this help message");
-    let receive_command = SubCommand::with_name("receive")
-        .visible_alias("rx")
-        .about("Receive a file or a folder")
-        .arg(
-            Arg::with_name("noconfirm")
-                .long("noconfirm")
-                .visible_alias("yes")
-                .help("Accept file transfer without asking for confirmation"),
-        )
-        .arg(file_rename)
-        .arg(file_path)
-        .arg(code.clone())
-        .arg(relay_server_arg)
-        .arg(rendezvous_server_arg)
-        .help_message("Print this help message");
-    let forward_command = SubCommand::with_name("forward")
-        .about("Forward ports from one machine to another")
-        .setting(AppSettings::ArgRequiredElseHelp)
-        .subcommand(SubCommand::with_name("serve")
-            .visible_alias("open")
-            .alias("server") /* Muscle memory <3 */
-            .about("Make the following ports of your system available to your peer")
-            .arg(
-                Arg::with_name("targets")
-                    .index(1)
-                    .multiple(true)
-                    .required(true)
-                    .value_name("[DOMAIN:]PORT")
-                    .help("List of ports to open up. You can optionally specify a domain/address to forward remote ports")
-            )
-            .arg(code_length_arg)
-            .arg(code_send)
-        )
-        .subcommand(SubCommand::with_name("connect")
-            .about("Connect to some ports forwarded to you")
-            .arg(code)
-            .arg(
-                Arg::with_name("port")
-                    .long("port")
-                    .short("p")
-                    .takes_value(true)
-                    .multiple(true)
-                    .value_name("PORT")
-                    .help("Bind to specific ports instead of taking random free high ports. Can be provided multiple times.")
-            )
-            .arg(
-                Arg::with_name("bind")
-                    .long("bind")
-                    .takes_value(true)
-                    .value_name("ADDRESS")
-                    .default_value("::")
-                    .help("Bind to a specific address to accept the forwarding. Depending on your system and firewall, this may make the forwarded ports accessible from the outside.")
-            )
-            .arg(
-                Arg::with_name("noconfirm")
-                    .long("noconfirm")
-                    .visible_alias("yes")
-                    .help("Accept the forwarding without asking for confirmation"),
-            )
-        )
-        .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
-        .help_message("Print this help message");
-
-    /* The Clap application */
-    let clap = App::new(crate_name!())
-        .version(crate_version!())
-        .about(crate_description!())
-        .setting(AppSettings::ArgRequiredElseHelp)
-        .global_setting(AppSettings::DisableHelpSubcommand)
-        .global_setting(AppSettings::VersionlessSubcommands)
-        .global_setting(AppSettings::ColoredHelp)
-        .global_setting(AppSettings::ColorAuto)
-        .global_setting(AppSettings::UnifiedHelpMessage)
-        .after_help(
-            "Run a subcommand with `--help` to know how it's used.\n\
-                     To send files, use `wormhole send <PATH>`.\n\
-                     To receive files, use `wormhole receive <CODE>`.",
-        )
-        .subcommand(send_command)
-        .subcommand(send_many_command)
-        .subcommand(receive_command)
-        .subcommand(forward_command)
-        .subcommand(SubCommand::with_name("help").setting(AppSettings::Hidden))
-        .arg(log_arg)
-        .help_message("Print this help message");
-    let matches = clap.get_matches();
+    let app = WormholeCli::parse();
 
     let mut term = Term::stdout();
 
-    if matches.is_present("log") {
+    if app.log {
         env_logger::builder()
             .filter_level(log::LevelFilter::Debug)
             .filter_module("magic_wormhole::core", log::LevelFilter::Trace)
@@ -288,19 +365,61 @@ async fn main() -> eyre::Result<()> {
             .try_init()?;
     }
 
-    let file_name = |file_path| {
+    let directories = directories::ProjectDirs::from("io", "magic-wormhole", "wormhole-rs")
+        .ok_or_else(|| eyre::format_err!("Could not find the data storage location"))?;
+    std::fs::create_dir_all(directories.data_dir()).context(format!(
+        "Failed to create data dir at '{}'",
+        directories.data_dir().display()
+    ))?;
+    let database_path = directories.data_dir().join("seeds.json");
+    let mut seeds = if database_path.exists() {
+        seeds::Database::load(&database_path).context(format!(
+            "Failed to load '{}'. Please delete or fix it and try again",
+            database_path.display()
+        ))?
+    } else {
+        let mut seeds = seeds::Database::default();
+        seeds.myself = rand::random();
+        seeds
+    };
+    if seeds.our_names.is_empty() {
+        let username =
+            std::env::var("USER").context("Failed to fetch $USER environment variable")?;
+        log::warn!(
+            "No name configured yet. You will be identified to the other side as '{username}'."
+        );
+        log::warn!("If you are not comfortable with this, abort and use `wormhole-rs TODO` to set a differnt name. This warning won't be shown again.");
+        seeds.our_names.push(username);
+    }
+    {
+        let now = std::time::SystemTime::now();
+        let old_size = seeds.peers.len();
+        seeds.peers.retain(|_, peer| peer.expires() >= now);
+        let new_size = seeds.peers.len();
+        if old_size > new_size {
+            log::info!("Removed {} old contacts from database", old_size - new_size);
+        }
+    }
+    seeds.save(&database_path).context(format!(
+        "Failed to write seeds database to '{}'",
+        &database_path.display()
+    ))?;
+    let seed_ability = magic_wormhole::SeedAbility::<false> {
+        display_names: seeds.our_names.clone(),
+        known_seeds: seeds.iter_known_peers().collect(),
+    };
+
+    let concat_file_name = |file_path: &Path, file_name: Option<_>| {
         // TODO this has gotten out of hand (it ugly)
         // The correct solution would be to make `file_name` an Option everywhere and
         // move the ".tar" part further down the line.
         // The correct correct solution would be to have working file transfer instead
         // of sending stupid archives.
-        matches
-            .value_of_os("file-name")
+        file_name
             .map(std::ffi::OsString::from)
             .or_else(|| {
-                let path = std::path::Path::new(file_path);
-                let mut name = path.file_name().map(std::ffi::OsString::from);
-                if path.is_dir() {
+                let mut name = file_path.file_name().map(std::ffi::OsString::from);
+                if file_path.is_dir() {
                     name = name.map(|mut name| {
                         name.push(".tar");
                         name
@@ -313,106 +432,137 @@ async fn main() -> eyre::Result<()> {
             })
     };
 
-    /* Handling of the argument matches (one branch per subcommand) */
+    match app.command {
+        WormholeCommand::Send {
+            common,
+            common_leader,
+            common_send:
+                CommonSenderArgs {
+                    file_name,
+                    file: file_path,
+                },
+            ..
+        } => {
+            let file_name = concat_file_name(&file_path, file_name.as_ref())?;
 
-    if let Some(matches) = matches.subcommand_matches("send") {
-        let file_path = matches.value_of_os("file").unwrap();
-        let file_name = file_name(file_path)?;
+            eyre::ensure!(file_path.exists(), "{} does not exist", file_path.display());
 
-        eyre::ensure!(
-            std::path::Path::new(file_path).exists(),
-            "{:?} does not exist",
-            file_path
-        );
+            let (wormhole, _code, relay_server) = match util::cancellable(
+                parse_and_connect(
+                    &mut term,
+                    common,
+                    common_leader.into_connect_options(&seeds, "receive")?,
+                    transfer::APP_CONFIG,
+                    Some(seed_ability),
+                    &mut seeds,
+                    &database_path,
+                ),
+                ctrl_c(),
+            )
+            .await
+            {
+                Ok(result) => result?,
+                Err(_) => return Ok(()),
+            };
 
-        let (wormhole, _code, relay_server) = match util::cancellable(
-            parse_and_connect(
-                &mut term,
-                matches,
-                true,
-                transfer::APP_CONFIG,
-                Some(&sender_print_code),
-            ),
-            ctrl_c(),
-        )
-        .await
-        {
-            Ok(result) => result?,
-            Err(_) => return Ok(()),
-        };
-
-        send(
-            wormhole,
-            relay_server,
-            file_path,
-            &file_name,
-            ctrl_c.clone(),
-        )
-        .await?;
-    } else if let Some(matches) = matches.subcommand_matches("send-many") {
-        let (wormhole, code, relay_server) = {
-            let connect_fut = parse_and_connect(
-                &mut term,
-                matches,
-                true,
-                transfer::APP_CONFIG,
-                Some(&sender_print_code),
-            );
-            futures::pin_mut!(connect_fut);
-            match futures::future::select(connect_fut, ctrl_c()).await {
-                Either::Left((result, _)) => result?,
-                Either::Right(((), _)) => return Ok(()),
-            }
-        };
-        let timeout =
-            Duration::from_secs(u64::from_str(matches.value_of("timeout").unwrap())? * 60);
-        let max_tries = u64::from_str(matches.value_of("tries").unwrap())?;
-
-        let file_path = matches.value_of_os("file").unwrap();
-        let file_name = file_name(file_path)?;
-
-        send_many(
-            relay_server,
-            &code,
-            file_path,
-            &file_name,
-            max_tries,
+            send(
+                wormhole,
+                relay_server,
+                file_path.as_ref(),
+                &file_name,
+                ctrl_c.clone(),
+            )
+            .await?;
+        },
+        WormholeCommand::SendMany {
+            tries,
             timeout,
-            wormhole,
-            &mut term,
-            ctrl_c,
-        )
-        .await?;
-    } else if let Some(matches) = matches.subcommand_matches("receive") {
-        let file_path = matches.value_of_os("file-path").unwrap();
+            common,
+            common_leader,
+            common_send: CommonSenderArgs { file_name, file },
+        } => {
+            let (wormhole, code, relay_server) = {
+                let connect_fut = parse_and_connect(
+                    &mut term,
+                    common,
+                    common_leader.into_connect_options(&seeds, "receive")?,
+                    transfer::APP_CONFIG,
+                    None,
+                    &mut seeds,
+                    &database_path,
+                );
+                futures::pin_mut!(connect_fut);
+                match futures::future::select(connect_fut, ctrl_c()).await {
+                    Either::Left((result, _)) => result?,
+                    Either::Right(((), _)) => return Ok(()),
+                }
+            };
+            let timeout = Duration::from_secs(timeout * 60);
 
-        let (wormhole, _code, relay_server) = {
-            let connect_fut =
-                parse_and_connect(&mut term, matches, false, transfer::APP_CONFIG, None);
-            futures::pin_mut!(connect_fut);
-            match futures::future::select(connect_fut, ctrl_c()).await {
-                Either::Left((result, _)) => result?,
-                Either::Right(((), _)) => return Ok(()),
-            }
-        };
+            let file_name = concat_file_name(&file, file_name.as_ref())?;
 
-        receive(
-            wormhole,
-            relay_server,
-            file_path,
-            matches.value_of_os("file-name"),
-            matches.is_present("noconfirm"),
-            ctrl_c,
-        )
-        .await?;
-    } else if let Some(matches) = matches.subcommand_matches("forward") {
-        // TODO make fancy
-        log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
-        if let Some(matches) = matches.subcommand_matches("serve") {
+            send_many(
+                relay_server,
+                &code.unwrap(),
+                file.as_ref(),
+                &file_name,
+                tries,
+                timeout,
+                wormhole,
+                &mut term,
+                ctrl_c,
+            )
+            .await?;
+        },
+        WormholeCommand::Receive {
+            noconfirm,
+            common,
+            common_follower,
+            common_receiver:
+                CommonReceiverArgs {
+                    file_name,
+                    file_path,
+                },
+            ..
+        } => {
+            let (wormhole, _code, relay_server) = {
+                let connect_fut = parse_and_connect(
+                    &mut term,
+                    common,
+                    common_follower.into_connect_options(&seeds)?,
+                    transfer::APP_CONFIG,
+                    Some(seed_ability),
+                    &mut seeds,
+                    &database_path,
+                );
+                futures::pin_mut!(connect_fut);
+                match futures::future::select(connect_fut, ctrl_c()).await {
+                    Either::Left((result, _)) => result?,
+                    Either::Right(((), _)) => return Ok(()),
+                }
+            };
+
+            receive(
+                wormhole,
+                relay_server,
+                file_path.as_os_str(),
+                file_name.map(std::ffi::OsString::from).as_deref(),
+                noconfirm,
+                ctrl_c,
+            )
+            .await?;
+        },
+        WormholeCommand::Forward(ForwardCommand::Serve {
+            targets,
+            common,
+            common_leader,
+            ..
+        }) => {
+            // TODO make fancy
+            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
             /* Map the CLI argument to Strings. Use the occasion to inspect them and fail early on malformed input. */
-            let targets = matches
-                .values_of("targets")
-                .unwrap()
+            let targets = targets
+                .into_iter()
                 .enumerate()
                 .map(|(index, target)| {
                     let result = (|| {
@@ -447,13 +597,16 @@ async fn main() -> eyre::Result<()> {
                     ))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            let connect_options = common_leader.into_connect_options(&seeds, "forward connect")?;
             loop {
                 let connect_fut = parse_and_connect(
                     &mut term,
-                    matches,
-                    true,
+                    common.clone(),
+                    connect_options.clone(),
                     forwarding::APP_CONFIG,
-                    Some(&server_print_code),
+                    None,
+                    &mut seeds,
+                    &database_path,
                 );
                 futures::pin_mut!(connect_fut);
                 let (wormhole, _code, relay_server) =
@@ -469,22 +622,30 @@ async fn main() -> eyre::Result<()> {
                     ctrl_c(),
                 ));
             }
-        } else if let Some(matches) = matches.subcommand_matches("connect") {
-            let custom_ports: Vec<u16> = matches
-                .values_of("port")
-                .into_iter()
-                .flatten()
-                .map(|port| port.parse::<u16>().map_err(eyre::Error::from))
-                .collect::<Result<_, _>>()?;
-            let noconfirm = matches.is_present("noconfirm");
-            let bind_address: std::net::IpAddr = matches.value_of("bind").unwrap().parse()?;
-            let (wormhole, _code, relay_server) =
-                parse_and_connect(&mut term, matches, false, forwarding::APP_CONFIG, None).await?;
+        },
+        WormholeCommand::Forward(ForwardCommand::Connect {
+            ports,
+            noconfirm,
+            bind_address,
+            common,
+            common_follower,
+        }) => {
+            // TODO make fancy
+            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
+            let (wormhole, _code, relay_server) = parse_and_connect(
+                &mut term,
+                common,
+                common_follower.into_connect_options(&seeds)?,
+                forwarding::APP_CONFIG,
+                None,
+                &mut seeds,
+                &database_path,
+            )
+            .await?;
             let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
             let offer =
-                forwarding::connect(wormhole, relay_server, Some(bind_address), &custom_ports)
-                    .await?;
+                forwarding::connect(wormhole, relay_server, Some(bind_address), &ports).await?;
             log::info!("Mapping the following open ports to targets:");
             log::info!("  local port -> remote target (no address = localhost on remote)");
             for (port, target) in &offer.mapping {
@@ -495,17 +656,132 @@ async fn main() -> eyre::Result<()> {
             } else {
                 offer.reject().await?;
             }
-        } else {
-            unreachable!()
-        }
-    } else if let Some(_matches) = matches.subcommand_matches("help") {
-        println!("Use --help to get help");
-        std::process::exit(1);
-    } else {
-        unreachable!()
+        },
+        WormholeCommand::Contacts(ContactCommand::List) => {
+            use time::format_description::{Component, FormatItem};
+            /* YYYY-mm-dd */
+            let format = [
+                FormatItem::Component(Component::Year(
+                    time::format_description::modifier::Year::default(),
+                )),
+                FormatItem::Literal(b"-"),
+                FormatItem::Component(Component::Month(
+                    time::format_description::modifier::Month::default(),
+                )),
+                FormatItem::Literal(b"-"),
+                FormatItem::Component(Component::Day(
+                    time::format_description::modifier::Day::default(),
+                )),
+            ];
+
+            #[allow(clippy::print_literal)]
+            {
+                let contacts = seeds
+                    .peers
+                    .iter()
+                    .filter(|(_id, peer)| peer.contact_name.is_some())
+                    .collect::<Vec<_>>();
+                if contacts.is_empty() {
+                    println!("You have no stored contacts yet!");
+                } else {
+                    println!("Known contacts:\n");
+                    println!("{:8} {:12} {}", "ID", "NAME", "EXPIRES");
+                    for (id, peer) in &contacts {
+                        println!(
+                            "{:8} {:12} {}",
+                            id,
+                            peer.contact_name.as_ref().unwrap(),
+                            time::OffsetDateTime::from(peer.expires())
+                                .date()
+                                .format(&format[..])
+                                .unwrap(),
+                        );
+                    }
+                }
+            }
+            #[allow(clippy::print_literal)]
+            {
+                let contacts = seeds
+                    .peers
+                    .iter()
+                    .filter(|(_id, peer)| peer.contact_name.is_none())
+                    .collect::<Vec<_>>();
+                if !contacts.is_empty() {
+                    println!("\nContacts you haven't stored yet:");
+                    println!("{:8} {:12} {}", "ID", "ALSO KNOWN AS", "EXPIRES");
+                    for (id, peer) in &contacts {
+                        println!(
+                            "{:8} {:12} {}",
+                            id,
+                            peer.names.join(", "),
+                            time::OffsetDateTime::from(peer.expires())
+                                .date()
+                                .format(&format[..])
+                                .unwrap(),
+                        );
+                    }
+                    println!("\nRun `wormhole-rs contact add <ID> <NAME>` to add them. Remember that both sides need to do this.");
+                }
+            }
+        },
+        WormholeCommand::Contacts(ContactCommand::Add { id, name, force }) => {
+            eyre::ensure!(
+                name != "myself",
+                "'myself' is a reserved contact name, to send files between two clients on the same machine (mostly useful for testing)",
+            );
+            eyre::ensure!(
+                !name.chars().any(|c| ['\'', '"', ','].contains(&c)),
+                "For practical purposes, please choose a name without quotes or commas in it",
+            );
+            if !force {
+                eyre::ensure!(
+                    !seeds.peers.values().any(|peer| peer.contact_name.as_ref() == Some(&name)),
+                    "You already stored a contact under that name. Either use --force to overwrite it, or chose another name",
+                );
+            }
+            let peer = seeds
+                .find_mut(&id)
+                .ok_or_else(|| eyre::format_err!("No connection with that ID known"))?;
+            if !force {
+                eyre::ensure!(
+                    peer.contact_name.is_none(),
+                    "This contact is already known as {}. Use --force to rename it.",
+                    peer.contact_name.as_ref().unwrap(),
+                );
+            }
+            peer.contact_name = Some(name.clone());
+            seeds.save(&database_path).context(format!(
+                "Failed to write seeds database to '{}'",
+                &database_path.display()
+            ))?;
+            log::info!("Successfully added '{name}' to your contacts.");
+            log::info!("You can now use '--to {name}' or '--from {name}'");
+        },
+        WormholeCommand::Help => {
+            println!("Use --help to get help");
+            std::process::exit(2);
+        },
     }
 
     Ok(())
+}
+
+#[derive(Clone)]
+enum ConnectOptions<'a> {
+    /* Leader/follower */
+    ProvideCode(String),
+    /* Leader only */
+    GenerateCode {
+        size: usize,
+        follower_command: &'a str,
+    },
+    /* Follower only */
+    EnterCode,
+    /* Leader/follower */
+    ProvideSeed {
+        seed: xsalsa20poly1305::Key,
+        follower_command: Option<&'a str>,
+    },
 }
 
 /**
@@ -515,62 +791,155 @@ async fn main() -> eyre::Result<()> {
  * If this `is_send` and the code is not specified via the CLI, then a code will be allocated.
  * Otherwise, the user will be prompted interactively to enter it.
  */
-async fn parse_and_connect(
-    term: &mut Term,
-    matches: &clap::ArgMatches<'_>,
-    is_send: bool,
+#[allow(deprecated)]
+async fn parse_and_connect<'a>(
+    term: &'a mut Term,
+    common_args: CommonArgs,
+    connect_options: ConnectOptions<'_>,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize>,
-    print_code: Option<&dyn Fn(&mut Term, &magic_wormhole::Code) -> eyre::Result<()>>,
-) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
-    let relay_server: url::Url = matches
-        .value_of("relay-server")
-        .unwrap_or(magic_wormhole::transit::DEFAULT_RELAY_SERVER)
-        .parse()
-        .unwrap();
-    let rendezvous_server = matches.value_of("rendezvous-server");
-    let code = matches
-        .value_of("code")
-        .map(ToOwned::to_owned)
-        .map(Result::Ok)
-        .or_else(|| (!is_send).then(enter_code))
-        .transpose()?
-        .map(magic_wormhole::Code);
-
-    if let Some(rendezvous_server) = rendezvous_server {
-        app_config = app_config.rendezvous_url(rendezvous_server.to_owned().into());
-    }
-    let (wormhole, code) = match code {
-        Some(code) => {
-            if is_send {
-                print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
-                    term, &code,
-                )?;
-            }
-            let (server_welcome, wormhole) =
-                magic_wormhole::Wormhole::connect_with_code(app_config, code).await?;
-            print_welcome(term, &server_welcome)?;
-            (wormhole, server_welcome.code)
-        },
-        None => {
-            let numwords = matches
-                .value_of("code-length")
-                .unwrap()
+    seed_ability: Option<magic_wormhole::SeedAbility<false>>,
+    seeds: &mut seeds::Database,
+    database_path: &Path,
+) -> eyre::Result<(Wormhole, Option<magic_wormhole::Code>, url::Url)> {
+    // TODO handle multiple relay servers correctly
+    let relay_server: url::Url = common_args
+        .relay_server
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| {
+            magic_wormhole::transit::DEFAULT_RELAY_SERVER
                 .parse()
-                .expect("TODO error handling");
+                .unwrap()
+        });
 
-            let (server_welcome, connector) =
-                magic_wormhole::Wormhole::connect_without_code(app_config, numwords).await?;
+    if let Some(rendezvous_server) = common_args.rendezvous_server {
+        app_config = app_config.rendezvous_url(rendezvous_server.into_string().into());
+    }
+
+    let (mut wormhole, code, relay_server) = match connect_options {
+        /* Leader/follower */
+        ConnectOptions::ProvideCode(code) => {
+            let (server_welcome, wormhole) = magic_wormhole::Wormhole::connect_with_code(
+                app_config,
+                magic_wormhole::Code(code),
+                seed_ability,
+            )
+            .await?;
             print_welcome(term, &server_welcome)?;
-            if is_send {
-                print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
-                    term,
-                    &server_welcome.code,
-                )?;
-            }
+            (wormhole, Some(server_welcome.code), relay_server)
+        },
+        /* Leader only */
+        ConnectOptions::GenerateCode {
+            size,
+            follower_command,
+        } => {
+            let (server_welcome, connector) =
+                magic_wormhole::Wormhole::connect_without_code(app_config, size, seed_ability)
+                    .await?;
+            print_welcome(term, &server_welcome)?;
+            print_code(term, &server_welcome.code, follower_command)?;
             let wormhole = connector.await?;
-            (wormhole, server_welcome.code)
+            (wormhole, Some(server_welcome.code), relay_server)
+        },
+        /* Follower only */
+        ConnectOptions::EnterCode => {
+            let code = magic_wormhole::Code(enter_code()?);
+            let (server_welcome, wormhole) =
+                magic_wormhole::Wormhole::connect_with_code(app_config, code, seed_ability).await?;
+            print_welcome(term, &server_welcome)?;
+            (wormhole, Some(server_welcome.code), relay_server)
+        },
+        /* Leader/follower */
+        ConnectOptions::ProvideSeed {
+            seed,
+            follower_command,
+        } => {
+            if let Some(follower_command) = follower_command {
+                print_seed(term, follower_command)?;
+            }
+            let mut wormhole =
+                magic_wormhole::Wormhole::connect_with_seed(app_config, seed).await?;
+            /* We don't want to execute the code block below if the connection came from a seed */
+            wormhole.take_seed();
+            (wormhole, None, relay_server)
         },
     };
+
+    /* Handle the seeds result */
+    if let Some(result) = wormhole.take_seed() {
+        /* Sending to ourselves, are we? */
+        if result
+            .existing_seeds
+            .contains(&xsalsa20poly1305::Key::from(seeds.myself))
+        {
+            log::info!(
+                "You appear to be sending a file to yourself. You may use `--to myself` and `--from myself` instead.",
+            );
+        } else {
+            /* We are interested in common seeds that we've already given a name */
+            match seeds
+                .peers
+                .values_mut()
+                .filter(|peer| {
+                    result
+                        .existing_seeds
+                        .contains(&xsalsa20poly1305::Key::from(peer.seed))
+                })
+                .find(|peer| peer.contact_name.is_some())
+            {
+                /* We only care about the first one and ignore the others. It should be rare enough to see duplicate contacts */
+                Some(peer) => {
+                    peer.seen();
+                    log::info!(
+                        "You already know your peer as '{}'. You may use the appropriate `--to` and `--from` arguments for connecting to that person without having to enter a code.",
+                        peer.contact_name.as_ref().unwrap(),
+                    );
+                },
+                None => {
+                    /* Check if we have at least one that wasn't saved */
+                    match seeds.peers.iter_mut().find(|(_, peer)| {
+                        result
+                            .existing_seeds
+                            .contains(&xsalsa20poly1305::Key::from(peer.seed))
+                    }) {
+                        Some((id, peer)) => {
+                            peer.seen();
+                            let name = if !peer.names.is_empty() && !peer.names[0].contains(' ') {
+                                peer.names[0].clone()
+                            } else {
+                                "<contact name>".into()
+                            };
+                            log::info!(
+                                "If you want to connect to your peer without password the next time, run"
+                            );
+                            log::info!("wormhole-rs contacts add {} {}", id, name);
+                        },
+                        None => {
+                            /* New seed, store it in database */
+                            let seed = result.session_seed;
+                            let name = if !seed.display_names.is_empty()
+                                && !seed.display_names[0].contains(' ')
+                            {
+                                seed.display_names[0].clone()
+                            } else {
+                                "<contact name>".into()
+                            };
+                            let id = seeds.insert_peer(seed);
+                            log::info!(
+                                "If you want to connect to your peer without password the next time, run"
+                            );
+                            log::info!("wormhole-rs contacts add {} {}", id, name);
+                        },
+                    }
+                },
+            }
+            seeds.save(database_path).context(format!(
+                "Failed to write seeds database to '{}'",
+                &database_path.display()
+            ))?;
+        }
+    }
+
     eyre::Result::<_>::Ok((wormhole, code, relay_server))
 }
 
@@ -604,18 +973,17 @@ fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> 
 }
 
 // For file transfer
-fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
+fn print_code(term: &mut Term, code: &magic_wormhole::Code, command: &str) -> eyre::Result<()> {
     writeln!(term, "\nThis wormhole's code is: {}", &code)?;
     writeln!(term, "On the other computer, please run:\n")?;
-    writeln!(term, "wormhole receive {}\n", &code)?;
+    writeln!(term, "wormhole {} {}\n", command, &code)?;
     Ok(())
 }
 
 // For port forwarding
-fn server_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
-    writeln!(term, "\nThis wormhole's code is: {}", &code)?;
-    writeln!(term, "On the other computer, please run:\n")?;
-    writeln!(term, "wormhole forward connect {}\n", &code)?;
+fn print_seed(term: &mut Term, command: &str) -> eyre::Result<()> {
+    writeln!(term, "\nOn the other computer, please run (replace <NAME> with the corresponding name of the contact):\n")?;
+    writeln!(term, "wormhole {} --from <NAME>\n", command)?;
     Ok(())
 }
 
@@ -705,7 +1073,8 @@ async fn send_many(
         }
 
         let (_server_welcome, wormhole) =
-            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone()).await?;
+            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone(), None)
+                .await?;
         send_in_background(
             relay_server.clone(),
             Arc::clone(&file_path),
@@ -792,12 +1161,17 @@ async fn receive(
      * - If it doesn't, directly accept, but DON'T overwrite any files
      */
 
+    use number_prefix::NumberPrefix;
     if !(noconfirm
         || util::ask_user(
             format!(
-                "Receive file '{}' (size: {} bytes)?",
+                "Receive file '{}' ({})?",
                 req.filename.display(),
-                req.filesize
+                match NumberPrefix::binary(req.filesize as f64) {
+                    NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                    NumberPrefix::Prefixed(prefix, n) =>
+                        format!("{:.1} {}B in size", n, prefix.symbol()),
+                },
             ),
             true,
         )
@@ -809,7 +1183,7 @@ async fn receive(
     let file_name = file_name
         .or_else(|| req.filename.file_name())
         .ok_or_else(|| eyre::format_err!("The sender did not specify a valid file name, and neither did you. Try using --rename."))?;
-    let file_path = std::path::Path::new(target_dir).join(file_name);
+    let file_path = Path::new(target_dir).join(file_name);
 
     let pb = create_progress_bar(req.filesize);
 
