@@ -11,6 +11,7 @@ pub async fn send_file<F, N, H>(
     file: &mut F,
     file_name: N,
     file_size: u64,
+    transit_abilities: transit::Abilities,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
@@ -20,7 +21,7 @@ where
     H: FnMut(u64, u64) + 'static,
 {
     let run = async {
-        let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
+        let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // We want to do some transit
         debug!("Sending transit message '{:?}", connector.our_hints());
@@ -134,6 +135,7 @@ pub async fn send_folder<N, M, H>(
     relay_hints: Vec<transit::RelayHint>,
     folder_path: N,
     folder_name: M,
+    transit_abilities: transit::Abilities,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
@@ -143,7 +145,7 @@ where
     H: FnMut(u64, u64) + 'static,
 {
     let run = async {
-        let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
+        let connector = transit::init(transit_abilities, None, relay_hints).await?;
         let folder_path = folder_path.into();
 
         if !folder_path.is_dir() {

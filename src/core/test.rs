@@ -47,6 +47,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                     std::fs::metadata("examples/example-file.bin")
                         .unwrap()
                         .len(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
                     |_sent, _total| {},
                     futures::future::pending(),
                 )
@@ -67,6 +68,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             let req = transfer::request_file(
                 wormhole,
                 transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                magic_wormhole::transit::Abilities::ALL_ABILITIES,
                 futures::future::pending(),
             )
             .await?
@@ -125,6 +127,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                     std::fs::metadata("examples/example-file.bin")
                         .unwrap()
                         .len(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
                     |_, _| {},
                     futures::future::pending(),
                 )
@@ -149,6 +152,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                     std::fs::metadata("examples/example-file.bin")
                         .unwrap()
                         .len(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
                     |_, _| {},
                     futures::future::pending(),
                 )
@@ -169,6 +173,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         let req = crate::transfer::request_file(
             wormhole,
             crate::transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+            magic_wormhole::transit::Abilities::ALL_ABILITIES,
             futures::future::pending(),
         )
         .await?

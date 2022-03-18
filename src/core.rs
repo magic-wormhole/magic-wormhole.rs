@@ -105,6 +105,10 @@ pub struct Wormhole {
      */
     pub verifier: Box<secretbox::Key>,
     /**
+     * Our "app version" information that we sent. See the [`peer_version`] for more information.
+     */
+    pub our_version: Box<dyn std::any::Any + Send + Sync>,
+    /**
      * Protocol version information from the other side.
      * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
      * (e.g. by the file transfer API).
@@ -123,7 +127,7 @@ impl Wormhole {
      * on success.
      */
     pub async fn connect_without_code(
-        config: AppConfig<impl serde::Serialize>,
+        config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code_length: usize,
     ) -> Result<
         (
@@ -160,7 +164,7 @@ impl Wormhole {
      * Connect to a peer with a code.
      */
     pub async fn connect_with_code(
-        config: AppConfig<impl serde::Serialize>,
+        config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
         let AppConfig {
@@ -201,7 +205,7 @@ impl Wormhole {
         mut server: RendezvousServer,
         appid: AppID,
         password: String,
-        app_versions: impl serde::Serialize,
+        app_versions: impl serde::Serialize + Send + Sync + 'static,
     ) -> Result<Self, WormholeError> {
         /* Send PAKE */
         let (pake_state, pake_msg_ser) = key::make_pake(&password, &appid);
@@ -216,7 +220,7 @@ impl Wormhole {
 
         /* Send versions message */
         let mut versions = key::VersionsMessage::new();
-        versions.set_app_versions(serde_json::to_value(app_versions).unwrap());
+        versions.set_app_versions(serde_json::to_value(&app_versions).unwrap());
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
@@ -244,6 +248,7 @@ impl Wormhole {
             phase: 0,
             key: key::Key::new(key.into()),
             verifier: Box::new(key::derive_verifier(&key)),
+            our_version: Box::new(app_versions),
             peer_version,
         })
     }
@@ -371,13 +376,13 @@ pub enum Mood {
  * See [`crate::transfer::APP_CONFIG`], which entails
  */
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct AppConfig<V: serde::Serialize> {
+pub struct AppConfig<V> {
     pub id: AppID,
     pub rendezvous_url: Cow<'static, str>,
     pub app_version: V,
 }
 
-impl<V: serde::Serialize> AppConfig<V> {
+impl<V> AppConfig<V> {
     pub fn id(mut self, id: AppID) -> Self {
         self.id = id;
         self
@@ -387,7 +392,9 @@ impl<V: serde::Serialize> AppConfig<V> {
         self.rendezvous_url = rendezvous_url;
         self
     }
+}
 
+impl<V: serde::Serialize> AppConfig<V> {
     pub fn app_version(mut self, app_version: V) -> Self {
         self.app_version = app_version;
         self
