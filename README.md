@@ -43,7 +43,6 @@ This work is licensed under the EUPL v1.2 or later. Contact the owner(s) for use
 [![Is-It-Maintained-Resolution-Time][iim-resolution-image]][iim-resolution-url]
 [![Crates.io][crates-io-image]][crates-io-url]
 [![Docs.rs][docs-image]][docs-url]
-[![License][license-image]][license-url]
 
 [matrix-room-image]: https://img.shields.io/badge/matrix.org-%23magic--wormhole-brightgreen
 [matrix-room-url]: https://matrix.to/#/#magic-wormhole:matrix.org
@@ -58,7 +57,5 @@ This work is licensed under the EUPL v1.2 or later. Contact the owner(s) for use
 [crates-io-url]: https://crates.io/crates/magic-wormhole
 [docs-image]: https://docs.rs/magic-wormhole/badge.svg
 [docs-url]: https://docs.rs/magic-wormhole
-[license-image]: https://img.shields.io/crates/l/magic-wormhole.svg
-[license-url]: LICENSE
 [iim-resolution-image]: http://isitmaintained.com/badge/resolution/magic-wormhole/magic-wormhole.rs.svg
 [iim-resolution-url]: http://isitmaintained.com/project/magic-wormhole/magic-wormhole.rs
