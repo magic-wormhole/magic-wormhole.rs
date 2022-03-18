@@ -48,7 +48,7 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
  */
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AppVersion {
-    transit_abilities: transit::Abilities,
+    pub transit_abilities: transit::Abilities,
     #[serde(flatten)]
     other: serde_json::Value,
 }
@@ -139,9 +139,13 @@ pub async fn serve(
     targets: Vec<(Option<url::Host>, u16)>,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
+    let our_version: &AppVersion = wormhole
+        .our_version
+        .downcast_ref()
+        .expect("You may only use a Wormhole instance with the correct AppVersion type!");
     let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     let connector = transit::init(
-        transit::Abilities::ALL_ABILITIES, // TODO use the ones we actually sent
+        our_version.transit_abilities,
         Some(peer_version.transit_abilities),
         relay_hints,
     )
@@ -516,9 +520,13 @@ pub async fn connect(
     bind_address: Option<std::net::IpAddr>,
     custom_ports: &[u16],
 ) -> Result<ConnectOffer, ForwardingError> {
+    let our_version: &AppVersion = wormhole
+        .our_version
+        .downcast_ref()
+        .expect("You may only use a Wormhole instance with the correct AppVersion type!");
     let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     let connector = transit::init(
-        transit::Abilities::ALL_ABILITIES, // TODO use the ones we actually sent
+        our_version.transit_abilities,
         Some(peer_version.transit_abilities),
         relay_hints,
     )

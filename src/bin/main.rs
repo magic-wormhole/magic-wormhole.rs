@@ -110,6 +110,12 @@ struct CommonArgs {
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
     #[clap(long, value_name = "ws://example.org")]
     rendezvous_server: Option<url::Url>,
+    /// Disable the relay server support and force a direct connection.
+    #[clap(long)]
+    force_direct: bool,
+    /// Always route traffic over a relay server. This hides your IP address from the peer (but not from the server operators. Use Tor for that).
+    #[clap(long, conflicts_with = "force-direct")]
+    force_relay: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -306,6 +312,7 @@ async fn main() -> eyre::Result<()> {
 
             eyre::ensure!(file_path.exists(), "{} does not exist", file_path.display());
 
+            let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_server) = match util::cancellable(
                 parse_and_connect(
                     &mut term,
@@ -329,6 +336,7 @@ async fn main() -> eyre::Result<()> {
                 relay_server,
                 file_path.as_ref(),
                 &file_name,
+                transit_abilities,
                 ctrl_c.clone(),
             )
             .await?;
@@ -341,6 +349,7 @@ async fn main() -> eyre::Result<()> {
             common_send: CommonSenderArgs { file_name, file },
             ..
         } => {
+            let transit_abilities = parse_transit_args(&common);
             let (wormhole, code, relay_server) = {
                 let connect_fut = parse_and_connect(
                     &mut term,
@@ -370,6 +379,7 @@ async fn main() -> eyre::Result<()> {
                 timeout,
                 wormhole,
                 &mut term,
+                transit_abilities,
                 ctrl_c,
             )
             .await?;
@@ -385,6 +395,7 @@ async fn main() -> eyre::Result<()> {
                 },
             ..
         } => {
+            let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_server) = {
                 let connect_fut = parse_and_connect(
                     &mut term,
@@ -408,6 +419,7 @@ async fn main() -> eyre::Result<()> {
                 file_path.as_os_str(),
                 file_name.map(std::ffi::OsString::from).as_deref(),
                 noconfirm,
+                transit_abilities,
                 ctrl_c,
             )
             .await?;
@@ -458,13 +470,15 @@ async fn main() -> eyre::Result<()> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             loop {
+                let mut app_config = forwarding::APP_CONFIG;
+                app_config.app_version.transit_abilities = parse_transit_args(&common);
                 let connect_fut = parse_and_connect(
                     &mut term,
                     common.clone(),
                     code.clone(),
                     Some(code_length),
                     true,
-                    forwarding::APP_CONFIG,
+                    app_config,
                     Some(&server_print_code),
                 );
                 futures::pin_mut!(connect_fut);
@@ -492,16 +506,10 @@ async fn main() -> eyre::Result<()> {
         }) => {
             // TODO make fancy
             log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
-            let (wormhole, _code, relay_server) = parse_and_connect(
-                &mut term,
-                common,
-                code,
-                None,
-                false,
-                forwarding::APP_CONFIG,
-                None,
-            )
-            .await?;
+            let mut app_config = forwarding::APP_CONFIG;
+            app_config.app_version.transit_abilities = parse_transit_args(&common);
+            let (wormhole, _code, relay_server) =
+                parse_and_connect(&mut term, common, code, None, false, app_config, None).await?;
             let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
             let offer =
@@ -526,6 +534,15 @@ async fn main() -> eyre::Result<()> {
     Ok(())
 }
 
+fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {
+    match (args.force_direct, args.force_relay) {
+        (false, false) => transit::Abilities::ALL_ABILITIES,
+        (true, false) => transit::Abilities::FORCE_DIRECT,
+        (false, true) => transit::Abilities::FORCE_RELAY,
+        (true, true) => unreachable!("These flags are mutually exclusive"),
+    }
+}
+
 /**
  * Parse the necessary command line arguments to establish an initial server connection.
  * This is used over and over again by the different subcommands.
@@ -540,7 +557,7 @@ async fn parse_and_connect(
     code: Option<String>,
     code_length: Option<usize>,
     is_send: bool,
-    mut app_config: magic_wormhole::AppConfig<impl serde::Serialize>,
+    mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
     print_code: Option<&dyn Fn(&mut Term, &magic_wormhole::Code) -> eyre::Result<()>>,
 ) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
     // TODO handle multiple relay servers correctly
@@ -643,6 +660,7 @@ async fn send(
     relay_server: url::Url,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
+    transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     let pb = create_progress_bar(0);
@@ -652,6 +670,7 @@ async fn send(
         relay_server,
         file_path,
         file_name,
+        transit_abilities,
         move |sent, total| {
             if sent == 0 {
                 pb.reset_elapsed();
@@ -678,6 +697,7 @@ async fn send_many(
     timeout: Duration,
     wormhole: Wormhole,
     term: &mut Term,
+    transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     /* Progress bar is commented out for now. See the issues about threading/async in
@@ -702,6 +722,7 @@ async fn send_many(
         wormhole,
         term.clone(),
         // &mp,
+        transit_abilities,
         ctrl_c(),
     )
     .await?;
@@ -732,6 +753,7 @@ async fn send_many(
             wormhole,
             term.clone(),
             // &mp,
+            transit_abilities,
             ctrl_c(),
         )
         .await?;
@@ -744,6 +766,7 @@ async fn send_many(
         wormhole: Wormhole,
         mut term: Term,
         // mp: &MultiProgress,
+        transit_abilities: transit::Abilities,
         cancel: impl Future<Output = ()> + Send + 'static,
     ) -> eyre::Result<()> {
         writeln!(&mut term, "Sending file to peer").unwrap();
@@ -757,6 +780,7 @@ async fn send_many(
                     url,
                     file_path.deref(),
                     file_name.deref(),
+                    transit_abilities,
                     move |_sent, _total| {
                         // if sent == 0 {
                         //     pb2.reset_elapsed();
@@ -792,9 +816,10 @@ async fn receive(
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
     noconfirm: bool,
+    transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
-    let req = transfer::request_file(wormhole, relay_server, ctrl_c())
+    let req = transfer::request_file(wormhole, relay_server, transit_abilities, ctrl_c())
         .await
         .context("Could not get an offer")?;
     /* If None, the task got cancelled */

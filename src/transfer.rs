@@ -206,6 +206,7 @@ pub async fn send_file_or_folder<N, M, H>(
     relay_url: url::Url,
     file_path: N,
     file_name: M,
+    transit_abilities: transit::Abilities,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
@@ -226,6 +227,7 @@ where
             relay_url,
             file_path,
             file_name,
+            transit_abilities,
             progress_handler,
             cancel,
         )
@@ -238,6 +240,7 @@ where
             &mut file,
             file_name,
             file_size,
+            transit_abilities,
             progress_handler,
             cancel,
         )
@@ -256,6 +259,7 @@ pub async fn send_file<F, N, H>(
     file: &mut F,
     file_name: N,
     file_size: u64,
+    transit_abilities: transit::Abilities,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
@@ -276,6 +280,7 @@ where
         file,
         file_name,
         file_size,
+        transit_abilities,
         progress_handler,
         cancel,
     )
@@ -293,6 +298,7 @@ pub async fn send_folder<N, M, H>(
     relay_url: url::Url,
     folder_path: N,
     folder_name: M,
+    transit_abilities: transit::Abilities,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
@@ -307,6 +313,7 @@ where
         relay_hints,
         folder_path,
         folder_name,
+        transit_abilities,
         progress_handler,
         cancel,
     )
@@ -324,12 +331,13 @@ where
 pub async fn request_file(
     mut wormhole: Wormhole,
     relay_url: url::Url,
+    transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
     // Error handling
     let run = async {
         let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
-        let connector = transit::init(transit::Abilities::ALL_ABILITIES, None, relay_hints).await?;
+        let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // send the transit message
         debug!("Sending transit message '{:?}", connector.our_hints());
