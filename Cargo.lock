@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "magic-wormhole"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-io",
  "async-std",

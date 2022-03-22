@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## Version 0.3.1
+
 - Added `--force-relay` and `--force-direct` CLI flags that control the transit connection
 	- The feature is also exposed in the API
 - Updated a lot of dependencies
