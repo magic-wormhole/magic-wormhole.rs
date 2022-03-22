@@ -981,7 +981,7 @@ impl PeerMessage {
         let mut writer = Vec::with_capacity(128);
         let mut ser = rmp_serde::encode::Serializer::new(&mut writer)
             .with_struct_map()
-            .with_string_variants();
+            .with_human_readable();
         serde::Serialize::serialize(self, &mut ser).unwrap();
         writer
     }
