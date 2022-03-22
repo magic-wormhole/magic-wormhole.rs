@@ -1140,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "magic-wormhole"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "async-io",
  "async-std 1.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2414,7 +2414,7 @@ dependencies = [
 
 [[package]]
 name = "wormhole-rs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "async-std 1.11.0 (git+https://github.com/async-rs/async-std)",
  "clap",
