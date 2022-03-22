@@ -27,14 +27,10 @@ sha2 = "0.10.0"
 hkdf = "0.12.2"
 hex = { version = "0.4.2", features = ["serde"] }
 rand = "0.8.3"
-regex = "1.4.3"
 log = "0.4.13"
 # zeroize = { version = "1.2.0", features = ["zeroize_derive"] }
-get_if_addrs = "0.5.3"
-byteorder = "1.4.2"
 base64 = "0.13.0"
 futures_ringbuf = "0.3.1"
-tar = "0.4.33"
 time = { version = "0.3.7", features = ["formatting"] }
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
@@ -44,18 +40,36 @@ futures = "0.3.12"
 async-std = { version = "1.11.0", features = ["attributes", "unstable"] }
 async-tungstenite = { version = "0.17.1", features = ["async-std-runtime", "async-tls"] }
 async-io = "1.6.0"
-socket2 = "0.4.1"
 libc = "0.2.101"
-stun_codec = "0.2.0"
-bytecodec = "0.4.15"
 url = { version = "2.2.2", features = ["serde"] }
-rmp-serde = "1.0.0"
-http = "0.2.5"
+
+# Transit dependencies
+
+socket2 = { version = "0.4.1", optional = true }
+stun_codec = { version = "0.2.0", optional = true }
+get_if_addrs = { version = "0.5.3", optional = true }
+bytecodec = { version = "0.4.15", optional = true }
+
+# Transfer dependencies
+
+tar = { version = "0.4.33", optional = true }
+rmp-serde = { version = "1.0.0", optional = true }
+
+# Forwarding dependencies
+
+# rmp-serde = … # defined above
 
 # for some tests
 [dev-dependencies]
 env_logger = "0.9.0"
 eyre = "0.6.5"
+
+[features]
+transit = ["socket2", "stun_codec", "get_if_addrs", "bytecodec"]
+transfer = ["transit", "tar", "rmp-serde"]
+forwarding = ["transit", "rmp-serde"]
+default = ["transit", "transfer"]
+all = ["default", "forwarding"]
 
 [profile.release]
 overflow-checks = true

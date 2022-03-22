@@ -1,11 +1,19 @@
 use super::{Mood, Phase};
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
-use crate::{self as magic_wormhole, transfer, transit, AppID, Code, Wormhole};
+use crate::{self as magic_wormhole, AppConfig, AppID, Code, Wormhole};
+#[cfg(feature = "transfer")]
+use crate::{transfer, transit};
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
     "lothar.com/wormhole/rusty-wormhole-test",
 ));
+
+pub const APP_CONFIG: AppConfig<()> = AppConfig::<()> {
+    id: TEST_APPID,
+    rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
+    app_version: (),
+};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -21,6 +29,7 @@ fn init_logger() {
 }
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
+#[cfg(feature = "transfer")]
 #[async_std::test]
 pub async fn test_file_rust2rust() -> eyre::Result<()> {
     init_logger();
@@ -95,6 +104,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
 /** Test the functionality used by the `send-many` subcommand. It logically builds upon the
  * `test_eventloop_exit` tests. We send us a file five times, and check if it arrived.
  */
+#[cfg(feature = "transfer")]
 #[async_std::test]
 pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
@@ -202,8 +212,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
         .spawn(async {
-            let (welcome, connector) =
-                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+            let (welcome, connector) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -221,7 +230,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
             let nameplate = code_rx.await?;
             log::info!("Got nameplate over local: {}", &nameplate);
             let result = Wormhole::connect_with_code(
-                transfer::APP_CONFIG.id(TEST_APPID),
+                APP_CONFIG,
                 /* Making a wrong code here by appending bullshit */
                 Code::new(&nameplate, "foo-bar"),
             )
@@ -243,15 +252,12 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
 pub async fn test_crowded() -> eyre::Result<()> {
     init_logger();
 
-    let (welcome, connector1) =
-        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+    let (welcome, connector1) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
     log::info!("This test's code is: {}", &welcome.code);
 
-    let connector2 =
-        Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), welcome.code.clone());
+    let connector2 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone());
 
-    let connector3 =
-        Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), welcome.code.clone());
+    let connector3 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone());
 
     match futures::try_join!(connector1, connector2, connector3).unwrap_err() {
         magic_wormhole::WormholeError::ServerError(

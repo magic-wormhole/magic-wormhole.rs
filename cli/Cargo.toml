@@ -13,7 +13,7 @@ futures = "0.3.12"
 async-std = { version = "1.9.0", features = ["attributes", "unstable"], git = "https://github.com/async-rs/async-std" }
 
 # CLI specific dependencies
-magic-wormhole = { path = ".." }
+magic-wormhole = { path = "..", features = ["all"] }
 clap = { version = "3.1.5", features = ["cargo", "derive", "wrap_help"] }
 env_logger = "0.9.0"
 console = "0.15.0"
