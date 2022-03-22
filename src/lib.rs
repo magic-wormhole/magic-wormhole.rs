@@ -25,8 +25,11 @@
 #[macro_use]
 mod util;
 mod core;
+#[cfg(feature = "forwarding")]
 pub mod forwarding;
+#[cfg(feature = "transfer")]
 pub mod transfer;
+#[cfg(feature = "transit")]
 pub mod transit;
 
 pub use crate::core::{
