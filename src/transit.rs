@@ -400,8 +400,13 @@ impl RelayHint {
             match url.scheme() {
                 "tcp" => {
                     this.tcp.insert(DirectHint {
-                        hostname: url.host_str().expect("Missing hostname in relay URL (also TODO error handling)").into(),
-                        port: url.port().expect("Missing port in relay URL (also TODO error handling)"),
+                        hostname: url
+                            .host_str()
+                            .expect("Missing hostname in relay URL (also TODO error handling)")
+                            .into(),
+                        port: url
+                            .port()
+                            .expect("Missing port in relay URL (also TODO error handling)"),
                     });
                 },
                 "ws" | "wss" => {

@@ -2,7 +2,7 @@ use crate::core::*;
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Digest, Sha256};
-use spake2::{Ed25519Group, Identity, Password, SPAKE2};
+use spake2::{Ed25519Group, Identity, Password, Spake2};
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
     aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
@@ -91,8 +91,8 @@ struct PhaseMessage {
 ///
 /// The "password" usually is the code, but it needs not to. The only requirement
 /// is that both sides use the same value, and agree on that.
-pub fn make_pake(password: &str, appid: &AppID) -> (SPAKE2<Ed25519Group>, Vec<u8>) {
-    let (pake_state, msg1) = SPAKE2::<Ed25519Group>::start_symmetric(
+pub fn make_pake(password: &str, appid: &AppID) -> (Spake2<Ed25519Group>, Vec<u8>) {
+    let (pake_state, msg1) = Spake2::<Ed25519Group>::start_symmetric(
         &Password::new(password.as_bytes()),
         &Identity::new(appid.0.as_bytes()),
     );

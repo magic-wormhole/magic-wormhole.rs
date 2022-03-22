@@ -41,19 +41,6 @@ highlight = "all"
 allow = []
 deny = []
 skip = [
-    { name = "winapi", version = "=0.2.8" },
-    { name = "subtle", version = "=1.0.0" },
-    { name = "sha2", version = "=0.8.2" },
-    { name = "rand_hc", version = "=0.1.0" },
-    { name = "rand", version = "0.6.5" },
-    { name = "opaque-debug", version = "=0.2.3" },
-    { name = "autocfg", version = "=0.1.7" },
-    { name = "block-buffer", version = "=0.7.3" },
-    { name = "crypto-mac", version = "=0.7.0" },
-    { name = "digest", version = "=0.8.1" },
-    { name = "hex", version = "=0.3.2" },
-    { name = "hkdf", version = "=0.7.1" },
-    { name = "hmac", version = "=0.7.1" },
 ]
 skip-tree = []
 

@@ -189,6 +189,10 @@ impl WsConnection {
                 log::debug!("Received connection close");
                 Err(ws2::Error::ConnectionClosed.into())
             },
+            ws2::Message::Frame(_) => {
+                log::warn!("Received a WebSocket 'Frame' message and don't know what to do with it, please open a bug report");
+                Ok(None)
+            },
         }
     }
 }
