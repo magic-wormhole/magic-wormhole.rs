@@ -7,6 +7,7 @@
 - Added `--force-relay` and `--force-direct` CLI flags that control the transit connection
 	- The feature is also exposed in the API
 - Updated a lot of dependencies
+- Split the project into a workspace and feature gated some higher level protocols. This should now work way better on crates.io (and generally for library usage)
 
 ## Version 0.3.0
 

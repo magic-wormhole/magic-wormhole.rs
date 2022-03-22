@@ -47,6 +47,7 @@ impl Key<WormholeKey> {
      *
      * The new key is derived with the `"{appid}/transit-key"` purpose.
      */
+    #[cfg(feature = "transit")]
     pub fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
         let transit_purpose = format!("{}/transit-key", &*appid);
 

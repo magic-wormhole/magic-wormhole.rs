@@ -2,9 +2,9 @@ name: Rust
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
-    branches: [master]
+    branches: [master, dev]
 
 jobs:
   format:
@@ -76,7 +76,27 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-test-build-target-${{ matrix.rust }}
-      - name: build --all-targets
+      - name: build library (no default features)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p magic-wormhole --no-default-features
+      - name: build library (features=transit)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p magic-wormhole --no-default-features --features=transit
+      - name: build library (features=transfer)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p magic-wormhole --no-default-features --features=transfer
+      - name: build library (features=forwarding)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p magic-wormhole --no-default-features --features=forwarding
+      - name: build CLI
         uses: actions-rs/cargo@v1
         with:
           command: build
