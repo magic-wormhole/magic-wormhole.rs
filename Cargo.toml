@@ -5,12 +5,15 @@ authors = [
     "piegames <info@piegames.de>",
     "Brian Warner <warner@lothar.com>"
 ]
-license = "EUPL"
+description = "Get things from one computer to another, safely"
+keywords = ["magic-wormhole", "wormhole", "file-transfer", "transfer"]
+categories = ["network-programming", "command-line-utilities"]
+readme = "README.md"
 homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/magic-wormhole/magic-wormhole.rs"
+license = "EUPL-1.2"
 edition = "2021"
-description = "Get things from one computer to another, safely"
-readme = "README.md"
+rust-version = "1.59" # MSRV
 default-run = "wormhole-rs"
 
 [badges]
