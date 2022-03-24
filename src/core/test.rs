@@ -57,6 +57,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                         .unwrap()
                         .len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    &transit::log_transit_connection,
                     |_sent, _total| {},
                     futures::future::pending(),
                 )
@@ -85,6 +86,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
 
             let mut buffer = Vec::<u8>::new();
             req.accept(
+                &transit::log_transit_connection,
                 |_received, _total| {},
                 &mut buffer,
                 futures::future::pending(),
@@ -211,6 +213,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                         .unwrap()
                         .len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    &transit::log_transit_connection,
                     |_, _| {},
                     futures::future::pending(),
                 )
@@ -236,6 +239,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                         .unwrap()
                         .len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    &transit::log_transit_connection,
                     |_, _| {},
                     futures::future::pending(),
                 )
@@ -263,8 +267,13 @@ pub async fn test_send_many() -> eyre::Result<()> {
         .unwrap();
 
         let mut buffer = Vec::<u8>::new();
-        req.accept(|_, _| {}, &mut buffer, futures::future::pending())
-            .await?;
+        req.accept(
+            &transit::log_transit_connection,
+            |_, _| {},
+            &mut buffer,
+            futures::future::pending(),
+        )
+        .await?;
         assert_eq!(correct_data, buffer, "Files #{} differ", i);
     }
 

@@ -201,18 +201,20 @@ impl TransitAck {
     }
 }
 
-pub async fn send_file_or_folder<N, M, H>(
+pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
     file_path: N,
     file_name: M,
     transit_abilities: transit::Abilities,
+    transit_handler: G,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     N: AsRef<async_std::path::Path>,
     M: AsRef<async_std::path::Path>,
+    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     use async_std::fs::File;
@@ -228,6 +230,7 @@ where
             file_path,
             file_name,
             transit_abilities,
+            transit_handler,
             progress_handler,
             cancel,
         )
@@ -241,6 +244,7 @@ where
             file_name,
             file_size,
             transit_abilities,
+            transit_handler,
             progress_handler,
             cancel,
         )
@@ -253,19 +257,21 @@ where
 ///
 /// You must ensure that the Reader contains exactly as many bytes
 /// as advertized in file_size.
-pub async fn send_file<F, N, H>(
+pub async fn send_file<F, N, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
     file: &mut F,
     file_name: N,
     file_size: u64,
     transit_abilities: transit::Abilities,
+    transit_handler: G,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
+    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     let _peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
@@ -281,6 +287,7 @@ where
         file_name,
         file_size,
         transit_abilities,
+        transit_handler,
         progress_handler,
         cancel,
     )
@@ -293,18 +300,20 @@ where
 /// This isn't a proper folder transfer as per the Wormhole protocol
 /// because it sends it in a way so that the receiver still has to manually
 /// unpack it. But it's better than nothing
-pub async fn send_folder<N, M, H>(
+pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
     folder_path: N,
     folder_name: M,
     transit_abilities: transit::Abilities,
+    transit_handler: G,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     N: Into<PathBuf>,
     M: Into<PathBuf>,
+    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
@@ -314,6 +323,7 @@ where
         folder_path,
         folder_name,
         transit_abilities,
+        transit_handler,
         progress_handler,
         cancel,
     )
@@ -437,14 +447,16 @@ impl ReceiveRequest {
      *
      * This will transfer the file and save it on disk.
      */
-    pub async fn accept<F, W>(
+    pub async fn accept<F, G, W>(
         mut self,
+        transit_handler: G,
         progress_handler: F,
         content_handler: &mut W,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
     where
         F: FnMut(u64, u64) + 'static,
+        G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
         W: AsyncWrite + Unpin,
     {
         let run = async {
@@ -454,7 +466,7 @@ impl ReceiveRequest {
                 .send_json(&PeerMessage::file_ack("ok"))
                 .await?;
 
-            let mut transit = self
+            let (mut transit, info, addr) = self
                 .connector
                 .follower_connect(
                     self.wormhole
@@ -464,6 +476,7 @@ impl ReceiveRequest {
                     self.their_hints.clone(),
                 )
                 .await?;
+            transit_handler(info, addr);
 
             debug!("Beginning file transfer");
             v1::tcp_file_receive(

@@ -5,19 +5,21 @@ use std::path::PathBuf;
 
 use super::*;
 
-pub async fn send_file<F, N, H>(
+pub async fn send_file<F, N, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     file: &mut F,
     file_name: N,
     file_size: u64,
     transit_abilities: transit::Abilities,
+    transit_handler: G,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
+    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     let run = async {
@@ -74,13 +76,14 @@ where
             }
         }
 
-        let mut transit = connector
+        let (mut transit, info, addr) = connector
             .leader_connect(
                 wormhole.key().derive_transit_key(wormhole.appid()),
                 their_abilities,
                 Arc::new(their_hints),
             )
             .await?;
+        transit_handler(info, addr);
 
         debug!("Beginning file transfer");
 
@@ -130,18 +133,20 @@ where
     }
 }
 
-pub async fn send_folder<N, M, H>(
+pub async fn send_folder<N, M, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     folder_path: N,
     folder_name: M,
     transit_abilities: transit::Abilities,
+    transit_handler: G,
     progress_handler: H,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError>
 where
     N: Into<PathBuf>,
     M: Into<PathBuf>,
+    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     let run = async {
@@ -249,13 +254,14 @@ where
             },
         }
 
-        let mut transit = connector
+        let (mut transit, info, addr) = connector
             .leader_connect(
                 wormhole.key().derive_transit_key(wormhole.appid()),
                 their_abilities,
                 Arc::new(their_hints),
             )
             .await?;
+        transit_handler(info, addr);
 
         debug!("Beginning file transfer");
 
