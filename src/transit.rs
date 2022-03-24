@@ -107,17 +107,14 @@ pub enum TransitError {
 pub struct Abilities {
     /** Direct connection to the peer */
     pub direct_tcp_v1: bool,
-    /** Connection over a TCP relay */
+    /** Connection over a relay */
     pub relay_v1: bool,
-    /** Connection over a TCP or WebSocket relay */
-    pub relay_v2: bool,
 }
 
 impl Abilities {
     pub const ALL_ABILITIES: Self = Self {
         direct_tcp_v1: true,
         relay_v1: true,
-        relay_v2: true,
     };
 
     /**
@@ -129,7 +126,6 @@ impl Abilities {
     pub const FORCE_DIRECT: Self = Self {
         direct_tcp_v1: true,
         relay_v1: false,
-        relay_v2: false,
     };
 
     /**
@@ -143,7 +139,6 @@ impl Abilities {
     pub const FORCE_RELAY: Self = Self {
         direct_tcp_v1: false,
         relay_v1: true,
-        relay_v2: true,
     };
 
     pub fn can_direct(&self) -> bool {
@@ -151,14 +146,13 @@ impl Abilities {
     }
 
     pub fn can_relay(&self) -> bool {
-        self.relay_v1 || self.relay_v2
+        self.relay_v1
     }
 
     /** Keep only abilities that both sides support */
     pub fn intersect(mut self, other: &Self) -> Self {
         self.direct_tcp_v1 &= other.direct_tcp_v1;
         self.relay_v1 &= other.relay_v1;
-        self.relay_v2 &= other.relay_v2;
         self
     }
 }
@@ -177,11 +171,6 @@ impl serde::Serialize for Abilities {
         if self.relay_v1 {
             hints.push(serde_json::json!({
                 "type": "relay-v1",
-            }));
-        }
-        if self.relay_v2 {
-            hints.push(serde_json::json!({
-                "type": "relay-v2",
             }));
         }
         serde_json::Value::Array(hints).serialize(ser)
@@ -213,9 +202,6 @@ impl<'de> serde::Deserialize<'de> for Abilities {
                 Ability::RelayV1 => {
                     abilities.relay_v1 = true;
                 },
-                Ability::RelayV2 => {
-                    abilities.relay_v2 = true;
-                },
                 _ => (),
             }
         }
@@ -229,10 +215,7 @@ impl<'de> serde::Deserialize<'de> for Abilities {
 #[non_exhaustive]
 enum HintSerde {
     DirectTcpV1(DirectHint),
-    RelayV1 {
-        hints: HashSet<DirectHint>,
-    },
-    RelayV2(RelayHint),
+    RelayV1(RelayHint),
     #[serde(other)]
     Unknown,
 }
@@ -273,13 +256,7 @@ impl<'de> serde::Deserialize<'de> for Hints {
                 HintSerde::DirectTcpV1(hint) => {
                     direct_tcp.insert(hint);
                 },
-                HintSerde::RelayV1 { hints } => {
-                    relay.push(RelayHint {
-                        tcp: hints,
-                        ..RelayHint::default()
-                    });
-                },
-                HintSerde::RelayV2(hint) => {
+                HintSerde::RelayV1(hint) => {
                     relay_v2.push(hint);
                 },
                 /* Ignore unknown hints */
@@ -303,14 +280,7 @@ impl serde::Serialize for Hints {
         S: serde::Serializer,
     {
         let direct = self.direct_tcp.iter().cloned().map(HintSerde::DirectTcpV1);
-        let relay = self.relay.iter().flat_map(|hint| {
-            [
-                HintSerde::RelayV1 {
-                    hints: hint.tcp.clone(),
-                },
-                HintSerde::RelayV2(hint.clone()),
-            ]
-        });
+        let relay = self.relay.iter().cloned().map(HintSerde::RelayV1);
         ser.collect_seq(direct.chain(relay))
     }
 }
@@ -350,6 +320,7 @@ struct RelayHintSerde {
 #[serde(rename_all = "kebab-case", tag = "type")]
 #[non_exhaustive]
 enum RelayHintSerdeInner {
+    #[serde(rename = "direct-tcp-v1")]
     Tcp(DirectHint),
     Websocket {
         url: url::Url,
@@ -1507,7 +1478,7 @@ mod test {
     pub fn test_abilities_encoding() {
         assert_eq!(
             serde_json::to_value(Abilities::ALL_ABILITIES).unwrap(),
-            json!([{"type": "direct-tcp-v1"}, {"type": "relay-v1"}, {"type": "relay-v2"}])
+            json!([{"type": "direct-tcp-v1"}, {"type": "relay-v1"}])
         );
         assert_eq!(
             serde_json::to_value(Abilities::FORCE_DIRECT).unwrap(),
@@ -1538,19 +1509,10 @@ mod test {
                 },
                 {
                     "type": "relay-v1",
-                    "hints": [
-                        {
-                            "hostname": "transit.magic-wormhole.io",
-                            "port": 4001,
-                        }
-                    ]
-                },
-                {
-                    "type": "relay-v2",
                     "name": "default",
                     "hints": [
                         {
-                            "type": "tcp",
+                            "type": "direct-tcp-v1",
                             "hostname": "transit.magic-wormhole.io",
                             "port": 4001,
                         },

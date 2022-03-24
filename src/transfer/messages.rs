@@ -189,19 +189,13 @@ mod test {
             serde_json::json!(crate::transfer::PeerMessage::transit(abilities, hints)),
             serde_json::json!({
                 "transit": {
-                    "abilities-v1": [{"type":"direct-tcp-v1"},{"type":"relay-v1"},{"type":"relay-v2"}],
+                    "abilities-v1": [{"type":"direct-tcp-v1"},{"type":"relay-v1"}],
                     "hints-v1": [
                         {"hostname":"192.168.1.8","port":46295,"type":"direct-tcp-v1"},
                         {
                             "type": "relay-v1",
                             "hints": [
-                                {"hostname": "magic-wormhole-transit.debian.net", "port": 4001 }
-                            ]
-                        },
-                        {
-                            "type": "relay-v2",
-                            "hints": [
-                                {"type": "tcp", "hostname": "magic-wormhole-transit.debian.net", "port": 4001}
+                                {"type": "direct-tcp-v1", "hostname": "magic-wormhole-transit.debian.net", "port": 4001}
                             ],
                             "name": null
                         }
