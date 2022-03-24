@@ -23,7 +23,11 @@ use async_std::{
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use log::*;
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    sync::Arc,
+};
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::aead::{Aead, NewAead};
 
@@ -470,28 +474,29 @@ impl<'de> serde::Deserialize<'de> for RelayHint {
 
 use std::convert::{TryFrom, TryInto};
 
-impl TryFrom<&DirectHint> for std::net::IpAddr {
+impl TryFrom<&DirectHint> for IpAddr {
     type Error = std::net::AddrParseError;
-    fn try_from(hint: &DirectHint) -> Result<std::net::IpAddr, std::net::AddrParseError> {
+    fn try_from(hint: &DirectHint) -> Result<IpAddr, std::net::AddrParseError> {
         hint.hostname.parse()
     }
 }
 
-impl TryFrom<&DirectHint> for std::net::SocketAddr {
+impl TryFrom<&DirectHint> for SocketAddr {
     type Error = std::net::AddrParseError;
     /** This does not do the obvious thing and also implicitly maps all V4 addresses into V6 */
-    fn try_from(hint: &DirectHint) -> Result<std::net::SocketAddr, std::net::AddrParseError> {
+    fn try_from(hint: &DirectHint) -> Result<SocketAddr, std::net::AddrParseError> {
         let addr = hint.try_into()?;
         let addr = match addr {
-            std::net::IpAddr::V4(v4) => std::net::IpAddr::V6(v4.to_ipv6_mapped()),
-            std::net::IpAddr::V6(_) => addr,
+            IpAddr::V4(v4) => IpAddr::V6(v4.to_ipv6_mapped()),
+            IpAddr::V6(_) => addr,
         };
-        Ok(std::net::SocketAddr::new(addr, hint.port))
+        Ok(SocketAddr::new(addr, hint.port))
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum TransitInfo {
+#[non_exhaustive]
+pub enum TransitInfo {
     Direct,
     Relay { name: Option<String> },
 }
@@ -583,20 +588,19 @@ enum StunError {
 }
 
 /** Perform a STUN query to get the external IP address */
-async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunError> {
+async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
     let mut socket = connect_custom(
-        &"[::]:0".parse::<std::net::SocketAddr>().unwrap().into(),
+        &"[::]:0".parse::<SocketAddr>().unwrap().into(),
         &PUBLIC_STUN_SERVER
             .to_socket_addrs()?
             /* If you find yourself behind a NAT66, open an issue */
             .find(|x| x.is_ipv4())
             /* TODO add a helper method to stdlib for this */
             .map(|addr| match addr {
-                std::net::SocketAddr::V4(v4) => std::net::SocketAddr::new(
-                    std::net::IpAddr::V6(v4.ip().to_ipv6_mapped()),
-                    v4.port(),
-                ),
-                std::net::SocketAddr::V6(_) => unreachable!(),
+                SocketAddr::V4(v4) => {
+                    SocketAddr::new(IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port())
+                },
+                SocketAddr::V6(_) => unreachable!(),
             })
             .ok_or(StunError::ServerIsV4Only)?
             .into(),
@@ -604,7 +608,6 @@ async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunErro
     .await?;
 
     use bytecodec::{DecodeExt, EncodeExt};
-    use std::net::{SocketAddr, ToSocketAddrs};
     use stun_codec::{
         rfc5389::{
             self,
@@ -668,6 +671,38 @@ async fn get_external_ip() -> Result<(std::net::SocketAddr, TcpStream), StunErro
     Ok((external_addr, socket))
 }
 
+/// Utility method that logs information of the transit result
+///
+/// Example usage:
+///
+/// ```no_run
+/// # let derived_key = todo!();
+/// # let their_abilities = todo!();
+/// # let their_hints = todo!();
+/// let connector: transit::TransitConnector = todo!("transit::init(…).await?");
+/// let (mut transit, info, addr) = connector
+///     .leader_connect(derived_key, their_abilities, their_hints)
+///     .await?;
+/// transit::log_transit_connection(info, addr);
+/// ```
+pub fn log_transit_connection(info: TransitInfo, peer_addr: SocketAddr) {
+    match info {
+        TransitInfo::Direct => {
+            log::info!("Established direct transit connection to '{}'", peer_addr,);
+        },
+        TransitInfo::Relay { name: Some(name) } => {
+            log::info!(
+                "Established transit connection via relay '{}' ({})",
+                name,
+                peer_addr,
+            );
+        },
+        TransitInfo::Relay { name: None } => {
+            log::info!("Established transit connection via relay ({})", peer_addr,);
+        },
+    }
+}
+
 /**
  * Initialize a relay handshake
  *
@@ -714,7 +749,7 @@ pub async fn init(
                     set_socket_opts(&socket)?;
 
                     socket
-                        .bind(&"[::]:0".parse::<std::net::SocketAddr>().unwrap().into())
+                        .bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())
                         .unwrap();
 
                     socket.into()
@@ -817,7 +852,7 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<Transit, TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
         let Self {
             sockets,
             our_abilities,
@@ -895,29 +930,9 @@ impl TransitConnector {
         std::mem::drop(connection_stream);
 
         transit.socket.write_all(b"go\n").await?;
-        match host_type {
-            TransitInfo::Direct => {
-                log::info!(
-                    "Established direct transit connection to '{}'",
-                    transit.socket.peer_addr().unwrap()
-                );
-            },
-            TransitInfo::Relay { name: Some(name) } => {
-                log::info!(
-                    "Established transit connection via relay '{}' ({})",
-                    name,
-                    transit.socket.peer_addr().unwrap()
-                );
-            },
-            TransitInfo::Relay { name: None } => {
-                log::info!(
-                    "Established transit connection via relay ({})",
-                    transit.socket.peer_addr().unwrap()
-                );
-            },
-        }
 
-        Ok(transit)
+        let addr = transit.socket.peer_addr().unwrap();
+        Ok((transit, host_type, addr))
     }
 
     /**
@@ -928,7 +943,7 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<Transit, TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
         let Self {
             sockets,
             our_abilities,
@@ -964,28 +979,8 @@ impl TransitConnector {
         .await
         {
             Ok(Some((transit, host_type))) => {
-                match host_type {
-                    TransitInfo::Direct => {
-                        log::info!(
-                            "Established direct transit connection to '{}'",
-                            transit.socket.peer_addr().unwrap()
-                        );
-                    },
-                    TransitInfo::Relay { name: Some(name) } => {
-                        log::info!(
-                            "Established transit connection via relay '{}' ({})",
-                            name,
-                            transit.socket.peer_addr().unwrap()
-                        );
-                    },
-                    TransitInfo::Relay { name: None } => {
-                        log::info!(
-                            "Established transit connection via relay ({})",
-                            transit.socket.peer_addr().unwrap()
-                        );
-                    },
-                }
-                Ok(transit)
+                let addr = transit.socket.peer_addr().unwrap();
+                Ok((transit, host_type, addr))
             },
             Ok(None) | Err(_) => {
                 log::debug!("`follower_connect` timed out");
@@ -1049,7 +1044,7 @@ impl TransitConnector {
                         .map(move |hint| {
                             let local_addr = local_addr.clone();
                             async move {
-                                let dest_addr = std::net::SocketAddr::try_from(&hint)?;
+                                let dest_addr = SocketAddr::try_from(&hint)?;
                                 log::debug!("Connecting directly to {}", dest_addr);
                                 let socket = connect_custom(&local_addr, &dest_addr.into()).await?;
                                 log::debug!("Connected to {}!", dest_addr);

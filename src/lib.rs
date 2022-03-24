@@ -21,6 +21,7 @@
 
 #![forbid(unsafe_code)]
 #![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::too_many_arguments)]
 
 #[macro_use]
 mod util;

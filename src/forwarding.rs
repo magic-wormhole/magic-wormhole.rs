@@ -135,6 +135,7 @@ impl ForwardingError {
 /// as the value.
 pub async fn serve(
     mut wormhole: Wormhole,
+    transit_handler: impl FnOnce(transit::TransitInfo, std::net::SocketAddr),
     relay_hints: Vec<transit::RelayHint>,
     targets: Vec<(Option<url::Host>, u16)>,
     cancel: impl Future<Output = ()>,
@@ -189,7 +190,7 @@ pub async fn serve(
         },
     };
 
-    let mut transit = match connector
+    let (mut transit, info, addr) = match connector
         .leader_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
@@ -206,6 +207,7 @@ pub async fn serve(
             return Err(error);
         },
     };
+    transit_handler(info, addr);
 
     /* We got a transit, now close the Wormhole */
     wormhole.close().await?;
@@ -516,6 +518,7 @@ impl ForwardingServe {
 /// no more than 1024 ports may be forwarded at once.
 pub async fn connect(
     mut wormhole: Wormhole,
+    transit_handler: impl FnOnce(transit::TransitInfo, std::net::SocketAddr),
     relay_hints: Vec<transit::RelayHint>,
     bind_address: Option<std::net::IpAddr>,
     custom_ports: &[u16],
@@ -558,7 +561,7 @@ pub async fn connect(
         },
     };
 
-    let mut transit = match connector
+    let (mut transit, info, addr) = match connector
         .follower_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
@@ -575,6 +578,7 @@ pub async fn connect(
             return Err(error);
         },
     };
+    transit_handler(info, addr);
 
     /* We got a transit, now close the Wormhole */
     wormhole.close().await?;

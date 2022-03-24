@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 mod util;
 
 use std::{
@@ -501,6 +502,7 @@ async fn main() -> eyre::Result<()> {
                 let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
                 async_std::task::spawn(forwarding::serve(
                     wormhole,
+                    &transit::log_transit_connection,
                     relay_server,
                     targets.clone(),
                     ctrl_c(),
@@ -532,8 +534,14 @@ async fn main() -> eyre::Result<()> {
             .await?;
             let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
-            let offer =
-                forwarding::connect(wormhole, relay_server, Some(bind_address), &ports).await?;
+            let offer = forwarding::connect(
+                wormhole,
+                &transit::log_transit_connection,
+                relay_server,
+                Some(bind_address),
+                &ports,
+            )
+            .await?;
             log::info!("Mapping the following open ports to targets:");
             log::info!("  local port -> remote target (no address = localhost on remote)");
             for (port, target) in &offer.mapping {
@@ -700,6 +708,7 @@ async fn send(
         file_path,
         file_name,
         transit_abilities,
+        &transit::log_transit_connection,
         move |sent, total| {
             if sent == 0 {
                 pb.reset_elapsed();
@@ -716,7 +725,6 @@ async fn send(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn send_many(
     relay_server: url::Url,
     code: &magic_wormhole::Code,
@@ -810,6 +818,7 @@ async fn send_many(
                     file_path.deref(),
                     file_name.deref(),
                     transit_abilities,
+                    &transit::log_transit_connection,
                     move |_sent, _total| {
                         // if sent == 0 {
                         //     pb2.reset_elapsed();
@@ -904,7 +913,12 @@ async fn receive(
             .await
             .context("Failed to create destination file")?;
         return req
-            .accept(on_progress, &mut file, ctrl_c())
+            .accept(
+                &transit::log_transit_connection,
+                on_progress,
+                &mut file,
+                ctrl_c(),
+            )
             .await
             .context("Receive process failed");
     }
@@ -926,7 +940,12 @@ async fn receive(
         .open(&file_path)
         .await?;
     Ok(req
-        .accept(on_progress, &mut file, ctrl_c())
+        .accept(
+            &transit::log_transit_connection,
+            on_progress,
+            &mut file,
+            ctrl_c(),
+        )
         .await
         .context("Receive process failed")?)
 }
