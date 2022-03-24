@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- \[lib\]\[breaking\] Removed `relay-v2` ability again.
+	- This fixed some relay signalling issues, where no connection could be made with `--force-relay` under some circumstances.
+
 ## Version 0.4.0
 
 - When sending, the code will now aumatically be copied into clipboard. So you don't have to select it in the terminal anymore before pasting!
