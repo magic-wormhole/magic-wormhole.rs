@@ -400,6 +400,11 @@ where
         // read a block of up to 4096 bytes
         let n = file.read(&mut plaintext[..]).await?;
 
+        if n == 0 {
+            // EOF
+            break;
+        }
+
         // send the encrypted record
         transit.send_record(&plaintext[0..n]).await?;
         sent_size += n as u64;

@@ -101,6 +101,79 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
     Ok(())
 }
 
+/** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
+#[cfg(feature = "transfer")]
+#[async_std::test]
+pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
+    init_logger();
+
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    const FILENAME: &str = "examples/example-file-4096.bin";
+
+    let sender_task = async_std::task::Builder::new()
+        .name("sender".to_owned())
+        .spawn(async {
+            let (welcome, connector) =
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
+            log::info!("This wormhole's code is: {}", &welcome.code);
+            code_tx.send(welcome.code).unwrap();
+            let wormhole = connector.await?;
+            eyre::Result::<_>::Ok(
+                transfer::send_file(
+                    wormhole,
+                    transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                    &mut async_std::fs::File::open(FILENAME).await?,
+                    "example-file.bin",
+                    std::fs::metadata(FILENAME).unwrap().len(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    |_sent, _total| {},
+                    futures::future::pending(),
+                )
+                .await?,
+            )
+        })?;
+    let receiver_task = async_std::task::Builder::new()
+        .name("receiver".to_owned())
+        .spawn(async {
+            let code = code_rx.await?;
+            log::info!("Got code over local: {}", &code);
+            let (welcome, wormhole) =
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
+
+            let req = transfer::request_file(
+                wormhole,
+                transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                futures::future::pending(),
+            )
+            .await?
+            .unwrap();
+
+            let mut buffer = Vec::<u8>::new();
+            req.accept(
+                |_received, _total| {},
+                &mut buffer,
+                futures::future::pending(),
+            )
+            .await?;
+            Ok(buffer)
+        })?;
+
+    sender_task.await?;
+    let original = std::fs::read(FILENAME)?;
+    let received: Vec<u8> = (receiver_task.await as eyre::Result<Vec<u8>>)?;
+
+    assert_eq!(original, received, "Files differ");
+    Ok(())
+}
+
 /** Test the functionality used by the `send-many` subcommand. It logically builds upon the
  * `test_eventloop_exit` tests. We send us a file five times, and check if it arrived.
  */
