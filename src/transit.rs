@@ -1311,6 +1311,8 @@ impl Transit {
 
     /** Send an encrypted message to the other side */
     pub async fn send_record(&mut self, plaintext: &[u8]) -> Result<(), TransitError> {
+        assert!(plaintext.len() > 0);
+
         Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.snonce).await
     }
 
