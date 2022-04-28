@@ -412,7 +412,7 @@ dependencies = [
 [[package]]
 name = "cli-clipboard"
 version = "0.2.1"
-source = "git+https://github.com/piegamesde/cli-clipboard#8447bd4ac00af578d21ff440752e7aa837c07f30"
+source = "git+https://github.com/piegamesde/cli-clipboard#87ed1bdf6c6cc7f66ef2a161381c49345cec60b5"
 dependencies = [
  "clipboard-win",
  "objc",
