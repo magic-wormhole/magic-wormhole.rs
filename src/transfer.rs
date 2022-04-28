@@ -253,6 +253,45 @@ where
 ///
 /// You must ensure that the Reader contains exactly as many bytes
 /// as advertized in file_size.
+/// 
+/// # Example
+/// 
+/// ```no_run
+/// # use magic_wormhole::{Wormhole, WormholeError};
+///   use magic_wormhole::transfer::{APP_CONFIG, send_file};
+///   use magic_wormhole::transit;
+///   use async_std::fs::File;
+/// 
+/// # #[async_std::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///   let filepath = "foobar.baz";
+///   let mut file = File::create(filepath).await.unwrap();
+///   let file_length = file.metadata().await.unwrap().len();
+/// 
+///   // Wormhole connection
+///   let (_, wormhole) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
+///   let connector = wormhole.await.unwrap();
+///   let relay_url = transit::DEFAULT_RELAY_SERVER.parse().unwrap();
+/// 
+///   // Transfer status
+///   let mut bytes_sent = 0;
+///   let mut bytes_total = 0;
+///   let progress = move |sent, total| {
+///     bytes_sent = sent;
+///     bytes_total = total;
+///   };
+///   
+///   let cancel = futures::future::pending();
+///   
+///   send_file(
+///     connector, relay_url,
+///     &mut file, filepath, file_length,
+///     transit::Abilities::ALL_ABILITIES, progress, cancel,
+///   ).await;
+/// 
+///   # std::fs::remove_file(filepath).unwrap(); //cleanup
+///   # Ok(())
+/// # }
 pub async fn send_file<F, N, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
