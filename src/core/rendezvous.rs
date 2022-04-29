@@ -2,6 +2,7 @@
 //!
 //! Wormhole builds upon this, so you usually don't need to bother.
 
+#[cfg(not(target_family = "wasm"))]
 use async_tungstenite::tungstenite as ws2;
 use futures::prelude::*;
 use std::collections::VecDeque;
@@ -38,11 +39,19 @@ pub enum RendezvousError {
         _0
     )]
     Login(Vec<String>),
+    #[cfg(not(target_family = "wasm"))]
     #[error("Websocket IO error")]
     IO(
         #[from]
         #[source]
-        async_tungstenite::tungstenite::Error,
+        ws2::Error,
+    ),
+    #[cfg(target_family = "wasm")]
+    #[error("Websocket IO error")]
+    IO(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
     ),
 }
 
@@ -65,11 +74,19 @@ impl RendezvousError {
 
 type MessageQueue = VecDeque<EncryptedMessage>;
 
+#[cfg(not(target_family = "wasm"))]
 struct WsConnection {
     connection: async_tungstenite::WebSocketStream<async_tungstenite::async_std::ConnectStream>,
 }
 
+#[cfg(target_family = "wasm")]
+struct WsConnection {
+    connection: ws_stream_wasm::WsStream,
+    meta: ws_stream_wasm::WsMeta,
+}
+
 impl WsConnection {
+    #[cfg(not(target_family = "wasm"))]
     async fn send_message(
         &mut self,
         message: &OutboundMessage,
@@ -78,6 +95,22 @@ impl WsConnection {
         log::debug!("Sending {}", message);
         self.connection
             .send(ws2::Message::Text(serde_json::to_string(message).unwrap()))
+            .await?;
+        self.receive_ack(queue).await?;
+        Ok(())
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn send_message(
+        &mut self,
+        message: &OutboundMessage,
+        queue: Option<&mut MessageQueue>,
+    ) -> Result<(), RendezvousError> {
+        log::debug!("Sending {:?}", message);
+        self.connection
+            .send(ws_stream_wasm::WsMessage::Text(
+                serde_json::to_string(message).unwrap(),
+            ))
             .await?;
         self.receive_ack(queue).await?;
         Ok(())
@@ -160,6 +193,7 @@ impl WsConnection {
         }
     }
 
+    #[cfg(not(target_family = "wasm"))]
     async fn receive_message(&mut self) -> Result<Option<InboundMessage>, RendezvousError> {
         let message = self
             .connection
@@ -194,6 +228,42 @@ impl WsConnection {
                 Ok(None)
             },
         }
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn receive_message(&mut self) -> Result<Option<InboundMessage>, RendezvousError> {
+        let message = self
+            .connection
+            .next()
+            .await
+            .expect("TODO this should always be Some");
+        match message {
+            ws_stream_wasm::WsMessage::Text(message_plain) => {
+                let message = serde_json::from_str(&message_plain)?;
+                log::debug!("Received {:?}", message);
+                match message {
+                    InboundMessage::Unknown => {
+                        log::warn!("Got unknown message, ignoring: '{}'", message_plain);
+                        Ok(None)
+                    },
+                    InboundMessage::Error { error, orig: _ } => Err(RendezvousError::server(error)),
+                    message => Ok(Some(message)),
+                }
+            },
+            ws_stream_wasm::WsMessage::Binary(_) => Err(RendezvousError::protocol(
+                "WebSocket messages must be UTF-8 encoded text",
+            )),
+        }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    async fn close(&mut self) -> Result<(), ws2::Error> {
+        self.connection.close(None).await
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn close(&mut self) -> Result<ws_stream_wasm::CloseEvent, ws_stream_wasm::WsErr> {
+        self.meta.close().await
     }
 }
 
@@ -262,8 +332,22 @@ impl RendezvousServer {
         relay_url: &str,
     ) -> Result<(Self, Option<String>), RendezvousError> {
         let side = MySide::generate();
-        let (connection, _) = async_tungstenite::async_std::connect_async(relay_url).await?;
-        let mut connection = WsConnection { connection };
+        let mut connection;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (stream, _) = async_tungstenite::async_std::connect_async(relay_url).await?;
+            connection = WsConnection { connection: stream };
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let (meta, stream) = ws_stream_wasm::WsMeta::connect(relay_url, None).await?;
+            connection = WsConnection {
+                meta,
+                connection: stream,
+            };
+        }
 
         let welcome = match connection.receive_message_some().await? {
             InboundMessage::Welcome { welcome } => welcome,
@@ -510,7 +594,7 @@ impl RendezvousServer {
             };
         }
 
-        self.connection.connection.close(None).await?;
+        self.connection.close().await?;
         Ok(())
     }
 }
