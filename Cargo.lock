@@ -171,34 +171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-std"
-version = "1.11.0"
-source = "git+https://github.com/async-rs/async-std#2c6304662b96aab64feb20f7d727bfc8e070453e"
-dependencies = [
- "async-attributes",
- "async-channel",
- "async-global-executor",
- "async-io",
- "async-lock",
- "async-process",
- "crossbeam-utils",
- "futures-channel",
- "futures-core",
- "futures-io",
- "futures-lite",
- "gloo-timers",
- "kv-log-macro",
- "log",
- "memchr",
- "num_cpus",
- "once_cell",
- "pin-project-lite",
- "pin-utils",
- "slab",
- "wasm-bindgen-futures",
-]
-
-[[package]]
 name = "async-task"
 version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,7 +195,7 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7922abeade7dd8948c20dfa1f85dc48cc952d2e0791f7c42b8b1cbb07a57129d"
 dependencies = [
- "async-std 1.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std",
  "async-tls",
  "futures-io",
  "futures-util",
@@ -1143,7 +1115,7 @@ name = "magic-wormhole"
 version = "0.4.0"
 dependencies = [
  "async-io",
- "async-std 1.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-std",
  "async-tungstenite",
  "base64",
  "bytecodec",
@@ -2416,7 +2388,7 @@ dependencies = [
 name = "wormhole-rs"
 version = "0.4.0"
 dependencies = [
- "async-std 1.11.0 (git+https://github.com/async-rs/async-std)",
+ "async-std",
  "clap",
  "cli-clipboard",
  "color-eyre",
