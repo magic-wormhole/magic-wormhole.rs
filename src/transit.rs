@@ -676,14 +676,18 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
 /// Example usage:
 ///
 /// ```no_run
+/// use magic_wormhole as mw;
+/// # #[async_std::main] async fn main() -> Result<(), mw::transit::TransitConnectError> {
 /// # let derived_key = todo!();
 /// # let their_abilities = todo!();
 /// # let their_hints = todo!();
-/// let connector: transit::TransitConnector = todo!("transit::init(…).await?");
+/// let connector: mw::transit::TransitConnector = todo!("transit::init(…).await?");
 /// let (mut transit, info, addr) = connector
 ///     .leader_connect(derived_key, their_abilities, their_hints)
 ///     .await?;
-/// transit::log_transit_connection(info, addr);
+/// mw::transit::log_transit_connection(info, addr);
+/// # Ok(())
+/// # }
 /// ```
 pub fn log_transit_connection(info: TransitInfo, peer_addr: SocketAddr) {
     match info {

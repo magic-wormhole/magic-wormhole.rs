@@ -132,6 +132,7 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
                     "example-file.bin",
                     std::fs::metadata(FILENAME).unwrap().len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    &transit::log_transit_connection,
                     |_sent, _total| {},
                     futures::future::pending(),
                 )
@@ -160,6 +161,7 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
 
             let mut buffer = Vec::<u8>::new();
             req.accept(
+                &transit::log_transit_connection,
                 |_received, _total| {},
                 &mut buffer,
                 futures::future::pending(),

@@ -126,9 +126,9 @@ impl TransferError {
 #[serde(rename_all = "kebab-case")]
 pub struct AppVersion {
     // #[serde(default)]
-// abilities: Cow<'static, [Cow<'static, str>]>,
-// #[serde(default)]
-// transfer_v2: Option<AppVersionTransferV2Hint>,
+    // abilities: Cow<'static, [Cow<'static, str>]>,
+    // #[serde(default)]
+    // transfer_v2: Option<AppVersionTransferV2Hint>,
 }
 
 // TODO check invariants during deserialization
