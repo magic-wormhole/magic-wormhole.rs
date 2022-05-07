@@ -16,12 +16,15 @@
 use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
+#[cfg(not(target_family = "wasm"))]
 use async_std::{
     io::{prelude::WriteExt, ReadExt},
     net::{TcpListener, TcpStream},
 };
 #[allow(unused_imports)] /* We need them for the docs */
-use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
+use futures::{
+    future::FutureExt, future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt,
+};
 use log::*;
 use std::{
     collections::HashSet,
@@ -62,6 +65,13 @@ pub enum TransitConnectError {
         #[source]
         std::io::Error,
     ),
+    #[cfg(target_family = "wasm")]
+    #[error("WASM error")]
+    WASM(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
+    ),
 }
 
 /// Private, because we try multiple handshakes and only
@@ -85,6 +95,13 @@ enum TransitHandshakeError {
         #[source]
         std::io::Error,
     ),
+    #[cfg(target_family = "wasm")]
+    #[error("WASM error")]
+    WASM(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
+    ),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -99,6 +116,13 @@ pub enum TransitError {
         #[from]
         #[source]
         std::io::Error,
+    ),
+    #[cfg(target_family = "wasm")]
+    #[error("WASM error")]
+    WASM(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
     ),
 }
 
@@ -501,8 +525,12 @@ pub enum TransitInfo {
     Relay { name: Option<String> },
 }
 
+#[cfg(not(target_family = "wasm"))]
 type TransitConnection = (TcpStream, TransitInfo);
+#[cfg(target_family = "wasm")]
+type TransitConnection = (ws_stream_wasm::WsStream, TransitInfo);
 
+#[cfg(not(target_family = "wasm"))]
 fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
 
@@ -535,6 +563,7 @@ fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
  * copy the `connect` method to add a statement that will set the socket flag.
  * See https://github.com/smol-rs/async-net/issues/20.
  */
+#[cfg(not(target_family = "wasm"))]
 async fn connect_custom(
     local_addr: &socket2::SockAddr,
     dest_addr: &socket2::SockAddr,
@@ -588,6 +617,7 @@ enum StunError {
 }
 
 /** Perform a STUN query to get the external IP address */
+#[cfg(not(target_family = "wasm"))]
 async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
     let mut socket = connect_custom(
         &"[::]:0".parse::<SocketAddr>().unwrap().into(),
@@ -718,6 +748,7 @@ pub async fn init(
     relay_hints: Vec<RelayHint>,
 ) -> Result<TransitConnector, std::io::Error> {
     let mut our_hints = Hints::default();
+    #[cfg(not(target_family = "wasm"))]
     let mut listener = None;
 
     if let Some(peer_abilities) = peer_abilities {
@@ -725,13 +756,14 @@ pub async fn init(
     }
 
     /* Detect our IP addresses if the ability is enabled */
+    #[cfg(not(target_family = "wasm"))]
     if abilities.can_direct() {
         /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
          * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
          * and use that instead.
          */
         let socket: MaybeConnectedSocket =
-            match async_std::future::timeout(std::time::Duration::from_secs(4), get_external_ip())
+            match timeout(std::time::Duration::from_secs(4), get_external_ip())
                 .await
                 .map_err(|_| StunError::Timeout)
             {
@@ -798,12 +830,14 @@ pub async fn init(
     }
 
     Ok(TransitConnector {
+        #[cfg(not(target_family = "wasm"))]
         sockets: listener,
         our_abilities: abilities,
         our_hints: Arc::new(our_hints),
     })
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(derive_more::From)]
 enum MaybeConnectedSocket {
     #[from]
@@ -812,6 +846,7 @@ enum MaybeConnectedSocket {
     Stream(TcpStream),
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl MaybeConnectedSocket {
     fn local_addr(&self) -> std::io::Result<socket2::SockAddr> {
         match &self {
@@ -820,6 +855,12 @@ impl MaybeConnectedSocket {
         }
     }
 }
+
+/* Hack */
+#[cfg(not(target_family = "wasm"))]
+type ConnectSocketAddr = SocketAddr;
+#[cfg(target_family = "wasm")]
+type ConnectSocketAddr = ();
 
 /**
  * A partially set up [`Transit`] connection.
@@ -833,6 +874,7 @@ pub struct TransitConnector {
      * The first socket is the port from which we will start connection attempts.
      * For in case the user is behind no firewalls, we must also listen to the second socket.
      */
+    #[cfg(not(target_family = "wasm"))]
     sockets: Option<(MaybeConnectedSocket, TcpListener)>,
     our_abilities: Abilities,
     our_hints: Arc<Hints>,
@@ -856,8 +898,9 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo, ConnectSocketAddr), TransitConnectError> {
         let Self {
+            #[cfg(not(target_family = "wasm"))]
             sockets,
             our_abilities,
             our_hints,
@@ -873,6 +916,7 @@ impl TransitConnector {
                 our_hints,
                 their_abilities,
                 their_hints,
+                #[cfg(not(target_family = "wasm"))]
                 sockets,
             )
             .filter_map(|result| async {
@@ -886,16 +930,14 @@ impl TransitConnector {
             }),
         );
 
-        let (mut transit, mut host_type) = async_std::future::timeout(
-            std::time::Duration::from_secs(60),
-            connection_stream.next(),
-        )
-        .await
-        .map_err(|_| {
-            log::debug!("`leader_connect` timed out");
-            TransitConnectError::Handshake
-        })?
-        .ok_or(TransitConnectError::Handshake)?;
+        let (mut transit, mut host_type) =
+            timeout(std::time::Duration::from_secs(60), connection_stream.next())
+                .await
+                .map_err(|_| {
+                    log::debug!("`leader_connect` timed out");
+                    TransitConnectError::Handshake
+                })?
+                .ok_or(TransitConnectError::Handshake)?;
 
         if host_type != TransitInfo::Direct && our_abilities.can_direct() {
             log::debug!(
@@ -911,7 +953,7 @@ impl TransitConnector {
             } else {
                 elapsed.mul_f32(0.3)
             };
-            let _ = async_std::future::timeout(to_wait, async {
+            let _ = timeout(to_wait, async {
                 while let Some((new_transit, new_host_type)) = connection_stream.next().await {
                     /* We already got a connection, so we're only interested in direct ones */
                     if new_host_type == TransitInfo::Direct {
@@ -933,10 +975,24 @@ impl TransitConnector {
          */
         std::mem::drop(connection_stream);
 
+        #[cfg(not(target_family = "wasm"))]
         transit.socket.write_all(b"go\n").await?;
+        #[cfg(target_family = "wasm")]
+        transit
+            .socket
+            .send(ws_stream_wasm::WsMessage::Text("go\n".into()))
+            .await?;
 
+        #[cfg(not(target_family = "wasm"))]
         let addr = transit.socket.peer_addr().unwrap();
-        Ok((transit, host_type, addr))
+        Ok((
+            transit,
+            host_type,
+            #[cfg(not(target_family = "wasm"))]
+            addr,
+            #[cfg(target_family = "wasm")]
+            (),
+        ))
     }
 
     /**
@@ -947,8 +1003,9 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo, ConnectSocketAddr), TransitConnectError> {
         let Self {
+            #[cfg(not(target_family = "wasm"))]
             sockets,
             our_abilities,
             our_hints,
@@ -963,6 +1020,7 @@ impl TransitConnector {
                 our_hints,
                 their_abilities,
                 their_hints,
+                #[cfg(not(target_family = "wasm"))]
                 sockets,
             )
             .filter_map(|result| async {
@@ -976,16 +1034,19 @@ impl TransitConnector {
             }),
         );
 
-        let transit = match async_std::future::timeout(
+        let transit = match timeout(
             std::time::Duration::from_secs(60),
             &mut connection_stream.next(),
         )
         .await
         {
+            #[cfg(not(target_family = "wasm"))]
             Ok(Some((transit, host_type))) => {
                 let addr = transit.socket.peer_addr().unwrap();
                 Ok((transit, host_type, addr))
             },
+            #[cfg(target_family = "wasm")]
+            Ok(Some((transit, host_type))) => Ok((transit, host_type, ())),
             Ok(None) | Err(_) => {
                 log::debug!("`follower_connect` timed out");
                 Err(TransitConnectError::Handshake)
@@ -1016,8 +1077,9 @@ impl TransitConnector {
         our_hints: Arc<Hints>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-        socket: Option<(MaybeConnectedSocket, TcpListener)>,
+        #[cfg(not(target_family = "wasm"))] socket: Option<(MaybeConnectedSocket, TcpListener)>,
     ) -> impl Stream<Item = Result<(Transit, TransitInfo), TransitHandshakeError>> + 'static {
+        #[cfg(not(target_family = "wasm"))]
         assert!(socket.is_some() == our_abilities.can_direct());
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
@@ -1026,7 +1088,10 @@ impl TransitConnector {
         /* Iterator of futures yielding a connection. They'll be then mapped with the handshake, collected into
          * a Vec and polled concurrently.
          */
+        #[cfg(not(target_family = "wasm"))]
         use futures::future::BoxFuture;
+        #[cfg(target_family = "wasm")]
+        use futures::future::LocalBoxFuture as BoxFuture;
         type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
         type ConnectorFuture = BoxFuture<'static, Result<TransitConnection, TransitHandshakeError>>;
         let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
@@ -1034,6 +1099,7 @@ impl TransitConnector {
         /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
          * be empty and no entries will be pushed.
          */
+        #[cfg(not(target_family = "wasm"))]
         let socket2 = if let Some((socket, socket2)) = socket {
             let local_addr = Arc::new(socket.local_addr().unwrap());
             /* Connect to each hint of the peer */
@@ -1073,6 +1139,7 @@ impl TransitConnector {
             }
 
             /* Take a relay hint and try to connect to it */
+            #[cfg(not(target_family = "wasm"))]
             async fn hint_connector(
                 host: DirectHint,
                 name: Option<String>,
@@ -1085,47 +1152,108 @@ impl TransitConnector {
 
                 Ok((transit, TransitInfo::Relay { name }))
             }
+            #[cfg(target_family = "wasm")]
+            async fn hint_connector(
+                url: url::Url,
+                name: Option<String>,
+            ) -> Result<TransitConnection, TransitHandshakeError> {
+                log::debug!("Connecting to relay {}", url);
+                let (_meta, transit) = ws_stream_wasm::WsMeta::connect(&url, None)
+                    .err_into::<TransitHandshakeError>()
+                    .await?;
+                log::debug!("Connected to {}!", url);
 
-            connectors = Box::new(
-                connectors.chain(
-                    relay_hints
-                        .into_iter()
-                        /* A hint may have multiple addresses pointing towards the server. This may be multiple
-                         * domain aliases or different ports or an IPv6 or IPv4 address. We only need
-                         * to connect to one of them, since they are considered equivalent. However, we
-                         * also want to be prepared for the rare case of one failing, thus we try to reach
-                         * up to three different addresses. To not flood the system with requests, we
-                         * start them in a 5 seconds interval spread. If one of them succeeds, the remaining ones
-                         * will be cancelled anyways. Note that a hint might not necessarily be reachable via TCP.
-                         */
-                        .flat_map(|hint| {
-                            /* If the hint has no name, take the first domain name as fallback */
-                            let name = hint.name
-                                .or_else(|| {
-                                    /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
-                                    hint.tcp.iter()
-                                        .filter_map(|hint| match url::Host::parse(&hint.hostname) {
-                                            Ok(url::Host::Domain(_)) => Some(hint.hostname.clone()),
-                                            _ => None,
-                                        })
-                                        .next()
-                                });
-                            hint.tcp
-                                .into_iter()
-                                .take(3)
-                                .enumerate()
-                                .map(move |(i, h)| (i, h, name.clone()))
-                        })
-                        .map(|(index, host, name)| async move {
-                            async_std::task::sleep(std::time::Duration::from_secs(
-                                index as u64 * 5,
-                            ))
-                            .await;
-                            hint_connector(host, name).await
-                        })
-                        .map(|fut| Box::pin(fut) as ConnectorFuture),
-                ),
-            ) as BoxIterator<ConnectorFuture>;
+                Ok((transit, TransitInfo::Relay { name }))
+            }
+
+            #[cfg(not(target_family = "wasm"))]
+            {
+                connectors = Box::new(
+                    connectors.chain(
+                        relay_hints
+                            .into_iter()
+                            /* A hint may have multiple addresses pointing towards the server. This may be multiple
+                            * domain aliases or different ports or an IPv6 or IPv4 address. We only need
+                            * to connect to one of them, since they are considered equivalent. However, we
+                            * also want to be prepared for the rare case of one failing, thus we try to reach
+                            * up to three different addresses. To not flood the system with requests, we
+                            * start them in a 5 seconds interval spread. If one of them succeeds, the remaining ones
+                            * will be cancelled anyways. Note that a hint might not necessarily be reachable via TCP.
+                            */
+                            .flat_map(|hint| {
+                                /* If the hint has no name, take the first domain name as fallback */
+                                let name = hint.name
+                                    .or_else(|| {
+                                        /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
+                                        hint.tcp.iter()
+                                            .filter_map(|hint| match url::Host::parse(&hint.hostname) {
+                                                Ok(url::Host::Domain(_)) => Some(hint.hostname.clone()),
+                                                _ => None,
+                                            })
+                                            .next()
+                                    });
+
+                                hint.tcp
+                                    .into_iter()
+                                    .take(3)
+                                    .enumerate()
+                                    .map(move |(i, h)| (i, h, name.clone()))
+                            })
+                            .map(|(index, host, name)| async move {
+                                sleep(std::time::Duration::from_secs(
+                                    index as u64 * 5,
+                                ))
+                                .await;
+                                hint_connector(host, name).await
+                            })
+                            .map(|fut| Box::pin(fut) as ConnectorFuture),
+                    ),
+                ) as BoxIterator<ConnectorFuture>;
+            }
+
+            #[cfg(target_family = "wasm")]
+            {
+                connectors = Box::new(
+                    connectors.chain(
+                        relay_hints
+                            .into_iter()
+                            /* A hint may have multiple addresses pointing towards the server. This may be multiple
+                            * domain aliases or different ports or an IPv6 or IPv4 address. We only need
+                            * to connect to one of them, since they are considered equivalent. However, we
+                            * also want to be prepared for the rare case of one failing, thus we try to reach
+                            * up to three different addresses. To not flood the system with requests, we
+                            * start them in a 5 seconds interval spread. If one of them succeeds, the remaining ones
+                            * will be cancelled anyways. Note that a hint might not necessarily be reachable via TCP.
+                            */
+                            .flat_map(|hint| {
+                                /* If the hint has no name, take the first domain name as fallback */
+                                let name = hint.name
+                                    .or_else(|| {
+                                        /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
+                                        hint.tcp.iter()
+                                            .filter_map(|hint| match url::Host::parse(&hint.hostname) {
+                                                Ok(url::Host::Domain(_)) => Some(hint.hostname.clone()),
+                                                _ => None,
+                                            })
+                                            .next()
+                                    });
+                                hint.ws
+                                    .into_iter()
+                                    .take(3)
+                                    .enumerate()
+                                    .map(move |(i, u)| (i, u, name.clone()))
+                            })
+                            .map(|(index, url, name)| async move {
+                                sleep(std::time::Duration::from_secs(
+                                    index as u64 * 5,
+                                ))
+                                .await;
+                                hint_connector(url, name).await
+                            })
+                            .map(|fut| Box::pin(fut) as ConnectorFuture),
+                    ),
+                ) as BoxIterator<ConnectorFuture>;
+            }
         }
 
         /* Do a handshake on all our found connections */
@@ -1138,9 +1266,13 @@ impl TransitConnector {
                     let tside = tside2.clone();
                     async move {
                         let (socket, host_type) = fut.await?;
+                        #[cfg(not(target_family = "wasm"))]
                         let transit =
                             handshake_exchange(is_leader, tside, socket, &host_type, transit_key)
                                 .await?;
+                        #[cfg(target_family = "wasm")]
+                        let transit =
+                            handshake_exchange(is_leader, tside, socket, transit_key).await?;
                         Ok((transit, host_type))
                     }
                 })
@@ -1152,6 +1284,7 @@ impl TransitConnector {
             as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
 
         /* Also listen on some port just in case. */
+        #[cfg(not(target_family = "wasm"))]
         if let Some(socket2) = socket2 {
             connectors = Box::new(
                 connectors.chain(
@@ -1204,7 +1337,10 @@ impl TransitConnector {
  */
 pub struct Transit {
     /** Raw transit connection */
+    #[cfg(not(target_family = "wasm"))]
     socket: TcpStream,
+    #[cfg(target_family = "wasm")]
+    socket: ws_stream_wasm::WsStream,
     /** Our key, used for sending */
     pub skey: Key<TransitTxKey>,
     /** Their key, used for receiving */
@@ -1226,10 +1362,14 @@ impl Transit {
     }
 
     async fn receive_record_inner(
-        socket: &mut (impl futures::io::AsyncRead + Unpin),
+        #[cfg(not(target_family = "wasm"))] socket: &mut (impl futures::io::AsyncRead + Unpin),
+        #[cfg(target_family = "wasm")] socket: &mut ws_stream_wasm::WsStream,
         rkey: &Key<TransitRxKey>,
         nonce: &mut secretbox::Nonce,
     ) -> Result<Box<[u8]>, TransitError> {
+        use std::io::{Error, ErrorKind};
+
+        #[cfg(not(target_family = "wasm"))]
         let enc_packet = {
             // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
             let length = {
@@ -1248,12 +1388,22 @@ impl Transit {
             // 2. read that many bytes into an array (or a vector?)
             let mut buffer = Vec::with_capacity(length);
             let len = socket.take(length as u64).read_to_end(&mut buffer).await?;
-            use std::io::{Error, ErrorKind};
             ensure!(
                 len == length,
                 Error::new(ErrorKind::UnexpectedEof, "failed to read whole message")
             );
             buffer
+        };
+        #[cfg(target_family = "wasm")]
+        let enc_packet: Vec<u8> = {
+            socket
+                .next()
+                .await
+                .ok_or(Error::new(
+                    ErrorKind::Other,
+                    "failed to receive transit message",
+                ))?
+                .into()
         };
 
         // 3. decrypt the vector 'enc_packet' with the key.
@@ -1287,7 +1437,8 @@ impl Transit {
     }
 
     async fn send_record_inner(
-        socket: &mut (impl futures::io::AsyncWrite + Unpin),
+        #[cfg(not(target_family = "wasm"))] socket: &mut (impl futures::io::AsyncWrite + Unpin),
+        #[cfg(target_family = "wasm")] socket: &mut ws_stream_wasm::WsStream,
         skey: &Key<TransitTxKey>,
         plaintext: &[u8],
         nonce: &mut secretbox::Nonce,
@@ -1305,11 +1456,23 @@ impl Transit {
         };
 
         // send the encrypted record
-        socket
-            .write_all(&((ciphertext.len() + nonce.len()) as u32).to_be_bytes())
-            .await?;
-        socket.write_all(nonce).await?;
-        socket.write_all(&ciphertext).await?;
+        #[cfg(not(target_family = "wasm"))]
+        {
+            socket
+                .write_all(&((ciphertext.len() + nonce.len()) as u32).to_be_bytes())
+                .await?;
+            socket.write_all(nonce).await?;
+            socket.write_all(&ciphertext).await?;
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            let mut ciphertext = ciphertext;
+            /* This is effectively a push_front */
+            ciphertext.splice(0..0, *nonce);
+            socket
+                .send(ws_stream_wasm::WsMessage::Binary(ciphertext))
+                .await?;
+        }
 
         crate::util::sodium_increment_be(nonce);
 
@@ -1321,6 +1484,7 @@ impl Transit {
     }
 
     /** Convert the transit connection to a [`Stream`]/[`Sink`] pair */
+    #[cfg(not(target_family = "wasm"))]
     pub fn split(
         self,
     ) -> (
@@ -1365,6 +1529,7 @@ impl Transit {
  * must write `Ok\n` into the stream that should be used (and optionally `Nevermind\n`
  * into all others).
  */
+#[cfg(not(target_family = "wasm"))]
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
@@ -1466,6 +1631,155 @@ async fn handshake_exchange(
         snonce: Default::default(),
         rnonce: Default::default(),
     })
+}
+
+/**
+ * Do a transit handshake exchange, to establish a direct connection.
+ *
+ * This automatically does the relay handshake first if necessary. On the follower
+ * side, the future will successfully run to completion if a connection could be
+ * established. On the leader side, the handshake is not 100% completed: the caller
+ * must write `Ok\n` into the stream that should be used (and optionally `Nevermind\n`
+ * into all others).
+ */
+#[cfg(target_family = "wasm")]
+async fn handshake_exchange(
+    is_leader: bool,
+    tside: Arc<String>,
+    mut socket: ws_stream_wasm::WsStream,
+    key: Arc<Key<TransitKey>>,
+) -> Result<Transit, TransitHandshakeError> {
+    // 9. create record keys
+    let (rkey, skey) = if is_leader {
+        let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
+        let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
+        (rkey, skey)
+    } else {
+        /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
+         * "leader" and "follower" instead. As a follower, we use the leader key for receiving and our
+         * key for sending.
+         */
+        let rkey = key.derive_subkey_from_purpose("transit_record_sender_key");
+        let skey = key.derive_subkey_from_purpose("transit_record_receiver_key");
+        (rkey, skey)
+    };
+
+    trace!("initiating relay handshake");
+
+    let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
+    socket
+        .send(ws_stream_wasm::WsMessage::Binary(
+            format!("please relay {} for side {}\n", sub_key.to_hex(), tside).into(),
+        ))
+        .await?;
+    let rx = socket
+        .next()
+        .await
+        .ok_or(TransitHandshakeError::HandshakeFailed)?;
+    ensure!(
+        rx.as_ref() == b"ok\n",
+        TransitHandshakeError::HandshakeFailed
+    );
+
+    if is_leader {
+        socket
+            .send(ws_stream_wasm::WsMessage::Binary(
+                format!(
+                    "transit sender {} ready\n\n",
+                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
+                        .to_hex()
+                )
+                .into(),
+            ))
+            .await?;
+
+        let handshake_rx = socket
+            .next()
+            .await
+            .ok_or(TransitHandshakeError::HandshakeFailed)?;
+        let handshake_rx_expected = format!(
+            "transit receiver {} ready\n\n\0",
+            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
+                .to_hex()
+        );
+        ensure!(
+            handshake_rx.as_ref() == handshake_rx_expected.as_bytes(),
+            TransitHandshakeError::HandshakeFailed
+        );
+    } else {
+        socket
+            .send(ws_stream_wasm::WsMessage::Binary(
+                format!(
+                    "transit receiver {} ready\n\n",
+                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
+                        .to_hex(),
+                )
+                .into(),
+            ))
+            .await?;
+
+        let handshake_rx = socket
+            .next()
+            .await
+            .ok_or(TransitHandshakeError::HandshakeFailed)?;
+        let handshake_rx_expected = format!(
+            "transit sender {} ready\n\n",
+            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
+                .to_hex(),
+        );
+        ensure!(
+            handshake_rx.as_ref() == handshake_rx_expected.as_bytes(),
+            TransitHandshakeError::HandshakeFailed
+        );
+
+        let handshake_rx = socket
+            .next()
+            .await
+            .ok_or(TransitHandshakeError::HandshakeFailed)?;
+        ensure!(
+            handshake_rx.as_ref() == b"go\n",
+            TransitHandshakeError::HandshakeFailed
+        );
+    }
+
+    Ok(Transit {
+        socket,
+        skey,
+        rkey,
+        snonce: Default::default(),
+        rnonce: Default::default(),
+    })
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn sleep(duration: std::time::Duration) {
+    async_std::task::sleep(duration).await
+}
+
+#[cfg(target_family = "wasm")]
+async fn sleep(duration: std::time::Duration) {
+    /* Skip error handling. Waiting is best effort anyways */
+    let _ = wasm_timer::Delay::new(duration).await;
+}
+
+#[cfg(not(target_family = "wasm"))]
+async fn timeout<F, T>(
+    duration: std::time::Duration,
+    future: F,
+) -> Result<T, async_std::future::TimeoutError>
+where
+    F: futures::Future<Output = T>,
+{
+    async_std::future::timeout(duration, future).await
+}
+
+#[cfg(target_family = "wasm")]
+async fn timeout<F, T>(duration: std::time::Duration, future: F) -> Result<T, std::io::Error>
+where
+    F: futures::Future<Output = T>,
+{
+    use wasm_timer::TryFutureExt;
+    future.map(Result::Ok).timeout(duration).await
 }
 
 #[cfg(test)]
