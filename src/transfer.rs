@@ -201,6 +201,7 @@ impl TransitAck {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
@@ -271,7 +272,7 @@ pub async fn send_file<F, N, G, H>(
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo, transit::ConnectSocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     let _peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
@@ -300,6 +301,7 @@ where
 /// This isn't a proper folder transfer as per the Wormhole protocol
 /// because it sends it in a way so that the receiver still has to manually
 /// unpack it. But it's better than nothing
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
@@ -456,7 +458,7 @@ impl ReceiveRequest {
     ) -> Result<(), TransferError>
     where
         F: FnMut(u64, u64) + 'static,
-        G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+        G: FnOnce(transit::TransitInfo, transit::ConnectSocketAddr),
         W: AsyncWrite + Unpin,
     {
         let run = async {

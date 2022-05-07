@@ -1,4 +1,4 @@
-use async_std::io::{prelude::WriteExt, ReadExt};
+use futures::{AsyncReadExt, AsyncWriteExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ pub async fn send_file<F, N, G, H>(
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo, transit::ConnectSocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
     let run = async {
@@ -133,6 +133,7 @@ where
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_folder<N, M, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,

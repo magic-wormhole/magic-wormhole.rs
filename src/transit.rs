@@ -858,9 +858,9 @@ impl MaybeConnectedSocket {
 
 /* Hack */
 #[cfg(not(target_family = "wasm"))]
-type ConnectSocketAddr = SocketAddr;
+pub(super) type ConnectSocketAddr = SocketAddr;
 #[cfg(target_family = "wasm")]
-type ConnectSocketAddr = ();
+pub(super) type ConnectSocketAddr = ();
 
 /**
  * A partially set up [`Transit`] connection.
