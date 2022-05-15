@@ -31,6 +31,7 @@ log = "0.4.13"
 # zeroize = { version = "1.2.0", features = ["zeroize_derive"] }
 base64 = "0.13.0"
 time = { version = "0.3.7", features = ["formatting"] }
+instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
 thiserror = "1.0.24"
