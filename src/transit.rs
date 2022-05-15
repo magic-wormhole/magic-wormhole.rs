@@ -907,7 +907,7 @@ impl TransitConnector {
         } = self;
         let transit_key = Arc::new(transit_key);
 
-        let start = std::time::Instant::now();
+        let start = instant::Instant::now();
         let mut connection_stream = Box::pin(
             Self::connect(
                 true,
