@@ -79,8 +79,8 @@ pub enum TransitConnectError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 enum TransitHandshakeError {
-    #[error("Handshake failed")]
-    HandshakeFailed,
+    #[error("Handshake failed: {}", _0)]
+    HandshakeFailed(Box<str>),
     #[error("Relay handshake failed")]
     RelayHandshakeFailed,
     #[error("Malformed peer address")]
@@ -1591,7 +1591,7 @@ async fn handshake_exchange(
         );
         ensure!(
             &rx[..] == expected_rx_handshake.as_bytes(),
-            TransitHandshakeError::HandshakeFailed,
+            TransitHandshakeError::HandshakeFailed("transit receiver not ready".into()),
         );
     } else {
         // for receive mode, send receive_handshake_msg and compare.
@@ -1620,7 +1620,7 @@ async fn handshake_exchange(
         );
         ensure!(
             &rx[..] == expected_tx_handshake.as_bytes(),
-            TransitHandshakeError::HandshakeFailed
+            TransitHandshakeError::HandshakeFailed("transit sender not ready".into())
         );
     }
 
@@ -1675,10 +1675,10 @@ async fn handshake_exchange(
     let rx = socket
         .next()
         .await
-        .ok_or(TransitHandshakeError::HandshakeFailed)?;
+        .ok_or(TransitHandshakeError::HandshakeFailed("both: msg for step 'ok' not received".into()))?;
     ensure!(
         rx.as_ref() == b"ok\n",
-        TransitHandshakeError::HandshakeFailed
+        TransitHandshakeError::HandshakeFailed("response not 'ok'".into())
     );
 
     if is_leader {
@@ -1696,7 +1696,7 @@ async fn handshake_exchange(
         let handshake_rx = socket
             .next()
             .await
-            .ok_or(TransitHandshakeError::HandshakeFailed)?;
+            .ok_or(TransitHandshakeError::HandshakeFailed("leader: msg for step 'receiver ready' not received".into()))?;
         let handshake_rx_expected = format!(
             "transit receiver {} ready\n\n",
             key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
@@ -1704,7 +1704,7 @@ async fn handshake_exchange(
         );
         ensure!(
             handshake_rx.as_ref() == handshake_rx_expected.as_bytes(),
-            TransitHandshakeError::HandshakeFailed
+            TransitHandshakeError::HandshakeFailed(format!("receiver not ready {:?} - {:?}", handshake_rx_expected, handshake_rx).into())
         );
     } else {
         socket
@@ -1721,7 +1721,7 @@ async fn handshake_exchange(
         let handshake_rx = socket
             .next()
             .await
-            .ok_or(TransitHandshakeError::HandshakeFailed)?;
+            .ok_or(TransitHandshakeError::HandshakeFailed("follower: msg for step 'sender ready' not received".into()))?;
         let handshake_rx_expected = format!(
             "transit sender {} ready\n\n",
             key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
@@ -1729,16 +1729,16 @@ async fn handshake_exchange(
         );
         ensure!(
             handshake_rx.as_ref() == handshake_rx_expected.as_bytes(),
-            TransitHandshakeError::HandshakeFailed
+            TransitHandshakeError::HandshakeFailed("sender not ready".into())
         );
 
         let handshake_rx = socket
             .next()
             .await
-            .ok_or(TransitHandshakeError::HandshakeFailed)?;
+            .ok_or(TransitHandshakeError::HandshakeFailed("follower: msg for step 'go' not received".into()))?;
         ensure!(
             handshake_rx.as_ref() == b"go\n",
-            TransitHandshakeError::HandshakeFailed
+            TransitHandshakeError::HandshakeFailed("no 'go' received".into())
         );
     }
 
