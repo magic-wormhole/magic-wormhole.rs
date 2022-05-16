@@ -980,7 +980,7 @@ impl TransitConnector {
         #[cfg(target_family = "wasm")]
         transit
             .socket
-            .send(ws_stream_wasm::WsMessage::Text("go\n".into()))
+            .send(ws_stream_wasm::WsMessage::Binary("go\n".into()))
             .await?;
 
         #[cfg(not(target_family = "wasm"))]
@@ -1698,7 +1698,7 @@ async fn handshake_exchange(
             .await
             .ok_or(TransitHandshakeError::HandshakeFailed)?;
         let handshake_rx_expected = format!(
-            "transit receiver {} ready\n\n\0",
+            "transit receiver {} ready\n\n",
             key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
                 .to_hex()
         );
