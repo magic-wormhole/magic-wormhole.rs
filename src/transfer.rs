@@ -201,24 +201,24 @@ impl TransitAck {
     }
 }
 /// Sends either a file or folder to the other side
-/// 
+///
 /// # Example
-/// 
+///
 /// ```no_run
 /// # use magic_wormhole::{Wormhole, WormholeError};
 ///   use magic_wormhole::transfer::{send_file_or_folder, APP_CONFIG};
 ///   use magic_wormhole::transit;
-/// 
+///
 /// # #[async_std::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///   let folder_path = "./foo/bar";
 ///   let folder_name = "bar";
-/// 
+///
 ///   // Wormhole connection
 ///   let (_, wormhole) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
 ///   let connector = wormhole.await?;
 ///   let relay_url = transit::DEFAULT_RELAY_SERVER.parse()?;
-/// 
+///
 ///   // Transfer status
 ///   let mut bytes_sent = 0;
 ///   let mut bytes_total = 0;
@@ -231,13 +231,13 @@ impl TransitAck {
 ///   let abilities = transit::Abilities::ALL_ABILITIES;
 ///   
 ///   send_file_or_folder(
-///     connector, 
+///     connector,
 ///     relay_url,
-///     folder_path, 
+///     folder_path,
 ///     folder_name,
-///     abilities, 
+///     abilities,
 ///     transit::log_transit_connection,
-///     progress, 
+///     progress,
 ///     cancel
 ///   ).await?;  
 /// # Ok(())
@@ -298,26 +298,26 @@ where
 ///
 /// You must ensure that the Reader contains exactly as many bytes
 /// as advertized in file_size.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```no_run
 /// # use magic_wormhole::{Wormhole, WormholeError};
 ///   use magic_wormhole::transfer::{send_file, APP_CONFIG};
 ///   use magic_wormhole::transit;
 ///   use async_std::fs::File;
-/// 
+///
 /// # #[async_std::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///   let filepath = "foo.txt";
 ///   let mut file = File::create(filepath).await?;
 ///   let file_length = file.metadata().await?.len();
-/// 
+///
 ///   // Wormhole connection
 ///   let (_, wormhole) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
 ///   let connector = wormhole.await?;
 ///   let relay_url = transit::DEFAULT_RELAY_SERVER.parse()?;
-/// 
+///
 ///   // Transfer status
 ///   let mut bytes_sent = 0;
 ///   let mut bytes_total = 0;
@@ -330,14 +330,14 @@ where
 ///   let abilities = transit::Abilities::ALL_ABILITIES;
 ///   
 ///   send_file(
-///     connector, 
+///     connector,
 ///     relay_url,
-///     &mut file, 
-///     filepath, 
+///     &mut file,
+///     filepath,
 ///     file_length,
 ///     abilities,
-///     transit::log_transit_connection, 
-///     progress, 
+///     transit::log_transit_connection,
+///     progress,
 ///     cancel
 ///   ).await?;
 ///   # Ok(())
@@ -385,24 +385,24 @@ where
 /// This isn't a proper folder transfer as per the Wormhole protocol
 /// because it sends it in a way so that the receiver still has to manually
 /// unpack it. But it's better than nothing
-/// 
+///
 /// # Example
-/// 
+///
 /// ```no_run
 /// # use magic_wormhole::{Wormhole, WormholeError};
 ///   use magic_wormhole::transfer::{send_folder, APP_CONFIG};
 ///   use magic_wormhole::transit;
-/// 
+///
 /// # #[async_std::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///   let folder_path = "./foo/bar";
 ///   let folder_name = "bar";
-/// 
+///
 ///   // Wormhole connection
 ///   let (_, wormhole) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
 ///   let connector = wormhole.await?;
 ///   let relay_url = transit::DEFAULT_RELAY_SERVER.parse()?;
-/// 
+///
 ///   // Transfer status
 ///   let mut bytes_sent = 0;
 ///   let mut bytes_total = 0;
@@ -415,16 +415,16 @@ where
 ///   let abilities = transit::Abilities::ALL_ABILITIES;
 ///   
 ///   send_folder(
-///     connector, 
+///     connector,
 ///     relay_url,
-///     folder_path, 
+///     folder_path,
 ///     folder_name,
-///     abilities, 
-///     transit::log_transit_connection, 
-///     progress, 
+///     abilities,
+///     transit::log_transit_connection,
+///     progress,
 ///     cancel
 ///   ).await?;  
-/// 
+///
 /// # Ok(())
 /// # }
 pub async fn send_folder<N, M, G, H>(
@@ -465,12 +465,12 @@ where
 /// Returns `None` if the task got cancelled.
 ///
 /// # Example
-/// 
+///
 /// ```no_run
 /// # use magic_wormhole::{Wormhole, WormholeError};
 ///   use magic_wormhole::transfer::{request_file, APP_CONFIG};
 ///   use magic_wormhole::transit;
-/// 
+///
 /// # #[async_std::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///   let (_, wormhole) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
@@ -574,7 +574,7 @@ pub async fn request_file(
  * A pending files send offer from the other side
  *
  * You *should* consume this object, either by calling [`accept`](ReceiveRequest::accept) or [`reject`](ReceiveRequest::reject).
- * 
+ *
  * Constructed from the [`request_file`](self::request_file) function.
  */
 #[must_use]
@@ -593,15 +593,15 @@ impl ReceiveRequest {
      * Accept the file offer
      *
      * This will transfer the file and save it on disk.
-     */
+     * */
     /// # Example
-    /// 
+    ///
     /// ```no_run
     /// # use magic_wormhole::{Wormhole, WormholeError};
     /// # use magic_wormhole::transfer::{request_file, APP_CONFIG};
     /// # use magic_wormhole::transit;
     ///   use async_std::fs::File;
-    /// 
+    ///
     /// # #[async_std::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # let (_, wormhole) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
@@ -610,7 +610,7 @@ impl ReceiveRequest {
     /// # let abilities = transit::Abilities::ALL_ABILITIES;
     /// # let cancel = futures::future::pending();
     ///   let mut receive_request = request_file(wormhole, relay_url, abilities, cancel).await?;
-    ///   let mut file = File::create("foo.txt").await?; 
+    ///   let mut file = File::create("foo.txt").await?;
     ///   
     ///   let mut bytes_sent = 0;
     ///   let mut bytes_total = 0;
@@ -622,8 +622,8 @@ impl ReceiveRequest {
     ///   
     ///   receive_request.unwrap().accept(
     ///     transit::log_transit_connection,
-    ///     progress, 
-    ///     &mut file, 
+    ///     progress,
+    ///     &mut file,
     ///     cancel
     ///   );
     ///   

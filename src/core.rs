@@ -117,28 +117,28 @@ pub struct Wormhole {
 }
 
 impl Wormhole {
-  /// Generate a code and connect to the rendezvous server, `code_length` is the 
-  /// number of words after the nameplate
-  /// 
-  /// # Returns
-  ///
-  /// A tuple with a [`WormholeWelcome`] and a [`std::future::Future`] that will
-  /// do the rest of the client-client handshake and yield the [`Wormhole`] object
-  /// on success.
-  /// 
-  /// # Example
-  /// ```
-  /// # #[async_std::main]
-  /// # async fn main() -> Result<(), magic_wormhole::WormholeError> {
-  /// # use magic_wormhole::Wormhole;
-  ///  use magic_wormhole::transfer::APP_CONFIG;
-  ///  
-  ///  let num_words = 2; 
-  ///  let (welcome, wormhole) = Wormhole::connect_without_code(APP_CONFIG, num_words).await?;
-  ///  let wormhole_code = welcome.code.0;
-  /// # Ok(())
-  /// # } 
-  /// ```
+    /// Generate a code and connect to the rendezvous server, `code_length` is the
+    /// number of words after the nameplate
+    ///
+    /// # Returns
+    ///
+    /// A tuple with a [`WormholeWelcome`] and a [`std::future::Future`] that will
+    /// do the rest of the client-client handshake and yield the [`Wormhole`] object
+    /// on success.
+    ///
+    /// # Example
+    /// ```
+    /// # #[async_std::main]
+    /// # async fn main() -> Result<(), magic_wormhole::WormholeError> {
+    /// # use magic_wormhole::Wormhole;
+    /// use magic_wormhole::transfer::APP_CONFIG;
+    ///
+    /// let num_words = 2;
+    /// let (welcome, wormhole) = Wormhole::connect_without_code(APP_CONFIG, num_words).await?;
+    /// let wormhole_code = welcome.code.0;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn connect_without_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code_length: usize,
@@ -174,22 +174,22 @@ impl Wormhole {
     }
 
     /// Connect to a peer with a code.
-    /// 
+    ///
     /// # Returns
     ///
-    /// A [`WormholeWelcome`] and a [`std::future::Future`] which yields 
+    /// A [`WormholeWelcome`] and a [`std::future::Future`] which yields
     /// a Wormhole object
-    /// 
+    ///
     /// # Example
     /// ```no_run
     /// # #[async_std::main]
     /// # async fn main() -> Result<(), magic_wormhole::WormholeError> {
     /// # use magic_wormhole::Wormhole;
-    ///  use magic_wormhole::{Code, transfer::APP_CONFIG};
-    ///  
-    ///  let code = Code("1-aardvark-Zulu".to_string());
-    ///  let (welcome, wormhole) = Wormhole::connect_with_code(APP_CONFIG, code).await?;
-    /// # Ok(()) 
+    /// use magic_wormhole::{transfer::APP_CONFIG, Code};
+    ///
+    /// let code = Code("1-aardvark-Zulu".to_string());
+    /// let (welcome, wormhole) = Wormhole::connect_with_code(APP_CONFIG, code).await?;
+    /// # Ok(())
     /// # }
     /// ```
     pub async fn connect_with_code(
