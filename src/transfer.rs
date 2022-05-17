@@ -231,13 +231,18 @@ impl TransitAck {
 ///   let abilities = transit::Abilities::ALL_ABILITIES;
 ///   
 ///   send_file_or_folder(
-///     connector, relay_url,
-///     folder_path, folder_name,
-///     abilities, progress, cancel
+///     connector, 
+///     relay_url,
+///     folder_path, 
+///     folder_name,
+///     abilities, 
+///     transit::log_transit_connection,
+///     progress, 
+///     cancel
 ///   ).await?;  
 /// # Ok(())
 /// # }
-pub async fn send_file_or_folder<N, M, H>(
+pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
     file_path: N,
@@ -325,9 +330,15 @@ where
 ///   let abilities = transit::Abilities::ALL_ABILITIES;
 ///   
 ///   send_file(
-///     connector, relay_url,
-///     &mut file, filepath, file_length,
-///     abilities, progress, cancel
+///     connector, 
+///     relay_url,
+///     &mut file, 
+///     filepath, 
+///     file_length,
+///     abilities,
+///     transit::log_transit_connection, 
+///     progress, 
+///     cancel
 ///   ).await?;
 ///   # Ok(())
 /// # }
@@ -404,14 +415,19 @@ where
 ///   let abilities = transit::Abilities::ALL_ABILITIES;
 ///   
 ///   send_folder(
-///     connector, relay_url,
-///     folder_path, folder_name,
-///     abilities, progress, cancel
+///     connector, 
+///     relay_url,
+///     folder_path, 
+///     folder_name,
+///     abilities, 
+///     transit::log_transit_connection, 
+///     progress, 
+///     cancel
 ///   ).await?;  
 /// 
 /// # Ok(())
 /// # }
-pub async fn send_folder<N, M, H>(
+pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_url: url::Url,
     folder_path: N,
@@ -604,11 +620,16 @@ impl ReceiveRequest {
     ///   };
     ///   let cancel = futures::future::pending();
     ///   
-    ///   receive_request.unwrap().accept(progress, &mut file, cancel);
+    ///   receive_request.unwrap().accept(
+    ///     transit::log_transit_connection,
+    ///     progress, 
+    ///     &mut file, 
+    ///     cancel
+    ///   );
     ///   
     /// # Ok(())
     /// # }
-    pub async fn accept<F, W>(
+    pub async fn accept<F, G, W>(
         mut self,
         transit_handler: G,
         progress_handler: F,
