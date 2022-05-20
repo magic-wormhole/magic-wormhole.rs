@@ -26,9 +26,11 @@ use futures::{
     future::FutureExt, future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use log::*;
+#[cfg(not(target_family = "wasm"))]
+use std::net::ToSocketAddrs;
 use std::{
     collections::HashSet,
-    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    net::{IpAddr, SocketAddr},
     sync::Arc,
 };
 use xsalsa20poly1305 as secretbox;
@@ -39,6 +41,7 @@ pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 // No need to make public, it's hard-coded anyways (:
 // Open an issue if you want an API for this
 // Use <stun.stunprotocol.org:3478> for non-production testing
+#[cfg(not(target_family = "wasm"))]
 const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 #[derive(Debug)]
@@ -596,6 +599,7 @@ async fn connect_custom(
     Ok(stream.into_inner()?.into())
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, thiserror::Error)]
 enum StunError {
     #[error("No V4 addresses were found for the selected STUN server")]
@@ -1675,10 +1679,10 @@ async fn handshake_exchange(
     let rx = socket
         .next()
         .await
-        .ok_or(TransitHandshakeError::HandshakeFailed("both: msg for step 'ok' not received".into()))?;
+        .ok_or(TransitHandshakeError::RelayHandshakeFailed)?;
     ensure!(
         rx.as_ref() == b"ok\n",
-        TransitHandshakeError::HandshakeFailed("response not 'ok'".into())
+        TransitHandshakeError::RelayHandshakeFailed
     );
 
     if is_leader {
@@ -1696,7 +1700,9 @@ async fn handshake_exchange(
         let handshake_rx = socket
             .next()
             .await
-            .ok_or(TransitHandshakeError::HandshakeFailed("leader: msg for step 'receiver ready' not received".into()))?;
+            .ok_or(TransitHandshakeError::HandshakeFailed(
+                "leader: msg for step 'receiver ready' not received".into(),
+            ))?;
         let handshake_rx_expected = format!(
             "transit receiver {} ready\n\n",
             key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
@@ -1704,7 +1710,13 @@ async fn handshake_exchange(
         );
         ensure!(
             handshake_rx.as_ref() == handshake_rx_expected.as_bytes(),
-            TransitHandshakeError::HandshakeFailed(format!("receiver not ready {:?} - {:?}", handshake_rx_expected, handshake_rx).into())
+            TransitHandshakeError::HandshakeFailed(
+                format!(
+                    "receiver not ready {:?} - {:?}",
+                    handshake_rx_expected, handshake_rx
+                )
+                .into()
+            )
         );
     } else {
         socket
@@ -1721,7 +1733,9 @@ async fn handshake_exchange(
         let handshake_rx = socket
             .next()
             .await
-            .ok_or(TransitHandshakeError::HandshakeFailed("follower: msg for step 'sender ready' not received".into()))?;
+            .ok_or(TransitHandshakeError::HandshakeFailed(
+                "follower: msg for step 'sender ready' not received".into(),
+            ))?;
         let handshake_rx_expected = format!(
             "transit sender {} ready\n\n",
             key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
@@ -1735,7 +1749,9 @@ async fn handshake_exchange(
         let handshake_rx = socket
             .next()
             .await
-            .ok_or(TransitHandshakeError::HandshakeFailed("follower: msg for step 'go' not received".into()))?;
+            .ok_or(TransitHandshakeError::HandshakeFailed(
+                "follower: msg for step 'go' not received".into(),
+            ))?;
         ensure!(
             handshake_rx.as_ref() == b"go\n",
             TransitHandshakeError::HandshakeFailed("no 'go' received".into())
