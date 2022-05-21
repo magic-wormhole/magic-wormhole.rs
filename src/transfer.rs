@@ -491,7 +491,7 @@ impl ReceiveRequest {
 
         match crate::util::cancellable(run, cancel).await {
             Ok(Ok(())) => {
-                self.wormhole.close().await?;
+                let _ = self.wormhole.close().await;
                 Ok(())
             },
             Ok(Err(error @ TransferError::PeerError(_))) => {
