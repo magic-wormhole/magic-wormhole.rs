@@ -569,8 +569,10 @@ async fn connect_custom(
 
 #[derive(Debug, thiserror::Error)]
 enum StunError {
-    #[error("No V4 addresses were found for the selected STUN server")]
-    ServerIsV4Only,
+    #[error("No IPv4 addresses were found for the selected STUN server")]
+    ServerIsV6Only,
+    #[error("Server did not tell us our IP address")]
+    ServerNoResponse,
     #[error("Connection timed out")]
     Timeout,
     #[error("IO error")]
@@ -602,7 +604,7 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
                 },
                 SocketAddr::V6(_) => unreachable!(),
             })
-            .ok_or(StunError::ServerIsV4Only)?
+            .ok_or(StunError::ServerIsV6Only)?
             .into(),
     )
     .await?;
@@ -637,7 +639,7 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
         Ok(bytes)
     }
 
-    fn decode_address(buf: &[u8]) -> Result<SocketAddr, bytecodec::Error> {
+    fn decode_address(buf: &[u8]) -> Result<Option<SocketAddr>, bytecodec::Error> {
         let mut decoder = MessageDecoder::<Attribute>::new();
         let decoded = decoder.decode_from_bytes(buf)??;
 
@@ -651,7 +653,6 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
         let external_addr = external_addr1
             // .or(external_addr2)
             .or(external_addr3);
-        let external_addr = external_addr.unwrap();
 
         Ok(external_addr)
     }
@@ -666,7 +667,8 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
     let len: u16 = u16::from_be_bytes([buf[2], buf[3]]);
     /* Read the rest of the message */
     socket.read_exact(&mut buf[20..][..len as usize]).await?;
-    let external_addr = decode_address(&buf[..20 + len as usize])?;
+    let external_addr =
+        decode_address(&buf[..20 + len as usize])?.ok_or(StunError::ServerNoResponse)?;
 
     Ok((external_addr, socket))
 }
@@ -726,14 +728,17 @@ pub async fn init(
 
     /* Detect our IP addresses if the ability is enabled */
     if abilities.can_direct() {
-        /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
-         * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
-         * and use that instead.
-         */
-        let socket: MaybeConnectedSocket =
-            match async_std::future::timeout(std::time::Duration::from_secs(4), get_external_ip())
-                .await
-                .map_err(|_| StunError::Timeout)
+        let create_sockets = async {
+            /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
+             * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
+             * and use that instead.
+             */
+            let socket: MaybeConnectedSocket = match async_std::future::timeout(
+                std::time::Duration::from_secs(4),
+                get_external_ip(),
+            )
+            .await
+            .map_err(|_| StunError::Timeout)
             {
                 Ok(Ok((external_ip, stream))) => {
                     log::debug!("Our external IP address is {}", external_ip);
@@ -748,49 +753,56 @@ pub async fn init(
                 Err(err) | Ok(Err(err)) => {
                     log::warn!("Failed to get external address via STUN, {}", err);
                     let socket =
-                        socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
-                            .unwrap();
+                        socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
                     set_socket_opts(&socket)?;
 
-                    socket
-                        .bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())
-                        .unwrap();
+                    socket.bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())?;
 
                     socket.into()
                 },
             };
 
-        /* Get a second socket, but this time open a listener on that port.
-         * This sadly doubles the number of hints, but the method above doesn't work
-         * for systems which don't have any firewalls. Also, this time we can't reuse
-         * the port. In theory, we could, but it really confused the kernel to the point
-         * of `accept` calls never returning again.
-         */
-        let socket2 = TcpListener::bind("[::]:0").await?;
+            /* Get a second socket, but this time open a listener on that port.
+             * This sadly doubles the number of hints, but the method above doesn't work
+             * for systems which don't have any firewalls. Also, this time we can't reuse
+             * the port. In theory, we could, but it really confused the kernel to the point
+             * of `accept` calls never returning again.
+             */
+            let socket2 = TcpListener::bind("[::]:0").await?;
 
-        /* Find our ports, iterate all our local addresses, combine them with the ports and that's our hints */
-        let port = socket.local_addr()?.as_socket().unwrap().port();
-        let port2 = socket2.local_addr()?.port();
-        our_hints.direct_tcp.extend(
-            get_if_addrs::get_if_addrs()?
-                .iter()
-                .filter(|iface| !iface.is_loopback())
-                .flat_map(|ip| {
-                    [
-                        DirectHint {
-                            hostname: ip.ip().to_string(),
-                            port,
-                        },
-                        DirectHint {
-                            hostname: ip.ip().to_string(),
-                            port: port2,
-                        },
-                    ]
-                    .into_iter()
-                }),
-        );
+            /* Find our ports, iterate all our local addresses, combine them with the ports and that's our hints */
+            let port = socket.local_addr()?.as_socket().unwrap().port();
+            let port2 = socket2.local_addr()?.port();
+            our_hints.direct_tcp.extend(
+                get_if_addrs::get_if_addrs()?
+                    .iter()
+                    .filter(|iface| !iface.is_loopback())
+                    .flat_map(|ip| {
+                        [
+                            DirectHint {
+                                hostname: ip.ip().to_string(),
+                                port,
+                            },
+                            DirectHint {
+                                hostname: ip.ip().to_string(),
+                                port: port2,
+                            },
+                        ]
+                        .into_iter()
+                    }),
+            );
 
-        listener = Some((socket, socket2));
+            Ok::<_, std::io::Error>((socket, socket2))
+        };
+
+        listener = create_sockets
+            .await
+            // TODO replace with inspect_err once stable
+            .map_err(|err| {
+                log::error!("Failed to create direct hints for our side: {}", err);
+                err
+            })
+            .ok();
     }
 
     if abilities.can_relay() {
@@ -1018,7 +1030,8 @@ impl TransitConnector {
         their_hints: Arc<Hints>,
         socket: Option<(MaybeConnectedSocket, TcpListener)>,
     ) -> impl Stream<Item = Result<(Transit, TransitInfo), TransitHandshakeError>> + 'static {
-        assert!(socket.is_some() == our_abilities.can_direct());
+        /* Have socket => can direct */
+        assert!(socket.is_none() || our_abilities.can_direct());
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
@@ -1059,6 +1072,27 @@ impl TransitConnector {
                 ),
             ) as BoxIterator<ConnectorFuture>;
             Some(socket2)
+        } else if our_abilities.can_direct() {
+            /* Fallback: We did not manage to bind a listener but we can still connect to the peer's hints */
+            connectors = Box::new(
+                connectors.chain(
+                    their_hints
+                        .direct_tcp
+                        .clone()
+                        .into_iter()
+                        /* Nobody should have that many IP addresses, even with NATing */
+                        .take(50)
+                        .map(move |hint| async move {
+                            let dest_addr = SocketAddr::try_from(&hint)?;
+                            log::debug!("Connecting directly to {}", dest_addr);
+                            let socket = async_std::net::TcpStream::connect(&dest_addr).await?;
+                            log::debug!("Connected to {}!", dest_addr);
+                            Ok((socket, TransitInfo::Direct))
+                        })
+                        .map(|fut| Box::pin(fut) as ConnectorFuture),
+                ),
+            ) as BoxIterator<ConnectorFuture>;
+            None
         } else {
             None
         };
@@ -1281,7 +1315,7 @@ impl Transit {
 
     /** Send an encrypted message to the other side */
     pub async fn send_record(&mut self, plaintext: &[u8]) -> Result<(), TransitError> {
-        assert!(plaintext.len() > 0);
+        assert!(!plaintext.is_empty());
 
         Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.snonce).await
     }
