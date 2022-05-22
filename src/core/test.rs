@@ -51,11 +51,9 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 transfer::send_file(
                     wormhole,
                     transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
-                    &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                    &mut async_std::fs::File::open("tests/example-file.bin").await?,
                     "example-file.bin",
-                    std::fs::metadata("examples/example-file.bin")
-                        .unwrap()
-                        .len(),
+                    std::fs::metadata("tests/example-file.bin").unwrap().len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
                     &transit::log_transit_connection,
                     |_sent, _total| {},
@@ -96,14 +94,14 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
         })?;
 
     sender_task.await?;
-    let original = std::fs::read("examples/example-file.bin")?;
+    let original = std::fs::read("tests/example-file.bin")?;
     let received: Vec<u8> = (receiver_task.await as eyre::Result<Vec<u8>>)?;
 
     assert_eq!(original, received, "Files differ");
     Ok(())
 }
 
-/** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
+/** Send a file using the Rust implementation that has exactly 4096 bytes (our chunk size) */
 #[cfg(feature = "transfer")]
 #[async_std::test]
 pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
@@ -111,7 +109,7 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
 
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
-    const FILENAME: &str = "examples/example-file-4096.bin";
+    const FILENAME: &str = "tests/example-file-4096.bin";
 
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
@@ -178,6 +176,77 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
     Ok(())
 }
 
+/** https://github.com/magic-wormhole/magic-wormhole.rs/issues/160 */
+#[cfg(feature = "transfer")]
+#[async_std::test]
+pub async fn test_empty_file_rust2rust() -> eyre::Result<()> {
+    init_logger();
+
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async_std::task::Builder::new()
+        .name("sender".to_owned())
+        .spawn(async {
+            let (welcome, connector) =
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
+            log::info!("This wormhole's code is: {}", &welcome.code);
+            code_tx.send(welcome.code).unwrap();
+            let wormhole = connector.await?;
+            eyre::Result::<_>::Ok(
+                transfer::send_file(
+                    wormhole,
+                    transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                    &mut async_std::fs::File::open("tests/example-file-empty").await?,
+                    "example-file-empty",
+                    std::fs::metadata("tests/example-file-empty").unwrap().len(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    &transit::log_transit_connection,
+                    |_sent, _total| {},
+                    futures::future::pending(),
+                )
+                .await?,
+            )
+        })?;
+    let receiver_task = async_std::task::Builder::new()
+        .name("receiver".to_owned())
+        .spawn(async {
+            let code = code_rx.await?;
+            log::info!("Got code over local: {}", &code);
+            let (welcome, wormhole) =
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
+            if let Some(welcome) = &welcome.welcome {
+                log::info!("Got welcome: {}", welcome);
+            }
+
+            let req = transfer::request_file(
+                wormhole,
+                transit::DEFAULT_RELAY_SERVER.parse().unwrap(),
+                magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                futures::future::pending(),
+            )
+            .await?
+            .unwrap();
+
+            let mut buffer = Vec::<u8>::new();
+            req.accept(
+                &transit::log_transit_connection,
+                |_received, _total| {},
+                &mut buffer,
+                futures::future::pending(),
+            )
+            .await?;
+            eyre::Result::<Vec<u8>>::Ok(buffer)
+        })?;
+
+    sender_task.await?;
+
+    assert!(&receiver_task.await?.is_empty());
+    Ok(())
+}
+
 /** Test the functionality used by the `send-many` subcommand. It logically builds upon the
  * `test_eventloop_exit` tests. We send us a file five times, and check if it arrived.
  */
@@ -192,7 +261,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
     let code = welcome.code;
     log::info!("The code is {:?}", code);
 
-    let correct_data = std::fs::read("examples/example-file.bin")?;
+    let correct_data = std::fs::read("tests/example-file.bin")?;
 
     /* Send many */
     let sender_code = code.clone();
@@ -209,11 +278,9 @@ pub async fn test_send_many() -> eyre::Result<()> {
                 crate::transfer::send_file(
                     wormhole,
                     url,
-                    &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                    &mut async_std::fs::File::open("tests/example-file.bin").await?,
                     "example-file.bin",
-                    std::fs::metadata("examples/example-file.bin")
-                        .unwrap()
-                        .len(),
+                    std::fs::metadata("tests/example-file.bin").unwrap().len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
                     &transit::log_transit_connection,
                     |_, _| {},
@@ -235,11 +302,9 @@ pub async fn test_send_many() -> eyre::Result<()> {
                 crate::transfer::send_file(
                     wormhole,
                     url,
-                    &mut async_std::fs::File::open("examples/example-file.bin").await?,
+                    &mut async_std::fs::File::open("tests/example-file.bin").await?,
                     "example-file.bin",
-                    std::fs::metadata("examples/example-file.bin")
-                        .unwrap()
-                        .len(),
+                    std::fs::metadata("tests/example-file.bin").unwrap().len(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
                     &transit::log_transit_connection,
                     |_, _| {},
