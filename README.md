@@ -17,7 +17,8 @@ Features that are missing:
 
 New features that exceed the other implementations:
 
-- Can do direct connections across the internet and firewalls
+- Can do direct connections across the internet (NATs) and firewalls
+- Automatically copies your code to the clipboard
 - Port forwarding in addition to file transfer (experimental)
 - Send a file to multiple people (experimental)
 
@@ -28,6 +29,12 @@ If you want to toy with the CLI, `cargo run -- --help` will get you started. The
 If you'd like to use Wormhole in your application, `cargo doc --open` will tell you how to use it. There aren't any hosted docs at the moment.
 
 If you don't fear touching code and want to contribute, `./src/lib.rs`, `./src/transfer.rs` and `./src/transit.rs` are rather easy to get into. The [protocol specification](https://github.com/magic-wormhole/magic-wormhole-protocols) will probably be useful to you.
+
+## Applications using Wormhole Rust as library
+
+- [Warp](https://gitlab.gnome.org/World/warp), a GUI client using Gtk
+
+(feel free to add yours)
 
 ## License
 
