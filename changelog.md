@@ -2,11 +2,14 @@
 
 ## Unreleased
 
+## Version 0.5.0
+
 - \[lib\]\[breaking\] Removed `relay-v2` ability again.
 	- This fixed some relay signalling issues, where no connection could be made with `--force-relay` under some circumstances.
 - \[lib\]\[breaking\] Exposed the state of the established transit connection
 	- The `transit` module now returns whether the established connection is direct or not and the peer/relay's IP address
 	- The `transfer` and `forwarding` modules now take a `transit_handler` argument. Use `&transit::log_transit_connection` as default value
+- Various bugfixes
 
 ## Version 0.4.0
 
