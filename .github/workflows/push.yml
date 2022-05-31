@@ -2,9 +2,9 @@ name: Rust
 
 on:
   push:
-    branches: [master, dev]
+    branches: [ master, dev ]
   pull_request:
-    branches: [master, dev]
+    branches: [ master, dev ]
 
 jobs:
   format:
@@ -150,6 +150,38 @@ jobs:
           path: |
             ./target/release/wormhole-rs
             ./target/release/wormhole-rs.exe
+          if-no-files-found: error
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Add wasm-pack
+        uses: jetli/wasm-pack-action@v0.3.0
+      - name: Cache ~/.cargo
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo
+          key: ${{ runner.os }}-wasm-dotcargo
+      - name: Cache cargo build
+        uses: actions/cache@v1
+        with:
+          path: target
+          key: ${{ runner.os }}-test-wasm-target
+      - name: Build wasm
+        run: wasm-pack build ./wasm
+      - name: Pack wasm for npm
+        run: wasm-pack pack ./wasm
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: wormhole-wasm-${{ github.sha }}
+          path: ./wasm/pkg/magic-wormhole-wasm-*.tgz
           if-no-files-found: error
 
   coverage:
