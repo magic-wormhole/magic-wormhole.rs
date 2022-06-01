@@ -33,48 +33,50 @@ pub struct Event {
     code: String,
 }
 
-/// Event for a server welcome message (should be shown if not empty).
-pub fn server_welcome(server_welcome_message: String) -> Event {
-    Event {
-        event_type: EventType::ServerWelcome,
-        server_welcome_message,
-        ..Event::default()
+impl Event {
+    /// Event for a server welcome message (should be shown if not empty).
+    pub fn server_welcome(server_welcome_message: String) -> Event {
+        Event {
+            event_type: EventType::ServerWelcome,
+            server_welcome_message,
+            ..Event::default()
+        }
     }
-}
 
-/// Event for file metadata (name & size).
-pub fn file_metadata(file_name: String, file_size: u64) -> Event {
-    Event {
-        event_type: EventType::FileMetadata,
-        file_name,
-        file_size,
-        ..Event::default()
+    /// Event for file metadata (name & size).
+    pub fn file_metadata(file_name: String, file_size: u64) -> Event {
+        Event {
+            event_type: EventType::FileMetadata,
+            file_name,
+            file_size,
+            ..Event::default()
+        }
     }
-}
 
-// Event for establishing the connection to the relay.
-pub fn connected() -> Event {
-    Event {
-        event_type: EventType::ConnectedToRelay,
-        ..Event::default()
+    // Event for establishing the connection to the relay.
+    pub fn connected() -> Event {
+        Event {
+            event_type: EventType::ConnectedToRelay,
+            ..Event::default()
+        }
     }
-}
 
-/// Event for the progress of a file transfer (send/receive).
-pub fn progress(progress_current: u64, progress_total: u64) -> Event {
-    Event {
-        event_type: EventType::Progress,
-        progress_current,
-        progress_total,
-        ..Event::default()
+    /// Event for the progress of a file transfer (send/receive).
+    pub fn progress(progress_current: u64, progress_total: u64) -> Event {
+        Event {
+            event_type: EventType::Progress,
+            progress_current,
+            progress_total,
+            ..Event::default()
+        }
     }
-}
 
-/// Event for a wormhole code (e.g. 15-foo-bar).
-pub fn code(code: String) -> Event {
-    Event {
-        event_type: EventType::Code,
-        code,
-        ..Event::default()
+    /// Event for a wormhole code (e.g. 15-foo-bar).
+    pub fn code(code: String) -> Event {
+        Event {
+            event_type: EventType::Code,
+            code,
+            ..Event::default()
+        }
     }
 }

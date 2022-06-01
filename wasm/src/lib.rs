@@ -6,6 +6,7 @@ use magic_wormhole::{transfer, transit, Code, Wormhole};
 use wasm_bindgen::prelude::*;
 
 mod event;
+use event::Event;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -59,11 +60,11 @@ pub async fn send_file(
     cancel: js_sys::Promise,
     event_handler: js_sys::Function,
 ) -> Result<JsValue, JsValue> {
-    let event_handler_wrap = Rc::new(Box::new(move |e: event::Event| {
+    let event_handler_wrap = Rc::new(Box::new(move |e: Event| {
         event_handler
             .call1(&JsValue::null(), &JsValue::from_serde(&e).unwrap())
             .expect("progress_handler call should succeed");
-    }) as Box<dyn Fn(event::Event)>);
+    }) as Box<dyn Fn(Event)>);
 
     let file_content = wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await?;
     let array = js_sys::Uint8Array::new(&file_content);
@@ -77,7 +78,7 @@ pub async fn send_file(
     .await
     .map_err(stringify)?;
 
-    event_handler_wrap(event::code(server_welcome.code.0));
+    event_handler_wrap(Event::code(server_welcome.code.0));
 
     let ph = event_handler_wrap.clone();
     let wormhole = connector.await.map_err(stringify)?;
@@ -89,10 +90,10 @@ pub async fn send_file(
         len,
         transit::Abilities::FORCE_RELAY,
         |_info, _address| {
-            event_handler_wrap(event::connected());
+            event_handler_wrap(Event::connected());
         },
         move |cur, total| {
-            ph(event::progress(cur, total));
+            ph(Event::progress(cur, total));
         },
         wasm_bindgen_futures::JsFuture::from(cancel).map(|_x| ()),
     )
@@ -125,11 +126,11 @@ pub async fn receive_file(
     cancel: js_sys::Promise,
     progress_handler: js_sys::Function,
 ) -> Result<JsValue, JsValue> {
-    let event_handler = Rc::new(Box::new(move |e: event::Event| {
+    let event_handler = Rc::new(Box::new(move |e: Event| {
         progress_handler
             .call1(&JsValue::null(), &JsValue::from_serde(&e).unwrap())
             .expect("progress_handler call should succeed");
-    }) as Box<dyn Fn(event::Event)>);
+    }) as Box<dyn Fn(Event)>);
 
     let (server_welcome, wormhole) = Wormhole::connect_with_code(
         transfer::APP_CONFIG.rendezvous_url(config.rendezvous_url.into()),
@@ -138,7 +139,7 @@ pub async fn receive_file(
     .await
     .map_err(stringify)?;
 
-    event_handler(event::server_welcome(
+    event_handler(Event::server_welcome(
         server_welcome.welcome.unwrap_or_default(),
     ));
 
@@ -154,16 +155,16 @@ pub async fn receive_file(
 
     let filename = req.filename.to_str().unwrap_or_default().to_string();
     let filesize = req.filesize;
-    event_handler(event::file_metadata(filename.clone(), filesize));
+    event_handler(Event::file_metadata(filename.clone(), filesize));
 
     let ph = event_handler.clone();
     let mut file: Vec<u8> = Vec::new();
     req.accept(
         |_info, _address| {
-            event_handler(event::connected());
+            event_handler(Event::connected());
         },
         move |cur, total| {
-            ph(event::progress(cur, total));
+            ph(Event::progress(cur, total));
         },
         &mut file,
         wasm_bindgen_futures::JsFuture::from(cancel).map(|_x| ()),
