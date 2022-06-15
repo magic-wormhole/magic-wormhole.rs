@@ -774,7 +774,7 @@ pub async fn init(
             let port = socket.local_addr()?.as_socket().unwrap().port();
             let port2 = socket2.local_addr()?.port();
             our_hints.direct_tcp.extend(
-                get_if_addrs::get_if_addrs()?
+                if_addrs::get_if_addrs()?
                     .iter()
                     .filter(|iface| !iface.is_loopback())
                     .flat_map(|ip| {
