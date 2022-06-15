@@ -47,7 +47,7 @@ url = { version = "2.2.2", features = ["serde"] }
 
 socket2 = { version = "0.4.1", optional = true }
 stun_codec = { version = "0.2.0", optional = true }
-get_if_addrs = { version = "0.5.3", optional = true }
+if-addrs = { version = "0.7.0", optional = true }
 bytecodec = { version = "0.4.15", optional = true }
 
 # Transfer dependencies
@@ -65,7 +65,7 @@ env_logger = "0.9.0"
 eyre = "0.6.5"
 
 [features]
-transit = ["socket2", "stun_codec", "get_if_addrs", "bytecodec"]
+transit = ["socket2", "stun_codec", "if-addrs", "bytecodec"]
 transfer = ["transit", "tar", "rmp-serde"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transit", "transfer"]
