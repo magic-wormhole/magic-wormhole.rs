@@ -141,7 +141,6 @@ impl Wormhole {
             rendezvous_url,
             app_version: versions,
         } = config;
-        let versions = serde_json::to_value(versions).unwrap();
         let (mut server, welcome) = RendezvousServer::connect(&appid, &rendezvous_url).await?;
         let (nameplate, mailbox) = server.allocate_claim_open().await?;
         log::debug!("Connected to mailbox {}", mailbox);
@@ -172,7 +171,6 @@ impl Wormhole {
             rendezvous_url,
             app_version: versions,
         } = config;
-        let versions = serde_json::to_value(versions).unwrap();
         let (mut server, welcome) = RendezvousServer::connect(&appid, &rendezvous_url).await?;
 
         let nameplate = code.nameplate();
