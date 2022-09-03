@@ -539,6 +539,7 @@ async fn connect_custom(
     local_addr: &socket2::SockAddr,
     dest_addr: &socket2::SockAddr,
 ) -> std::io::Result<async_std::net::TcpStream> {
+    log::debug!("Binding to {}", local_addr.as_socket().unwrap());
     let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
     /* Set our custum options */
     set_socket_opts(&socket)?;
@@ -746,6 +747,11 @@ pub async fn init(
                         hostname: external_ip.ip().to_string(),
                         port: external_ip.port(),
                     });
+                    log::debug!(
+                        "Our socket for connecting is bound to {} and connected to {}",
+                        stream.local_addr()?,
+                        stream.peer_addr()?,
+                    );
                     stream.into()
                 },
                 // TODO replace with .flatten() once stable
@@ -757,6 +763,10 @@ pub async fn init(
                     set_socket_opts(&socket)?;
 
                     socket.bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())?;
+                    log::debug!(
+                        "Our socket for connecting is bound to {}",
+                        socket.local_addr()?.as_socket().unwrap(),
+                    );
 
                     socket.into()
                 },
@@ -791,6 +801,7 @@ pub async fn init(
                         .into_iter()
                     }),
             );
+            log::debug!("Our socket for listening is {}", socket2.local_addr()?);
 
             Ok::<_, std::io::Error>((socket, socket2))
         };
