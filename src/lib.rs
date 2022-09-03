@@ -32,6 +32,8 @@ pub mod forwarding;
 pub mod transfer;
 #[cfg(feature = "transit")]
 pub mod transit;
+#[cfg(feature = "transfer")]
+pub mod uri;
 
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
