@@ -42,6 +42,7 @@ async-tungstenite = { version = "0.17.1", features = ["async-std-runtime", "asyn
 async-io = "1.6.0"
 libc = "0.2.101"
 url = { version = "2.2.2", features = ["serde"] }
+percent-encoding = { version = "2.1.0" }
 
 # Transit dependencies
 
