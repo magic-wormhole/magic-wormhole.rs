@@ -489,45 +489,9 @@ impl ReceiveRequest {
             Ok(())
         };
 
-        match crate::util::cancellable(run, cancel).await {
-            Ok(Ok(())) => {
-                let _ = self.wormhole.close().await;
-                Ok(())
-            },
-            Ok(Err(error @ TransferError::PeerError(_))) => {
-                let _ = self.wormhole.close().await;
-                Err(error)
-            },
-            Ok(Err(error @ TransferError::Transit(_))) => {
-                /* If transit failed, ask for a proper error and potentially use that instead */
-                match self.wormhole.receive_json().await {
-                    Ok(Ok(PeerMessage::Error(error))) => Err(TransferError::PeerError(error)),
-                    _ => {
-                        let _ = self
-                            .wormhole
-                            .send_json(&PeerMessage::Error(format!("{}", error)))
-                            .await;
-                        Err(error)
-                    },
-                }
-            },
-            Ok(Err(error)) => {
-                let _ = self
-                    .wormhole
-                    .send_json(&PeerMessage::Error(format!("{}", error)))
-                    .await;
-                let _ = self.wormhole.close().await;
-                Err(error)
-            },
-            Err(cancelled) => {
-                let _ = self
-                    .wormhole
-                    .send_json(&PeerMessage::Error(format!("{}", cancelled)))
-                    .await;
-                self.wormhole.close().await?;
-                Ok(())
-            },
-        }
+        futures::pin_mut!(cancel);
+        let result = crate::util::cancellable_2(run, cancel).await;
+        handle_run_result(self.wormhole, result).await
     }
 
     /**
@@ -542,6 +506,122 @@ impl ReceiveRequest {
         self.wormhole.close().await?;
 
         Ok(())
+    }
+}
+
+/// Maximum duration that we are willing to wait for cleanup tasks to finish
+const SHUTDOWN_TIME: std::time::Duration = std::time::Duration::from_secs(5);
+
+/** Handle the post-{transfer, failure, cancellation} logic */
+async fn handle_run_result(
+    mut wormhole: Wormhole,
+    result: Result<(Result<(), TransferError>, impl Future<Output = ()>), crate::util::Cancelled>,
+) -> Result<(), TransferError> {
+    async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output = ()>) {
+        match crate::util::cancellable(async_std::future::timeout(SHUTDOWN_TIME, run), cancel).await
+        {
+            Ok(Ok(())) => {},
+            Ok(Err(_timeout)) => log::debug!("Post-transfer timed out"),
+            Err(_cancelled) => log::debug!("Post-transfer got cancelled by user"),
+        };
+    }
+
+    /// Ignore an error but at least debug print it
+    fn debug_err(result: Result<(), WormholeError>, operation: &str) {
+        if let Err(error) = result {
+            log::debug!("Failed to {} after transfer: {}", operation, error);
+        }
+    }
+
+    match result {
+        /* Happy case: everything went okay */
+        Ok((Ok(()), cancel)) => {
+            log::debug!("Transfer done, doing cleanup logic");
+            wrap_timeout(
+                async {
+                    debug_err(wormhole.close().await, "close Wormhole");
+                },
+                cancel,
+            )
+            .await;
+            Ok(())
+        },
+        /* Got peer error: stop everything immediately */
+        Ok((Err(error @ TransferError::PeerError(_)), cancel)) => {
+            log::debug!(
+                "Transfer encountered an error ({}), doing cleanup logic",
+                error
+            );
+            wrap_timeout(
+                async {
+                    debug_err(wormhole.close().await, "close Wormhole");
+                },
+                cancel,
+            )
+            .await;
+            Err(error)
+        },
+        /* Got transit error: try receive peer error for better error message */
+        Ok((Err(mut error @ TransferError::Transit(_)), cancel)) => {
+            log::debug!(
+                "Transfer encountered an error ({}), doing cleanup logic",
+                error
+            );
+            wrap_timeout(async {
+                /* If transit failed, ask for a proper error and potentially use that instead */
+                // TODO this should be replaced with some try_receive that only polls already available messages,
+                // and we should not only look for the next one but all have been received
+                // and we should not interrupt a receive operation without making sure it leaves the connection
+                // in a consistent state, otherwise the shutdown may cause protocol errors
+                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = async_std::future::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                    error = TransferError::PeerError(e);
+                } else {
+                    log::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");
+                }
+                debug_err(wormhole.close().await, "close Wormhole");
+            }, cancel).await;
+            Err(error)
+        },
+        /* Other error: try to notify peer */
+        Ok((Err(error), cancel)) => {
+            log::debug!(
+                "Transfer encountered an error ({}), doing cleanup logic",
+                error
+            );
+            wrap_timeout(
+                async {
+                    debug_err(
+                        wormhole
+                            .send_json(&PeerMessage::Error(format!("{}", error)))
+                            .await,
+                        "notify peer about the error",
+                    );
+                    debug_err(wormhole.close().await, "close Wormhole");
+                },
+                cancel,
+            )
+            .await;
+            Err(error)
+        },
+        /* Cancelled: try to notify peer */
+        Err(cancelled) => {
+            log::debug!("Transfer got cancelled, doing cleanup logic");
+            /* Replace cancel with ever-pending future, as we have already been cancelled */
+            wrap_timeout(
+                async {
+                    debug_err(
+                        wormhole
+                            .send_json(&PeerMessage::Error(format!("{}", cancelled)))
+                            .await,
+                        "notify peer about our cancellation",
+                    );
+                    debug_err(wormhole.close().await, "close Wormhole");
+                },
+                futures::future::pending(),
+            )
+            .await;
+            Ok(())
+        },
     }
 }
 
