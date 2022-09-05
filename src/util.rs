@@ -183,9 +183,22 @@ pub async fn cancellable<T>(
     use futures::future::Either;
     futures::pin_mut!(future);
     futures::pin_mut!(cancel);
-    match futures::future::select(future, cancel).await {
-        Either::Left((val, _)) => Ok(val),
-        Either::Right(((), _)) => Err(Cancelled),
+    match futures::future::select(cancel, future).await {
+        Either::Left(((), _)) => Err(Cancelled),
+        Either::Right((val, _)) => Ok(val),
+    }
+}
+
+/** Like `cancellable`, but you'll get back the cancellation future in case the code terminates for future use */
+pub async fn cancellable_2<T, C: Future<Output = ()> + Unpin>(
+    future: impl Future<Output = T>,
+    cancel: C,
+) -> Result<(T, C), Cancelled> {
+    use futures::future::Either;
+    futures::pin_mut!(future);
+    match futures::future::select(cancel, future).await {
+        Either::Left(((), _)) => Err(Cancelled),
+        Either::Right((val, cancel)) => Ok((val, cancel)),
     }
 }
 

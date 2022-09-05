@@ -1362,6 +1362,7 @@ impl Transit {
     }
 
     pub async fn flush(&mut self) -> Result<(), TransitError> {
+        log::debug!("Flush");
         self.socket.flush().await.map_err(Into::into)
     }
 
@@ -1413,10 +1414,18 @@ impl Transit {
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
-    mut socket: TcpStream,
+    socket: TcpStream,
     host_type: &TransitInfo,
     key: Arc<Key<TransitKey>>,
 ) -> Result<Transit, TransitHandshakeError> {
+    /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
+    // https://github.com/async-rs/async-std/issues/499
+    let socket = std::net::TcpStream::try_from(socket)
+        .expect("Internal error: this should not fail because we never cloned the socket");
+    socket.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
+    socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
+    let mut socket: TcpStream = socket.into();
+
     // 9. create record keys
     let (rkey, skey) = if is_leader {
         let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");

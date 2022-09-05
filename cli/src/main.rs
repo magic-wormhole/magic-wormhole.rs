@@ -34,6 +34,7 @@ fn install_ctrlc_handler(
             let mut has_notified = notifier2.0.lock().await;
             if *has_notified {
                 /* Second signal. Exit */
+                log::debug!("Exit.");
                 std::process::exit(130);
             }
             /* First signal. */

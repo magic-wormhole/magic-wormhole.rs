@@ -10,7 +10,7 @@ serde_derive = "1.0.120"
 log = "0.4.13"
 url = { version = "2.2.2", features = ["serde"] }
 futures = "0.3.12"
-async-std = { version = "1.11.0", features = ["attributes", "unstable"] }
+async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 
 # CLI specific dependencies
 magic-wormhole = { path = "..", features = ["all"] }
