@@ -7,7 +7,7 @@ use std::{
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
-use clap::{crate_description, crate_name, crate_version, Arg, Args, Command, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
@@ -443,7 +443,7 @@ async fn main() -> eyre::Result<()> {
             ..
         }) => {
             // TODO make fancy
-            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
+            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             /* Map the CLI argument to Strings. Use the occasion to inspect them and fail early on malformed input. */
             let targets = targets
                 .into_iter()
@@ -519,7 +519,7 @@ async fn main() -> eyre::Result<()> {
             ..
         }) => {
             // TODO make fancy
-            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you.");
+            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_server) = parse_and_connect(
@@ -587,7 +587,9 @@ async fn parse_and_connect(
     code_length: Option<usize>,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
-    print_code: Option<&dyn Fn(&mut Term, &magic_wormhole::Code) -> eyre::Result<()>>,
+    print_code: Option<
+        &dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>) -> eyre::Result<()>,
+    >,
     clipboard: Option<&mut ClipboardContext>,
 ) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
     // TODO handle multiple relay servers correctly
@@ -606,14 +608,19 @@ async fn parse_and_connect(
         .transpose()?
         .map(magic_wormhole::Code);
 
+    /* We need to track that information for when we generate a QR code */
+    let mut uri_rendezvous = None;
     if let Some(rendezvous_server) = common_args.rendezvous_server {
-        app_config = app_config.rendezvous_url(rendezvous_server.into_string().into());
+        uri_rendezvous = Some(rendezvous_server.clone());
+        app_config = app_config.rendezvous_url(rendezvous_server.to_string().into());
     }
     let (wormhole, code) = match code {
         Some(code) => {
             if is_send {
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
-                    term, &code,
+                    term,
+                    &code,
+                    &uri_rendezvous,
                 )?;
             }
             let (server_welcome, wormhole) =
@@ -639,6 +646,7 @@ async fn parse_and_connect(
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
                     term,
                     &server_welcome.code,
+                    &uri_rendezvous,
                 )?;
             }
             let wormhole = connector.await?;
@@ -656,6 +664,7 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
         ProgressStyle::default_bar()
             // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .template("[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({eta})")
+            .unwrap()
             .progress_chars("#>-"),
     );
     pb
@@ -678,18 +687,57 @@ fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> 
 }
 
 // For file transfer
-fn sender_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
-    writeln!(term, "\nThis wormhole's code is: {}", &code)?;
-    writeln!(term, "On the other computer, please run:\n")?;
-    writeln!(term, "wormhole receive {}\n", &code)?;
+fn sender_print_code(
+    term: &mut Term,
+    code: &magic_wormhole::Code,
+    rendezvous_server: &Option<url::Url>,
+) -> eyre::Result<()> {
+    let uri = magic_wormhole::uri::WormholeTransferUri {
+        code: code.clone(),
+        rendezvous_server: rendezvous_server.clone(),
+        is_leader: false,
+    }
+    .to_string();
+    writeln!(
+        term,
+        "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
+        style(&code).bold()
+    )?;
+    writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
+    let qr =
+        qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
+    writeln!(term, "{}", qr)?;
+
+    writeln!(
+        term,
+        "On the other side, open the link or enter that code into a Magic Wormhole client."
+    )?;
+    writeln!(
+        term,
+        "For example: {} {}\n",
+        style("wormhole-rs receive").bold(),
+        style(&code).bold()
+    )?;
     Ok(())
 }
 
 // For port forwarding
-fn server_print_code(term: &mut Term, code: &magic_wormhole::Code) -> eyre::Result<()> {
-    writeln!(term, "\nThis wormhole's code is: {}", &code)?;
-    writeln!(term, "On the other computer, please run:\n")?;
-    writeln!(term, "wormhole forward connect {}\n", &code)?;
+fn server_print_code(
+    term: &mut Term,
+    code: &magic_wormhole::Code,
+    _: &Option<url::Url>,
+) -> eyre::Result<()> {
+    writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+    writeln!(
+        term,
+        "On the other side, enter that code into a Magic Wormhole client\n"
+    )?;
+    writeln!(
+        term,
+        "For example: {} {}\n",
+        style("wormhole-rs forward connect").bold(),
+        style(&code).bold()
+    )?;
     Ok(())
 }
 
@@ -714,7 +762,7 @@ async fn send(
             if sent == 0 {
                 pb.reset_elapsed();
                 pb.set_length(total);
-                pb.enable_steady_tick(250);
+                pb.enable_steady_tick(std::time::Duration::from_millis(250));
             }
             pb.set_position(sent);
         },
@@ -738,12 +786,13 @@ async fn send_many(
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
+    log::warn!("Reminder that you are sending the file to multiple people, and this may reduce the overall security. See the help page for more information.");
+
     /* Progress bar is commented out for now. See the issues about threading/async in
      * the Indicatif repository for more information. Multiple progress bars are not usable
      * for us at the moment, so we'll have to do without for now.
      */
-    // let mp = MultiProgress::new();
-    // async_std::task::spawn_blocking(move || mp.join()).await?;
+    let mp = MultiProgress::new();
 
     let file_path = Arc::new(file_path.to_owned());
     let file_name = Arc::new(file_name.to_owned());
@@ -759,7 +808,7 @@ async fn send_many(
         Arc::clone(&file_name),
         wormhole,
         term.clone(),
-        // &mp,
+        &mp,
         transit_abilities,
         ctrl_c(),
     )
@@ -767,18 +816,14 @@ async fn send_many(
 
     for tries in 0.. {
         if time.elapsed() >= timeout {
-            writeln!(
-                term,
+            log::info!(
                 "{:?} have elapsed, we won't accept any new connections now.",
                 timeout
-            )?;
+            );
             break;
         }
         if tries > max_tries {
-            writeln!(
-                term,
-                "Max number of tries reached, we won't accept any new connections now."
-            )?;
+            log::info!("Max number of tries reached, we won't accept any new connections now.");
             break;
         }
 
@@ -790,7 +835,7 @@ async fn send_many(
             Arc::clone(&file_name),
             wormhole,
             term.clone(),
-            // &mp,
+            &mp,
             transit_abilities,
             ctrl_c(),
         )
@@ -803,15 +848,15 @@ async fn send_many(
         file_path: Arc<std::ffi::OsString>,
         wormhole: Wormhole,
         mut term: Term,
-        // mp: &MultiProgress,
+        mp: &MultiProgress,
         transit_abilities: transit::Abilities,
         cancel: impl Future<Output = ()> + Send + 'static,
     ) -> eyre::Result<()> {
         writeln!(&mut term, "Sending file to peer").unwrap();
-        // let pb = create_progress_bar(file_size);
-        // let pb = mp.add(pb);
+        let pb = create_progress_bar(0);
+        let pb = mp.add(pb);
         async_std::task::spawn(async move {
-            // let pb2 = pb.clone();
+            let pb2 = pb.clone();
             let result = async move {
                 transfer::send_file_or_folder(
                     wormhole,
@@ -820,12 +865,13 @@ async fn send_many(
                     file_name.deref(),
                     transit_abilities,
                     &transit::log_transit_connection,
-                    move |_sent, _total| {
-                        // if sent == 0 {
-                        //     pb2.reset_elapsed();
-                        //     pb2.enable_steady_tick(250);
-                        // }
-                        // pb2.set_position(sent);
+                    move |sent, total| {
+                        if sent == 0 {
+                            pb2.reset_elapsed();
+                            pb2.set_length(total);
+                            pb2.enable_steady_tick(std::time::Duration::from_millis(250));
+                        }
+                        pb2.set_position(sent);
                     },
                     cancel,
                 )
@@ -834,12 +880,12 @@ async fn send_many(
             };
             match result.await {
                 Ok(_) => {
-                    // pb.finish();
-                    writeln!(&mut term, "Successfully sent file to peer").unwrap();
+                    pb.finish();
+                    log::info!("Successfully sent file to someone");
                 },
                 Err(e) => {
-                    // pb.abandon();
-                    writeln!(&mut term, "Send failed, {}", e).unwrap();
+                    pb.abandon();
+                    log::error!("Send failed, {}", e);
                 },
             };
         });
