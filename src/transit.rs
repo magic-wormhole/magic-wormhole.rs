@@ -31,6 +31,8 @@ use std::{
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::aead::{Aead, NewAead};
 
+mod crypto;
+
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 // No need to make public, it's hard-coded anyways (:
@@ -56,29 +58,6 @@ pub enum TransitConnectError {
     Protocol(Box<str>),
     #[error("All (relay) handshakes failed or timed out; could not establish a connection with the peer")]
     Handshake,
-    #[error("IO error")]
-    IO(
-        #[from]
-        #[source]
-        std::io::Error,
-    ),
-}
-
-/// Private, because we try multiple handshakes and only
-/// one needs to succeed
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-enum TransitHandshakeError {
-    #[error("Handshake failed")]
-    HandshakeFailed,
-    #[error("Relay handshake failed")]
-    RelayHandshakeFailed,
-    #[error("Malformed peer address")]
-    BadAddress(
-        #[from]
-        #[source]
-        std::net::AddrParseError,
-    ),
     #[error("IO error")]
     IO(
         #[from]
@@ -956,10 +935,17 @@ impl TransitConnector {
          */
         std::mem::drop(connection_stream);
 
-        transit.socket.write_all(b"go\n").await?;
+        let (mut socket, finalizer) = transit;
+        let (tx, rx) = finalizer
+            .handshake_finalize(&mut socket)
+            .await
+            .map_err(|e| {
+                log::debug!("`handshake_finalize` failed: {e}");
+                TransitConnectError::Handshake
+            })?;
 
-        let addr = transit.socket.peer_addr().unwrap();
-        Ok((transit, host_type, addr))
+        let addr = socket.peer_addr().unwrap();
+        Ok((Transit { socket, tx, rx }, host_type, addr))
     }
 
     /**
@@ -1005,9 +991,17 @@ impl TransitConnector {
         )
         .await
         {
-            Ok(Some((transit, host_type))) => {
-                let addr = transit.socket.peer_addr().unwrap();
-                Ok((transit, host_type, addr))
+            Ok(Some(((mut socket, finalizer), host_type))) => {
+                let addr = socket.peer_addr().unwrap();
+                let (tx, rx) = finalizer
+                    .handshake_finalize(&mut socket)
+                    .await
+                    .map_err(|e| {
+                        log::debug!("`handshake_finalize` failed: {e}");
+                        TransitConnectError::Handshake
+                    })?;
+
+                Ok((Transit { socket, tx, rx }, host_type, addr))
             },
             Ok(None) | Err(_) => {
                 log::debug!("`follower_connect` timed out");
@@ -1040,9 +1034,14 @@ impl TransitConnector {
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
         socket: Option<(MaybeConnectedSocket, TcpListener)>,
-    ) -> impl Stream<Item = Result<(Transit, TransitInfo), TransitHandshakeError>> + 'static {
+    ) -> impl Stream<Item = Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>
+           + 'static {
         /* Have socket => can direct */
         assert!(socket.is_none() || our_abilities.can_direct());
+
+        let cryptor = Arc::new(crypto::SecretboxInit {
+            key: transit_key.clone(),
+        });
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
@@ -1052,7 +1051,8 @@ impl TransitConnector {
          */
         use futures::future::BoxFuture;
         type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
-        type ConnectorFuture = BoxFuture<'static, Result<TransitConnection, TransitHandshakeError>>;
+        type ConnectorFuture =
+            BoxFuture<'static, Result<TransitConnection, crypto::TransitHandshakeError>>;
         let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
 
         /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
@@ -1121,10 +1121,10 @@ impl TransitConnector {
             async fn hint_connector(
                 host: DirectHint,
                 name: Option<String>,
-            ) -> Result<TransitConnection, TransitHandshakeError> {
+            ) -> Result<TransitConnection, crypto::TransitHandshakeError> {
                 log::debug!("Connecting to relay {}", host);
                 let transit = TcpStream::connect((host.hostname.as_str(), host.port))
-                    .err_into::<TransitHandshakeError>()
+                    .err_into::<crypto::TransitHandshakeError>()
                     .await?;
                 log::debug!("Connected to {}!", host);
 
@@ -1176,25 +1176,37 @@ impl TransitConnector {
         /* Do a handshake on all our found connections */
         let transit_key2 = transit_key.clone();
         let tside2 = tside.clone();
+        let cryptor2 = cryptor.clone();
         let mut connectors = Box::new(
             connectors
                 .map(move |fut| {
                     let transit_key = transit_key2.clone();
                     let tside = tside2.clone();
+                    let cryptor = cryptor2.clone();
                     async move {
                         let (socket, host_type) = fut.await?;
-                        let transit =
-                            handshake_exchange(is_leader, tside, socket, &host_type, transit_key)
-                                .await?;
+                        let transit = handshake_exchange(
+                            is_leader,
+                            tside,
+                            socket,
+                            &host_type,
+                            &*cryptor,
+                            transit_key,
+                        )
+                        .await?;
                         Ok((transit, host_type))
                     }
                 })
                 .map(|fut| {
                     Box::pin(fut)
-                        as BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>
+                        as BoxFuture<
+                            Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
+                        >
                 }),
         )
-            as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
+            as BoxIterator<
+                BoxFuture<Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>,
+            >;
 
         /* Also listen on some port just in case. */
         if let Some(socket2) = socket2 {
@@ -1203,6 +1215,7 @@ impl TransitConnector {
                     std::iter::once(async move {
                         let transit_key = transit_key.clone();
                         let tside = tside.clone();
+                        let cryptor = cryptor.clone();
                         let connect = || async {
                             let (stream, peer) = socket2.accept().await?;
                             log::debug!("Got connection from {}!", peer);
@@ -1211,10 +1224,14 @@ impl TransitConnector {
                                 tside.clone(),
                                 stream,
                                 &TransitInfo::Direct,
+                                &*cryptor,
                                 transit_key.clone(),
                             )
                             .await?;
-                            Result::<_, TransitHandshakeError>::Ok((transit, TransitInfo::Direct))
+                            Result::<_, crypto::TransitHandshakeError>::Ok((
+                                transit,
+                                TransitInfo::Direct,
+                            ))
                         };
                         loop {
                             match connect().await {
@@ -1231,11 +1248,20 @@ impl TransitConnector {
                     })
                     .map(|fut| {
                         Box::pin(fut)
-                            as BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>
+                            as BoxFuture<
+                                Result<
+                                    (HandshakeResult, TransitInfo),
+                                    crypto::TransitHandshakeError,
+                                >,
+                            >
                     }),
                 ),
             )
-                as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
+                as BoxIterator<
+                    BoxFuture<
+                        Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
+                    >,
+                >;
         }
         connectors.collect::<futures::stream::futures_unordered::FuturesUnordered<_>>()
     }
@@ -1250,115 +1276,20 @@ impl TransitConnector {
 pub struct Transit {
     /** Raw transit connection */
     socket: TcpStream,
-    /** Our key, used for sending */
-    pub skey: Key<TransitTxKey>,
-    /** Their key, used for receiving */
-    pub rkey: Key<TransitRxKey>,
-    /** Nonce for sending */
-    pub snonce: secretbox::Nonce,
-    /**
-     * Nonce for receiving
-     *
-     * We'll count as receiver and track if messages come in in order
-     */
-    pub rnonce: secretbox::Nonce,
+    tx: Box<dyn crypto::TransitCryptoEncrypt>,
+    rx: Box<dyn crypto::TransitCryptoDecrypt>,
 }
 
 impl Transit {
     /** Receive and decrypt one message from the other side. */
     pub async fn receive_record(&mut self) -> Result<Box<[u8]>, TransitError> {
-        Transit::receive_record_inner(&mut self.socket, &self.rkey, &mut self.rnonce).await
-    }
-
-    async fn receive_record_inner(
-        socket: &mut (impl futures::io::AsyncRead + Unpin),
-        rkey: &Key<TransitRxKey>,
-        nonce: &mut secretbox::Nonce,
-    ) -> Result<Box<[u8]>, TransitError> {
-        let enc_packet = {
-            // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
-            let length = {
-                let mut length_arr: [u8; 4] = [0; 4];
-                socket.read_exact(&mut length_arr[..]).await?;
-                u32::from_be_bytes(length_arr) as usize
-            };
-            ensure!(
-                length >= secretbox::NONCE_SIZE,
-                Error::new(
-                    ErrorKind::InvalidData,
-                    "Message must be long enough to contain at least the nonce"
-                )
-            );
-
-            // 2. read that many bytes into an array (or a vector?)
-            let mut buffer = Vec::with_capacity(length);
-            let len = socket.take(length as u64).read_to_end(&mut buffer).await?;
-            use std::io::{Error, ErrorKind};
-            ensure!(
-                len == length,
-                Error::new(ErrorKind::UnexpectedEof, "failed to read whole message")
-            );
-            buffer
-        };
-
-        // 3. decrypt the vector 'enc_packet' with the key.
-        let plaintext = {
-            let (received_nonce, ciphertext) = enc_packet.split_at(secretbox::NONCE_SIZE);
-            {
-                // Nonce check
-                ensure!(
-                    nonce.as_slice() == received_nonce,
-                    TransitError::Nonce(received_nonce.into(), nonce.as_slice().into()),
-                );
-
-                crate::util::sodium_increment_be(nonce);
-            }
-
-            let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(rkey));
-            cipher
-                .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
-                /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
-                .map_err(|_| TransitError::Crypto)?
-        };
-
-        Ok(plaintext.into_boxed_slice())
+        self.rx.decrypt(&mut self.socket).await
     }
 
     /** Send an encrypted message to the other side */
     pub async fn send_record(&mut self, plaintext: &[u8]) -> Result<(), TransitError> {
         assert!(!plaintext.is_empty());
-
-        Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.snonce).await
-    }
-
-    async fn send_record_inner(
-        socket: &mut (impl futures::io::AsyncWrite + Unpin),
-        skey: &Key<TransitTxKey>,
-        plaintext: &[u8],
-        nonce: &mut secretbox::Nonce,
-    ) -> Result<(), TransitError> {
-        let sodium_key = secretbox::Key::from_slice(skey);
-
-        let ciphertext = {
-            let nonce_le = secretbox::Nonce::from_slice(nonce);
-
-            let cipher = secretbox::XSalsa20Poly1305::new(sodium_key);
-            cipher
-                .encrypt(nonce_le, plaintext)
-                /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
-                .map_err(|_| TransitError::Crypto)?
-        };
-
-        // send the encrypted record
-        socket
-            .write_all(&((ciphertext.len() + nonce.len()) as u32).to_be_bytes())
-            .await?;
-        socket.write_all(nonce).await?;
-        socket.write_all(&ciphertext).await?;
-
-        crate::util::sodium_increment_be(nonce);
-
-        Ok(())
+        self.tx.encrypt(&mut self.socket, plaintext).await
     }
 
     pub async fn flush(&mut self) -> Result<(), TransitError> {
@@ -1378,29 +1309,23 @@ impl Transit {
         let (reader, writer) = self.socket.split();
         (
             futures::sink::unfold(
-                (writer, self.skey, self.snonce),
-                |(mut writer, skey, mut nonce), plaintext: Box<[u8]>| async move {
-                    Transit::send_record_inner(
-                        &mut writer,
-                        &skey as &Key<TransitTxKey>,
-                        &plaintext,
-                        &mut nonce,
-                    )
-                    .await
-                    .map(|()| (writer, skey, nonce))
-                },
-            ),
-            futures::stream::try_unfold(
-                (reader, self.rkey, self.rnonce),
-                |(mut reader, rkey, mut nonce)| async move {
-                    Transit::receive_record_inner(&mut reader, &rkey, &mut nonce)
+                (writer, self.tx),
+                |(mut writer, mut tx), plaintext: Box<[u8]>| async move {
+                    tx.encrypt(&mut writer, &plaintext)
                         .await
-                        .map(|record| Some((record, (reader, rkey, nonce))))
+                        .map(|()| (writer, tx))
                 },
             ),
+            futures::stream::try_unfold((reader, self.rx), |(mut reader, mut rx)| async move {
+                rx.decrypt(&mut reader)
+                    .await
+                    .map(|record| Some((record, (reader, rx))))
+            }),
         )
     }
 }
+
+type HandshakeResult = (TcpStream, Box<dyn crypto::TransitCryptoInitFinalizer>);
 
 /**
  * Do a transit handshake exchange, to establish a direct connection.
@@ -1416,8 +1341,9 @@ async fn handshake_exchange(
     tside: Arc<String>,
     socket: TcpStream,
     host_type: &TransitInfo,
+    cryptor: &dyn crypto::TransitCryptoInit,
     key: Arc<Key<TransitKey>>,
-) -> Result<Transit, TransitHandshakeError> {
+) -> Result<HandshakeResult, crypto::TransitHandshakeError> {
     /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
     // https://github.com/async-rs/async-std/issues/499
     let socket = std::net::TcpStream::try_from(socket)
@@ -1426,23 +1352,8 @@ async fn handshake_exchange(
     socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
     let mut socket: TcpStream = socket.into();
 
-    // 9. create record keys
-    let (rkey, skey) = if is_leader {
-        let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
-        let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
-        (rkey, skey)
-    } else {
-        /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
-         * "leader" and "follower" instead. As a follower, we use the leader key for receiving and our
-         * key for sending.
-         */
-        let rkey = key.derive_subkey_from_purpose("transit_record_sender_key");
-        let skey = key.derive_subkey_from_purpose("transit_record_receiver_key");
-        (rkey, skey)
-    };
-
     if host_type != &TransitInfo::Direct {
-        trace!("initiating relay handshake");
+        log::trace!("initiating relay handshake");
 
         let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
         socket
@@ -1451,75 +1362,19 @@ async fn handshake_exchange(
         let mut rx = [0u8; 3];
         socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
-        ensure!(ok_msg == rx, TransitHandshakeError::RelayHandshakeFailed);
+        ensure!(
+            ok_msg == rx,
+            crypto::TransitHandshakeError::RelayHandshakeFailed
+        );
     }
 
-    if is_leader {
-        // for transmit mode, send send_handshake_msg and compare.
-        // the received message with send_handshake_msg
-        socket
-            .write_all(
-                format!(
-                    "transit sender {} ready\n\n",
-                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
-                        .to_hex()
-                )
-                .as_bytes(),
-            )
-            .await?;
-
-        // The received message "transit sender $hash ready\n\n" has exactly 89 bytes
-        // TODO do proper line parsing one day, this is atrocious
-        let mut rx: [u8; 89] = [0; 89];
-        socket.read_exact(&mut rx).await?;
-
-        let expected_rx_handshake = format!(
-            "transit receiver {} ready\n\n",
-            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
-                .to_hex()
-        );
-        ensure!(
-            &rx[..] == expected_rx_handshake.as_bytes(),
-            TransitHandshakeError::HandshakeFailed,
-        );
+    let finalizer = if is_leader {
+        cryptor.handshake_leader(&mut socket).await?
     } else {
-        // for receive mode, send receive_handshake_msg and compare.
-        // the received message with send_handshake_msg
-        socket
-            .write_all(
-                format!(
-                    "transit receiver {} ready\n\n",
-                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
-                        .to_hex(),
-                )
-                .as_bytes(),
-            )
-            .await?;
+        cryptor.handshake_follower(&mut socket).await?
+    };
 
-        // The received message "transit receiver $hash ready\n\n" has exactly 87 bytes
-        // Three bytes for the "go\n" ack
-        // TODO do proper line parsing one day, this is atrocious
-        let mut rx: [u8; 90] = [0; 90];
-        socket.read_exact(&mut rx).await?;
-
-        let expected_tx_handshake = format!(
-            "transit sender {} ready\n\ngo\n",
-            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
-                .to_hex(),
-        );
-        ensure!(
-            &rx[..] == expected_tx_handshake.as_bytes(),
-            TransitHandshakeError::HandshakeFailed
-        );
-    }
-
-    Ok(Transit {
-        socket,
-        skey,
-        rkey,
-        snonce: Default::default(),
-        rnonce: Default::default(),
-    })
+    Ok((socket, finalizer))
 }
 
 #[cfg(test)]
