@@ -41,11 +41,10 @@ pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> 
 /// At it's core, it is an `Abortable` but instead of having an `AbortHandle`, we use a future that resolves as trigger.
 /// Under the hood, it is implementing the same functionality as a `select`, but mapping one of the outcomes to an error type.
 pub async fn cancellable<T>(
-    future: impl Future<Output = T>,
+    future: impl Future<Output = T> + Unpin,
     cancel: impl Future<Output = ()>,
 ) -> Result<T, Cancelled> {
     use futures::future::Either;
-    futures::pin_mut!(future);
     futures::pin_mut!(cancel);
     match futures::future::select(future, cancel).await {
         Either::Left((val, _)) => Ok(val),

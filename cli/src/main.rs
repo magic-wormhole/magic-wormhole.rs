@@ -323,7 +323,7 @@ async fn main() -> eyre::Result<()> {
 
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_server) = match util::cancellable(
-                parse_and_connect(
+                Box::pin(parse_and_connect(
                     &mut term,
                     common,
                     code,
@@ -332,7 +332,7 @@ async fn main() -> eyre::Result<()> {
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
                     clipboard.as_mut(),
-                ),
+                )),
                 ctrl_c(),
             )
             .await
@@ -341,14 +341,14 @@ async fn main() -> eyre::Result<()> {
                 Err(_) => return Ok(()),
             };
 
-            send(
+            Box::pin(send(
                 wormhole,
                 relay_server,
                 file_path.as_ref(),
                 &file_name,
                 transit_abilities,
                 ctrl_c.clone(),
-            )
+            ))
             .await?;
         },
         WormholeCommand::SendMany {
@@ -361,7 +361,7 @@ async fn main() -> eyre::Result<()> {
         } => {
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, code, relay_server) = {
-                let connect_fut = parse_and_connect(
+                let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
                     code,
@@ -370,8 +370,7 @@ async fn main() -> eyre::Result<()> {
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
                     clipboard.as_mut(),
-                );
-                futures::pin_mut!(connect_fut);
+                ));
                 match futures::future::select(connect_fut, ctrl_c()).await {
                     Either::Left((result, _)) => result?,
                     Either::Right(((), _)) => return Ok(()),
@@ -381,7 +380,7 @@ async fn main() -> eyre::Result<()> {
 
             let file_name = concat_file_name(&file, file_name.as_ref())?;
 
-            send_many(
+            Box::pin(send_many(
                 relay_server,
                 &code,
                 file.as_ref(),
@@ -392,7 +391,7 @@ async fn main() -> eyre::Result<()> {
                 &mut term,
                 transit_abilities,
                 ctrl_c,
-            )
+            ))
             .await?;
         },
         WormholeCommand::Receive {
@@ -408,7 +407,7 @@ async fn main() -> eyre::Result<()> {
         } => {
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_server) = {
-                let connect_fut = parse_and_connect(
+                let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
                     code,
@@ -417,15 +416,14 @@ async fn main() -> eyre::Result<()> {
                     transfer::APP_CONFIG,
                     None,
                     clipboard.as_mut(),
-                );
-                futures::pin_mut!(connect_fut);
+                ));
                 match futures::future::select(connect_fut, ctrl_c()).await {
                     Either::Left((result, _)) => result?,
                     Either::Right(((), _)) => return Ok(()),
                 }
             };
 
-            receive(
+            Box::pin(receive(
                 wormhole,
                 relay_server,
                 file_path.as_os_str(),
@@ -433,7 +431,7 @@ async fn main() -> eyre::Result<()> {
                 noconfirm,
                 transit_abilities,
                 ctrl_c,
-            )
+            ))
             .await?;
         },
         WormholeCommand::Forward(ForwardCommand::Serve {
@@ -484,7 +482,7 @@ async fn main() -> eyre::Result<()> {
             loop {
                 let mut app_config = forwarding::APP_CONFIG;
                 app_config.app_version.transit_abilities = parse_transit_args(&common);
-                let connect_fut = parse_and_connect(
+                let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common.clone(),
                     code.clone(),
@@ -493,8 +491,7 @@ async fn main() -> eyre::Result<()> {
                     app_config,
                     Some(&server_print_code),
                     clipboard.as_mut(),
-                );
-                futures::pin_mut!(connect_fut);
+                ));
                 let (wormhole, _code, relay_server) =
                     match futures::future::select(connect_fut, ctrl_c()).await {
                         Either::Left((result, _)) => result?,

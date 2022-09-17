@@ -345,7 +345,7 @@ pub async fn request_file(
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
     // Error handling
-    let run = async {
+    let run = Box::pin(async {
         let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
@@ -396,7 +396,7 @@ pub async fn request_file(
         };
 
         Ok((filename, filesize, connector, their_abilities, their_hints))
-    };
+    });
 
     match crate::util::cancellable(run, cancel).await {
         Ok(Ok((filename, filesize, connector, their_abilities, their_hints))) => {
@@ -459,7 +459,7 @@ impl ReceiveRequest {
         G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
         W: AsyncWrite + Unpin,
     {
-        let run = async {
+        let run = Box::pin(async {
             // send file ack.
             debug!("Sending ack");
             self.wormhole
@@ -487,7 +487,7 @@ impl ReceiveRequest {
             )
             .await?;
             Ok(())
-        };
+        });
 
         futures::pin_mut!(cancel);
         let result = crate::util::cancellable_2(run, cancel).await;
@@ -518,8 +518,9 @@ async fn handle_run_result(
     result: Result<(Result<(), TransferError>, impl Future<Output = ()>), crate::util::Cancelled>,
 ) -> Result<(), TransferError> {
     async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output = ()>) {
-        match crate::util::cancellable(async_std::future::timeout(SHUTDOWN_TIME, run), cancel).await
-        {
+        let run = async_std::future::timeout(SHUTDOWN_TIME, run);
+        futures::pin_mut!(run);
+        match crate::util::cancellable(run, cancel).await {
             Ok(Ok(())) => {},
             Ok(Err(_timeout)) => log::debug!("Post-transfer timed out"),
             Err(_cancelled) => log::debug!("Post-transfer got cancelled by user"),
