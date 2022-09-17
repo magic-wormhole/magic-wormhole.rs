@@ -81,6 +81,12 @@ pub enum TransitError {
     ),
 }
 
+impl From<()> for TransitError {
+    fn from(_: ()) -> Self {
+        Self::Crypto
+    }
+}
+
 /**
  * Defines a way to find the other side.
  *
@@ -92,12 +98,17 @@ pub struct Abilities {
     pub direct_tcp_v1: bool,
     /** Connection over a relay */
     pub relay_v1: bool,
+    #[cfg(all())]
+    /** **Experimental** Use the [noise protocol](https://noiseprotocol.org) for the encryption. */
+    pub noise_v1: bool,
 }
 
 impl Abilities {
     pub const ALL_ABILITIES: Self = Self {
         direct_tcp_v1: true,
         relay_v1: true,
+        #[cfg(all())]
+        noise_v1: false,
     };
 
     /**
@@ -109,6 +120,8 @@ impl Abilities {
     pub const FORCE_DIRECT: Self = Self {
         direct_tcp_v1: true,
         relay_v1: false,
+        #[cfg(all())]
+        noise_v1: false,
     };
 
     /**
@@ -122,6 +135,8 @@ impl Abilities {
     pub const FORCE_RELAY: Self = Self {
         direct_tcp_v1: false,
         relay_v1: true,
+        #[cfg(all())]
+        noise_v1: false,
     };
 
     pub fn can_direct(&self) -> bool {
@@ -132,10 +147,19 @@ impl Abilities {
         self.relay_v1
     }
 
+    #[cfg(all())]
+    pub fn can_noise_crypto(&self) -> bool {
+        self.noise_v1
+    }
+
     /** Keep only abilities that both sides support */
     pub fn intersect(mut self, other: &Self) -> Self {
         self.direct_tcp_v1 &= other.direct_tcp_v1;
         self.relay_v1 &= other.relay_v1;
+        #[cfg(all())]
+        {
+            self.noise_v1 &= other.noise_v1;
+        }
         self
     }
 }
@@ -156,6 +180,12 @@ impl serde::Serialize for Abilities {
                 "type": "relay-v1",
             }));
         }
+        #[cfg(all())]
+        if self.noise_v1 {
+            hints.push(serde_json::json!({
+                "type": "noise-crypto-v1",
+            }));
+        }
         serde_json::Value::Array(hints).serialize(ser)
     }
 }
@@ -171,6 +201,8 @@ impl<'de> serde::Deserialize<'de> for Abilities {
             DirectTcpV1,
             RelayV1,
             RelayV2,
+            #[cfg(all())]
+            NoiseCryptoV1,
             #[serde(other)]
             Other,
         }
@@ -184,6 +216,10 @@ impl<'de> serde::Deserialize<'de> for Abilities {
                 },
                 Ability::RelayV1 => {
                     abilities.relay_v1 = true;
+                },
+                #[cfg(all())]
+                Ability::NoiseCryptoV1 => {
+                    abilities.noise_v1 = true;
                 },
                 _ => (),
             }
@@ -1039,9 +1075,17 @@ impl TransitConnector {
         /* Have socket => can direct */
         assert!(socket.is_none() || our_abilities.can_direct());
 
-        let cryptor = Arc::new(crypto::SecretboxInit {
-            key: transit_key.clone(),
-        });
+        let cryptor = if our_abilities.can_noise_crypto() && their_abilities.can_noise_crypto() {
+            log::debug!("Using noise protocol for encryption");
+            Arc::new(crypto::NoiseInit {
+                key: transit_key.clone(),
+            }) as Arc<dyn crypto::TransitCryptoInit>
+        } else {
+            log::debug!("Using secretbox for encryption");
+            Arc::new(crypto::SecretboxInit {
+                key: transit_key.clone(),
+            }) as Arc<dyn crypto::TransitCryptoInit>
+        };
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
