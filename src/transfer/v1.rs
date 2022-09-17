@@ -22,7 +22,7 @@ where
     G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
-    let run = async {
+    let run = Box::pin(async {
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // We want to do some transit
@@ -101,7 +101,7 @@ where
         debug!("Transfer complete!");
 
         Ok(())
-    };
+    });
 
     futures::pin_mut!(cancel);
     let result = crate::util::cancellable_2(run, cancel).await;
@@ -124,7 +124,7 @@ where
     G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
-    let run = async {
+    let run = Box::pin(async {
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
         let folder_path = folder_path.into();
 
@@ -317,7 +317,7 @@ where
         debug!("Transfer complete!");
 
         Ok(())
-    };
+    });
 
     futures::pin_mut!(cancel);
     let result = crate::util::cancellable_2(run, cancel).await;
