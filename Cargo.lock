@@ -458,8 +458,9 @@ dependencies = [
 
 [[package]]
 name = "cli-clipboard"
-version = "0.2.1"
-source = "git+https://github.com/ActuallyAllie/cli-clipboard#c376ba6ce17b71feeed1693f1e5267cf73d7d14b"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ae03657ecbc2db46e12b8a1c08a5a58f683057326397bd1aaafad2b70b85c59"
 dependencies = [
  "clipboard-win",
  "objc",
