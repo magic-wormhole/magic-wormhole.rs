@@ -5,8 +5,8 @@ use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
-    aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
-    XSalsa20Poly1305,
+    aead::{generic_array::GenericArray, Aead, AeadCore},
+    KeyInit, XSalsa20Poly1305,
 };
 
 /// Marker trait to give encryption keys a "purpose", to not confuse them
@@ -160,7 +160,7 @@ pub fn encrypt_data(
     key: &xsalsa20poly1305::Key,
     plaintext: &[u8],
 ) -> (xsalsa20poly1305::Nonce, Vec<u8>) {
-    let nonce = xsalsa20poly1305::generate_nonce(&mut rand::thread_rng());
+    let nonce = XSalsa20Poly1305::generate_nonce(&mut rand::thread_rng());
     let nonce_and_ciphertext = encrypt_data_with_nonce(key, plaintext, &nonce);
     (nonce, nonce_and_ciphertext)
 }

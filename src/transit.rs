@@ -29,7 +29,7 @@ use std::{
     sync::Arc,
 };
 use xsalsa20poly1305 as secretbox;
-use xsalsa20poly1305::aead::{Aead, NewAead};
+use xsalsa20poly1305::{aead::Aead, KeyInit};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
@@ -1050,8 +1050,8 @@ impl TransitConnector {
         let socket2 = if let Some((socket, socket2)) = socket {
             let local_addr = Arc::new(socket.local_addr().unwrap());
             /* Connect to each hint of the peer */
-            connectors =
-                Box::new(connectors.chain(
+            connectors = Box::new(
+                connectors.chain(
                     their_hints
                         .direct_tcp
                         .clone()
@@ -1069,12 +1069,13 @@ impl TransitConnector {
                             }
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
-                )) as BoxIterator<ConnectorFuture>;
+                ),
+            ) as BoxIterator<ConnectorFuture>;
             Some(socket2)
         } else if our_abilities.can_direct() {
             /* Fallback: We did not manage to bind a listener but we can still connect to the peer's hints */
-            connectors =
-                Box::new(connectors.chain(
+            connectors = Box::new(
+                connectors.chain(
                     their_hints
                         .direct_tcp
                         .clone()
@@ -1089,7 +1090,8 @@ impl TransitConnector {
                             Ok((socket, TransitInfo::Direct))
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
-                )) as BoxIterator<ConnectorFuture>;
+                ),
+            ) as BoxIterator<ConnectorFuture>;
             None
         } else {
             None
