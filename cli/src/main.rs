@@ -7,7 +7,7 @@ use std::{
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
@@ -225,6 +225,12 @@ enum WormholeCommand {
     /// Forward ports from one machine to another
     #[clap(subcommand)]
     Forward(ForwardCommand),
+    /// Generate shell completions for the wormhole CLI
+    #[clap(hide = true)]
+    Completion {
+        /// The shell type to generate completions for (bash, elvish, powershell, zsh)
+        shell: clap_complete::Shell,
+    },
     #[clap(hide = true)]
     Help,
 }
@@ -546,6 +552,33 @@ async fn main() -> eyre::Result<()> {
                 offer.accept(ctrl_c()).await?;
             } else {
                 offer.reject().await?;
+            }
+        },
+        WormholeCommand::Completion { shell } => {
+            let mut cmd = WormholeCli::command();
+            let binary_name = cmd.get_name().to_string();
+
+            match shell {
+                shell @ clap_complete::Shell::Zsh => {
+                    // for zsh, we will wrap the output to make it easier to use
+                    // this way we can source it directly `source <(wormhole-rs completion zsh)`
+
+                    let mut out = Vec::new();
+                    clap_complete::generate(shell, &mut cmd, &binary_name, &mut out);
+                    let out = String::from_utf8(out)
+                        .expect("Internal error: shell completion not UTF-8 encoded");
+                    let out = format!(
+                        "compdef _{0} {0}\n _{0}() {{ {1} }}\n\nif [ \"$funcstack[1]\" = \"{0}\" ]; then\n   {0} \"$@\"\nfi",
+                        binary_name,
+                        out,
+                    );
+
+                    std::io::stdout().write_all(&out.as_bytes())?;
+                },
+                shell => {
+                    let mut out = std::io::stdout();
+                    clap_complete::generate(shell, &mut cmd, binary_name, &mut out);
+                },
             }
         },
         WormholeCommand::Help => {
@@ -993,4 +1026,23 @@ async fn receive(
         )
         .await
         .context("Receive process failed")?)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_shell_completion() {
+        use clap::ArgEnum;
+
+        for shell in clap_complete::Shell::value_variants() {
+            let mut cmd = WormholeCli::command();
+            let binary_name = cmd.get_name().to_string();
+
+            let mut out = Vec::new();
+            clap_complete::generate(*shell, &mut cmd, &binary_name, &mut out);
+            String::from_utf8(out).unwrap();
+        }
+    }
 }
