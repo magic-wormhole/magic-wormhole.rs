@@ -177,15 +177,26 @@ pub fn hashcash(resource: String, bits: u32) -> String {
 /// At it's core, it is an `Abortable` but instead of having an `AbortHandle`, we use a future that resolves as trigger.
 /// Under the hood, it is implementing the same functionality as a `select`, but mapping one of the outcomes to an error type.
 pub async fn cancellable<T>(
-    future: impl Future<Output = T>,
+    future: impl Future<Output = T> + Unpin,
     cancel: impl Future<Output = ()>,
 ) -> Result<T, Cancelled> {
     use futures::future::Either;
-    futures::pin_mut!(future);
     futures::pin_mut!(cancel);
-    match futures::future::select(future, cancel).await {
-        Either::Left((val, _)) => Ok(val),
-        Either::Right(((), _)) => Err(Cancelled),
+    match futures::future::select(cancel, future).await {
+        Either::Left(((), _)) => Err(Cancelled),
+        Either::Right((val, _)) => Ok(val),
+    }
+}
+
+/** Like `cancellable`, but you'll get back the cancellation future in case the code terminates for future use */
+pub async fn cancellable_2<T, C: Future<Output = ()> + Unpin>(
+    future: impl Future<Output = T> + Unpin,
+    cancel: C,
+) -> Result<(T, C), Cancelled> {
+    use futures::future::Either;
+    match futures::future::select(cancel, future).await {
+        Either::Left(((), _)) => Err(Cancelled),
+        Either::Right((val, cancel)) => Ok((val, cancel)),
     }
 }
 

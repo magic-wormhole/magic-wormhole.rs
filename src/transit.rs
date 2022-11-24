@@ -36,6 +36,8 @@ use std::{
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::aead::{Aead, NewAead};
 
+mod crypto;
+
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 // No need to make public, it's hard-coded anyways (:
@@ -129,6 +131,12 @@ pub enum TransitError {
     ),
 }
 
+impl From<()> for TransitError {
+    fn from(_: ()) -> Self {
+        Self::Crypto
+    }
+}
+
 /**
  * Defines a way to find the other side.
  *
@@ -140,12 +148,17 @@ pub struct Abilities {
     pub direct_tcp_v1: bool,
     /** Connection over a relay */
     pub relay_v1: bool,
+    #[cfg(all())]
+    /** **Experimental** Use the [noise protocol](https://noiseprotocol.org) for the encryption. */
+    pub noise_v1: bool,
 }
 
 impl Abilities {
     pub const ALL_ABILITIES: Self = Self {
         direct_tcp_v1: true,
         relay_v1: true,
+        #[cfg(all())]
+        noise_v1: false,
     };
 
     /**
@@ -157,6 +170,8 @@ impl Abilities {
     pub const FORCE_DIRECT: Self = Self {
         direct_tcp_v1: true,
         relay_v1: false,
+        #[cfg(all())]
+        noise_v1: false,
     };
 
     /**
@@ -170,6 +185,8 @@ impl Abilities {
     pub const FORCE_RELAY: Self = Self {
         direct_tcp_v1: false,
         relay_v1: true,
+        #[cfg(all())]
+        noise_v1: false,
     };
 
     pub fn can_direct(&self) -> bool {
@@ -180,10 +197,19 @@ impl Abilities {
         self.relay_v1
     }
 
+    #[cfg(all())]
+    pub fn can_noise_crypto(&self) -> bool {
+        self.noise_v1
+    }
+
     /** Keep only abilities that both sides support */
     pub fn intersect(mut self, other: &Self) -> Self {
         self.direct_tcp_v1 &= other.direct_tcp_v1;
         self.relay_v1 &= other.relay_v1;
+        #[cfg(all())]
+        {
+            self.noise_v1 &= other.noise_v1;
+        }
         self
     }
 }
@@ -204,6 +230,12 @@ impl serde::Serialize for Abilities {
                 "type": "relay-v1",
             }));
         }
+        #[cfg(all())]
+        if self.noise_v1 {
+            hints.push(serde_json::json!({
+                "type": "noise-crypto-v1",
+            }));
+        }
         serde_json::Value::Array(hints).serialize(ser)
     }
 }
@@ -219,6 +251,8 @@ impl<'de> serde::Deserialize<'de> for Abilities {
             DirectTcpV1,
             RelayV1,
             RelayV2,
+            #[cfg(all())]
+            NoiseCryptoV1,
             #[serde(other)]
             Other,
         }
@@ -232,6 +266,10 @@ impl<'de> serde::Deserialize<'de> for Abilities {
                 },
                 Ability::RelayV1 => {
                     abilities.relay_v1 = true;
+                },
+                #[cfg(all())]
+                Ability::NoiseCryptoV1 => {
+                    abilities.noise_v1 = true;
                 },
                 _ => (),
             }
@@ -571,6 +609,7 @@ async fn connect_custom(
     local_addr: &socket2::SockAddr,
     dest_addr: &socket2::SockAddr,
 ) -> std::io::Result<async_std::net::TcpStream> {
+    log::debug!("Binding to {}", local_addr.as_socket().unwrap());
     let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
     /* Set our custum options */
     set_socket_opts(&socket)?;
@@ -602,8 +641,10 @@ async fn connect_custom(
 #[cfg(not(target_family = "wasm"))]
 #[derive(Debug, thiserror::Error)]
 enum StunError {
-    #[error("No V4 addresses were found for the selected STUN server")]
-    ServerIsV4Only,
+    #[error("No IPv4 addresses were found for the selected STUN server")]
+    ServerIsV6Only,
+    #[error("Server did not tell us our IP address")]
+    ServerNoResponse,
     #[error("Connection timed out")]
     Timeout,
     #[error("IO error")]
@@ -636,7 +677,7 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
                 },
                 SocketAddr::V6(_) => unreachable!(),
             })
-            .ok_or(StunError::ServerIsV4Only)?
+            .ok_or(StunError::ServerIsV6Only)?
             .into(),
     )
     .await?;
@@ -671,7 +712,7 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
         Ok(bytes)
     }
 
-    fn decode_address(buf: &[u8]) -> Result<SocketAddr, bytecodec::Error> {
+    fn decode_address(buf: &[u8]) -> Result<Option<SocketAddr>, bytecodec::Error> {
         let mut decoder = MessageDecoder::<Attribute>::new();
         let decoded = decoder.decode_from_bytes(buf)??;
 
@@ -685,7 +726,6 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
         let external_addr = external_addr1
             // .or(external_addr2)
             .or(external_addr3);
-        let external_addr = external_addr.unwrap();
 
         Ok(external_addr)
     }
@@ -700,7 +740,8 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
     let len: u16 = u16::from_be_bytes([buf[2], buf[3]]);
     /* Read the rest of the message */
     socket.read_exact(&mut buf[20..][..len as usize]).await?;
-    let external_addr = decode_address(&buf[..20 + len as usize])?;
+    let external_addr =
+        decode_address(&buf[..20 + len as usize])?.ok_or(StunError::ServerNoResponse)?;
 
     Ok((external_addr, socket))
 }
@@ -762,14 +803,17 @@ pub async fn init(
     /* Detect our IP addresses if the ability is enabled */
     #[cfg(not(target_family = "wasm"))]
     if abilities.can_direct() {
-        /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
-         * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
-         * and use that instead.
-         */
-        let socket: MaybeConnectedSocket =
-            match timeout(std::time::Duration::from_secs(4), get_external_ip())
-                .await
-                .map_err(|_| StunError::Timeout)
+        let create_sockets = async {
+            /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
+             * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
+             * and use that instead.
+             */
+            let socket: MaybeConnectedSocket = match async_std::future::timeout(
+                std::time::Duration::from_secs(4),
+                get_external_ip(),
+            )
+            .await
+            .map_err(|_| StunError::Timeout)
             {
                 Ok(Ok((external_ip, stream))) => {
                     log::debug!("Our external IP address is {}", external_ip);
@@ -777,6 +821,11 @@ pub async fn init(
                         hostname: external_ip.ip().to_string(),
                         port: external_ip.port(),
                     });
+                    log::debug!(
+                        "Our socket for connecting is bound to {} and connected to {}",
+                        stream.local_addr()?,
+                        stream.peer_addr()?,
+                    );
                     stream.into()
                 },
                 // TODO replace with .flatten() once stable
@@ -784,49 +833,61 @@ pub async fn init(
                 Err(err) | Ok(Err(err)) => {
                     log::warn!("Failed to get external address via STUN, {}", err);
                     let socket =
-                        socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)
-                            .unwrap();
+                        socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
                     set_socket_opts(&socket)?;
 
-                    socket
-                        .bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())
-                        .unwrap();
+                    socket.bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())?;
+                    log::debug!(
+                        "Our socket for connecting is bound to {}",
+                        socket.local_addr()?.as_socket().unwrap(),
+                    );
 
                     socket.into()
                 },
             };
 
-        /* Get a second socket, but this time open a listener on that port.
-         * This sadly doubles the number of hints, but the method above doesn't work
-         * for systems which don't have any firewalls. Also, this time we can't reuse
-         * the port. In theory, we could, but it really confused the kernel to the point
-         * of `accept` calls never returning again.
-         */
-        let socket2 = TcpListener::bind("[::]:0").await?;
+            /* Get a second socket, but this time open a listener on that port.
+             * This sadly doubles the number of hints, but the method above doesn't work
+             * for systems which don't have any firewalls. Also, this time we can't reuse
+             * the port. In theory, we could, but it really confused the kernel to the point
+             * of `accept` calls never returning again.
+             */
+            let socket2 = TcpListener::bind("[::]:0").await?;
 
-        /* Find our ports, iterate all our local addresses, combine them with the ports and that's our hints */
-        let port = socket.local_addr()?.as_socket().unwrap().port();
-        let port2 = socket2.local_addr()?.port();
-        our_hints.direct_tcp.extend(
-            get_if_addrs::get_if_addrs()?
-                .iter()
-                .filter(|iface| !iface.is_loopback())
-                .flat_map(|ip| {
-                    [
-                        DirectHint {
-                            hostname: ip.ip().to_string(),
-                            port,
-                        },
-                        DirectHint {
-                            hostname: ip.ip().to_string(),
-                            port: port2,
-                        },
-                    ]
-                    .into_iter()
-                }),
-        );
+            /* Find our ports, iterate all our local addresses, combine them with the ports and that's our hints */
+            let port = socket.local_addr()?.as_socket().unwrap().port();
+            let port2 = socket2.local_addr()?.port();
+            our_hints.direct_tcp.extend(
+                if_addrs::get_if_addrs()?
+                    .iter()
+                    .filter(|iface| !iface.is_loopback())
+                    .flat_map(|ip| {
+                        [
+                            DirectHint {
+                                hostname: ip.ip().to_string(),
+                                port,
+                            },
+                            DirectHint {
+                                hostname: ip.ip().to_string(),
+                                port: port2,
+                            },
+                        ]
+                        .into_iter()
+                    }),
+            );
+            log::debug!("Our socket for listening is {}", socket2.local_addr()?);
 
-        listener = Some((socket, socket2));
+            Ok::<_, std::io::Error>((socket, socket2))
+        };
+
+        listener = create_sockets
+            .await
+            // TODO replace with inspect_err once stable
+            .map_err(|err| {
+                log::error!("Failed to create direct hints for our side: {}", err);
+                err
+            })
+            .ok();
     }
 
     if abilities.can_relay() {
@@ -979,23 +1040,32 @@ impl TransitConnector {
          */
         std::mem::drop(connection_stream);
 
-        #[cfg(not(target_family = "wasm"))]
-        transit.socket.write_all(b"go\n").await?;
-        #[cfg(target_family = "wasm")]
-        transit
-            .socket
-            .send(ws_stream_wasm::WsMessage::Binary("go\n".into()))
-            .await?;
+        let (mut socket, finalizer) = transit;
+        let (tx, rx) = finalizer
+            .handshake_finalize(&mut socket)
+            .await
+            .map_err(|e| {
+                log::debug!("`handshake_finalize` failed: {e}");
+                TransitConnectError::Handshake
+            })?;
+        // TODO integrate into finalizer
+        // #[cfg(not(target_family = "wasm"))]
+        // transit.socket.write_all(b"go\n").await?;
+        // #[cfg(target_family = "wasm")]
+        // transit
+        //     .socket
+        //     .send(ws_stream_wasm::WsMessage::Binary("go\n".into()))
+        //     .await?;
 
         #[cfg(not(target_family = "wasm"))]
-        let addr = transit.socket.peer_addr().unwrap();
+        let addr = socket.peer_addr().unwrap();
         Ok((
-            transit,
+            Transit { socket, tx, rx },
             host_type,
             #[cfg(not(target_family = "wasm"))]
             addr,
-            #[cfg(target_family = "wasm")]
-            (),
+           #[cfg(target_family = "wasm")]
+                (),
         ))
     }
 
@@ -1045,9 +1115,17 @@ impl TransitConnector {
         .await
         {
             #[cfg(not(target_family = "wasm"))]
-            Ok(Some((transit, host_type))) => {
-                let addr = transit.socket.peer_addr().unwrap();
-                Ok((transit, host_type, addr))
+            Ok(Some(((mut socket, finalizer), host_type))) => {
+                let addr = socket.peer_addr().unwrap();
+                let (tx, rx) = finalizer
+                    .handshake_finalize(&mut socket)
+                    .await
+                    .map_err(|e| {
+                        log::debug!("`handshake_finalize` failed: {e}");
+                        TransitConnectError::Handshake
+                    })?;
+
+                Ok((Transit { socket, tx, rx }, host_type, addr))
             },
             #[cfg(target_family = "wasm")]
             Ok(Some((transit, host_type))) => Ok((transit, host_type, ())),
@@ -1082,9 +1160,23 @@ impl TransitConnector {
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
         #[cfg(not(target_family = "wasm"))] socket: Option<(MaybeConnectedSocket, TcpListener)>,
-    ) -> impl Stream<Item = Result<(Transit, TransitInfo), TransitHandshakeError>> + 'static {
+    ) -> impl Stream<Item = Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>
+           + 'static {
+        /* Have socket => can direct */
         #[cfg(not(target_family = "wasm"))]
         assert!(socket.is_some() == our_abilities.can_direct());
+
+        let cryptor = if our_abilities.can_noise_crypto() && their_abilities.can_noise_crypto() {
+            log::debug!("Using noise protocol for encryption");
+            Arc::new(crypto::NoiseInit {
+                key: transit_key.clone(),
+            }) as Arc<dyn crypto::TransitCryptoInit>
+        } else {
+            log::debug!("Using secretbox for encryption");
+            Arc::new(crypto::SecretboxInit {
+                key: transit_key.clone(),
+            }) as Arc<dyn crypto::TransitCryptoInit>
+        };
 
         // 8. listen for connections on the port and simultaneously try connecting to the peer port.
         let tside = Arc::new(hex::encode(rand::random::<[u8; 8]>()));
@@ -1097,7 +1189,8 @@ impl TransitConnector {
         #[cfg(target_family = "wasm")]
         use futures::future::LocalBoxFuture as BoxFuture;
         type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
-        type ConnectorFuture = BoxFuture<'static, Result<TransitConnection, TransitHandshakeError>>;
+        type ConnectorFuture =
+            BoxFuture<'static, Result<TransitConnection, crypto::TransitHandshakeError>>;
         let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
 
         /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
@@ -1129,6 +1222,27 @@ impl TransitConnector {
                 ),
             ) as BoxIterator<ConnectorFuture>;
             Some(socket2)
+        } else if our_abilities.can_direct() {
+            /* Fallback: We did not manage to bind a listener but we can still connect to the peer's hints */
+            connectors = Box::new(
+                connectors.chain(
+                    their_hints
+                        .direct_tcp
+                        .clone()
+                        .into_iter()
+                        /* Nobody should have that many IP addresses, even with NATing */
+                        .take(50)
+                        .map(move |hint| async move {
+                            let dest_addr = SocketAddr::try_from(&hint)?;
+                            log::debug!("Connecting directly to {}", dest_addr);
+                            let socket = async_std::net::TcpStream::connect(&dest_addr).await?;
+                            log::debug!("Connected to {}!", dest_addr);
+                            Ok((socket, TransitInfo::Direct))
+                        })
+                        .map(|fut| Box::pin(fut) as ConnectorFuture),
+                ),
+            ) as BoxIterator<ConnectorFuture>;
+            None
         } else {
             None
         };
@@ -1147,10 +1261,10 @@ impl TransitConnector {
             async fn hint_connector(
                 host: DirectHint,
                 name: Option<String>,
-            ) -> Result<TransitConnection, TransitHandshakeError> {
+            ) -> Result<TransitConnection, crypto::TransitHandshakeError> {
                 log::debug!("Connecting to relay {}", host);
                 let transit = TcpStream::connect((host.hostname.as_str(), host.port))
-                    .err_into::<TransitHandshakeError>()
+                    .err_into::<crypto::TransitHandshakeError>()
                     .await?;
                 log::debug!("Connected to {}!", host);
 
@@ -1263,29 +1377,41 @@ impl TransitConnector {
         /* Do a handshake on all our found connections */
         let transit_key2 = transit_key.clone();
         let tside2 = tside.clone();
+        let cryptor2 = cryptor.clone();
         let mut connectors = Box::new(
             connectors
                 .map(move |fut| {
                     let transit_key = transit_key2.clone();
                     let tside = tside2.clone();
+                    let cryptor = cryptor2.clone();
                     async move {
                         let (socket, host_type) = fut.await?;
                         #[cfg(not(target_family = "wasm"))]
-                        let transit =
-                            handshake_exchange(is_leader, tside, socket, &host_type, transit_key)
-                                .await?;
+                        let transit = handshake_exchange(
+                            is_leader,
+                            tside,
+                            socket,
+                            &host_type,
+                            &*cryptor,
+                            transit_key,
+                        )
+                        .await?;
                         #[cfg(target_family = "wasm")]
-                        let transit =
-                            handshake_exchange(is_leader, tside, socket, transit_key).await?;
+                            let transit =
+                            handshake_exchange(is_leader, tside, socket, &*cryptor, transit_key).await?;
                         Ok((transit, host_type))
                     }
                 })
                 .map(|fut| {
                     Box::pin(fut)
-                        as BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>
+                        as BoxFuture<
+                            Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
+                        >
                 }),
         )
-            as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
+            as BoxIterator<
+                BoxFuture<Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>,
+            >;
 
         /* Also listen on some port just in case. */
         #[cfg(not(target_family = "wasm"))]
@@ -1295,6 +1421,7 @@ impl TransitConnector {
                     std::iter::once(async move {
                         let transit_key = transit_key.clone();
                         let tside = tside.clone();
+                        let cryptor = cryptor.clone();
                         let connect = || async {
                             let (stream, peer) = socket2.accept().await?;
                             log::debug!("Got connection from {}!", peer);
@@ -1303,10 +1430,14 @@ impl TransitConnector {
                                 tside.clone(),
                                 stream,
                                 &TransitInfo::Direct,
+                                &*cryptor,
                                 transit_key.clone(),
                             )
                             .await?;
-                            Result::<_, TransitHandshakeError>::Ok((transit, TransitInfo::Direct))
+                            Result::<_, crypto::TransitHandshakeError>::Ok((
+                                transit,
+                                TransitInfo::Direct,
+                            ))
                         };
                         loop {
                             match connect().await {
@@ -1323,11 +1454,20 @@ impl TransitConnector {
                     })
                     .map(|fut| {
                         Box::pin(fut)
-                            as BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>
+                            as BoxFuture<
+                                Result<
+                                    (HandshakeResult, TransitInfo),
+                                    crypto::TransitHandshakeError,
+                                >,
+                            >
                     }),
                 ),
             )
-                as BoxIterator<BoxFuture<Result<(Transit, TransitInfo), TransitHandshakeError>>>;
+                as BoxIterator<
+                    BoxFuture<
+                        Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
+                    >,
+                >;
         }
         connectors.collect::<futures::stream::futures_unordered::FuturesUnordered<_>>()
     }
@@ -1345,145 +1485,47 @@ pub struct Transit {
     socket: TcpStream,
     #[cfg(target_family = "wasm")]
     socket: ws_stream_wasm::WsStream,
-    /** Our key, used for sending */
-    pub skey: Key<TransitTxKey>,
-    /** Their key, used for receiving */
-    pub rkey: Key<TransitRxKey>,
-    /** Nonce for sending */
-    pub snonce: secretbox::Nonce,
-    /**
-     * Nonce for receiving
-     *
-     * We'll count as receiver and track if messages come in in order
-     */
-    pub rnonce: secretbox::Nonce,
+    tx: Box<dyn crypto::TransitCryptoEncrypt>,
+    rx: Box<dyn crypto::TransitCryptoDecrypt>,
 }
 
 impl Transit {
     /** Receive and decrypt one message from the other side. */
     pub async fn receive_record(&mut self) -> Result<Box<[u8]>, TransitError> {
-        Transit::receive_record_inner(&mut self.socket, &self.rkey, &mut self.rnonce).await
-    }
-
-    async fn receive_record_inner(
-        #[cfg(not(target_family = "wasm"))] socket: &mut (impl futures::io::AsyncRead + Unpin),
-        #[cfg(target_family = "wasm")] socket: &mut ws_stream_wasm::WsStream,
-        rkey: &Key<TransitRxKey>,
-        nonce: &mut secretbox::Nonce,
-    ) -> Result<Box<[u8]>, TransitError> {
-        use std::io::{Error, ErrorKind};
-
-        #[cfg(not(target_family = "wasm"))]
-        let enc_packet = {
-            // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
-            let length = {
-                let mut length_arr: [u8; 4] = [0; 4];
-                socket.read_exact(&mut length_arr[..]).await?;
-                u32::from_be_bytes(length_arr) as usize
-            };
-            ensure!(
-                length >= secretbox::NONCE_SIZE,
-                Error::new(
-                    ErrorKind::InvalidData,
-                    "Message must be long enough to contain at least the nonce"
-                )
-            );
-
-            // 2. read that many bytes into an array (or a vector?)
-            let mut buffer = Vec::with_capacity(length);
-            let len = socket.take(length as u64).read_to_end(&mut buffer).await?;
-            ensure!(
-                len == length,
-                Error::new(ErrorKind::UnexpectedEof, "failed to read whole message")
-            );
-            buffer
-        };
-        #[cfg(target_family = "wasm")]
-        let enc_packet: Vec<u8> = {
-            socket
-                .next()
-                .await
-                .ok_or(Error::new(
-                    ErrorKind::Other,
-                    "failed to receive transit message",
-                ))?
-                .into()
-        };
-
-        // 3. decrypt the vector 'enc_packet' with the key.
-        let plaintext = {
-            let (received_nonce, ciphertext) = enc_packet.split_at(secretbox::NONCE_SIZE);
-            {
-                // Nonce check
-                ensure!(
-                    nonce.as_slice() == received_nonce,
-                    TransitError::Nonce(received_nonce.into(), nonce.as_slice().into()),
-                );
-
-                crate::util::sodium_increment_be(nonce);
-            }
-
-            let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(rkey));
-            cipher
-                .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
-                /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
-                .map_err(|_| TransitError::Crypto)?
-        };
-
-        Ok(plaintext.into_boxed_slice())
+        self.rx.decrypt(&mut self.socket).await
+        // TODO integrate into decrypt method
+        // #[cfg(target_family = "wasm")]
+        //     let enc_packet: Vec<u8> = {
+        //     socket
+        //         .next()
+        //         .await
+        //         .ok_or(Error::new(
+        //             ErrorKind::Other,
+        //             "failed to receive transit message",
+        //         ))?
+        //         .into()
+        // };
+        //
     }
 
     /** Send an encrypted message to the other side */
     pub async fn send_record(&mut self, plaintext: &[u8]) -> Result<(), TransitError> {
-        assert!(plaintext.len() > 0);
-
-        Transit::send_record_inner(&mut self.socket, &self.skey, plaintext, &mut self.snonce).await
-    }
-
-    async fn send_record_inner(
-        #[cfg(not(target_family = "wasm"))] socket: &mut (impl futures::io::AsyncWrite + Unpin),
-        #[cfg(target_family = "wasm")] socket: &mut ws_stream_wasm::WsStream,
-        skey: &Key<TransitTxKey>,
-        plaintext: &[u8],
-        nonce: &mut secretbox::Nonce,
-    ) -> Result<(), TransitError> {
-        let sodium_key = secretbox::Key::from_slice(skey);
-
-        let ciphertext = {
-            let nonce_le = secretbox::Nonce::from_slice(nonce);
-
-            let cipher = secretbox::XSalsa20Poly1305::new(sodium_key);
-            cipher
-                .encrypt(nonce_le, plaintext)
-                /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
-                .map_err(|_| TransitError::Crypto)?
-        };
-
-        // send the encrypted record
-        #[cfg(not(target_family = "wasm"))]
-        {
-            socket
-                .write_all(&((ciphertext.len() + nonce.len()) as u32).to_be_bytes())
-                .await?;
-            socket.write_all(nonce).await?;
-            socket.write_all(&ciphertext).await?;
-        }
-        #[cfg(target_family = "wasm")]
-        {
-            let mut ciphertext = ciphertext;
-            /* This is effectively a push_front */
-            ciphertext.splice(0..0, *nonce);
-            socket
-                .send(ws_stream_wasm::WsMessage::Binary(ciphertext))
-                .await?;
-        }
-
-        crate::util::sodium_increment_be(nonce);
-
-        Ok(())
+        assert!(!plaintext.is_empty());
+        self.tx.encrypt(&mut self.socket, plaintext).await
+        // TODO integrate into encrypt method
+        // #[cfg(target_family = "wasm")]
+        // {
+        //     let mut ciphertext = ciphertext;
+        //     /* This is effectively a push_front */
+        //     ciphertext.splice(0..0, *nonce);
+        //     socket
+        //         .send(ws_stream_wasm::WsMessage::Binary(ciphertext))
+        //         .await?;
+        // }
     }
 
     pub async fn flush(&mut self) -> Result<(), TransitError> {
+        log::debug!("Flush");
         self.socket.flush().await.map_err(Into::into)
     }
 
@@ -1500,29 +1542,23 @@ impl Transit {
         let (reader, writer) = self.socket.split();
         (
             futures::sink::unfold(
-                (writer, self.skey, self.snonce),
-                |(mut writer, skey, mut nonce), plaintext: Box<[u8]>| async move {
-                    Transit::send_record_inner(
-                        &mut writer,
-                        &skey as &Key<TransitTxKey>,
-                        &plaintext,
-                        &mut nonce,
-                    )
-                    .await
-                    .map(|()| (writer, skey, nonce))
-                },
-            ),
-            futures::stream::try_unfold(
-                (reader, self.rkey, self.rnonce),
-                |(mut reader, rkey, mut nonce)| async move {
-                    Transit::receive_record_inner(&mut reader, &rkey, &mut nonce)
+                (writer, self.tx),
+                |(mut writer, mut tx), plaintext: Box<[u8]>| async move {
+                    tx.encrypt(&mut writer, &plaintext)
                         .await
-                        .map(|record| Some((record, (reader, rkey, nonce))))
+                        .map(|()| (writer, tx))
                 },
             ),
+            futures::stream::try_unfold((reader, self.rx), |(mut reader, mut rx)| async move {
+                rx.decrypt(&mut reader)
+                    .await
+                    .map(|record| Some((record, (reader, rx))))
+            }),
         )
     }
 }
+
+type HandshakeResult = (TcpStream, Box<dyn crypto::TransitCryptoInitFinalizer>);
 
 /**
  * Do a transit handshake exchange, to establish a direct connection.
@@ -1537,27 +1573,21 @@ impl Transit {
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
-    mut socket: TcpStream,
+    socket: TcpStream,
     host_type: &TransitInfo,
+    cryptor: &dyn crypto::TransitCryptoInit,
     key: Arc<Key<TransitKey>>,
-) -> Result<Transit, TransitHandshakeError> {
-    // 9. create record keys
-    let (rkey, skey) = if is_leader {
-        let rkey = key.derive_subkey_from_purpose("transit_record_receiver_key");
-        let skey = key.derive_subkey_from_purpose("transit_record_sender_key");
-        (rkey, skey)
-    } else {
-        /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
-         * "leader" and "follower" instead. As a follower, we use the leader key for receiving and our
-         * key for sending.
-         */
-        let rkey = key.derive_subkey_from_purpose("transit_record_sender_key");
-        let skey = key.derive_subkey_from_purpose("transit_record_receiver_key");
-        (rkey, skey)
-    };
+) -> Result<HandshakeResult, crypto::TransitHandshakeError> {
+    /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
+    // https://github.com/async-rs/async-std/issues/499
+    let socket = std::net::TcpStream::try_from(socket)
+        .expect("Internal error: this should not fail because we never cloned the socket");
+    socket.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
+    socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
+    let mut socket: TcpStream = socket.into();
 
     if host_type != &TransitInfo::Direct {
-        trace!("initiating relay handshake");
+        log::trace!("initiating relay handshake");
 
         let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
         socket
@@ -1566,75 +1596,19 @@ async fn handshake_exchange(
         let mut rx = [0u8; 3];
         socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
-        ensure!(ok_msg == rx, TransitHandshakeError::RelayHandshakeFailed);
+        ensure!(
+            ok_msg == rx,
+            crypto::TransitHandshakeError::RelayHandshakeFailed
+        );
     }
 
-    if is_leader {
-        // for transmit mode, send send_handshake_msg and compare.
-        // the received message with send_handshake_msg
-        socket
-            .write_all(
-                format!(
-                    "transit sender {} ready\n\n",
-                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
-                        .to_hex()
-                )
-                .as_bytes(),
-            )
-            .await?;
-
-        // The received message "transit sender $hash ready\n\n" has exactly 89 bytes
-        // TODO do proper line parsing one day, this is atrocious
-        let mut rx: [u8; 89] = [0; 89];
-        socket.read_exact(&mut rx).await?;
-
-        let expected_rx_handshake = format!(
-            "transit receiver {} ready\n\n",
-            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
-                .to_hex()
-        );
-        ensure!(
-            &rx[..] == expected_rx_handshake.as_bytes(),
-            TransitHandshakeError::HandshakeFailed("transit receiver not ready".into()),
-        );
+    let finalizer = if is_leader {
+        cryptor.handshake_leader(&mut socket).await?
     } else {
-        // for receive mode, send receive_handshake_msg and compare.
-        // the received message with send_handshake_msg
-        socket
-            .write_all(
-                format!(
-                    "transit receiver {} ready\n\n",
-                    key.derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
-                        .to_hex(),
-                )
-                .as_bytes(),
-            )
-            .await?;
+        cryptor.handshake_follower(&mut socket).await?
+    };
 
-        // The received message "transit receiver $hash ready\n\n" has exactly 87 bytes
-        // Three bytes for the "go\n" ack
-        // TODO do proper line parsing one day, this is atrocious
-        let mut rx: [u8; 90] = [0; 90];
-        socket.read_exact(&mut rx).await?;
-
-        let expected_tx_handshake = format!(
-            "transit sender {} ready\n\ngo\n",
-            key.derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
-                .to_hex(),
-        );
-        ensure!(
-            &rx[..] == expected_tx_handshake.as_bytes(),
-            TransitHandshakeError::HandshakeFailed("transit sender not ready".into())
-        );
-    }
-
-    Ok(Transit {
-        socket,
-        skey,
-        rkey,
-        snonce: Default::default(),
-        rnonce: Default::default(),
-    })
+    Ok((socket, finalizer))
 }
 
 /**

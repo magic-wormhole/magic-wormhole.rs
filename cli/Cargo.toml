@@ -1,6 +1,6 @@
 [package]
 name = "wormhole-rs"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 
 [dependencies]
@@ -10,16 +10,17 @@ serde_derive = "1.0.120"
 log = "0.4.13"
 url = { version = "2.2.2", features = ["serde"] }
 futures = "0.3.12"
-async-std = { version = "1.11.0", features = ["attributes", "unstable"] }
+async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 
 # CLI specific dependencies
 magic-wormhole = { path = "..", features = ["all"] }
 clap = { version = "3.1.5", features = ["cargo", "derive", "wrap_help"] }
 env_logger = "0.9.0"
 console = "0.15.0"
-indicatif = "0.16.0"
+indicatif = "0.17.0"
 dialoguer = "0.10.0"
 color-eyre = "0.6.0"
 number_prefix = "0.4.0"
 ctrlc = "3.2.1"
-cli-clipboard = { git = "https://github.com/ActuallyAllie/cli-clipboard" }
+cli-clipboard = "0.3.0"
+qr2term = "0.3.0"

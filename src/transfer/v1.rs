@@ -22,7 +22,7 @@ where
     G: FnOnce(transit::TransitInfo, transit::ConnectSocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
-    let run = async {
+    let run = Box::pin(async {
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // We want to do some transit
@@ -101,36 +101,11 @@ where
         debug!("Transfer complete!");
 
         Ok(())
-    };
+    });
 
-    match crate::util::cancellable(run, cancel).await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error @ TransferError::PeerError(_))) => Err(error),
-        Ok(Err(error @ TransferError::Transit(_))) => {
-            /* If transit failed, ask for a proper error and potentially use that instead */
-            match wormhole.receive_json().await {
-                Ok(Ok(PeerMessage::Error(error))) => Err(TransferError::PeerError(error)),
-                _ => {
-                    let _ = wormhole
-                        .send_json(&PeerMessage::Error(format!("{}", error)))
-                        .await;
-                    Err(error)
-                },
-            }
-        },
-        Ok(Err(error)) => {
-            let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
-                .await;
-            Err(error)
-        },
-        Err(cancelled) => {
-            let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", cancelled)))
-                .await;
-            Ok(())
-        },
-    }
+    futures::pin_mut!(cancel);
+    let result = crate::util::cancellable_2(run, cancel).await;
+    super::handle_run_result(wormhole, result).await
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -150,7 +125,7 @@ where
     G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
-    let run = async {
+    let run = Box::pin(async {
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
         let folder_path = folder_path.into();
 
@@ -343,36 +318,11 @@ where
         debug!("Transfer complete!");
 
         Ok(())
-    };
+    });
 
-    match crate::util::cancellable(run, cancel).await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error @ TransferError::PeerError(_))) => Err(error),
-        Ok(Err(error @ TransferError::Transit(_))) => {
-            /* If transit failed, ask for a proper error and potentially use that instead */
-            match wormhole.receive_json().await {
-                Ok(Ok(PeerMessage::Error(error))) => Err(TransferError::PeerError(error)),
-                _ => {
-                    let _ = wormhole
-                        .send_json(&PeerMessage::Error(format!("{}", error)))
-                        .await;
-                    Err(error)
-                },
-            }
-        },
-        Ok(Err(error)) => {
-            let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
-                .await;
-            Err(error)
-        },
-        Err(cancelled) => {
-            let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", cancelled)))
-                .await;
-            Ok(())
-        },
-    }
+    futures::pin_mut!(cancel);
+    let result = crate::util::cancellable_2(run, cancel).await;
+    super::handle_run_result(wormhole, result).await
 }
 
 // encrypt and send the file to tcp stream and return the sha256 sum
