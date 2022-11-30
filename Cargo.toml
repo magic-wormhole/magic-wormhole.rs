@@ -29,7 +29,7 @@ hex = { version = "0.4.2", features = ["serde"] }
 rand = "0.8.3"
 log = "0.4.13"
 # zeroize = { version = "1.2.0", features = ["zeroize_derive"] }
-base64 = "0.13.0"
+base64 = "0.20.0"
 futures_ringbuf = "0.3.1"
 time = { version = "0.3.7", features = ["formatting"] }
 
@@ -51,7 +51,7 @@ stun_codec = { version = "0.2.0", optional = true }
 if-addrs = { version = "0.7.0", optional = true }
 bytecodec = { version = "0.4.15", optional = true }
 async-trait = { version = "0.1.57", optional = true }
-noise-protocol = { version = "0.1.3", optional = true }
+noise-protocol = { version = "0.1.4", optional = true }
 noise-rust-crypto = { version = "0.5.0", optional = true }
 
 # Transfer dependencies
@@ -65,7 +65,7 @@ rmp-serde = { version = "1.0.0", optional = true }
 
 # for some tests
 [dev-dependencies]
-env_logger = "0.9.0"
+env_logger = "0.10.0"
 eyre = "0.6.5"
 
 [features]
