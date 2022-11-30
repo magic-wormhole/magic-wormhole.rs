@@ -26,6 +26,11 @@ allow = ["EUPL-1.2"]
 name = "magic-wormhole"
 version = "*"
 
+[[licenses.exceptions]]
+allow = ["Unicode-DFS-2016"]
+name = "unicode-ident"
+version = "*"
+
 [[licenses.clarify]]
 name = "ring"
 version = "*"
