@@ -476,6 +476,30 @@ impl<S: Into<String>> From<S> for EitherSide {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
+#[display(fmt = "{}-{}", "&*_0[0]", "&*_0[1]")]
+pub struct ClientVersion<'a>(#[serde(borrow)] pub [&'a str; 2]);
+
+impl<'a> ClientVersion<'a> {
+    pub fn new(name: &'a str, version: &'a str) -> Self {
+        let array = [name, version];
+        ClientVersion { 0: array }
+    }
+}
+
+impl<'a> std::ops::Deref for ClientVersion<'a> {
+    type Target = [&'a str; 2];
+    fn deref(&self) -> &[&'a str; 2] {
+        &self.0
+    }
+}
+
+impl<'a> std::ops::DerefMut for ClientVersion<'a> {
+    fn deref_mut(&mut self) -> &mut [&'a str; 2] {
+        &mut self.0
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
 pub struct Phase(pub Cow<'static, str>);
