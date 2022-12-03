@@ -1,6 +1,6 @@
 use super::{AppID, ClientVersion, Mailbox, Mood, MySide, Nameplate, Phase, TheirSide};
 use serde_derive::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 /// Special encoding for the `nameplates` message
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -132,7 +132,7 @@ impl EncryptedMessage {
 #[derive(Serialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
-pub enum OutboundMessage<'a> {
+pub enum OutboundMessage {
     #[display(fmt = "SubmitPermission({})", _0)]
     SubmitPermission(SubmitPermission),
     #[display(
@@ -144,7 +144,7 @@ pub enum OutboundMessage<'a> {
     Bind {
         appid: AppID,
         side: MySide,
-        client_version: ClientVersion<'a>,
+        client_version: ClientVersion,
     },
     List,
     Allocate,
@@ -182,10 +182,14 @@ pub enum OutboundMessage<'a> {
 }
 
 const CLIENT_NAME: &str = "rust";
-impl<'a> OutboundMessage<'a> {
+
+impl OutboundMessage {
     pub fn bind(appid: AppID, side: MySide) -> Self {
         let client_version_string: &str = env!("CARGO_PKG_VERSION");
-        let client_version = ClientVersion::new(CLIENT_NAME, client_version_string);
+        let client_version = ClientVersion::new(
+            Cow::Borrowed(CLIENT_NAME),
+            Cow::Borrowed(client_version_string),
+        );
         OutboundMessage::Bind {
             appid,
             side,
@@ -267,11 +271,10 @@ pub enum InboundMessage {
 mod test {
     use super::*;
     use serde_json::{from_str, json, Value};
-    use std::ops::Deref;
 
     #[test]
     fn test_bind() {
-        let client_version_string: String = String::from(env!("CARGO_PKG_VERSION"));
+        let client_version_string: &str = env!("CARGO_PKG_VERSION");
         let m1 = OutboundMessage::bind(
             AppID::new("appid"),
             MySide::unchecked_from_string(String::from("side1")),
@@ -287,16 +290,9 @@ mod test {
 
     #[test]
     fn test_client_version_string_rep() {
-        let client_version = ClientVersion::new("foo", "1.0.2");
+        let client_version = ClientVersion::new(Cow::Borrowed("foo"), Cow::Borrowed("1.0.2"));
 
         assert_eq!(client_version.to_string(), "foo-1.0.2")
-    }
-
-    #[test]
-    fn test_client_version_deref() {
-        let client_version = ClientVersion::new("bar", "0.8.9");
-
-        assert_eq!(client_version.deref(), &["bar", "0.8.9"])
     }
 
     #[test]

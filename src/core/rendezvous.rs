@@ -70,9 +70,9 @@ struct WsConnection {
 }
 
 impl WsConnection {
-    async fn send_message<'a>(
+    async fn send_message(
         &mut self,
-        message: &OutboundMessage<'a>,
+        message: &OutboundMessage,
         queue: Option<&mut MessageQueue>,
     ) -> Result<(), RendezvousError> {
         log::debug!("Sending {}", message);
@@ -322,10 +322,7 @@ impl RendezvousServer {
         &self.side
     }
 
-    async fn send_message<'a>(
-        &mut self,
-        message: &OutboundMessage<'a>,
-    ) -> Result<(), RendezvousError> {
+    async fn send_message(&mut self, message: &OutboundMessage) -> Result<(), RendezvousError> {
         self.connection
             .send_message(message, self.state.as_mut().map(|state| &mut state.queue))
             .await

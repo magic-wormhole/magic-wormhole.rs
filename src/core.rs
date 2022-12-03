@@ -477,26 +477,15 @@ impl<S: Into<String>> From<S> for EitherSide {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
-#[display(fmt = "{}-{}", "&*_0[0]", "&*_0[1]")]
-pub struct ClientVersion<'a>(#[serde(borrow)] pub [&'a str; 2]);
+#[display(fmt = "{}-{}", "&*_0", "&*_1")]
+pub struct ClientVersion(pub Cow<'static, str>, pub Cow<'static, str>);
 
-impl<'a> ClientVersion<'a> {
-    pub fn new(name: &'a str, version: &'a str) -> Self {
-        let array = [name, version];
-        ClientVersion { 0: array }
-    }
-}
-
-impl<'a> std::ops::Deref for ClientVersion<'a> {
-    type Target = [&'a str; 2];
-    fn deref(&self) -> &[&'a str; 2] {
-        &self.0
-    }
-}
-
-impl<'a> std::ops::DerefMut for ClientVersion<'a> {
-    fn deref_mut(&mut self) -> &mut [&'a str; 2] {
-        &mut self.0
+impl ClientVersion {
+    pub fn new(implementation: Cow<'static, str>, version: Cow<'static, str>) -> Self {
+        ClientVersion {
+            0: implementation,
+            1: version,
+        }
     }
 }
 
