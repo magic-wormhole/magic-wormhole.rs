@@ -195,6 +195,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-tar"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c49359998a76e32ef6e870dbc079ebad8f1e53e8441c5dd39d27b44493fe331"
+dependencies = [
+ "async-std",
+ "filetime",
+ "libc",
+ "pin-project",
+ "redox_syscall",
+ "xattr",
+]
+
+[[package]]
 name = "async-task"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1293,6 +1307,7 @@ version = "0.5.0"
 dependencies = [
  "async-io",
  "async-std",
+ "async-tar",
  "async-trait",
  "async-tungstenite",
  "base64 0.20.0",
@@ -1320,7 +1335,6 @@ dependencies = [
  "socket2",
  "spake2",
  "stun_codec",
- "tar",
  "thiserror",
  "time",
  "url",
@@ -1579,6 +1593,26 @@ checksum = "e6d5014253a1331579ce62aa67443b4a658c5e7dd03d4bc6d302b94474888143"
 dependencies = [
  "fixedbitset",
  "indexmap",
+]
+
+[[package]]
+name = "pin-project"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad29a609b6bcd67fee905812e544992d216af9d755757c05ed2d0e15a74c6ecc"
+dependencies = [
+ "pin-project-internal",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "069bdb1e05adc7a8990dce9cc75370895fbe4e3d58b9b73bf1aee56359344a55"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2115,17 +2149,6 @@ dependencies = [
  "quote",
  "syn",
  "unicode-xid",
-]
-
-[[package]]
-name = "tar"
-version = "0.4.38"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b55807c0344e1e6c04d7c965f5289c39a8d94ae23ed5c0b57aabac549f871c6"
-dependencies = [
- "filetime",
- "libc",
- "xattr",
 ]
 
 [[package]]

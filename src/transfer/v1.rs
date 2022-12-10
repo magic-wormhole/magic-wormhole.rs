@@ -1,4 +1,4 @@
-use async_std::io::{prelude::WriteExt, ReadExt};
+use futures::{AsyncReadExt, AsyncWriteExt};
 use log::*;
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use std::path::PathBuf;
@@ -144,7 +144,6 @@ where
             ))
             .await?;
 
-        use tar::Builder;
         // use sha2::{digest::FixedOutput, Digest, Sha256};
 
         /* Helper struct stolen from https://docs.rs/count-write/0.1.0 */
@@ -169,31 +168,27 @@ where
          * tar file once, stream it into the void, and the second time we stream it over the
          * wire. Also hashing for future reference.
          */
-        log::info!(
-            "Tar'ing '{}' to see how big it'll be :)",
-            folder_path.display()
-        );
+        log::info!("Calculating the size of '{}'", folder_path.display());
         let folder_path2 = folder_path.clone();
-        let (length, sha256sum_initial) = async_std::task::spawn_blocking(move || {
+        let (length, sha256sum_initial) = {
             let mut hasher = Sha256::new();
             let mut counter = CountWrite {
                 inner: &mut hasher,
                 count: 0,
             };
-            let mut builder = Builder::new(&mut counter);
+            let mut builder = async_tar::Builder::new(futures::io::AllowStdIo::new(&mut counter));
 
-            builder.mode(tar::HeaderMode::Deterministic);
+            builder.mode(async_tar::HeaderMode::Deterministic);
             builder.follow_symlinks(false);
             /* A hasher should never fail writing */
-            builder.append_dir_all("", folder_path2).unwrap();
-            builder.finish().unwrap();
+            builder.append_dir_all("", folder_path2).await.unwrap();
+            builder.finish().await.unwrap();
 
             std::mem::drop(builder);
             let count = counter.count;
             std::mem::drop(counter);
             (count, hasher.finalize_fixed())
-        })
-        .await;
+        };
 
         // Send file offer message.
         debug!("Sending file offer");
@@ -240,65 +235,85 @@ where
 
         debug!("Beginning file transfer");
 
-        /* Helper struct stolen from https://github.com/softprops/broadcast/blob/master/src/lib.rs */
-        pub struct BroadcastWriter<A: std::io::Write, B: std::io::Write> {
-            primary: A,
-            secondary: B,
+        /* Inspired by https://github.com/RustCrypto/traits/pull/1159/files */
+        pub struct HashWriter<D: sha2::digest::Update, W: futures::io::AsyncWrite + Unpin> {
+            writer: W,
+            hasher: D,
         }
 
-        impl<A: std::io::Write, B: std::io::Write> std::io::Write for BroadcastWriter<A, B> {
-            fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-                let n = self.primary.write(data).unwrap();
-                self.secondary.write_all(&data[..n]).unwrap();
-                Ok(n)
+        use std::{
+            pin::Pin,
+            task::{Context, Poll},
+        };
+        impl<D: sha2::digest::Update + Unpin, W: futures::io::AsyncWrite + Unpin>
+            futures::io::AsyncWrite for HashWriter<D, W>
+        {
+            fn poll_write(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+                buf: &[u8],
+            ) -> Poll<std::io::Result<usize>> {
+                // log::debug!("Poll write, {}", buf.len());
+                match Pin::new(&mut self.writer).poll_write(cx, buf) {
+                    Poll::Ready(Ok(n)) => {
+                        self.hasher.update(&buf[..n]);
+                        Poll::Ready(Ok(n))
+                    },
+                    res => res,
+                }
             }
 
-            fn flush(&mut self) -> std::io::Result<()> {
-                self.primary.flush().and(self.secondary.flush())
+            fn poll_flush(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+            ) -> Poll<std::io::Result<()>> {
+                // log::debug!("Poll flush");
+                Pin::new(&mut self.writer).poll_flush(cx)
+            }
+
+            fn poll_close(
+                mut self: Pin<&mut Self>,
+                cx: &mut Context<'_>,
+            ) -> Poll<std::io::Result<()>> {
+                // log::debug!("Poll close");
+                Pin::new(&mut self.writer).poll_close(cx)
             }
         }
 
         // 11. send the file as encrypted records.
-        use futures::{AsyncReadExt, AsyncWriteExt};
-        let (mut reader, mut writer) = futures_ringbuf::RingBuffer::new(4096).split();
+        let (mut reader, writer) = futures_ringbuf::RingBuffer::new(4096).split();
 
-        struct BlockingWrite<W>(std::pin::Pin<Box<W>>);
-
-        impl<W: AsyncWrite + Send + Unpin> std::io::Write for BlockingWrite<W> {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                let mut writer = self.0.as_mut();
-                futures::executor::block_on(AsyncWriteExt::write(&mut writer, buf))
-            }
-
-            fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
-                let mut writer = self.0.as_mut();
-                futures::executor::block_on(AsyncWriteExt::flush(&mut writer))
-            }
-        }
-
-        let file_sender = async_std::task::spawn_blocking(move || {
-            let mut hasher = Sha256::new();
-            let mut hash_writer = BroadcastWriter {
-                primary: BlockingWrite(Box::pin(&mut writer)),
-                secondary: &mut hasher,
+        let file_sender = async_std::task::spawn(async move {
+            let mut hash_writer = HashWriter {
+                writer,
+                hasher: Sha256::new(),
             };
-            let mut builder = Builder::new(&mut hash_writer);
+            let mut builder = async_tar::Builder::new(&mut hash_writer);
 
-            builder.mode(tar::HeaderMode::Deterministic);
+            builder.mode(async_tar::HeaderMode::Deterministic);
             builder.follow_symlinks(false);
-            builder.append_dir_all("", folder_path).unwrap();
-            builder.finish().unwrap();
-
+            builder.append_dir_all("", folder_path).await?;
+            builder.finish().await?;
             std::mem::drop(builder);
-            std::mem::drop(hash_writer);
+
+            hash_writer.flush().await?;
+            hash_writer.close().await?;
+            let hasher = hash_writer.hasher;
 
             std::io::Result::Ok(hasher.finalize_fixed())
         });
 
-        let checksum =
-            v1::send_records(&mut transit, &mut reader, length, progress_handler).await?;
-        /* This should always be ready by now, but just in case */
-        let sha256sum = file_sender.await.unwrap();
+        let (checksum, sha256sum) =
+            match v1::send_records(&mut transit, &mut reader, length, progress_handler).await {
+                Ok(checksum) => (checksum, file_sender.await?),
+                Err(err) => {
+                    log::debug!("Some more error {err}");
+                    if let Some(Err(err)) = file_sender.cancel().await {
+                        log::warn!("Error in background task: {err}");
+                    }
+                    return Err(err);
+                },
+            };
 
         /* Check if the hash sum still matches what we advertized. Otherwise, tell the other side and bail out */
         ensure!(
@@ -355,6 +370,7 @@ where
     loop {
         // read a block of up to 4096 bytes
         let n = file.read(&mut plaintext[..]).await?;
+        log::debug!("Read {n}");
 
         if n == 0 {
             // EOF
@@ -369,9 +385,10 @@ where
         // sha256 of the input
         hasher.update(&plaintext[..n]);
 
-        if n < 4096 {
-            break;
-        }
+        /* Don't do this. The EOF check above is sufficient */
+        // if n < 4096 {
+        //     break;
+        // }
     }
     transit.flush().await?;
 

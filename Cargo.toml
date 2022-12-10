@@ -56,7 +56,7 @@ noise-rust-crypto = { version = "0.5.0", optional = true }
 
 # Transfer dependencies
 
-tar = { version = "0.4.33", optional = true }
+async-tar = { version = "0.4.2", optional = true }
 rmp-serde = { version = "1.0.0", optional = true }
 
 # Forwarding dependencies
@@ -70,7 +70,7 @@ eyre = "0.6.5"
 
 [features]
 transit = ["socket2", "stun_codec", "if-addrs", "bytecodec", "async-trait", "noise-protocol", "noise-rust-crypto"]
-transfer = ["transit", "tar", "rmp-serde"]
+transfer = ["transit", "async-tar", "rmp-serde"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transit", "transfer"]
 all = ["default", "forwarding"]
