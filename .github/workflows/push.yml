@@ -56,7 +56,7 @@ jobs:
           - ubuntu-latest
           - windows-latest
         rust:
-          - 1.59.0 # MSRV
+          - 1.61.0 # MSRV
           - stable
           - nightly
     steps:
