@@ -203,7 +203,7 @@ impl TransitAck {
 
 pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
-    relay_url: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     file_path: N,
     file_name: M,
     transit_abilities: transit::Abilities,
@@ -226,7 +226,7 @@ where
     if metadata.is_dir() {
         send_folder(
             wormhole,
-            relay_url,
+            relay_hints,
             file_path,
             file_name,
             transit_abilities,
@@ -239,7 +239,7 @@ where
         let file_size = metadata.len();
         send_file(
             wormhole,
-            relay_url,
+            relay_hints,
             &mut file,
             file_name,
             file_size,
@@ -259,7 +259,7 @@ where
 /// as advertized in file_size.
 pub async fn send_file<F, N, G, H>(
     wormhole: Wormhole,
-    relay_url: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     file: &mut F,
     file_name: N,
     file_size: u64,
@@ -275,7 +275,6 @@ where
     H: FnMut(u64, u64) + 'static,
 {
     let _peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
-    let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
     // if peer_version.supports_v2() && false {
     //     v2::send_file(wormhole, relay_url, file, file_name, file_size, progress_handler, peer_version).await
     // } else {
@@ -302,7 +301,7 @@ where
 /// unpack it. But it's better than nothing
 pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
-    relay_url: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     folder_path: N,
     folder_name: M,
     transit_abilities: transit::Abilities,
@@ -316,7 +315,6 @@ where
     G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
     H: FnMut(u64, u64) + 'static,
 {
-    let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
     v1::send_folder(
         wormhole,
         relay_hints,
@@ -340,13 +338,12 @@ where
  */
 pub async fn request_file(
     mut wormhole: Wormhole,
-    relay_url: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
     // Error handling
     let run = Box::pin(async {
-        let relay_hints = vec![transit::RelayHint::from_urls(None, [relay_url])];
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // send the transit message
