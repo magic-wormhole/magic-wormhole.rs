@@ -19,7 +19,6 @@ use std::{
 };
 
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
-use std::str::FromStr;
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -322,7 +321,7 @@ async fn main() -> eyre::Result<()> {
             eyre::ensure!(file_path.exists(), "{} does not exist", file_path.display());
 
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_server) = match util::cancellable(
+            let (wormhole, _code, relay_hints) = match util::cancellable(
                 Box::pin(parse_and_connect(
                     &mut term,
                     common,
@@ -343,7 +342,7 @@ async fn main() -> eyre::Result<()> {
 
             Box::pin(send(
                 wormhole,
-                relay_server,
+                relay_hints,
                 file_path.as_ref(),
                 &file_name,
                 transit_abilities,
@@ -360,7 +359,7 @@ async fn main() -> eyre::Result<()> {
             ..
         } => {
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, code, relay_server) = {
+            let (wormhole, code, relay_hints) = {
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
@@ -381,7 +380,7 @@ async fn main() -> eyre::Result<()> {
             let file_name = concat_file_name(&file, file_name.as_ref())?;
 
             Box::pin(send_many(
-                relay_server,
+                relay_hints,
                 &code,
                 file.as_ref(),
                 &file_name,
@@ -406,7 +405,7 @@ async fn main() -> eyre::Result<()> {
             ..
         } => {
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_server) = {
+            let (wormhole, _code, relay_hints) = {
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
@@ -425,7 +424,7 @@ async fn main() -> eyre::Result<()> {
 
             Box::pin(receive(
                 wormhole,
-                relay_server,
+                relay_hints,
                 file_path.as_os_str(),
                 file_name.map(std::ffi::OsString::from).as_deref(),
                 noconfirm,
@@ -492,16 +491,15 @@ async fn main() -> eyre::Result<()> {
                     Some(&server_print_code),
                     clipboard.as_mut(),
                 ));
-                let (wormhole, _code, relay_server) =
+                let (wormhole, _code, relay_hints) =
                     match futures::future::select(connect_fut, ctrl_c()).await {
                         Either::Left((result, _)) => result?,
                         Either::Right(((), _)) => break,
                     };
-                let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
                 async_std::task::spawn(forwarding::serve(
                     wormhole,
                     &transit::log_transit_connection,
-                    relay_server,
+                    relay_hints,
                     targets.clone(),
                     ctrl_c(),
                 ));
@@ -519,7 +517,7 @@ async fn main() -> eyre::Result<()> {
             log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_server) = parse_and_connect(
+            let (wormhole, _code, relay_hints) = parse_and_connect(
                 &mut term,
                 common,
                 code,
@@ -530,12 +528,11 @@ async fn main() -> eyre::Result<()> {
                 clipboard.as_mut(),
             )
             .await?;
-            let relay_server = vec![transit::RelayHint::from_urls(None, [relay_server])];
 
             let offer = forwarding::connect(
                 wormhole,
                 &transit::log_transit_connection,
-                relay_server,
+                relay_hints,
                 Some(bind_address),
                 &ports,
             )
@@ -588,17 +585,21 @@ async fn parse_and_connect(
         &dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>) -> eyre::Result<()>,
     >,
     clipboard: Option<&mut ClipboardContext>,
-) -> eyre::Result<(Wormhole, magic_wormhole::Code, url::Url)> {
-    // TODO handle multiple relay servers correctly
-    let relay_server: url::Url = common_args
+) -> eyre::Result<(Wormhole, magic_wormhole::Code, Vec<transit::RelayHint>)> {
+    // TODO handle relay servers with multiple endpoints better
+    let mut relay_hints: Vec<transit::RelayHint> = common_args
         .relay_server
         .into_iter()
-        .next()
-        .unwrap_or_else(|| {
-            magic_wormhole::transit::DEFAULT_RELAY_SERVER
+        .map(|url| transit::RelayHint::from_urls(url.host_str().map(str::to_owned), [url]))
+        .collect::<Result<_, transit::RelayHintParseError>>()?;
+    if relay_hints.is_empty() {
+        relay_hints.push(transit::RelayHint::from_urls(
+            None,
+            [magic_wormhole::transit::DEFAULT_RELAY_SERVER
                 .parse()
-                .unwrap()
-        });
+                .unwrap()],
+        )?)
+    }
     let code = code
         .map(Result::Ok)
         .or_else(|| (!is_send).then(enter_code))
@@ -650,7 +651,7 @@ async fn parse_and_connect(
             (wormhole, server_welcome.code)
         },
     };
-    eyre::Result::<_>::Ok((wormhole, code, relay_server))
+    eyre::Result::<_>::Ok((wormhole, code, relay_hints))
 }
 
 fn create_progress_bar(file_size: u64) -> ProgressBar {
@@ -740,7 +741,7 @@ fn server_print_code(
 
 async fn send(
     wormhole: Wormhole,
-    relay_server: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
     transit_abilities: transit::Abilities,
@@ -750,7 +751,7 @@ async fn send(
     let pb2 = pb.clone();
     transfer::send_file_or_folder(
         wormhole,
-        relay_server,
+        relay_hints,
         file_path,
         file_name,
         transit_abilities,
@@ -772,7 +773,7 @@ async fn send(
 }
 
 async fn send_many(
-    relay_server: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     code: &magic_wormhole::Code,
     file_path: &std::ffi::OsStr,
     file_name: &std::ffi::OsStr,
@@ -800,7 +801,7 @@ async fn send_many(
 
     /* Special-case the first send with reusing the existing connection */
     send_in_background(
-        relay_server.clone(),
+        relay_hints.clone(),
         Arc::clone(&file_path),
         Arc::clone(&file_name),
         wormhole,
@@ -827,7 +828,7 @@ async fn send_many(
         let (_server_welcome, wormhole) =
             magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone()).await?;
         send_in_background(
-            relay_server.clone(),
+            relay_hints.clone(),
             Arc::clone(&file_path),
             Arc::clone(&file_name),
             wormhole,
@@ -840,7 +841,7 @@ async fn send_many(
     }
 
     async fn send_in_background(
-        url: url::Url,
+        relay_hints: Vec<transit::RelayHint>,
         file_name: Arc<std::ffi::OsString>,
         file_path: Arc<std::ffi::OsString>,
         wormhole: Wormhole,
@@ -857,7 +858,7 @@ async fn send_many(
             let result = async move {
                 transfer::send_file_or_folder(
                     wormhole,
-                    url,
+                    relay_hints,
                     file_path.deref(),
                     file_name.deref(),
                     transit_abilities,
@@ -894,14 +895,14 @@ async fn send_many(
 
 async fn receive(
     wormhole: Wormhole,
-    relay_server: url::Url,
+    relay_hints: Vec<transit::RelayHint>,
     target_dir: &std::ffi::OsStr,
     file_name: Option<&std::ffi::OsStr>,
     noconfirm: bool,
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
-    let req = transfer::request_file(wormhole, relay_server, transit_abilities, ctrl_c())
+    let req = transfer::request_file(wormhole, relay_hints, transit_abilities, ctrl_c())
         .await
         .context("Could not get an offer")?;
     /* If None, the task got cancelled */

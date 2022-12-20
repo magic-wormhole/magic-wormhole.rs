@@ -348,6 +348,23 @@ enum RelayHintSerdeInner {
     Unknown,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum RelayHintParseError {
+    #[error(
+        "Invalid TCP hint endpoint: '{}' (Does it have hostname and port?)",
+        _0
+    )]
+    InvalidTcp(url::Url),
+    #[error(
+        "Unknown schema: '{}'. Currently known values are 'tcp', 'ws'  and 'wss'.",
+        _0
+    )]
+    UnknownSchema(Box<str>),
+    #[error("'{}' is not an absolute URL (must start with a '/')", _0)]
+    UrlNotAbsolute(url::Url),
+}
+
 /**
  * Hint describing a relay server
  *
@@ -360,7 +377,9 @@ enum RelayHintSerdeInner {
 /* RelayHint::default() gives the empty server (cannot be reached), and is only there for struct update syntax */
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct RelayHint {
-    /** Human readable name */
+    /** Human readable name. The expectation is that when a server has multiple endpoints, the
+     * expectation is that the domain name is used as name
+     */
     pub name: Option<String>,
     /** TCP endpoints of that relay */
     pub tcp: HashSet<DirectHint>,
@@ -381,34 +400,60 @@ impl RelayHint {
         }
     }
 
-    pub fn from_urls(name: Option<String>, urls: impl IntoIterator<Item = url::Url>) -> Self {
+    /// Construct a relay hint from a list of multiple endpoints, and optionally a name.
+    ///
+    /// Not all URLs are acceptable, therefore this method is fallible. Especially, TCP endpoints
+    /// must be encoded as `tcp://hostname:port`. All URLs must be absolute, i.e. start with a `/`.
+    ///
+    /// Basic usage (default server):
+    ///
+    /// ```
+    /// use magic_wormhole::transit;
+    /// let hint =
+    ///     transit::RelayHint::from_urls(None, [transit::DEFAULT_RELAY_SERVER.parse().unwrap()])
+    ///         .unwrap();
+    /// ```
+    ///
+    /// Custom relay server from url with name:
+    ///
+    /// ```
+    /// use magic_wormhole::transit;
+    /// # let url: url::Url = transit::DEFAULT_RELAY_SERVER.parse().unwrap();
+    /// let hint = transit::RelayHint::from_urls(url.host_str().map(str::to_owned), [url]).unwrap();
+    /// ```
+    pub fn from_urls(
+        name: Option<String>,
+        urls: impl IntoIterator<Item = url::Url>,
+    ) -> Result<Self, RelayHintParseError> {
         let mut this = Self {
             name,
             ..Self::default()
         };
         for url in urls.into_iter() {
+            ensure!(
+                !url.cannot_be_a_base(),
+                RelayHintParseError::UrlNotAbsolute(url)
+            );
             match url.scheme() {
                 "tcp" => {
-                    this.tcp.insert(DirectHint {
-                        hostname: url
-                            .host_str()
-                            .expect("Missing hostname in relay URL (also TODO error handling)")
-                            .into(),
-                        port: url
-                            .port()
-                            .expect("Missing port in relay URL (also TODO error handling)"),
-                    });
+                    /* Using match */
+                    let (hostname, port) = match (url.host_str(), url.port()) {
+                        (Some(hostname), Some(port)) => (hostname.into(), port),
+                        _ => bail!(RelayHintParseError::InvalidTcp(url)),
+                    };
+                    this.tcp.insert(DirectHint { hostname, port });
                 },
                 "ws" | "wss" => {
                     this.ws.insert(url);
                 },
-                _ => {
-                    // Do we fail or do we ignore?
-                    todo!("TODO error handling");
-                },
+                other => bail!(RelayHintParseError::UnknownSchema(other.into())),
             }
         }
-        this
+        assert!(
+            !this.tcp.is_empty() || !this.ws.is_empty(),
+            "No URLs provided"
+        );
+        Ok(this)
     }
 
     pub fn can_merge(&self, other: &Self) -> bool {
