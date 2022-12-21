@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## Version 0.6.0
+
+- Add shell completion support for the CLI
+- Add support for [wormhole URIs](https://github.com/magic-wormhole/magic-wormhole-protocols/pull/21)
+	- \[cli\] The CLI will show a QR code (even if no app can probably read it currently) and a link
+	- \[lib\] See `magic_wormhole::uri::WormholeTransferUri`
+- \[lib\]\[breaking\] File transfer functions do not take a `url::Url` for the relay server anymore, but a `Vec<magic_wormhole::transit::RelayHint>`
+	- For migration, look at `magic_wormhole::transit::RelayHint::from_urls`
+- Fix broken port forwarding
+- Fix directory transfer
+- Smaller bugfixes
+
 ## Version 0.5.0
 
 - \[lib\]\[breaking\] Removed `relay-v2` ability again.
