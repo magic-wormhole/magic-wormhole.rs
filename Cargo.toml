@@ -14,7 +14,7 @@ repository = "https://github.com/magic-wormhole/magic-wormhole.rs"
 documentation = "https://docs.rs/magic-wormhole/latest/"
 license = "EUPL-1.2"
 edition = "2021"
-rust-version = "1.59" # MSRV
+rust-version = "1.61" # MSRV (also change in CI)
 
 [dependencies]
 serde = { version = "1.0.120", features = ["rc"] }
