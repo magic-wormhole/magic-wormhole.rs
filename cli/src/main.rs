@@ -64,7 +64,7 @@ struct CommonSenderArgs {
     /// Suggest a different name to the receiver to keep the file's actual name secret.
     #[clap(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
     file_name: Option<PathBuf>,
-    #[clap(index = 1, required = true, value_name = "FILENAME|DIRNAME")]
+    #[clap(index = 1, required = true, value_name = "FILENAME|DIRNAME", value_hint = clap::ValueHint::AnyPath)]
     file: PathBuf,
 }
 
@@ -86,7 +86,7 @@ struct CommonReceiverArgs {
     #[clap(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
     file_name: Option<PathBuf>,
     /// Store transferred file or folder in the specified directory. Defaults to $PWD.
-    #[clap(long = "out-dir", value_name = "PATH", default_value = ".")]
+    #[clap(long = "out-dir", value_name = "PATH", default_value = ".", value_hint = clap::ValueHint::DirPath)]
     file_path: PathBuf,
 }
 
@@ -106,11 +106,12 @@ struct CommonArgs {
         long = "relay-server",
         visible_alias = "relay",
         multiple_occurrences = true,
-        value_name = "tcp://HOSTNAME:PORT"
+        value_name = "tcp://HOSTNAME:PORT",
+        value_hint = clap::ValueHint::Url
     )]
     relay_server: Vec<url::Url>,
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
-    #[clap(long, value_name = "ws://example.org")]
+    #[clap(long, value_name = "ws://example.org", value_hint = clap::ValueHint::Url)]
     rendezvous_server: Option<url::Url>,
     /// Disable the relay server support and force a direct connection.
     #[clap(long)]
@@ -131,7 +132,7 @@ enum ForwardCommand {
     )]
     Serve {
         /// List of ports to open up. You can optionally specify a domain/address to forward remote ports
-        #[clap(value_name = "[DOMAIN:]PORT", multiple_occurrences = true)]
+        #[clap(value_name = "[DOMAIN:]PORT", multiple_occurrences = true, value_hint = clap::ValueHint::Hostname)]
         targets: Vec<String>,
         #[clap(flatten)]
         common: CommonArgs,
@@ -152,7 +153,7 @@ enum ForwardCommand {
         )]
         ports: Vec<u16>,
         /// Bind to a specific address to accept the forwarding. Depending on your system and firewall, this may make the forwarded ports accessible from the outside.
-        #[clap(long = "bind", value_name = "ADDRESS", default_value = "::")]
+        #[clap(long = "bind", value_name = "ADDRESS", default_value = "::", value_hint = clap::ValueHint::Other)]
         bind_address: std::net::IpAddr,
         /// Accept the forwarding without asking for confirmation
         #[clap(long, visible_alias = "yes")]
