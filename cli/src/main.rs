@@ -702,13 +702,49 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     pb
 }
 
+struct TabCompletion {
+    options: Vec<String>
+}
+
+impl Default for TabCompletion {
+    fn default() -> Self {
+        TabCompletion {
+            options: vec![
+                "baboon".to_string(),
+                "belowground".to_string()
+            ]
+        }
+    }
+}
+
+use dialoguer::Completion;
+
+impl Completion for TabCompletion {
+    fn get(&self, input: &str) -> Option<String> {
+        let matches = self
+            .options
+            .iter()
+            .filter(|option| option.starts_with(input))
+            .collect::<Vec<_>>();
+
+        if matches.len() == 1 {
+            Some(matches[0].to_string())
+        } else {
+            None
+        }
+    }
+}
+
 fn enter_code() -> eyre::Result<String> {
     use dialoguer::Input;
 
-    Input::new()
+    let completion = TabCompletion::default();
+    let input = Input::new()
         .with_prompt("Enter code")
+        .completion_with(&completion)
         .interact_text()
-        .map_err(From::from)
+        .map_err(From::from);
+    input
 }
 
 fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> eyre::Result<()> {
