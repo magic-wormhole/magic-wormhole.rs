@@ -3,7 +3,7 @@ mod util;
 
 use std::{
     ops::Deref,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, fs,
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
@@ -11,13 +11,14 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
+use dialoguer::{Input, Completion};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-
+use std::collections::HashMap;
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 
 fn install_ctrlc_handler(
@@ -702,29 +703,43 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     pb
 }
 
-struct TabCompletion {
-    options: Vec<String>
+struct PgpWordList {
+    even_words: Vec<String>,
+    odd_words: Vec<String>
 }
 
-impl Default for TabCompletion {
+impl Default for PgpWordList {
     fn default() -> Self {
-        TabCompletion {
-            options: vec![
-                "baboon".to_string(),
-                "belowground".to_string()
-            ]
+        let json = fs::read_to_string("./src/core/pgpwords.json").unwrap();
+        let word_map: HashMap<String, Vec<String>> = serde_json::from_str(&json).unwrap();
+        let mut even_words: Vec<String> = vec![];
+        let mut odd_words: Vec<String> = vec![];
+        for (_idx, words) in word_map {
+            even_words.push(words[0].to_lowercase());
+            odd_words.push(words[1].to_lowercase());
+        }
+
+        PgpWordList {
+            even_words,
+            odd_words
         }
     }
 }
 
-use dialoguer::Completion;
-
-impl Completion for TabCompletion {
+impl Completion for PgpWordList {
     fn get(&self, input: &str) -> Option<String> {
-        let matches = self
-            .options
+        let count = input.matches("-").count();
+        let word_list: Vec<String>;
+        // we start with the odd words
+        if count % 2 == 0 {
+            word_list = self.odd_words.clone();
+        } else {
+            word_list = self.even_words.clone();
+        }
+
+        let matches = word_list
             .iter()
-            .filter(|option| option.starts_with(input))
+            .filter(|word| word.starts_with(input))
             .collect::<Vec<_>>();
 
         if matches.len() == 1 {
@@ -736,14 +751,13 @@ impl Completion for TabCompletion {
 }
 
 fn enter_code() -> eyre::Result<String> {
-    use dialoguer::Input;
-
-    let completion = TabCompletion::default();
+    let completion = PgpWordList::default();
     let input = Input::new()
         .with_prompt("Enter code")
         .completion_with(&completion)
         .interact_text()
         .map_err(From::from);
+
     input
 }
 
