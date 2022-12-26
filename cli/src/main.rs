@@ -2,8 +2,9 @@
 mod util;
 
 use std::{
+    fs,
     ops::Deref,
-    time::{Duration, Instant}, fs,
+    time::{Duration, Instant},
 };
 
 use async_std::{fs::OpenOptions, sync::Arc};
@@ -11,15 +12,15 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
-use dialoguer::{Input, Completion};
+use dialoguer::{Completion, Input};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
+use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::{
+    collections::HashMap,
     io::Write,
     path::{Path, PathBuf},
 };
-use std::collections::HashMap;
-use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -705,7 +706,7 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
 
 struct PgpWordList {
     even_words: Vec<String>,
-    odd_words: Vec<String>
+    odd_words: Vec<String>,
 }
 
 impl Default for PgpWordList {
@@ -721,7 +722,7 @@ impl Default for PgpWordList {
 
         PgpWordList {
             even_words,
-            odd_words
+            odd_words,
         }
     }
 }
@@ -729,13 +730,12 @@ impl Default for PgpWordList {
 impl Completion for PgpWordList {
     fn get(&self, input: &str) -> Option<String> {
         let count = input.matches("-").count();
-        let word_list: Vec<String>;
         // we start with the odd words
-        if count % 2 == 0 {
-            word_list = self.odd_words.clone();
+        let word_list: Vec<String> = if count % 2 == 0 {
+            self.odd_words.clone()
         } else {
-            word_list = self.even_words.clone();
-        }
+            self.even_words.clone()
+        };
 
         let matches = word_list
             .iter()
