@@ -1,6 +1,6 @@
 use super::{AppID, ClientVersion, Mailbox, Mood, MySide, Nameplate, Phase, TheirSide};
 use serde_derive::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 /// Special encoding for the `nameplates` message
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -185,15 +185,10 @@ const CLIENT_NAME: &str = "rust";
 
 impl OutboundMessage {
     pub fn bind(appid: AppID, side: MySide) -> Self {
-        let client_version_string: &str = env!("CARGO_PKG_VERSION");
-        let client_version = ClientVersion::new(
-            Cow::Borrowed(CLIENT_NAME),
-            Cow::Borrowed(client_version_string),
-        );
         OutboundMessage::Bind {
             appid,
             side,
-            client_version,
+            client_version: ClientVersion::new(CLIENT_NAME, env!("CARGO_PKG_VERSION")),
         }
     }
 
@@ -290,7 +285,7 @@ mod test {
 
     #[test]
     fn test_client_version_string_rep() {
-        let client_version = ClientVersion::new(Cow::Borrowed("foo"), Cow::Borrowed("1.0.2"));
+        let client_version = ClientVersion::new("foo", "1.0.2");
 
         assert_eq!(client_version.to_string(), "foo-1.0.2")
     }

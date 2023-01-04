@@ -478,13 +478,13 @@ impl<S: Into<String>> From<S> for EitherSide {
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[display(fmt = "{}-{}", "&*_0", "&*_1")]
-pub struct ClientVersion(pub Cow<'static, str>, pub Cow<'static, str>);
+pub struct ClientVersion(pub String, pub String);
 
 impl ClientVersion {
-    pub fn new(implementation: Cow<'static, str>, version: Cow<'static, str>) -> Self {
+    pub fn new(implementation: &str, version: &str) -> Self {
         ClientVersion {
-            0: implementation,
-            1: version,
+            0: implementation.to_string(),
+            1: version.to_string(),
         }
     }
 }
