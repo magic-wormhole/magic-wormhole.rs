@@ -20,6 +20,7 @@ use async_std::{
     io::{prelude::WriteExt, ReadExt},
     net::{TcpListener, TcpStream},
 };
+use futures::io::{AsyncRead, AsyncWrite};
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
 use log::*;
@@ -554,14 +555,30 @@ impl TryFrom<&DirectHint> for SocketAddr {
     }
 }
 
+/// Direct or relay
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum TransitInfo {
+pub enum ConnectionType {
+    /// We are directly connected to our peer
     Direct,
+    /// We are connected to a relay server, and may even know its name
     Relay { name: Option<String> },
 }
 
-type TransitConnection = (TcpStream, TransitInfo);
+/// Metadata for the established transit connection
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct TransitInfo {
+    /// Whether we are connected directly or via a relay server
+    pub conn_type: ConnectionType,
+    /// Target address of our connection. This may be our peer, or the relay server.
+    /// This says nothing about the actual transport protocol used.
+    pub peer_addr: SocketAddr,
+    // Prevent exhaustive destructuring for future proofing
+    _unused: (),
+}
+
+type TransitConnection = (Box<dyn TransitTransport>, TransitInfo);
 
 fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
@@ -741,31 +758,37 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
 /// ```no_run
 /// use magic_wormhole as mw;
 /// # #[async_std::main] async fn main() -> Result<(), mw::transit::TransitConnectError> {
-/// # let derived_key = todo!();
-/// # let their_abilities = todo!();
-/// # let their_hints = todo!();
-/// let connector: mw::transit::TransitConnector = todo!("transit::init(…).await?");
-/// let (mut transit, info, addr) = connector
+/// # let derived_key = unimplemented!();
+/// # let their_abilities = unimplemented!();
+/// # let their_hints = unimplemented!();
+/// let connector: mw::transit::TransitConnector = unimplemented!("transit::init(…).await?");
+/// let (mut transit, info) = connector
 ///     .leader_connect(derived_key, their_abilities, their_hints)
 ///     .await?;
-/// mw::transit::log_transit_connection(info, addr);
+/// mw::transit::log_transit_connection(info);
 /// # Ok(())
 /// # }
 /// ```
-pub fn log_transit_connection(info: TransitInfo, peer_addr: SocketAddr) {
-    match info {
-        TransitInfo::Direct => {
-            log::info!("Established direct transit connection to '{}'", peer_addr,);
+pub fn log_transit_connection(info: TransitInfo) {
+    match info.conn_type {
+        ConnectionType::Direct => {
+            log::info!(
+                "Established direct transit connection to '{}'",
+                info.peer_addr,
+            );
         },
-        TransitInfo::Relay { name: Some(name) } => {
+        ConnectionType::Relay { name: Some(name) } => {
             log::info!(
                 "Established transit connection via relay '{}' ({})",
                 name,
-                peer_addr,
+                info.peer_addr,
             );
         },
-        TransitInfo::Relay { name: None } => {
-            log::info!("Established transit connection via relay ({})", peer_addr,);
+        ConnectionType::Relay { name: None } => {
+            log::info!(
+                "Established transit connection via relay ({})",
+                info.peer_addr,
+            );
         },
     }
 }
@@ -939,7 +962,7 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo), TransitConnectError> {
         let Self {
             sockets,
             our_abilities,
@@ -969,7 +992,7 @@ impl TransitConnector {
             }),
         );
 
-        let (mut transit, mut host_type) = async_std::future::timeout(
+        let (mut transit, mut finalizer, mut conn_info) = async_std::future::timeout(
             std::time::Duration::from_secs(60),
             connection_stream.next(),
         )
@@ -980,7 +1003,7 @@ impl TransitConnector {
         })?
         .ok_or(TransitConnectError::Handshake)?;
 
-        if host_type != TransitInfo::Direct && our_abilities.can_direct() {
+        if conn_info.conn_type != ConnectionType::Direct && our_abilities.can_direct() {
             log::debug!(
                 "Established transit connection over relay. Trying to find a direct connection …"
             );
@@ -995,11 +1018,14 @@ impl TransitConnector {
                 elapsed.mul_f32(0.3)
             };
             let _ = async_std::future::timeout(to_wait, async {
-                while let Some((new_transit, new_host_type)) = connection_stream.next().await {
+                while let Some((new_transit, new_finalizer, new_conn_info)) =
+                    connection_stream.next().await
+                {
                     /* We already got a connection, so we're only interested in direct ones */
-                    if new_host_type == TransitInfo::Direct {
+                    if new_conn_info.conn_type == ConnectionType::Direct {
                         transit = new_transit;
-                        host_type = new_host_type;
+                        finalizer = new_finalizer;
+                        conn_info = new_conn_info;
                         log::debug!("Found direct connection; using that instead.");
                         break;
                     }
@@ -1016,17 +1042,23 @@ impl TransitConnector {
          */
         std::mem::drop(connection_stream);
 
-        let (mut socket, finalizer) = transit;
         let (tx, rx) = finalizer
-            .handshake_finalize(&mut socket)
+            .handshake_finalize(&mut transit)
             .await
             .map_err(|e| {
                 log::debug!("`handshake_finalize` failed: {e}");
                 TransitConnectError::Handshake
             })?;
 
-        let addr = socket.peer_addr().unwrap();
-        Ok((Transit { socket, tx, rx }, host_type, addr))
+        // let socket = Box::new(socket) as Box<dyn TransitTransport>;
+        Ok((
+            Transit {
+                socket: transit,
+                tx,
+                rx,
+            },
+            conn_info,
+        ))
     }
 
     /**
@@ -1037,7 +1069,7 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo), TransitConnectError> {
         let Self {
             sockets,
             our_abilities,
@@ -1072,8 +1104,7 @@ impl TransitConnector {
         )
         .await
         {
-            Ok(Some(((mut socket, finalizer), host_type))) => {
-                let addr = socket.peer_addr().unwrap();
+            Ok(Some((mut socket, finalizer, conn_info))) => {
                 let (tx, rx) = finalizer
                     .handshake_finalize(&mut socket)
                     .await
@@ -1081,8 +1112,9 @@ impl TransitConnector {
                         log::debug!("`handshake_finalize` failed: {e}");
                         TransitConnectError::Handshake
                     })?;
+                // let socket = Box::new(socket) as Box<dyn TransitTransport>;
 
-                Ok((Transit { socket, tx, rx }, host_type, addr))
+                Ok((Transit { socket, tx, rx }, conn_info))
             },
             Ok(None) | Err(_) => {
                 log::debug!("`follower_connect` timed out");
@@ -1115,8 +1147,31 @@ impl TransitConnector {
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
         socket: Option<(MaybeConnectedSocket, TcpListener)>,
-    ) -> impl Stream<Item = Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>
-           + 'static {
+    ) -> impl Stream<Item = Result<HandshakeResult, crypto::TransitHandshakeError>> + 'static {
+        /* Take a tcp connection and transform it into a `TransitConnection` (mainly set timeouts) */
+        fn wrap_tcp_connection(
+            socket: TcpStream,
+            conn_type: ConnectionType,
+        ) -> Result<TransitConnection, crypto::TransitHandshakeError> {
+            /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
+            // https://github.com/async-rs/async-std/issues/499
+            let socket = std::net::TcpStream::try_from(socket)
+                .expect("Internal error: this should not fail because we never cloned the socket");
+            socket.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
+            let socket: TcpStream = socket.into();
+
+            let info = TransitInfo {
+                conn_type,
+                peer_addr: socket
+                    .peer_addr()
+                    .expect("Internal error: socket must be IP"),
+                _unused: (),
+            };
+
+            Ok((Box::new(socket), info))
+        }
+
         /* Have socket => can direct */
         assert!(socket.is_none() || our_abilities.can_direct());
 
@@ -1165,7 +1220,8 @@ impl TransitConnector {
                                 log::debug!("Connecting directly to {}", dest_addr);
                                 let socket = connect_custom(&local_addr, &dest_addr.into()).await?;
                                 log::debug!("Connected to {}!", dest_addr);
-                                Ok((socket, TransitInfo::Direct))
+
+                                wrap_tcp_connection(socket, ConnectionType::Direct)
                             }
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
@@ -1187,7 +1243,8 @@ impl TransitConnector {
                             log::debug!("Connecting directly to {}", dest_addr);
                             let socket = async_std::net::TcpStream::connect(&dest_addr).await?;
                             log::debug!("Connected to {}!", dest_addr);
-                            Ok((socket, TransitInfo::Direct))
+
+                            wrap_tcp_connection(socket, ConnectionType::Direct)
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
                 ),
@@ -1197,27 +1254,13 @@ impl TransitConnector {
             None
         };
 
-        /* Relay hints. Make sure that both sides adverize it, since it is fine to support it without providing own hints. */
+        /* Relay hints. Make sure that both sides advertize it, since it is fine to support it without providing own hints. */
         if our_abilities.can_relay() && their_abilities.can_relay() {
             /* Collect intermediate into HashSet for deduplication */
             let mut relay_hints = Vec::<RelayHint>::new();
             relay_hints.extend(our_hints.relay.iter().take(2).cloned());
             for hint in their_hints.relay.iter().take(2).cloned() {
                 hint.merge_into(&mut relay_hints);
-            }
-
-            /* Take a relay hint and try to connect to it */
-            async fn hint_connector(
-                host: DirectHint,
-                name: Option<String>,
-            ) -> Result<TransitConnection, crypto::TransitHandshakeError> {
-                log::debug!("Connecting to relay {}", host);
-                let transit = TcpStream::connect((host.hostname.as_str(), host.port))
-                    .err_into::<crypto::TransitHandshakeError>()
-                    .await?;
-                log::debug!("Connected to {}!", host);
-
-                Ok((transit, TransitInfo::Relay { name }))
             }
 
             connectors = Box::new(
@@ -1255,7 +1298,13 @@ impl TransitConnector {
                                 index as u64 * 5,
                             ))
                             .await;
-                            hint_connector(host, name).await
+                            log::debug!("Connecting to relay {}", host);
+                            let socket = TcpStream::connect((host.hostname.as_str(), host.port))
+                                .err_into::<crypto::TransitHandshakeError>()
+                                .await?;
+                            log::debug!("Connected to {}!", host);
+
+                            wrap_tcp_connection(socket, ConnectionType::Relay { name })
                         })
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
                 ),
@@ -1273,29 +1322,25 @@ impl TransitConnector {
                     let tside = tside2.clone();
                     let cryptor = cryptor2.clone();
                     async move {
-                        let (socket, host_type) = fut.await?;
-                        let transit = handshake_exchange(
+                        let (socket, conn_info) = fut.await?;
+                        let (transit, finalizer) = handshake_exchange(
                             is_leader,
                             tside,
                             socket,
-                            &host_type,
+                            &conn_info.conn_type,
                             &*cryptor,
                             transit_key,
                         )
                         .await?;
-                        Ok((transit, host_type))
+                        Ok((transit, finalizer, conn_info))
                     }
                 })
                 .map(|fut| {
                     Box::pin(fut)
-                        as BoxFuture<
-                            Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
-                        >
+                        as BoxFuture<Result<HandshakeResult, crypto::TransitHandshakeError>>
                 }),
         )
-            as BoxIterator<
-                BoxFuture<Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>,
-            >;
+            as BoxIterator<BoxFuture<Result<HandshakeResult, crypto::TransitHandshakeError>>>;
 
         /* Also listen on some port just in case. */
         if let Some(socket2) = socket2 {
@@ -1306,20 +1351,21 @@ impl TransitConnector {
                         let tside = tside.clone();
                         let cryptor = cryptor.clone();
                         let connect = || async {
-                            let (stream, peer) = socket2.accept().await?;
+                            let (socket, peer) = socket2.accept().await?;
+                            let (socket, info) =
+                                wrap_tcp_connection(socket, ConnectionType::Direct)?;
                             log::debug!("Got connection from {}!", peer);
-                            let transit = handshake_exchange(
+                            let (transit, finalizer) = handshake_exchange(
                                 is_leader,
                                 tside.clone(),
-                                stream,
-                                &TransitInfo::Direct,
+                                socket,
+                                &ConnectionType::Direct,
                                 &*cryptor,
                                 transit_key.clone(),
                             )
                             .await?;
                             Result::<_, crypto::TransitHandshakeError>::Ok((
-                                transit,
-                                TransitInfo::Direct,
+                                transit, finalizer, info,
                             ))
                         };
                         loop {
@@ -1337,24 +1383,26 @@ impl TransitConnector {
                     })
                     .map(|fut| {
                         Box::pin(fut)
-                            as BoxFuture<
-                                Result<
-                                    (HandshakeResult, TransitInfo),
-                                    crypto::TransitHandshakeError,
-                                >,
-                            >
+                            as BoxFuture<Result<HandshakeResult, crypto::TransitHandshakeError>>
                     }),
                 ),
             )
-                as BoxIterator<
-                    BoxFuture<
-                        Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
-                    >,
-                >;
+                as BoxIterator<BoxFuture<Result<HandshakeResult, crypto::TransitHandshakeError>>>;
         }
         connectors.collect::<futures::stream::futures_unordered::FuturesUnordered<_>>()
     }
 }
+
+/// Trait abstracting our socket used for communicating over the wire.
+///
+/// Will be primarily instantiated by either a TCP or web socket. Custom methods
+/// will be added in the future.
+pub(self) trait TransitTransport:
+    AsyncRead + AsyncWrite + std::any::Any + Unpin + Send
+{
+}
+
+impl<T> TransitTransport for T where T: AsyncRead + AsyncWrite + std::any::Any + Unpin + Send {}
 
 /**
  * An established Transit connection.
@@ -1364,7 +1412,7 @@ impl TransitConnector {
  */
 pub struct Transit {
     /** Raw transit connection */
-    socket: TcpStream,
+    socket: Box<dyn TransitTransport>,
     tx: Box<dyn crypto::TransitCryptoEncrypt>,
     rx: Box<dyn crypto::TransitCryptoDecrypt>,
 }
@@ -1414,7 +1462,11 @@ impl Transit {
     }
 }
 
-type HandshakeResult = (TcpStream, Box<dyn crypto::TransitCryptoInitFinalizer>);
+type HandshakeResult = (
+    Box<dyn TransitTransport>,
+    Box<dyn crypto::TransitCryptoInitFinalizer>,
+    TransitInfo,
+);
 
 /**
  * Do a transit handshake exchange, to establish a direct connection.
@@ -1428,20 +1480,18 @@ type HandshakeResult = (TcpStream, Box<dyn crypto::TransitCryptoInitFinalizer>);
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
-    socket: TcpStream,
-    host_type: &TransitInfo,
+    mut socket: Box<dyn TransitTransport>,
+    host_type: &ConnectionType,
     cryptor: &dyn crypto::TransitCryptoInit,
     key: Arc<Key<TransitKey>>,
-) -> Result<HandshakeResult, crypto::TransitHandshakeError> {
-    /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
-    // https://github.com/async-rs/async-std/issues/499
-    let socket = std::net::TcpStream::try_from(socket)
-        .expect("Internal error: this should not fail because we never cloned the socket");
-    socket.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
-    socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
-    let mut socket: TcpStream = socket.into();
-
-    if host_type != &TransitInfo::Direct {
+) -> Result<
+    (
+        Box<dyn TransitTransport>,
+        Box<dyn crypto::TransitCryptoInitFinalizer>,
+    ),
+    crypto::TransitHandshakeError,
+> {
+    if host_type != &ConnectionType::Direct {
         log::trace!("initiating relay handshake");
 
         let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");

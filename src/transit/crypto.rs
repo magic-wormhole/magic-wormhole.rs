@@ -95,7 +95,7 @@ async fn write_transit_message(
 pub(super) trait TransitCryptoInitFinalizer: Send {
     fn handshake_finalize(
         self: Box<Self>,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>>;
 }
 
@@ -104,7 +104,7 @@ pub(super) trait TransitCryptoInitFinalizer: Send {
 impl TransitCryptoInitFinalizer for DynTransitCrypto {
     fn handshake_finalize(
         self: Box<Self>,
-        _socket: &mut TcpStream,
+        _socket: &mut dyn TransitTransport,
     ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
         Box::pin(futures::future::ready(Ok(*self)))
     }
@@ -116,11 +116,11 @@ pub(super) trait TransitCryptoInit: Send + Sync {
     // Yes, this method returns a nested future. TODO explain
     async fn handshake_leader(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError>;
     async fn handshake_follower(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError>;
 }
 
@@ -140,7 +140,7 @@ pub struct SecretboxInit {
 impl TransitCryptoInit for SecretboxInit {
     async fn handshake_leader(
         &self,
-        socket: &mut TcpStream,
+        mut socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         // 9. create record keys
         let rkey = self
@@ -171,7 +171,7 @@ impl TransitCryptoInit for SecretboxInit {
                 .to_hex()
         );
         assert_eq!(expected_rx_handshake.len(), 89);
-        read_expect(socket, expected_rx_handshake.as_bytes()).await?;
+        read_expect(&mut socket, expected_rx_handshake.as_bytes()).await?;
 
         struct Finalizer {
             skey: Key<TransitTxKey>,
@@ -181,7 +181,7 @@ impl TransitCryptoInit for SecretboxInit {
         impl TransitCryptoInitFinalizer for Finalizer {
             fn handshake_finalize(
                 self: Box<Self>,
-                socket: &mut TcpStream,
+                socket: &mut dyn TransitTransport,
             ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
                 Box::pin(async move {
                     socket.write_all(b"go\n").await?;
@@ -205,7 +205,7 @@ impl TransitCryptoInit for SecretboxInit {
 
     async fn handshake_follower(
         &self,
-        socket: &mut TcpStream,
+        mut socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         // 9. create record keys
         /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
@@ -240,7 +240,7 @@ impl TransitCryptoInit for SecretboxInit {
                 .to_hex(),
         );
         assert_eq!(expected_tx_handshake.len(), 90);
-        read_expect(socket, expected_tx_handshake.as_bytes()).await?;
+        read_expect(&mut socket, expected_tx_handshake.as_bytes()).await?;
 
         Ok(Box::new((
             Box::new(SecretboxCryptoEncrypt {
@@ -279,12 +279,16 @@ pub struct NoiseInit {
 impl TransitCryptoInit for NoiseInit {
     async fn handshake_leader(
         &self,
-        socket: &mut TcpStream,
+        mut socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         socket
             .write_all(b"Magic-Wormhole Dilation Handshake v1 Leader\n\n")
             .await?;
-        read_expect(socket, b"Magic-Wormhole Dilation Handshake v1 Follower\n\n").await?;
+        read_expect(
+            &mut socket,
+            b"Magic-Wormhole Dilation Handshake v1 Follower\n\n",
+        )
+        .await?;
 
         let mut handshake: NoiseHandshakeState = {
             let mut builder = noise_protocol::HandshakeStateBuilder::new();
@@ -296,16 +300,17 @@ impl TransitCryptoInit for NoiseInit {
         handshake.push_psk(&*self.key);
 
         // → psk, e
-        write_transit_message(socket, &handshake.write_message_vec(&[])?).await?;
+        write_transit_message(&mut socket, &handshake.write_message_vec(&[])?).await?;
 
         // ← e, ee
-        handshake.read_message(&read_transit_message(socket).await?, &mut [])?;
+        handshake.read_message(&read_transit_message(&mut socket).await?, &mut [])?;
 
         assert!(handshake.completed());
         let (tx, mut rx) = handshake.get_ciphers();
 
         // ← ""
-        let peer_confirmation_message = rx.decrypt_vec(&read_transit_message(socket).await?)?;
+        let peer_confirmation_message =
+            rx.decrypt_vec(&read_transit_message(&mut socket).await?)?;
         ensure!(
             peer_confirmation_message.len() == 0,
             TransitHandshakeError::HandshakeFailed
@@ -319,11 +324,11 @@ impl TransitCryptoInit for NoiseInit {
         impl TransitCryptoInitFinalizer for Finalizer {
             fn handshake_finalize(
                 mut self: Box<Self>,
-                socket: &mut TcpStream,
+                mut socket: &mut dyn TransitTransport,
             ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
                 Box::pin(async move {
                     // → ""
-                    write_transit_message(socket, &self.tx.encrypt_vec(&[])).await?;
+                    write_transit_message(&mut socket, &self.tx.encrypt_vec(&[])).await?;
 
                     Ok::<_, TransitHandshakeError>((
                         Box::new(NoiseCryptoEncrypt { tx: self.tx })
@@ -340,12 +345,16 @@ impl TransitCryptoInit for NoiseInit {
 
     async fn handshake_follower(
         &self,
-        socket: &mut TcpStream,
+        mut socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         socket
             .write_all(b"Magic-Wormhole Dilation Handshake v1 Follower\n\n")
             .await?;
-        read_expect(socket, b"Magic-Wormhole Dilation Handshake v1 Leader\n\n").await?;
+        read_expect(
+            &mut socket,
+            b"Magic-Wormhole Dilation Handshake v1 Leader\n\n",
+        )
+        .await?;
 
         let mut handshake: NoiseHandshakeState = {
             let mut builder = noise_protocol::HandshakeStateBuilder::new();
@@ -357,20 +366,21 @@ impl TransitCryptoInit for NoiseInit {
         handshake.push_psk(&*self.key);
 
         // ← psk, e
-        handshake.read_message(&read_transit_message(socket).await?, &mut [])?;
+        handshake.read_message(&read_transit_message(&mut socket).await?, &mut [])?;
 
         // → e, ee
-        write_transit_message(socket, &handshake.write_message_vec(&[])?).await?;
+        write_transit_message(&mut socket, &handshake.write_message_vec(&[])?).await?;
 
         assert!(handshake.completed());
         // Warning: rx and tx are swapped here (read the `get_ciphers` doc carefully)
         let (mut rx, mut tx) = handshake.get_ciphers();
 
         // → ""
-        write_transit_message(socket, &tx.encrypt_vec(&[])).await?;
+        write_transit_message(&mut socket, &tx.encrypt_vec(&[])).await?;
 
         // ← ""
-        let peer_confirmation_message = rx.decrypt_vec(&read_transit_message(socket).await?)?;
+        let peer_confirmation_message =
+            rx.decrypt_vec(&read_transit_message(&mut socket).await?)?;
         ensure!(
             peer_confirmation_message.len() == 0,
             TransitHandshakeError::HandshakeFailed
