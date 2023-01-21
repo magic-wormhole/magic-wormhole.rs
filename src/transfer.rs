@@ -214,7 +214,7 @@ pub async fn send_file_or_folder<N, M, G, H>(
 where
     N: AsRef<async_std::path::Path>,
     M: AsRef<async_std::path::Path>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     use async_std::fs::File;
@@ -271,7 +271,7 @@ pub async fn send_file<F, N, G, H>(
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     let _peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
@@ -312,7 +312,7 @@ pub async fn send_folder<N, M, G, H>(
 where
     N: Into<PathBuf>,
     M: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     v1::send_folder(
@@ -453,7 +453,7 @@ impl ReceiveRequest {
     ) -> Result<(), TransferError>
     where
         F: FnMut(u64, u64) + 'static,
-        G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+        G: FnOnce(transit::TransitInfo),
         W: AsyncWrite + Unpin,
     {
         let run = Box::pin(async {
@@ -463,7 +463,7 @@ impl ReceiveRequest {
                 .send_json(&PeerMessage::file_ack("ok"))
                 .await?;
 
-            let (mut transit, info, addr) = self
+            let (mut transit, info) = self
                 .connector
                 .follower_connect(
                     self.wormhole
@@ -473,7 +473,7 @@ impl ReceiveRequest {
                     self.their_hints.clone(),
                 )
                 .await?;
-            transit_handler(info, addr);
+            transit_handler(info);
 
             debug!("Beginning file transfer");
             v1::tcp_file_receive(
