@@ -32,23 +32,18 @@ log = "0.4.13"
 base64 = "0.20.0"
 futures_ringbuf = "0.3.1"
 time = { version = "0.3.7", features = ["formatting"] }
+instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
 thiserror = "1.0.24"
 
 futures = "0.3.12"
-async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
-async-tungstenite = { version = "0.17.1", features = ["async-std-runtime", "async-tls"] }
-async-io = "1.6.0"
-libc = "0.2.101"
 url = { version = "2.2.2", features = ["serde"] }
 percent-encoding = { version = "2.1.0" }
 
 # Transit dependencies
 
-socket2 = { version = "0.4.1", optional = true }
 stun_codec = { version = "0.2.0", optional = true }
-if-addrs = { version = "0.7.0", optional = true }
 bytecodec = { version = "0.4.15", optional = true }
 async-trait = { version = "0.1.57", optional = true }
 noise-protocol = { version = "0.1.4", optional = true }
@@ -56,12 +51,31 @@ noise-rust-crypto = { version = "0.5.0", optional = true }
 
 # Transfer dependencies
 
-async-tar = { version = "0.4.2", optional = true }
 rmp-serde = { version = "1.0.0", optional = true }
 
 # Forwarding dependencies
 
 # rmp-serde = … # defined above
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+libc = "0.2.101"
+async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
+async-tungstenite = { version = "0.17.1", features = ["async-std-runtime", "async-tls"] }
+async-io = "1.6.0"
+
+# Transit
+socket2 = { version = "0.4.1", optional = true }
+if-addrs = { version = "0.8.0", optional = true }
+
+# Transfer
+
+async-tar = { version = "0.4.2", optional = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-timer = "0.2.5"
+ws_stream_wasm = "0.7.3"
+getrandom = { version = "0.2.5", features = ["js"] }
+getrandom_2 = { package = "getrandom", version = "0.1.16", features = ["js-sys"] }
 
 # for some tests
 [dev-dependencies]
