@@ -108,6 +108,7 @@ where
     super::handle_run_result(wormhole, result).await
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_folder<N, M, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
