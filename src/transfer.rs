@@ -201,6 +201,7 @@ impl TransitAck {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -299,6 +300,7 @@ where
 /// This isn't a proper folder transfer as per the Wormhole protocol
 /// because it sends it in a way so that the receiver still has to manually
 /// unpack it. But it's better than nothing
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -515,7 +517,7 @@ async fn handle_run_result(
     result: Result<(Result<(), TransferError>, impl Future<Output = ()>), crate::util::Cancelled>,
 ) -> Result<(), TransferError> {
     async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output = ()>) {
-        let run = async_std::future::timeout(SHUTDOWN_TIME, run);
+        let run = transit::timeout(SHUTDOWN_TIME, run);
         futures::pin_mut!(run);
         match crate::util::cancellable(run, cancel).await {
             Ok(Ok(())) => {},
@@ -571,7 +573,7 @@ async fn handle_run_result(
                 // and we should not only look for the next one but all have been received
                 // and we should not interrupt a receive operation without making sure it leaves the connection
                 // in a consistent state, otherwise the shutdown may cause protocol errors
-                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = async_std::future::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = transit::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
                     error = TransferError::PeerError(e);
                 } else {
                     log::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");
