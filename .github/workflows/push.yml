@@ -66,6 +66,7 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+          target: wasm32-unknown-unknown
       - name: Cache ~/.cargo
         uses: actions/cache@v1
         with:
@@ -101,6 +102,11 @@ jobs:
         with:
           command: build
           args: --all-targets
+      - name: build WASM
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target wasm32-unknown-unknown --no-default-features --package magic-wormhole --features transit --features transfer
       - name: test
         uses: actions-rs/cargo@v1
         with:
