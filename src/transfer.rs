@@ -14,7 +14,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{core::WormholeError, transit, transit::Transit, AppID, Wormhole};
+use super::{core::WormholeError, transit, transit::Transit, util, AppID, Wormhole};
 use futures::Future;
 use log::*;
 use std::{borrow::Cow, path::PathBuf};
@@ -517,7 +517,7 @@ async fn handle_run_result(
     result: Result<(Result<(), TransferError>, impl Future<Output = ()>), crate::util::Cancelled>,
 ) -> Result<(), TransferError> {
     async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output = ()>) {
-        let run = transit::timeout(SHUTDOWN_TIME, run);
+        let run = util::timeout(SHUTDOWN_TIME, run);
         futures::pin_mut!(run);
         match crate::util::cancellable(run, cancel).await {
             Ok(Ok(())) => {},
@@ -573,7 +573,7 @@ async fn handle_run_result(
                 // and we should not only look for the next one but all have been received
                 // and we should not interrupt a receive operation without making sure it leaves the connection
                 // in a consistent state, otherwise the shutdown may cause protocol errors
-                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = transit::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = util::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
                     error = TransferError::PeerError(e);
                 } else {
                     log::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");

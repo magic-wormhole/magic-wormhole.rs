@@ -13,7 +13,7 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{Key, KeyPurpose};
+use crate::{util, Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
@@ -691,7 +691,7 @@ pub async fn init(
              * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
              * and use that instead.
              */
-            let socket: MaybeConnectedSocket = match timeout(
+            let socket: MaybeConnectedSocket = match util::timeout(
                 std::time::Duration::from_secs(4),
                 transport::tcp_get_external_ip(),
             )
@@ -874,7 +874,7 @@ impl TransitConnector {
         );
 
         let (mut transit, mut finalizer, mut conn_info) =
-            timeout(std::time::Duration::from_secs(60), connection_stream.next())
+            util::timeout(std::time::Duration::from_secs(60), connection_stream.next())
                 .await
                 .map_err(|_| {
                     log::debug!("`leader_connect` timed out");
@@ -896,7 +896,7 @@ impl TransitConnector {
             } else {
                 elapsed.mul_f32(0.3)
             };
-            let _ = timeout(to_wait, async {
+            let _ = util::timeout(to_wait, async {
                 while let Some((new_transit, new_finalizer, new_conn_info)) =
                     connection_stream.next().await
                 {
@@ -978,7 +978,7 @@ impl TransitConnector {
             }),
         );
 
-        let transit = match timeout(
+        let transit = match util::timeout(
             std::time::Duration::from_secs(60),
             &mut connection_stream.next(),
         )
@@ -1125,7 +1125,7 @@ impl TransitConnector {
                                 .map(move |(i, h)| (i, h, name.clone()))
                             })
                             .map(|(index, host, name)| async move {
-                                sleep(std::time::Duration::from_secs(
+                                util::sleep(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;
@@ -1169,7 +1169,7 @@ impl TransitConnector {
                                     .map(move |(i, u)| (i, u, name.clone()))
                             })
                             .map(|(index, url, name)| async move {
-                                sleep(std::time::Duration::from_secs(
+                                util::sleep(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;
@@ -1367,40 +1367,6 @@ async fn handshake_exchange(
     };
 
     Ok((socket, finalizer))
-}
-
-#[cfg(not(target_family = "wasm"))]
-pub(super) async fn sleep(duration: std::time::Duration) {
-    async_std::task::sleep(duration).await
-}
-
-#[cfg(target_family = "wasm")]
-pub(super) async fn sleep(duration: std::time::Duration) {
-    /* Skip error handling. Waiting is best effort anyways */
-    let _ = wasm_timer::Delay::new(duration).await;
-}
-
-#[cfg(not(target_family = "wasm"))]
-pub(super) async fn timeout<F, T>(
-    duration: std::time::Duration,
-    future: F,
-) -> Result<T, async_std::future::TimeoutError>
-where
-    F: futures::Future<Output = T>,
-{
-    async_std::future::timeout(duration, future).await
-}
-
-#[cfg(target_family = "wasm")]
-pub(super) async fn timeout<F, T>(
-    duration: std::time::Duration,
-    future: F,
-) -> Result<T, std::io::Error>
-where
-    F: futures::Future<Output = T>,
-{
-    use wasm_timer::TryFutureExt;
-    future.map(Result::Ok).timeout(duration).await
 }
 
 #[cfg(test)]

@@ -79,6 +79,7 @@ impl std::fmt::Display for DisplayBytes<'_> {
  * TODO remove after https://github.com/quininer/memsec/issues/11 is resolved.
  * Original implementation: https://github.com/jedisct1/libsodium/blob/6d566070b48efd2fa099bbe9822914455150aba9/src/libsodium/sodium/utils.c#L262-L307
  */
+#[allow(unused)]
 pub fn sodium_increment_le(n: &mut [u8]) {
     let mut c = 1u16;
     for b in n {
@@ -208,4 +209,36 @@ impl std::fmt::Display for Cancelled {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Task has been cancelled")
     }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn sleep(duration: std::time::Duration) {
+    async_std::task::sleep(duration).await
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn sleep(duration: std::time::Duration) {
+    /* Skip error handling. Waiting is best effort anyways */
+    let _ = wasm_timer::Delay::new(duration).await;
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn timeout<F, T>(
+    duration: std::time::Duration,
+    future: F,
+) -> Result<T, async_std::future::TimeoutError>
+where
+    F: futures::Future<Output = T>,
+{
+    async_std::future::timeout(duration, future).await
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn timeout<F, T>(duration: std::time::Duration, future: F) -> Result<T, std::io::Error>
+where
+    F: futures::Future<Output = T>,
+{
+    use futures::FutureExt;
+    use wasm_timer::TryFutureExt;
+    future.map(Result::Ok).timeout(duration).await
 }
