@@ -14,7 +14,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{core::WormholeError, transit, transit::Transit, AppID, Wormhole};
+use super::{core::WormholeError, transit, transit::Transit, util, AppID, Wormhole};
 use futures::Future;
 use log::*;
 use std::{borrow::Cow, path::PathBuf};
@@ -201,6 +201,7 @@ impl TransitAck {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -214,7 +215,7 @@ pub async fn send_file_or_folder<N, M, G, H>(
 where
     N: AsRef<async_std::path::Path>,
     M: AsRef<async_std::path::Path>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     use async_std::fs::File;
@@ -271,7 +272,7 @@ pub async fn send_file<F, N, G, H>(
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     let _peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
@@ -299,6 +300,7 @@ where
 /// This isn't a proper folder transfer as per the Wormhole protocol
 /// because it sends it in a way so that the receiver still has to manually
 /// unpack it. But it's better than nothing
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -312,7 +314,7 @@ pub async fn send_folder<N, M, G, H>(
 where
     N: Into<PathBuf>,
     M: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     v1::send_folder(
@@ -453,7 +455,7 @@ impl ReceiveRequest {
     ) -> Result<(), TransferError>
     where
         F: FnMut(u64, u64) + 'static,
-        G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+        G: FnOnce(transit::TransitInfo),
         W: AsyncWrite + Unpin,
     {
         let run = Box::pin(async {
@@ -463,7 +465,7 @@ impl ReceiveRequest {
                 .send_json(&PeerMessage::file_ack("ok"))
                 .await?;
 
-            let (mut transit, info, addr) = self
+            let (mut transit, info) = self
                 .connector
                 .follower_connect(
                     self.wormhole
@@ -473,7 +475,7 @@ impl ReceiveRequest {
                     self.their_hints.clone(),
                 )
                 .await?;
-            transit_handler(info, addr);
+            transit_handler(info);
 
             debug!("Beginning file transfer");
             v1::tcp_file_receive(
@@ -515,7 +517,7 @@ async fn handle_run_result(
     result: Result<(Result<(), TransferError>, impl Future<Output = ()>), crate::util::Cancelled>,
 ) -> Result<(), TransferError> {
     async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output = ()>) {
-        let run = async_std::future::timeout(SHUTDOWN_TIME, run);
+        let run = util::timeout(SHUTDOWN_TIME, run);
         futures::pin_mut!(run);
         match crate::util::cancellable(run, cancel).await {
             Ok(Ok(())) => {},
@@ -571,7 +573,7 @@ async fn handle_run_result(
                 // and we should not only look for the next one but all have been received
                 // and we should not interrupt a receive operation without making sure it leaves the connection
                 // in a consistent state, otherwise the shutdown may cause protocol errors
-                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = async_std::future::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = util::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
                     error = TransferError::PeerError(e);
                 } else {
                     log::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");

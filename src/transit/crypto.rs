@@ -1,12 +1,18 @@
-/// Cryptographic backbone of the Transit protocol
-///
-/// This handles the encrypted handshakes during connection setup, then provides
-/// a simple "encrypt/decrypt" abstraction that will be used for all messages.
-use super::*;
+//! Cryptographic backbone of the Transit protocol
+//!
+//! This handles the encrypted handshakes during connection setup, then provides
+//! a simple "encrypt/decrypt" abstraction that will be used for all messages.
+
+use super::{
+    TransitError, TransitKey, TransitRxKey, TransitTransport, TransitTransportRx,
+    TransitTransportTx, TransitTxKey,
+};
 use crate::Key;
 use async_trait::async_trait;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, io::AsyncWriteExt};
 use std::sync::Arc;
+use xsalsa20poly1305 as secretbox;
+use xsalsa20poly1305::aead::{Aead, NewAead};
 
 /// Private, because we try multiple handshakes and only
 /// one needs to succeed
@@ -37,6 +43,13 @@ pub(super) enum TransitHandshakeError {
         #[source]
         std::io::Error,
     ),
+    #[cfg(target_family = "wasm")]
+    #[error("WASM error")]
+    WASM(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
+    ),
 }
 
 impl From<()> for TransitHandshakeError {
@@ -45,57 +58,12 @@ impl From<()> for TransitHandshakeError {
     }
 }
 
-/// Helper method for handshake: read a fixed number of bytes and make sure they are as expected
-async fn read_expect(
-    socket: &mut (dyn futures::io::AsyncRead + Unpin + Send),
-    expected: &[u8],
-) -> Result<(), TransitHandshakeError> {
-    let mut buffer = vec![0u8; expected.len()];
-    socket.read_exact(&mut buffer).await?;
-    ensure!(buffer == expected, TransitHandshakeError::HandshakeFailed);
-    Ok(())
-}
-
-/// Helper method: read a four bytes length prefix then the appropriate number of bytes
-async fn read_transit_message(
-    socket: &mut (dyn futures::io::AsyncRead + Unpin + Send),
-) -> Result<Vec<u8>, std::io::Error> {
-    // 1. read 4 bytes from the stream. This represents the length of the encrypted packet.
-    let length = {
-        let mut length_arr: [u8; 4] = [0; 4];
-        socket.read_exact(&mut length_arr[..]).await?;
-        u32::from_be_bytes(length_arr) as usize
-    };
-
-    // 2. read that many bytes into an array (or a vector?)
-    let mut buffer = Vec::with_capacity(length);
-    let len = socket.take(length as u64).read_to_end(&mut buffer).await?;
-    use std::io::{Error, ErrorKind};
-    ensure!(
-        len == length,
-        Error::new(ErrorKind::UnexpectedEof, "failed to read whole message")
-    );
-    Ok(buffer)
-}
-
-/// Helper method: write the message length then the message
-async fn write_transit_message(
-    socket: &mut (dyn futures::io::AsyncWrite + Unpin + Send),
-    message: &[u8],
-) -> Result<(), std::io::Error> {
-    // send the encrypted record
-    socket
-        .write_all(&(message.len() as u32).to_be_bytes())
-        .await?;
-    socket.write_all(message).await
-}
-
 /// The Transit protocol has the property that the last message of the handshake is from the leader
 /// and confirms the usage of that specific connection. This trait represents that specific type state.
 pub(super) trait TransitCryptoInitFinalizer: Send {
     fn handshake_finalize(
         self: Box<Self>,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>>;
 }
 
@@ -104,7 +72,7 @@ pub(super) trait TransitCryptoInitFinalizer: Send {
 impl TransitCryptoInitFinalizer for DynTransitCrypto {
     fn handshake_finalize(
         self: Box<Self>,
-        _socket: &mut TcpStream,
+        _socket: &mut dyn TransitTransport,
     ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
         Box::pin(futures::future::ready(Ok(*self)))
     }
@@ -116,11 +84,11 @@ pub(super) trait TransitCryptoInit: Send + Sync {
     // Yes, this method returns a nested future. TODO explain
     async fn handshake_leader(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError>;
     async fn handshake_follower(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError>;
 }
 
@@ -140,7 +108,7 @@ pub struct SecretboxInit {
 impl TransitCryptoInit for SecretboxInit {
     async fn handshake_leader(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         // 9. create record keys
         let rkey = self
@@ -171,7 +139,7 @@ impl TransitCryptoInit for SecretboxInit {
                 .to_hex()
         );
         assert_eq!(expected_rx_handshake.len(), 89);
-        read_expect(socket, expected_rx_handshake.as_bytes()).await?;
+        socket.read_expect(expected_rx_handshake.as_bytes()).await?;
 
         struct Finalizer {
             skey: Key<TransitTxKey>,
@@ -181,7 +149,7 @@ impl TransitCryptoInit for SecretboxInit {
         impl TransitCryptoInitFinalizer for Finalizer {
             fn handshake_finalize(
                 self: Box<Self>,
-                socket: &mut TcpStream,
+                socket: &mut dyn TransitTransport,
             ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
                 Box::pin(async move {
                     socket.write_all(b"go\n").await?;
@@ -205,7 +173,7 @@ impl TransitCryptoInit for SecretboxInit {
 
     async fn handshake_follower(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         // 9. create record keys
         /* The order here is correct. The "sender" and "receiver" side are a misnomer and should be called
@@ -240,7 +208,7 @@ impl TransitCryptoInit for SecretboxInit {
                 .to_hex(),
         );
         assert_eq!(expected_tx_handshake.len(), 90);
-        read_expect(socket, expected_tx_handshake.as_bytes()).await?;
+        socket.read_expect(expected_tx_handshake.as_bytes()).await?;
 
         Ok(Box::new((
             Box::new(SecretboxCryptoEncrypt {
@@ -279,12 +247,14 @@ pub struct NoiseInit {
 impl TransitCryptoInit for NoiseInit {
     async fn handshake_leader(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         socket
             .write_all(b"Magic-Wormhole Dilation Handshake v1 Leader\n\n")
             .await?;
-        read_expect(socket, b"Magic-Wormhole Dilation Handshake v1 Follower\n\n").await?;
+        socket
+            .read_expect(b"Magic-Wormhole Dilation Handshake v1 Follower\n\n")
+            .await?;
 
         let mut handshake: NoiseHandshakeState = {
             let mut builder = noise_protocol::HandshakeStateBuilder::new();
@@ -296,16 +266,18 @@ impl TransitCryptoInit for NoiseInit {
         handshake.push_psk(&*self.key);
 
         // → psk, e
-        write_transit_message(socket, &handshake.write_message_vec(&[])?).await?;
+        socket
+            .write_transit_message(&handshake.write_message_vec(&[])?)
+            .await?;
 
         // ← e, ee
-        handshake.read_message(&read_transit_message(socket).await?, &mut [])?;
+        handshake.read_message(&socket.read_transit_message().await?, &mut [])?;
 
         assert!(handshake.completed());
         let (tx, mut rx) = handshake.get_ciphers();
 
         // ← ""
-        let peer_confirmation_message = rx.decrypt_vec(&read_transit_message(socket).await?)?;
+        let peer_confirmation_message = rx.decrypt_vec(&socket.read_transit_message().await?)?;
         ensure!(
             peer_confirmation_message.len() == 0,
             TransitHandshakeError::HandshakeFailed
@@ -319,11 +291,13 @@ impl TransitCryptoInit for NoiseInit {
         impl TransitCryptoInitFinalizer for Finalizer {
             fn handshake_finalize(
                 mut self: Box<Self>,
-                socket: &mut TcpStream,
+                socket: &mut dyn TransitTransport,
             ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
                 Box::pin(async move {
                     // → ""
-                    write_transit_message(socket, &self.tx.encrypt_vec(&[])).await?;
+                    socket
+                        .write_transit_message(&self.tx.encrypt_vec(&[]))
+                        .await?;
 
                     Ok::<_, TransitHandshakeError>((
                         Box::new(NoiseCryptoEncrypt { tx: self.tx })
@@ -340,12 +314,14 @@ impl TransitCryptoInit for NoiseInit {
 
     async fn handshake_follower(
         &self,
-        socket: &mut TcpStream,
+        socket: &mut dyn TransitTransport,
     ) -> Result<Box<dyn TransitCryptoInitFinalizer>, TransitHandshakeError> {
         socket
             .write_all(b"Magic-Wormhole Dilation Handshake v1 Follower\n\n")
             .await?;
-        read_expect(socket, b"Magic-Wormhole Dilation Handshake v1 Leader\n\n").await?;
+        socket
+            .read_expect(b"Magic-Wormhole Dilation Handshake v1 Leader\n\n")
+            .await?;
 
         let mut handshake: NoiseHandshakeState = {
             let mut builder = noise_protocol::HandshakeStateBuilder::new();
@@ -357,20 +333,22 @@ impl TransitCryptoInit for NoiseInit {
         handshake.push_psk(&*self.key);
 
         // ← psk, e
-        handshake.read_message(&read_transit_message(socket).await?, &mut [])?;
+        handshake.read_message(&socket.read_transit_message().await?, &mut [])?;
 
         // → e, ee
-        write_transit_message(socket, &handshake.write_message_vec(&[])?).await?;
+        socket
+            .write_transit_message(&handshake.write_message_vec(&[])?)
+            .await?;
 
         assert!(handshake.completed());
         // Warning: rx and tx are swapped here (read the `get_ciphers` doc carefully)
         let (mut rx, mut tx) = handshake.get_ciphers();
 
         // → ""
-        write_transit_message(socket, &tx.encrypt_vec(&[])).await?;
+        socket.write_transit_message(&tx.encrypt_vec(&[])).await?;
 
         // ← ""
-        let peer_confirmation_message = rx.decrypt_vec(&read_transit_message(socket).await?)?;
+        let peer_confirmation_message = rx.decrypt_vec(&socket.read_transit_message().await?)?;
         ensure!(
             peer_confirmation_message.len() == 0,
             TransitHandshakeError::HandshakeFailed
@@ -386,19 +364,19 @@ impl TransitCryptoInit for NoiseInit {
 type DynTransitCrypto = (Box<dyn TransitCryptoEncrypt>, Box<dyn TransitCryptoDecrypt>);
 
 #[async_trait]
-pub trait TransitCryptoEncrypt: Send {
+pub(super) trait TransitCryptoEncrypt: Send {
     async fn encrypt(
         &mut self,
-        socket: &mut (dyn futures::io::AsyncWrite + Unpin + Send),
+        socket: &mut dyn TransitTransportTx,
         plaintext: &[u8],
     ) -> Result<(), TransitError>;
 }
 
 #[async_trait]
-pub trait TransitCryptoDecrypt: Send {
+pub(super) trait TransitCryptoDecrypt: Send {
     async fn decrypt(
         &mut self,
-        socket: &mut (dyn futures::io::AsyncRead + Unpin + Send),
+        socket: &mut dyn TransitTransportRx,
     ) -> Result<Box<[u8]>, TransitError>;
 }
 
@@ -424,7 +402,7 @@ struct SecretboxCryptoDecrypt {
 impl TransitCryptoEncrypt for SecretboxCryptoEncrypt {
     async fn encrypt(
         &mut self,
-        socket: &mut (dyn futures::io::AsyncWrite + Unpin + Send),
+        socket: &mut dyn TransitTransportTx,
         plaintext: &[u8],
     ) -> Result<(), TransitError> {
         let nonce = &mut self.snonce;
@@ -457,11 +435,11 @@ impl TransitCryptoEncrypt for SecretboxCryptoEncrypt {
 impl TransitCryptoDecrypt for SecretboxCryptoDecrypt {
     async fn decrypt(
         &mut self,
-        socket: &mut (dyn futures::io::AsyncRead + Unpin + Send),
+        socket: &mut dyn TransitTransportRx,
     ) -> Result<Box<[u8]>, TransitError> {
         let nonce = &mut self.rnonce;
 
-        let enc_packet = read_transit_message(socket).await?;
+        let enc_packet = socket.read_transit_message().await?;
 
         use std::io::{Error, ErrorKind};
         ensure!(
@@ -508,10 +486,12 @@ struct NoiseCryptoDecrypt {
 impl TransitCryptoEncrypt for NoiseCryptoEncrypt {
     async fn encrypt(
         &mut self,
-        socket: &mut (dyn futures::io::AsyncWrite + Unpin + Send),
+        socket: &mut dyn TransitTransportTx,
         plaintext: &[u8],
     ) -> Result<(), TransitError> {
-        write_transit_message(socket, &self.tx.encrypt_vec(plaintext)).await?;
+        socket
+            .write_transit_message(&self.tx.encrypt_vec(plaintext))
+            .await?;
         Ok(())
     }
 }
@@ -520,9 +500,9 @@ impl TransitCryptoEncrypt for NoiseCryptoEncrypt {
 impl TransitCryptoDecrypt for NoiseCryptoDecrypt {
     async fn decrypt(
         &mut self,
-        socket: &mut (dyn futures::io::AsyncRead + Unpin + Send),
+        socket: &mut dyn TransitTransportRx,
     ) -> Result<Box<[u8]>, TransitError> {
-        let plaintext = self.rx.decrypt_vec(&read_transit_message(socket).await?)?;
+        let plaintext = self.rx.decrypt_vec(&socket.read_transit_message().await?)?;
         Ok(plaintext.into_boxed_slice())
     }
 }
