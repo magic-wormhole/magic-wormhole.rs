@@ -244,7 +244,8 @@ pub enum InboundMessage {
     #[display(fmt = "Error {{ error: {:?}, .. }}", error)]
     Error {
         error: String,
-        orig: Box<InboundMessage>,
+        /// A copy of the original message that caused the error.
+        orig: Box<serde_json::Value>,
     },
     #[serde(other)]
     Unknown,
