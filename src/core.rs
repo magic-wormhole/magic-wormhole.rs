@@ -42,6 +42,8 @@ pub enum WormholeError {
     PakeFailed,
     #[error("Cannot decrypt a received message")]
     Crypto,
+    #[error("Nameplate is unclaimed: {}", _0)]
+    UnclaimedNameplate(Nameplate),
 }
 
 impl WormholeError {
@@ -165,6 +167,7 @@ impl Wormhole {
     pub async fn connect_with_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
+        expect_claimed_nameplate: bool,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
         let AppConfig {
             id: appid,
@@ -174,6 +177,15 @@ impl Wormhole {
         let (mut server, welcome) = RendezvousServer::connect(&appid, &rendezvous_url).await?;
 
         let nameplate = code.nameplate();
+
+        if expect_claimed_nameplate {
+            let nameplate = code.nameplate();
+            let nameplates = server.list_nameplates().await?;
+            if !nameplates.contains(&nameplate) {
+                return Err(WormholeError::UnclaimedNameplate(nameplate));
+            }
+        }
+
         let mailbox = server.claim_open(nameplate).await?;
         log::debug!("Connected to mailbox {}", mailbox);
 
