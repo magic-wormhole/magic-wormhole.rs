@@ -160,6 +160,10 @@ jobs:
         with:
           toolchain: nightly
           override: true
+      - uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-tarpaulin
+          version: latest
       - name: Cache ~/.cargo
         uses: actions/cache@v1
         with:
@@ -170,9 +174,11 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-coverage-cargo-build-target
-      - uses: actions-rs/tarpaulin@v0.1
+      - name: Run tarpaulin
+        uses: actions-rs/cargo@v1
         with:
-          args: --all
+          command: tarpaulin
+          args: --workspace --out Xml
       - name: upload coverage
         uses: codecov/codecov-action@v1
         with:
