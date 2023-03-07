@@ -3,6 +3,8 @@ mod util;
 
 use std::{
     ops::Deref,
+    sync::mpsc,
+    thread,
     time::{Duration, Instant},
 };
 
@@ -283,11 +285,31 @@ async fn main() -> eyre::Result<()> {
             .try_init()?;
     }
 
-    let mut clipboard = ClipboardContext::new()
-        .map_err(|err| {
-            log::warn!("Failed to initialize clipboard support: {}", err);
-        })
-        .ok();
+    // cli_clipboard can hang if unable to connect to x11 socket in linux
+    // so we try for up to 1 second
+    let (sender, receiver) = mpsc::channel();
+    let _clipboard_init_thread = thread::spawn(move || {
+        match sender.send(
+            ClipboardContext::new()
+                .map_err(|err| {
+                    log::warn!("Failed to initialize clipboard support: {}", err);
+                })
+                .ok(),
+        ) {
+            Ok(()) => {}, // everything good
+            Err(_) => {}, // we have been released, don't panic
+        }
+    });
+    let mut clipboard = match receiver.recv_timeout(Duration::from_millis(1000)) {
+        Ok(initialized_clipboard) => {
+            log::debug!("Clipboard initialized successfully");
+            initialized_clipboard
+        },
+        Err(err) => {
+            log::warn!("Clipboard initialization timed out: {}", err);
+            None
+        },
+    };
 
     let concat_file_name = |file_path: &Path, file_name: Option<_>| {
         // TODO this has gotten out of hand (it ugly)
