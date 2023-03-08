@@ -74,6 +74,10 @@ impl RendezvousError {
 
 type MessageQueue = VecDeque<EncryptedMessage>;
 
+#[derive(Clone, Debug, derive_more::Display)]
+#[display(fmt = "{:?}", _0)]
+struct NameplateList(Vec<Nameplate>);
+
 #[cfg(not(target_family = "wasm"))]
 struct WsConnection {
     connection: async_tungstenite::WebSocketStream<async_tungstenite::async_std::ConnectStream>,
@@ -174,6 +178,9 @@ impl WsConnection {
                 Some(InboundMessage::Error { error, orig: _ }) => {
                     break Err(RendezvousError::Server(error.into()));
                 },
+                Some(InboundMessage::Nameplates { nameplates }) => {
+                    break Ok(RendezvousReply::Nameplates(NameplateList(nameplates)))
+                },
                 Some(other) => {
                     break Err(RendezvousError::protocol(format!(
                         "Got unexpected message type from server '{}'",
@@ -273,6 +280,7 @@ enum RendezvousReply {
     Released,
     Claimed(Mailbox),
     Closed,
+    Nameplates(NameplateList),
 }
 
 #[derive(Clone, Debug, derive_more::Display)]
@@ -526,6 +534,19 @@ impl RendezvousServer {
             .as_ref()
             .and_then(|state| state.nameplate.as_ref())
             .is_some()
+    }
+
+    /**
+     * Gets the list of currently claimed nameplates.
+     * This can be called at any time.
+     */
+    pub async fn list_nameplates(&mut self) -> Result<Vec<Nameplate>, RendezvousError> {
+        self.send_message(&OutboundMessage::List).await?;
+        let nameplate_reply = self.receive_reply().await?;
+        match nameplate_reply {
+            RendezvousReply::Nameplates(x) => Ok(x.0),
+            other => Err(RendezvousError::invalid_message("nameplates", other)),
+        }
     }
 
     pub async fn release_nameplate(&mut self) -> Result<(), RendezvousError> {
