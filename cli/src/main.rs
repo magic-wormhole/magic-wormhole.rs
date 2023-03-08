@@ -656,7 +656,7 @@ async fn parse_and_connect(
                 )?;
             }
             let (server_welcome, wormhole) =
-                magic_wormhole::Wormhole::connect_with_code(app_config, code).await?;
+                magic_wormhole::Wormhole::connect_with_code(app_config, code, false).await?;
             print_welcome(term, &server_welcome)?;
             (wormhole, server_welcome.code)
         },
@@ -860,7 +860,8 @@ async fn send_many(
         }
 
         let (_server_welcome, wormhole) =
-            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone()).await?;
+            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone(), false)
+                .await?;
         send_in_background(
             relay_hints.clone(),
             Arc::clone(&file_path),

@@ -75,7 +75,8 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
             let (welcome, wormhole) =
-                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code, true)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -150,7 +151,8 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
             let (welcome, wormhole) =
-                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code, true)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -223,7 +225,8 @@ pub async fn test_empty_file_rust2rust() -> eyre::Result<()> {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
             let (welcome, wormhole) =
-                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code).await?;
+                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code, true)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -302,6 +305,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
             let (_welcome, wormhole) = Wormhole::connect_with_code(
                 transfer::APP_CONFIG.id(TEST_APPID),
                 sender_code.clone(),
+                false,
             )
             .await?;
             senders.push(async_std::task::spawn(async move {
@@ -329,7 +333,8 @@ pub async fn test_send_many() -> eyre::Result<()> {
     for i in 0..5usize {
         log::info!("Receiving file #{}", i);
         let (_welcome, wormhole) =
-            Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone()).await?;
+            Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone(), true)
+                .await?;
         log::info!("Got key: {}", &wormhole.key);
         let req = crate::transfer::request_file(
             wormhole,
@@ -389,6 +394,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
                 APP_CONFIG,
                 /* Making a wrong code here by appending bullshit */
                 Code::new(&nameplate, "foo-bar"),
+                true,
             )
             .await;
 
@@ -411,9 +417,9 @@ pub async fn test_crowded() -> eyre::Result<()> {
     let (welcome, connector1) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
     log::info!("This test's code is: {}", &welcome.code);
 
-    let connector2 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone());
+    let connector2 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone(), true);
 
-    let connector3 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone());
+    let connector3 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone(), true);
 
     match futures::try_join!(connector1, connector2, connector3).unwrap_err() {
         magic_wormhole::WormholeError::ServerError(
@@ -422,6 +428,26 @@ pub async fn test_crowded() -> eyre::Result<()> {
             assert_eq!(&*error, "crowded")
         },
         other => panic!("Got wrong error message: {}, wanted 'crowded'", other),
+    }
+
+    Ok(())
+}
+
+#[async_std::test]
+pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
+    // the max nameplate number is 999, so this will not impact a real nameplate
+    let code = Code("1000-guitarist-revenge".to_owned());
+    let connector = Wormhole::connect_with_code(APP_CONFIG, code, true)
+        .await
+        .unwrap_err();
+    match connector {
+        magic_wormhole::WormholeError::UnclaimedNameplate(x) => {
+            assert_eq!(x, magic_wormhole::core::Nameplate("1000".to_owned()));
+        },
+        other => panic!(
+            "Got wrong error type {:?}. Expected `NameplateNotFound`",
+            other
+        ),
     }
 
     Ok(())
