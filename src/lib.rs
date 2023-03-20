@@ -34,6 +34,8 @@ pub mod transfer;
 pub mod transit;
 #[cfg(feature = "transfer")]
 pub mod uri;
+#[cfg(feature = "dilation")]
+pub mod dilation;
 
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},

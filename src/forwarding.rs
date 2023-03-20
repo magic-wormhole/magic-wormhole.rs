@@ -173,7 +173,7 @@ pub async fn serve(
         .collect();
 
     /* Receive their transit hints */
-    let their_hints: transit::Hints = match wormhole.receive_json().await?? {
+    let their_hints: transit::Hints = match wormhole.receive_json().await? {
         PeerMessage::Transit { hints } => {
             log::debug!("Received transit message: {:?}", hints);
             hints
@@ -544,7 +544,7 @@ pub async fn connect(
         .await?;
 
     /* Receive their transit hints */
-    let their_hints: transit::Hints = match wormhole.receive_json().await?? {
+    let their_hints: transit::Hints = match wormhole.receive_json().await? {
         PeerMessage::Transit { hints } => {
             log::debug!("Received transit message: {:?}", hints);
             hints

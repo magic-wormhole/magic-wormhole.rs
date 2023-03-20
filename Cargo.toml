@@ -85,8 +85,9 @@ eyre = "0.6.5"
 [features]
 transit = ["socket2", "stun_codec", "if-addrs", "bytecodec", "async-trait", "noise-protocol", "noise-rust-crypto"]
 transfer = ["transit", "async-tar", "rmp-serde"]
+dilation = ["transfer"]
 forwarding = ["transit", "rmp-serde"]
-default = ["transit", "transfer"]
+default = ["transfer", "dilation"]
 all = ["default", "forwarding"]
 
 [profile.release]

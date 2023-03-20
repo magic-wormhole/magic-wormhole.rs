@@ -8,6 +8,9 @@ mod wordlist;
 use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 
+use crate::dilation;
+use crate::dilation::events::create_channels;
+
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
 use log::*;
@@ -44,6 +47,8 @@ pub enum WormholeError {
     Crypto,
     #[error("Nameplate is unclaimed: {}", _0)]
     UnclaimedNameplate(Nameplate),
+    #[error("Dilation version mismatch")]
+    DilationVersion,
 }
 
 impl WormholeError {
@@ -264,6 +269,12 @@ pub struct Wormhole {
      * (e.g. by the file transfer API).
      */
     pub peer_version: serde_json::Value,
+    /**
+     * Enable dilatation. This is off by default. Any application that
+     * would want to use a dilated wormhole would turn it on, which
+     * results in app specific exchange in the "version" message.
+    */
+    pub enable_dilation: bool,
 }
 
 impl Wormhole {
@@ -284,6 +295,7 @@ impl Wormhole {
     pub async fn connect_without_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code_length: usize,
+        enable_dilation: bool,
     ) -> Result<
         (
             WormholeWelcome,
@@ -313,6 +325,7 @@ impl Wormhole {
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
         expect_claimed_nameplate: bool,
+        enable_dilation: bool,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
         let mailbox_connection =
             MailboxConnection::connect(config, code.clone(), !expect_claimed_nameplate).await?;
@@ -351,8 +364,9 @@ impl Wormhole {
             .map(|key| *secretbox::Key::from_slice(&key))?;
 
         /* Send versions message */
-        let mut versions = key::VersionsMessage::new();
+        let mut versions = key::VersionsMessage::new(enable_dilation);
         versions.set_app_versions(serde_json::to_value(&config.app_version).unwrap());
+        println!("versions msg: {}", serde_json::to_value(&app_versions).unwrap());
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
@@ -382,6 +396,7 @@ impl Wormhole {
             verifier: Box::new(key::derive_verifier(&key)),
             our_version: Box::new(config.app_version),
             peer_version,
+            enable_dilation,
         })
     }
 
@@ -426,15 +441,23 @@ impl Wormhole {
                 Some(peer_message) => peer_message,
                 None => continue,
             };
-            if peer_message.phase.to_num().is_none() {
-                // TODO: log and ignore, for future expansion
-                todo!("log and ignore, for future expansion");
-            }
+            println!("peer message: {:?}", peer_message.to_string());
+            // if peer_message.phase.to_num().is_none() {
+            //     // TODO: log and ignore, for future expansion
+            //     todo!("log and ignore, for future expansion");
+            // }
 
             // TODO maybe reorder incoming messages by phase numeral?
             let decrypted_message = peer_message
                 .decrypt(&self.key)
                 .ok_or(WormholeError::Crypto)?;
+
+            if peer_message.phase.to_string().starts_with("dilate-") {
+                // decrypt the payload and send it to dilation module
+                println!("Got a dilation message: {:?}", decrypted_message);
+                // XXX push the decrypted_message to the channel that accepts messages
+                // to dilation core.
+            }
 
             // Send to client
             return Ok(decrypted_message);
@@ -448,19 +471,30 @@ impl Wormhole {
      * used by upper layer protocols. We distinguish between the different layers
      * on which a serialization error happened, hence the double `Result`.
      */
-    pub async fn receive_json<T>(&mut self) -> Result<Result<T, serde_json::Error>, WormholeError>
+    pub async fn receive_json<T>(&mut self) -> Result<T, WormholeError>
     where
         T: for<'a> serde::Deserialize<'a>,
     {
-        self.receive().await.map(|data: Vec<u8>| {
-            serde_json::from_slice(&data).map_err(|e| {
-                log::error!(
-                    "Received invalid data from peer: '{}'",
-                    String::from_utf8_lossy(&data)
-                );
-                e
-            })
-        })
+        let received_msg = self.receive().await;
+        match received_msg {
+            Ok(msg) => {
+                let val = serde_json::from_slice(&msg);
+                match val {
+                    Ok(v) => Ok(v),
+                    Err(e) => Err(WormholeError::ProtocolJson(e)),
+                }
+            },
+            Err(e) => { Err(e) },
+        }
+        // self.receive().await.map(|data: Vec<u8>| {
+        //     serde_json::from_slice(&data).map_err(|e| {
+        //         log::error!(
+        //             "Received invalid data from peer: '{}'",
+        //             String::from_utf8_lossy(&data)
+        //         );
+        //         e
+        //     })
+        // })
     }
 
     pub async fn close(self) -> Result<(), WormholeError> {
@@ -482,6 +516,25 @@ impl Wormhole {
      */
     pub fn key(&self) -> &key::Key<key::WormholeKey> {
         &self.key
+    }
+
+    /**
+    * create a dilated wormhole
+     */
+    pub async fn dilate(&mut self) -> Result<DilatedWormhole, WormholeError> {
+        // XXX: create endpoints?
+        // get versions from the other side and check if they support dilation.
+        let can_they_dilate = &self.peer_version["can-dilate"];
+        if !can_they_dilate.is_null() && can_they_dilate[0] != "1" {
+            return Err(WormholeError::DilationVersion)
+        }
+
+        let (connection_channels, manager_channels) = create_channels();
+        Ok(DilatedWormhole {
+            wormhole: self,
+            side: MySide::generate(8),
+            dilation_core: dilation::DilationCore::new(connection_channels, manager_channels),
+        })
     }
 }
 
@@ -570,10 +623,10 @@ impl From<String> for AppID {
 pub struct MySide(EitherSide);
 
 impl MySide {
-    pub fn generate() -> MySide {
+    pub fn generate(n: usize) -> MySide {
         use rand::{rngs::OsRng, RngCore};
 
-        let mut bytes: [u8; 5] = [0; 5];
+        let mut bytes = vec![0; n];
         OsRng.fill_bytes(&mut bytes);
 
         MySide(EitherSide(hex::encode(bytes)))
@@ -688,3 +741,15 @@ impl Code {
         Nameplate::new(self.0.splitn(2, '-').next().unwrap())
     }
 }
+
+pub struct DilatedWormhole<'a> {
+    pub wormhole: & 'a mut Wormhole,
+    side: MySide,
+    dilation_core: dilation::DilationCore,
+}
+
+fn connection_handler() {
+
+}
+
+// XXX dilation API should be member functions of DilatedWormhole type

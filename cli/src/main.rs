@@ -17,8 +17,9 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
+use serde_json::Value;
 
-use magic_wormhole::{forwarding, transfer, transit, MailboxConnection, Wormhole};
+use magic_wormhole::{forwarding, transfer, transit, dilation, MailboxConnection, Wormhole};
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -335,7 +336,7 @@ async fn main() -> eyre::Result<()> {
                     code,
                     Some(code_length),
                     true,
-                    transfer::APP_CONFIG,
+                    dilation::APP_CONFIG_SEND,
                     Some(&sender_print_code),
                     clipboard.as_mut(),
                 )),
@@ -373,7 +374,7 @@ async fn main() -> eyre::Result<()> {
                     code,
                     Some(code_length),
                     true,
-                    transfer::APP_CONFIG,
+                    dilation::APP_CONFIG_SEND,
                     Some(&sender_print_code),
                     clipboard.as_mut(),
                 ));
@@ -412,14 +413,14 @@ async fn main() -> eyre::Result<()> {
             ..
         } => {
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_hints) = {
+            let (mut wormhole, _code, relay_hints) = {
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
                     code,
                     None,
                     false,
-                    transfer::APP_CONFIG,
+                    dilation::APP_CONFIG_RECEIVE,
                     None,
                     clipboard.as_mut(),
                 ));
@@ -429,16 +430,30 @@ async fn main() -> eyre::Result<()> {
                 }
             };
 
-            Box::pin(receive(
-                wormhole,
-                relay_hints,
-                file_path.as_os_str(),
-                file_name.map(std::ffi::OsString::from).as_deref(),
-                noconfirm,
-                transit_abilities,
-                ctrl_c,
-            ))
-            .await?;
+            if wormhole.enable_dilation && peer_allows_dilation(&wormhole.peer_version) {
+                let dilated_wormhole = wormhole.dilate().await?; // need to pass transit relay URL
+                // TODO receive via dilated wormhole
+
+                match dilated_wormhole.wormhole.receive_json().await {
+                    Ok(dilation::events::ManagerEvent::RxPlease{side}) => {
+                        println!("received a please message with side: {:?}", side);
+                    },
+                    other => {
+                        println!("received a message: {:?}", other);
+                    }
+                };
+            } else {
+                Box::pin(receive(
+                    wormhole,
+                    relay_hints,
+                    file_path.as_os_str(),
+                    file_name.map(std::ffi::OsString::from).as_deref(),
+                    noconfirm,
+                    transit_abilities,
+                    ctrl_c,
+                ))
+                    .await?;
+            }
         },
         WormholeCommand::Forward(ForwardCommand::Serve {
             targets,
@@ -589,6 +604,10 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+fn peer_allows_dilation(version: &Value) -> bool {
+    true
 }
 
 fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {

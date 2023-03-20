@@ -339,7 +339,7 @@ impl RendezvousServer {
         appid: &AppID,
         relay_url: &str,
     ) -> Result<(Self, Option<String>), RendezvousError> {
-        let side = MySide::generate();
+        let side = MySide::generate(5);
         let mut connection;
 
         #[cfg(not(target_arch = "wasm32"))]

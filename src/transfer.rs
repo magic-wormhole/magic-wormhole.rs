@@ -14,6 +14,8 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
+use crate::dilation;
+
 use super::{core::WormholeError, transit, transit::Transit, util, AppID, Wormhole};
 use futures::Future;
 use log::*;
@@ -37,7 +39,7 @@ pub const APPID: AppID = AppID(Cow::Borrowed(APPID_RAW));
 pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersion> {
     id: AppID(Cow::Borrowed(APPID_RAW)),
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
-    app_version: AppVersion::new(),
+    app_version: AppVersion::new(false),
 };
 
 // TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)
@@ -117,6 +119,13 @@ impl TransferError {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Ability {
+    #[serde(rename = "type")]
+    ty: Cow<'static, str>,
+}
+
 /**
  * The application specific version information for this protocol.
  *
@@ -129,15 +138,36 @@ pub struct AppVersion {
     // abilities: Cow<'static, [Cow<'static, str>]>,
     // #[serde(default)]
     // transfer_v2: Option<AppVersionTransferV2Hint>,
+
+    // XXX: we don't want to send "can-dilate" key for non-dilated
+    // wormhole, would making this an Option help? i.e. when the value
+    // is a None, we don't serialize that into the json and do it only
+    // when it is a "Some" value?
+    // overall versions payload is of the form:
+    // b'{"can-dilate": ["1"], "dilation-abilities": [{"type": "direct-tcp-v1"}, {"type": "relay-v1"}], "app_versions": {"transfer": {"mode": "send", "features": {}}}}'
+
+    can_dilate: Option<[Cow<'static, str>; 1]>,
+    dilation_abilities: Cow<'static, [Ability; 2]>
 }
 
 // TODO check invariants during deserialization
 
 impl AppVersion {
-    const fn new() -> Self {
+    const fn new(enable_dilation: bool) -> Self {
+        let can_dilate: Option<[Cow<'static, str>; 1]> = if enable_dilation {
+            Some([std::borrow::Cow::Borrowed("1")])
+        } else {
+            None
+        };
+
         Self {
             // abilities: Cow::Borrowed([Cow::Borrowed("transfer-v1"), Cow::Borrowed("transfer-v2")]),
             // transfer_v2: Some(AppVersionTransferV2Hint::new())
+            can_dilate: can_dilate,
+            dilation_abilities: std::borrow::Cow::Borrowed(&[
+                Ability{ ty: std::borrow::Cow::Borrowed("direct-tcp-v1") },
+                Ability{ ty: std::borrow::Cow::Borrowed("relay-v1") },
+            ])
         }
     }
 
@@ -150,7 +180,7 @@ impl AppVersion {
 
 impl Default for AppVersion {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
@@ -359,7 +389,7 @@ pub async fn request_file(
 
         // receive transit message
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
-            match wormhole.receive_json().await?? {
+            match wormhole.receive_json().await? {
                 PeerMessage::Transit(transit) => {
                     debug!("received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
@@ -373,7 +403,7 @@ pub async fn request_file(
             };
 
         // 3. receive file offer message from peer
-        let (filename, filesize) = match wormhole.receive_json().await?? {
+        let (filename, filesize) = match wormhole.receive_json().await? {
             PeerMessage::Offer(offer_type) => match offer_type {
                 Offer::File { filename, filesize } => (filename, filesize),
                 Offer::Directory {
@@ -573,7 +603,7 @@ async fn handle_run_result(
                 // and we should not only look for the next one but all have been received
                 // and we should not interrupt a receive operation without making sure it leaves the connection
                 // in a consistent state, otherwise the shutdown may cause protocol errors
-                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = util::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                if let Ok(Ok(PeerMessage::Error(e))) = util::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
                     error = TransferError::PeerError(e);
                 } else {
                     log::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");

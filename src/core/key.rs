@@ -102,18 +102,42 @@ pub fn make_pake(password: &str, appid: &AppID) -> (Spake2<Ed25519Group>, Vec<u8
     (pake_state, pake_msg_ser)
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Ability {
+    #[serde(rename = "type")]
+    ty: Cow<'static, str>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct VersionsMessage {
-    #[serde(default)]
-    pub abilities: Vec<String>,
-    #[serde(default)]
+    //#[serde(default)]
+    pub can_dilate: Option<[Cow<'static, str>; 1]>,
+    //#[serde(default)]
+    pub dilation_abilities: Cow<'static, [Ability; 2]>,
+    //#[serde(default)]
+    #[serde(rename = "app_versions")]
     pub app_versions: serde_json::Value,
     // resume: Option<WormholeResume>,
 }
 
 impl VersionsMessage {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new(enable_dilation: bool) -> Self {
+        // Default::default()
+        Self{
+            can_dilate:
+            if enable_dilation {
+                Some([std::borrow::Cow::Borrowed("1")])
+            } else {
+                None
+            },
+            dilation_abilities: std::borrow::Cow::Borrowed(&[
+                Ability{ ty: std::borrow::Cow::Borrowed("direct-tcp-v1") },
+                Ability{ ty: std::borrow::Cow::Borrowed("relay-v1") },
+            ]),
+            app_versions: serde_json::Value::Null,
+        }
     }
 
     pub fn set_app_versions(&mut self, versions: serde_json::Value) {
@@ -133,6 +157,7 @@ pub fn build_version_msg(
     let phase = Phase::VERSION;
     let data_key = derive_phase_key(side, key, &phase);
     let plaintext = serde_json::to_vec(versions).unwrap();
+    println!("versions message before encryption: {:?}", plaintext);
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext);
     (phase, encrypted)
 }

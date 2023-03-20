@@ -42,7 +42,7 @@ where
 
         // Wait for their transit response
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
-            match wormhole.receive_json().await?? {
+            match wormhole.receive_json().await? {
                 PeerMessage::Transit(transit) => {
                     debug!("Received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
@@ -57,7 +57,7 @@ where
 
         {
             // Wait for file_ack
-            let fileack_msg = wormhole.receive_json().await??;
+            let fileack_msg = wormhole.receive_json().await?;
             debug!("Received file ack message: {:?}", fileack_msg);
 
             match fileack_msg {
@@ -199,7 +199,7 @@ where
 
         // Wait for their transit response
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
-            match wormhole.receive_json().await?? {
+            match wormhole.receive_json().await? {
                 PeerMessage::Transit(transit) => {
                     debug!("received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
@@ -213,7 +213,7 @@ where
             };
 
         // Wait for file_ack
-        match wormhole.receive_json().await?? {
+        match wormhole.receive_json().await? {
             PeerMessage::Answer(Answer::FileAck(msg)) => {
                 ensure!(msg == "ok", TransferError::AckError);
             },
