@@ -980,7 +980,12 @@ async fn receive(
 
     let pb = create_progress_bar(req.filesize);
 
-    let on_progress = move |received, _total| {
+    let on_progress = move |received, total| {
+        if received == 0 {
+            pb.reset_elapsed();
+            pb.set_length(total);
+            pb.enable_steady_tick(std::time::Duration::from_millis(250));
+        }
         pb.set_position(received);
     };
 
