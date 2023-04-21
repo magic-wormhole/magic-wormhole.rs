@@ -19,7 +19,7 @@ pub async fn send_file<F, N, G, H>(
 where
     F: AsyncRead + Unpin,
     N: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     let run = Box::pin(async {
@@ -76,14 +76,14 @@ where
             }
         }
 
-        let (mut transit, info, addr) = connector
+        let (mut transit, info) = connector
             .leader_connect(
                 wormhole.key().derive_transit_key(wormhole.appid()),
                 their_abilities,
                 Arc::new(their_hints),
             )
             .await?;
-        transit_handler(info, addr);
+        transit_handler(info);
 
         debug!("Beginning file transfer");
 
@@ -108,6 +108,7 @@ where
     super::handle_run_result(wormhole, result).await
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub async fn send_folder<N, M, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -121,7 +122,7 @@ pub async fn send_folder<N, M, G, H>(
 where
     N: Into<PathBuf>,
     M: Into<PathBuf>,
-    G: FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     let run = Box::pin(async {
@@ -224,14 +225,14 @@ where
             },
         }
 
-        let (mut transit, info, addr) = connector
+        let (mut transit, info) = connector
             .leader_connect(
                 wormhole.key().derive_transit_key(wormhole.appid()),
                 their_abilities,
                 Arc::new(their_hints),
             )
             .await?;
-        transit_handler(info, addr);
+        transit_handler(info);
 
         debug!("Beginning file transfer");
 

@@ -13,31 +13,36 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{Key, KeyPurpose};
+use crate::{util, Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
-use async_std::{
-    io::{prelude::WriteExt, ReadExt},
-    net::{TcpListener, TcpStream},
-};
+#[cfg(not(target_family = "wasm"))]
+use async_std::net::{TcpListener, TcpStream};
 #[allow(unused_imports)] /* We need them for the docs */
-use futures::{future::TryFutureExt, Sink, SinkExt, Stream, StreamExt, TryStreamExt};
+use futures::{
+    future::FutureExt,
+    future::TryFutureExt,
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    Sink, SinkExt, Stream, StreamExt, TryStreamExt,
+};
 use log::*;
 use std::{
     collections::HashSet,
-    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    net::{IpAddr, SocketAddr},
     sync::Arc,
 };
-use xsalsa20poly1305 as secretbox;
-use xsalsa20poly1305::aead::{Aead, NewAead};
 
 mod crypto;
+mod transport;
+use crypto::TransitHandshakeError;
+use transport::{TransitTransport, TransitTransportRx, TransitTransportTx};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 // No need to make public, it's hard-coded anyways (:
 // Open an issue if you want an API for this
 // Use <stun.stunprotocol.org:3478> for non-production testing
+#[cfg(not(target_family = "wasm"))]
 const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 #[derive(Debug)]
@@ -64,6 +69,13 @@ pub enum TransitConnectError {
         #[source]
         std::io::Error,
     ),
+    #[cfg(target_family = "wasm")]
+    #[error("WASM error")]
+    WASM(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
+    ),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -78,6 +90,13 @@ pub enum TransitError {
         #[from]
         #[source]
         std::io::Error,
+    ),
+    #[cfg(target_family = "wasm")]
+    #[error("WASM error")]
+    WASM(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
     ),
 }
 
@@ -554,80 +573,33 @@ impl TryFrom<&DirectHint> for SocketAddr {
     }
 }
 
+/// Direct or relay
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum TransitInfo {
+pub enum ConnectionType {
+    /// We are directly connected to our peer
     Direct,
+    /// We are connected to a relay server, and may even know its name
     Relay { name: Option<String> },
 }
 
-type TransitConnection = (TcpStream, TransitInfo);
-
-fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
-    socket.set_nonblocking(true)?;
-
-    /* See https://stackoverflow.com/a/14388707/6094756.
-     * On most BSD and Linux systems, we need both REUSEADDR and REUSEPORT;
-     * and if they don't support the latter we won't compile.
-     * On Windows, there is only REUSEADDR but it does what we want.
-     */
-    socket.set_reuse_address(true)?;
-    #[cfg(all(unix, not(any(target_os = "solaris", target_os = "illumos"))))]
-    {
-        socket.set_reuse_port(true)?;
-    }
-    #[cfg(not(any(
-        all(unix, not(any(target_os = "solaris", target_os = "illumos"))),
-        target_os = "windows"
-    )))]
-    {
-        compile_error!("Your system is not supported yet, please raise an error");
-    }
-
-    Ok(())
+/// Metadata for the established transit connection
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct TransitInfo {
+    /// Whether we are connected directly or via a relay server
+    pub conn_type: ConnectionType,
+    /// Target address of our connection. This may be our peer, or the relay server.
+    /// This says nothing about the actual transport protocol used.
+    #[cfg(not(target_family = "wasm"))]
+    pub peer_addr: SocketAddr,
+    // Prevent exhaustive destructuring for future proofing
+    _unused: (),
 }
 
-/**
- * Bind to a port with SO_REUSEADDR, connect to the destination and then hide the blood behind a pretty [`async_std::net::TcpStream`]
- *
- * We want an `async_std::net::TcpStream`, but with SO_REUSEADDR set.
- * The former is just a wrapper around `async_io::Async<std::net::TcpStream>`, of which we
- * copy the `connect` method to add a statement that will set the socket flag.
- * See https://github.com/smol-rs/async-net/issues/20.
- */
-async fn connect_custom(
-    local_addr: &socket2::SockAddr,
-    dest_addr: &socket2::SockAddr,
-) -> std::io::Result<async_std::net::TcpStream> {
-    log::debug!("Binding to {}", local_addr.as_socket().unwrap());
-    let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
-    /* Set our custum options */
-    set_socket_opts(&socket)?;
+type TransitConnection = (Box<dyn TransitTransport>, TransitInfo);
 
-    socket.bind(local_addr)?;
-
-    /* Initiate connect */
-    match socket.connect(dest_addr) {
-        Ok(_) => {},
-        #[cfg(unix)]
-        Err(err) if err.raw_os_error() == Some(libc::EINPROGRESS) => {},
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {},
-        Err(err) => return Err(err),
-    }
-
-    let stream = async_io::Async::new(std::net::TcpStream::from(socket))?;
-    /* The stream becomes writable when connected. */
-    stream.writable().await?;
-
-    /* Check if there was an error while connecting. */
-    stream
-        .get_ref()
-        .take_error()
-        .and_then(|maybe_err| maybe_err.map_or(Ok(()), Result::Err))?;
-    /* Convert our mess to `async_std::net::TcpStream */
-    Ok(stream.into_inner()?.into())
-}
-
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, thiserror::Error)]
 enum StunError {
     #[error("No IPv4 addresses were found for the selected STUN server")]
@@ -650,90 +622,6 @@ enum StunError {
     ),
 }
 
-/** Perform a STUN query to get the external IP address */
-async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
-    let mut socket = connect_custom(
-        &"[::]:0".parse::<SocketAddr>().unwrap().into(),
-        &PUBLIC_STUN_SERVER
-            .to_socket_addrs()?
-            /* If you find yourself behind a NAT66, open an issue */
-            .find(|x| x.is_ipv4())
-            /* TODO add a helper method to stdlib for this */
-            .map(|addr| match addr {
-                SocketAddr::V4(v4) => {
-                    SocketAddr::new(IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port())
-                },
-                SocketAddr::V6(_) => unreachable!(),
-            })
-            .ok_or(StunError::ServerIsV6Only)?
-            .into(),
-    )
-    .await?;
-
-    use bytecodec::{DecodeExt, EncodeExt};
-    use stun_codec::{
-        rfc5389::{
-            self,
-            attributes::{MappedAddress, Software, XorMappedAddress},
-            Attribute,
-        },
-        Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
-    };
-
-    fn get_binding_request() -> Result<Vec<u8>, bytecodec::Error> {
-        use rand::Rng;
-        let random_bytes = rand::thread_rng().gen::<[u8; 12]>();
-
-        let mut message = Message::new(
-            MessageClass::Request,
-            rfc5389::methods::BINDING,
-            TransactionId::new(random_bytes),
-        );
-
-        message.add_attribute(Attribute::Software(Software::new(
-            "magic-wormhole-rust".to_owned(),
-        )?));
-
-        // Encodes the message
-        let mut encoder = MessageEncoder::new();
-        let bytes = encoder.encode_into_bytes(message.clone())?;
-        Ok(bytes)
-    }
-
-    fn decode_address(buf: &[u8]) -> Result<Option<SocketAddr>, bytecodec::Error> {
-        let mut decoder = MessageDecoder::<Attribute>::new();
-        let decoded = decoder.decode_from_bytes(buf)??;
-
-        let external_addr1 = decoded
-            .get_attribute::<XorMappedAddress>()
-            .map(|x| x.address());
-        //let external_addr2 = decoded.get_attribute::<XorMappedAddress2>().map(|x|x.address());
-        let external_addr3 = decoded
-            .get_attribute::<MappedAddress>()
-            .map(|x| x.address());
-        let external_addr = external_addr1
-            // .or(external_addr2)
-            .or(external_addr3);
-
-        Ok(external_addr)
-    }
-
-    /* Connect the plugs */
-
-    socket.write_all(get_binding_request()?.as_ref()).await?;
-
-    let mut buf = [0u8; 256];
-    /* Read header first */
-    socket.read_exact(&mut buf[..20]).await?;
-    let len: u16 = u16::from_be_bytes([buf[2], buf[3]]);
-    /* Read the rest of the message */
-    socket.read_exact(&mut buf[20..][..len as usize]).await?;
-    let external_addr =
-        decode_address(&buf[..20 + len as usize])?.ok_or(StunError::ServerNoResponse)?;
-
-    Ok((external_addr, socket))
-}
-
 /// Utility method that logs information of the transit result
 ///
 /// Example usage:
@@ -741,31 +629,38 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
 /// ```no_run
 /// use magic_wormhole as mw;
 /// # #[async_std::main] async fn main() -> Result<(), mw::transit::TransitConnectError> {
-/// # let derived_key = todo!();
-/// # let their_abilities = todo!();
-/// # let their_hints = todo!();
-/// let connector: mw::transit::TransitConnector = todo!("transit::init(…).await?");
-/// let (mut transit, info, addr) = connector
+/// # let derived_key = unimplemented!();
+/// # let their_abilities = unimplemented!();
+/// # let their_hints = unimplemented!();
+/// let connector: mw::transit::TransitConnector = unimplemented!("transit::init(…).await?");
+/// let (mut transit, info) = connector
 ///     .leader_connect(derived_key, their_abilities, their_hints)
 ///     .await?;
-/// mw::transit::log_transit_connection(info, addr);
+/// mw::transit::log_transit_connection(info);
 /// # Ok(())
 /// # }
 /// ```
-pub fn log_transit_connection(info: TransitInfo, peer_addr: SocketAddr) {
-    match info {
-        TransitInfo::Direct => {
-            log::info!("Established direct transit connection to '{}'", peer_addr,);
+#[cfg(not(target_family = "wasm"))]
+pub fn log_transit_connection(info: TransitInfo) {
+    match info.conn_type {
+        ConnectionType::Direct => {
+            log::info!(
+                "Established direct transit connection to '{}'",
+                info.peer_addr,
+            );
         },
-        TransitInfo::Relay { name: Some(name) } => {
+        ConnectionType::Relay { name: Some(name) } => {
             log::info!(
                 "Established transit connection via relay '{}' ({})",
                 name,
-                peer_addr,
+                info.peer_addr,
             );
         },
-        TransitInfo::Relay { name: None } => {
-            log::info!("Established transit connection via relay ({})", peer_addr,);
+        ConnectionType::Relay { name: None } => {
+            log::info!(
+                "Established transit connection via relay ({})",
+                info.peer_addr,
+            );
         },
     }
 }
@@ -781,22 +676,24 @@ pub async fn init(
     relay_hints: Vec<RelayHint>,
 ) -> Result<TransitConnector, std::io::Error> {
     let mut our_hints = Hints::default();
-    let mut listener = None;
+    #[cfg(not(target_family = "wasm"))]
+    let mut sockets = None;
 
     if let Some(peer_abilities) = peer_abilities {
         abilities = abilities.intersect(&peer_abilities);
     }
 
     /* Detect our IP addresses if the ability is enabled */
+    #[cfg(not(target_family = "wasm"))]
     if abilities.can_direct() {
         let create_sockets = async {
             /* Do a STUN query to get our public IP. If it works, we must reuse the same socket (port)
              * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
              * and use that instead.
              */
-            let socket: MaybeConnectedSocket = match async_std::future::timeout(
+            let socket: MaybeConnectedSocket = match util::timeout(
                 std::time::Duration::from_secs(4),
-                get_external_ip(),
+                transport::tcp_get_external_ip(),
             )
             .await
             .map_err(|_| StunError::Timeout)
@@ -820,7 +717,7 @@ pub async fn init(
                     log::warn!("Failed to get external address via STUN, {}", err);
                     let socket =
                         socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
-                    set_socket_opts(&socket)?;
+                    transport::set_socket_opts(&socket)?;
 
                     socket.bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())?;
                     log::debug!(
@@ -838,11 +735,11 @@ pub async fn init(
              * the port. In theory, we could, but it really confused the kernel to the point
              * of `accept` calls never returning again.
              */
-            let socket2 = TcpListener::bind("[::]:0").await?;
+            let listener = TcpListener::bind("[::]:0").await?;
 
             /* Find our ports, iterate all our local addresses, combine them with the ports and that's our hints */
             let port = socket.local_addr()?.as_socket().unwrap().port();
-            let port2 = socket2.local_addr()?.port();
+            let port2 = listener.local_addr()?.port();
             our_hints.direct_tcp.extend(
                 if_addrs::get_if_addrs()?
                     .iter()
@@ -861,12 +758,12 @@ pub async fn init(
                         .into_iter()
                     }),
             );
-            log::debug!("Our socket for listening is {}", socket2.local_addr()?);
+            log::debug!("Our socket for listening is {}", listener.local_addr()?);
 
-            Ok::<_, std::io::Error>((socket, socket2))
+            Ok::<_, std::io::Error>((socket, listener))
         };
 
-        listener = create_sockets
+        sockets = create_sockets
             .await
             // TODO replace with inspect_err once stable
             .map_err(|err| {
@@ -881,12 +778,15 @@ pub async fn init(
     }
 
     Ok(TransitConnector {
-        sockets: listener,
+        #[cfg(not(target_family = "wasm"))]
+        sockets,
         our_abilities: abilities,
         our_hints: Arc::new(our_hints),
     })
 }
 
+/// Bound socket, maybe also connected. Guaranteed to have SO_REUSEADDR.
+#[cfg(not(target_family = "wasm"))]
 #[derive(derive_more::From)]
 enum MaybeConnectedSocket {
     #[from]
@@ -895,6 +795,7 @@ enum MaybeConnectedSocket {
     Stream(TcpStream),
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl MaybeConnectedSocket {
     fn local_addr(&self) -> std::io::Result<socket2::SockAddr> {
         match &self {
@@ -916,6 +817,7 @@ pub struct TransitConnector {
      * The first socket is the port from which we will start connection attempts.
      * For in case the user is behind no firewalls, we must also listen to the second socket.
      */
+    #[cfg(not(target_family = "wasm"))]
     sockets: Option<(MaybeConnectedSocket, TcpListener)>,
     our_abilities: Abilities,
     our_hints: Arc<Hints>,
@@ -939,15 +841,16 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo), TransitConnectError> {
         let Self {
+            #[cfg(not(target_family = "wasm"))]
             sockets,
             our_abilities,
             our_hints,
         } = self;
         let transit_key = Arc::new(transit_key);
 
-        let start = std::time::Instant::now();
+        let start = instant::Instant::now();
         let mut connection_stream = Box::pin(
             Self::connect(
                 true,
@@ -956,6 +859,7 @@ impl TransitConnector {
                 our_hints,
                 their_abilities,
                 their_hints,
+                #[cfg(not(target_family = "wasm"))]
                 sockets,
             )
             .filter_map(|result| async {
@@ -969,18 +873,16 @@ impl TransitConnector {
             }),
         );
 
-        let (mut transit, mut host_type) = async_std::future::timeout(
-            std::time::Duration::from_secs(60),
-            connection_stream.next(),
-        )
-        .await
-        .map_err(|_| {
-            log::debug!("`leader_connect` timed out");
-            TransitConnectError::Handshake
-        })?
-        .ok_or(TransitConnectError::Handshake)?;
+        let (mut transit, mut finalizer, mut conn_info) =
+            util::timeout(std::time::Duration::from_secs(60), connection_stream.next())
+                .await
+                .map_err(|_| {
+                    log::debug!("`leader_connect` timed out");
+                    TransitConnectError::Handshake
+                })?
+                .ok_or(TransitConnectError::Handshake)?;
 
-        if host_type != TransitInfo::Direct && our_abilities.can_direct() {
+        if conn_info.conn_type != ConnectionType::Direct && our_abilities.can_direct() {
             log::debug!(
                 "Established transit connection over relay. Trying to find a direct connection …"
             );
@@ -994,12 +896,15 @@ impl TransitConnector {
             } else {
                 elapsed.mul_f32(0.3)
             };
-            let _ = async_std::future::timeout(to_wait, async {
-                while let Some((new_transit, new_host_type)) = connection_stream.next().await {
+            let _ = util::timeout(to_wait, async {
+                while let Some((new_transit, new_finalizer, new_conn_info)) =
+                    connection_stream.next().await
+                {
                     /* We already got a connection, so we're only interested in direct ones */
-                    if new_host_type == TransitInfo::Direct {
+                    if new_conn_info.conn_type == ConnectionType::Direct {
                         transit = new_transit;
-                        host_type = new_host_type;
+                        finalizer = new_finalizer;
+                        conn_info = new_conn_info;
                         log::debug!("Found direct connection; using that instead.");
                         break;
                     }
@@ -1016,17 +921,22 @@ impl TransitConnector {
          */
         std::mem::drop(connection_stream);
 
-        let (mut socket, finalizer) = transit;
         let (tx, rx) = finalizer
-            .handshake_finalize(&mut socket)
+            .handshake_finalize(&mut transit)
             .await
             .map_err(|e| {
                 log::debug!("`handshake_finalize` failed: {e}");
                 TransitConnectError::Handshake
             })?;
 
-        let addr = socket.peer_addr().unwrap();
-        Ok((Transit { socket, tx, rx }, host_type, addr))
+        Ok((
+            Transit {
+                socket: transit,
+                tx,
+                rx,
+            },
+            conn_info,
+        ))
     }
 
     /**
@@ -1037,8 +947,9 @@ impl TransitConnector {
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-    ) -> Result<(Transit, TransitInfo, SocketAddr), TransitConnectError> {
+    ) -> Result<(Transit, TransitInfo), TransitConnectError> {
         let Self {
+            #[cfg(not(target_family = "wasm"))]
             sockets,
             our_abilities,
             our_hints,
@@ -1053,6 +964,7 @@ impl TransitConnector {
                 our_hints,
                 their_abilities,
                 their_hints,
+                #[cfg(not(target_family = "wasm"))]
                 sockets,
             )
             .filter_map(|result| async {
@@ -1066,14 +978,13 @@ impl TransitConnector {
             }),
         );
 
-        let transit = match async_std::future::timeout(
+        let transit = match util::timeout(
             std::time::Duration::from_secs(60),
             &mut connection_stream.next(),
         )
         .await
         {
-            Ok(Some(((mut socket, finalizer), host_type))) => {
-                let addr = socket.peer_addr().unwrap();
+            Ok(Some((mut socket, finalizer, conn_info))) => {
                 let (tx, rx) = finalizer
                     .handshake_finalize(&mut socket)
                     .await
@@ -1082,7 +993,7 @@ impl TransitConnector {
                         TransitConnectError::Handshake
                     })?;
 
-                Ok((Transit { socket, tx, rx }, host_type, addr))
+                Ok((Transit { socket, tx, rx }, conn_info))
             },
             Ok(None) | Err(_) => {
                 log::debug!("`follower_connect` timed out");
@@ -1114,11 +1025,11 @@ impl TransitConnector {
         our_hints: Arc<Hints>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
-        socket: Option<(MaybeConnectedSocket, TcpListener)>,
-    ) -> impl Stream<Item = Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>
-           + 'static {
-        /* Have socket => can direct */
-        assert!(socket.is_none() || our_abilities.can_direct());
+        #[cfg(not(target_family = "wasm"))] sockets: Option<(MaybeConnectedSocket, TcpListener)>,
+    ) -> impl Stream<Item = Result<HandshakeResult, TransitHandshakeError>> + 'static {
+        /* Have Some(sockets) → Can direct */
+        #[cfg(not(target_family = "wasm"))]
+        assert!(sockets.is_none() || our_abilities.can_direct());
 
         let cryptor = if our_abilities.can_noise_crypto() && their_abilities.can_noise_crypto() {
             log::debug!("Using noise protocol for encryption");
@@ -1138,17 +1049,25 @@ impl TransitConnector {
         /* Iterator of futures yielding a connection. They'll be then mapped with the handshake, collected into
          * a Vec and polled concurrently.
          */
+        #[cfg(not(target_family = "wasm"))]
         use futures::future::BoxFuture;
+        #[cfg(target_family = "wasm")]
+        use futures::future::LocalBoxFuture as BoxFuture;
         type BoxIterator<T> = Box<dyn Iterator<Item = T>>;
-        type ConnectorFuture =
-            BoxFuture<'static, Result<TransitConnection, crypto::TransitHandshakeError>>;
+        type ConnectorFuture = BoxFuture<'static, Result<TransitConnection, TransitHandshakeError>>;
         let mut connectors: BoxIterator<ConnectorFuture> = Box::new(std::iter::empty());
 
-        /* Create direct connection sockets, if we support it. If peer doesn't support it, their list of hints will
-         * be empty and no entries will be pushed.
-         */
-        let socket2 = if let Some((socket, socket2)) = socket {
-            let local_addr = Arc::new(socket.local_addr().unwrap());
+        #[cfg(not(target_family = "wasm"))]
+        let (socket, listener) = sockets.unzip();
+        #[cfg(not(target_family = "wasm"))]
+        if our_abilities.can_direct() && their_abilities.can_direct() {
+            let local_addr = socket.map(|socket| {
+                Arc::new(
+                    socket
+                        .local_addr()
+                        .expect("This is guaranteed to be an IP socket"),
+                )
+            });
             /* Connect to each hint of the peer */
             connectors = Box::new(
                 connectors.chain(
@@ -1158,46 +1077,13 @@ impl TransitConnector {
                         .into_iter()
                         /* Nobody should have that many IP addresses, even with NATing */
                         .take(50)
-                        .map(move |hint| {
-                            let local_addr = local_addr.clone();
-                            async move {
-                                let dest_addr = SocketAddr::try_from(&hint)?;
-                                log::debug!("Connecting directly to {}", dest_addr);
-                                let socket = connect_custom(&local_addr, &dest_addr.into()).await?;
-                                log::debug!("Connected to {}!", dest_addr);
-                                Ok((socket, TransitInfo::Direct))
-                            }
-                        })
+                        .map(move |hint| transport::connect_tcp_direct(local_addr.clone(), hint))
                         .map(|fut| Box::pin(fut) as ConnectorFuture),
                 ),
             ) as BoxIterator<ConnectorFuture>;
-            Some(socket2)
-        } else if our_abilities.can_direct() {
-            /* Fallback: We did not manage to bind a listener but we can still connect to the peer's hints */
-            connectors = Box::new(
-                connectors.chain(
-                    their_hints
-                        .direct_tcp
-                        .clone()
-                        .into_iter()
-                        /* Nobody should have that many IP addresses, even with NATing */
-                        .take(50)
-                        .map(move |hint| async move {
-                            let dest_addr = SocketAddr::try_from(&hint)?;
-                            log::debug!("Connecting directly to {}", dest_addr);
-                            let socket = async_std::net::TcpStream::connect(&dest_addr).await?;
-                            log::debug!("Connected to {}!", dest_addr);
-                            Ok((socket, TransitInfo::Direct))
-                        })
-                        .map(|fut| Box::pin(fut) as ConnectorFuture),
-                ),
-            ) as BoxIterator<ConnectorFuture>;
-            None
-        } else {
-            None
-        };
+        }
 
-        /* Relay hints. Make sure that both sides adverize it, since it is fine to support it without providing own hints. */
+        /* Relay hints. Make sure that both sides advertise it, since it is fine to support it without providing own hints. */
         if our_abilities.can_relay() && their_abilities.can_relay() {
             /* Collect intermediate into HashSet for deduplication */
             let mut relay_hints = Vec::<RelayHint>::new();
@@ -1206,26 +1092,14 @@ impl TransitConnector {
                 hint.merge_into(&mut relay_hints);
             }
 
-            /* Take a relay hint and try to connect to it */
-            async fn hint_connector(
-                host: DirectHint,
-                name: Option<String>,
-            ) -> Result<TransitConnection, crypto::TransitHandshakeError> {
-                log::debug!("Connecting to relay {}", host);
-                let transit = TcpStream::connect((host.hostname.as_str(), host.port))
-                    .err_into::<crypto::TransitHandshakeError>()
-                    .await?;
-                log::debug!("Connected to {}!", host);
-
-                Ok((transit, TransitInfo::Relay { name }))
-            }
-
-            connectors = Box::new(
-                connectors.chain(
+            #[cfg(not(target_family = "wasm"))]
+            {
+                connectors = Box::new(
+                    connectors.chain(
                     relay_hints
                         .into_iter()
                         /* A hint may have multiple addresses pointing towards the server. This may be multiple
-                         * domain aliases or different ports or an IPv6 or IPv4 address. We only need
+                        * domain aliases or different ports or an IPv6 or IPv4 address. We only need
                          * to connect to one of them, since they are considered equivalent. However, we
                          * also want to be prepared for the rare case of one failing, thus we try to reach
                          * up to three different addresses. To not flood the system with requests, we
@@ -1235,37 +1109,83 @@ impl TransitConnector {
                         .flat_map(|hint| {
                             /* If the hint has no name, take the first domain name as fallback */
                             let name = hint.name
-                                .or_else(|| {
-                                    /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
-                                    hint.tcp.iter()
+                            .or_else(|| {
+                                /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
+                                hint.tcp.iter()
                                         .filter_map(|hint| match url::Host::parse(&hint.hostname) {
                                             Ok(url::Host::Domain(_)) => Some(hint.hostname.clone()),
                                             _ => None,
                                         })
                                         .next()
-                                });
+                                    });
                             hint.tcp
                                 .into_iter()
                                 .take(3)
                                 .enumerate()
                                 .map(move |(i, h)| (i, h, name.clone()))
-                        })
-                        .map(|(index, host, name)| async move {
-                            async_std::task::sleep(std::time::Duration::from_secs(
-                                index as u64 * 5,
-                            ))
-                            .await;
-                            hint_connector(host, name).await
-                        })
-                        .map(|fut| Box::pin(fut) as ConnectorFuture),
-                ),
-            ) as BoxIterator<ConnectorFuture>;
+                            })
+                            .map(|(index, host, name)| async move {
+                                util::sleep(std::time::Duration::from_secs(
+                                    index as u64 * 5,
+                                ))
+                                .await;
+                                transport::connect_tcp_relay(host, name).await
+                            })
+                            .map(|fut| Box::pin(fut) as ConnectorFuture),
+                    ),
+                ) as BoxIterator<ConnectorFuture>;
+            }
+
+            #[cfg(target_family = "wasm")]
+            {
+                connectors = Box::new(
+                    connectors.chain(
+                        relay_hints
+                            .into_iter()
+                            /* A hint may have multiple addresses pointing towards the server. This may be multiple
+                            * domain aliases or different ports or an IPv6 or IPv4 address. We only need
+                            * to connect to one of them, since they are considered equivalent. However, we
+                            * also want to be prepared for the rare case of one failing, thus we try to reach
+                            * up to three different addresses. To not flood the system with requests, we
+                            * start them in a 5 seconds interval spread. If one of them succeeds, the remaining ones
+                            * will be cancelled anyways. Note that a hint might not necessarily be reachable via TCP.
+                            */
+                            .flat_map(|hint| {
+                                /* If the hint has no name, take the first domain name as fallback */
+                                let name = hint.name
+                                    .or_else(|| {
+                                        /* Try to parse as IP address. We are only interested in human readable names (the IP address will be printed anyways) */
+                                        hint.tcp.iter()
+                                            .filter_map(|hint| match url::Host::parse(&hint.hostname) {
+                                                Ok(url::Host::Domain(_)) => Some(hint.hostname.clone()),
+                                                _ => None,
+                                            })
+                                            .next()
+                                    });
+                                hint.ws
+                                    .into_iter()
+                                    .take(3)
+                                    .enumerate()
+                                    .map(move |(i, u)| (i, u, name.clone()))
+                            })
+                            .map(|(index, url, name)| async move {
+                                util::sleep(std::time::Duration::from_secs(
+                                    index as u64 * 5,
+                                ))
+                                .await;
+                                transport::connect_ws_relay(url, name).await
+                            })
+                            .map(|fut| Box::pin(fut) as ConnectorFuture),
+                    ),
+                ) as BoxIterator<ConnectorFuture>;
+            }
         }
 
         /* Do a handshake on all our found connections */
         let transit_key2 = transit_key.clone();
         let tside2 = tside.clone();
         let cryptor2 = cryptor.clone();
+        #[allow(unused_mut)] // For WASM targets
         let mut connectors = Box::new(
             connectors
                 .map(move |fut| {
@@ -1273,32 +1193,28 @@ impl TransitConnector {
                     let tside = tside2.clone();
                     let cryptor = cryptor2.clone();
                     async move {
-                        let (socket, host_type) = fut.await?;
-                        let transit = handshake_exchange(
+                        let (socket, conn_info) = fut.await?;
+                        let (transit, finalizer) = handshake_exchange(
                             is_leader,
                             tside,
                             socket,
-                            &host_type,
+                            &conn_info.conn_type,
                             &*cryptor,
                             transit_key,
                         )
                         .await?;
-                        Ok((transit, host_type))
+                        Ok((transit, finalizer, conn_info))
                     }
                 })
                 .map(|fut| {
-                    Box::pin(fut)
-                        as BoxFuture<
-                            Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
-                        >
+                    Box::pin(fut) as BoxFuture<Result<HandshakeResult, TransitHandshakeError>>
                 }),
         )
-            as BoxIterator<
-                BoxFuture<Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>>,
-            >;
+            as BoxIterator<BoxFuture<Result<HandshakeResult, TransitHandshakeError>>>;
 
         /* Also listen on some port just in case. */
-        if let Some(socket2) = socket2 {
+        #[cfg(not(target_family = "wasm"))]
+        if let Some(listener) = listener {
             connectors = Box::new(
                 connectors.chain(
                     std::iter::once(async move {
@@ -1306,21 +1222,20 @@ impl TransitConnector {
                         let tside = tside.clone();
                         let cryptor = cryptor.clone();
                         let connect = || async {
-                            let (stream, peer) = socket2.accept().await?;
+                            let (socket, peer) = listener.accept().await?;
+                            let (socket, info) =
+                                transport::wrap_tcp_connection(socket, ConnectionType::Direct)?;
                             log::debug!("Got connection from {}!", peer);
-                            let transit = handshake_exchange(
+                            let (transit, finalizer) = handshake_exchange(
                                 is_leader,
                                 tside.clone(),
-                                stream,
-                                &TransitInfo::Direct,
+                                socket,
+                                &ConnectionType::Direct,
                                 &*cryptor,
                                 transit_key.clone(),
                             )
                             .await?;
-                            Result::<_, crypto::TransitHandshakeError>::Ok((
-                                transit,
-                                TransitInfo::Direct,
-                            ))
+                            Result::<_, TransitHandshakeError>::Ok((transit, finalizer, info))
                         };
                         loop {
                             match connect().await {
@@ -1336,21 +1251,11 @@ impl TransitConnector {
                         }
                     })
                     .map(|fut| {
-                        Box::pin(fut)
-                            as BoxFuture<
-                                Result<
-                                    (HandshakeResult, TransitInfo),
-                                    crypto::TransitHandshakeError,
-                                >,
-                            >
+                        Box::pin(fut) as BoxFuture<Result<HandshakeResult, TransitHandshakeError>>
                     }),
                 ),
             )
-                as BoxIterator<
-                    BoxFuture<
-                        Result<(HandshakeResult, TransitInfo), crypto::TransitHandshakeError>,
-                    >,
-                >;
+                as BoxIterator<BoxFuture<Result<HandshakeResult, TransitHandshakeError>>>;
         }
         connectors.collect::<futures::stream::futures_unordered::FuturesUnordered<_>>()
     }
@@ -1364,7 +1269,7 @@ impl TransitConnector {
  */
 pub struct Transit {
     /** Raw transit connection */
-    socket: TcpStream,
+    socket: Box<dyn TransitTransport>,
     tx: Box<dyn crypto::TransitCryptoEncrypt>,
     rx: Box<dyn crypto::TransitCryptoDecrypt>,
 }
@@ -1387,14 +1292,13 @@ impl Transit {
     }
 
     /** Convert the transit connection to a [`Stream`]/[`Sink`] pair */
+    #[cfg(not(target_family = "wasm"))]
     pub fn split(
         self,
     ) -> (
         impl futures::sink::Sink<Box<[u8]>, Error = TransitError>,
         impl futures::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
     ) {
-        use futures::io::AsyncReadExt;
-
         let (reader, writer) = self.socket.split();
         (
             futures::sink::unfold(
@@ -1414,7 +1318,11 @@ impl Transit {
     }
 }
 
-type HandshakeResult = (TcpStream, Box<dyn crypto::TransitCryptoInitFinalizer>);
+type HandshakeResult = (
+    Box<dyn TransitTransport>,
+    Box<dyn crypto::TransitCryptoInitFinalizer>,
+    TransitInfo,
+);
 
 /**
  * Do a transit handshake exchange, to establish a direct connection.
@@ -1428,20 +1336,18 @@ type HandshakeResult = (TcpStream, Box<dyn crypto::TransitCryptoInitFinalizer>);
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
-    socket: TcpStream,
-    host_type: &TransitInfo,
+    mut socket: Box<dyn TransitTransport>,
+    host_type: &ConnectionType,
     cryptor: &dyn crypto::TransitCryptoInit,
     key: Arc<Key<TransitKey>>,
-) -> Result<HandshakeResult, crypto::TransitHandshakeError> {
-    /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
-    // https://github.com/async-rs/async-std/issues/499
-    let socket = std::net::TcpStream::try_from(socket)
-        .expect("Internal error: this should not fail because we never cloned the socket");
-    socket.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
-    socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
-    let mut socket: TcpStream = socket.into();
-
-    if host_type != &TransitInfo::Direct {
+) -> Result<
+    (
+        Box<dyn TransitTransport>,
+        Box<dyn crypto::TransitCryptoInitFinalizer>,
+    ),
+    TransitHandshakeError,
+> {
+    if host_type != &ConnectionType::Direct {
         log::trace!("initiating relay handshake");
 
         let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
@@ -1451,10 +1357,7 @@ async fn handshake_exchange(
         let mut rx = [0u8; 3];
         socket.read_exact(&mut rx).await?;
         let ok_msg: [u8; 3] = *b"ok\n";
-        ensure!(
-            ok_msg == rx,
-            crypto::TransitHandshakeError::RelayHandshakeFailed
-        );
+        ensure!(ok_msg == rx, TransitHandshakeError::RelayHandshakeFailed);
     }
 
     let finalizer = if is_leader {
