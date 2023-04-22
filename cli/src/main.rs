@@ -702,6 +702,17 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     pb
 }
 
+fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
+    move |sent, total| {
+        if sent == 0 {
+            pb.reset_elapsed();
+            pb.set_length(total);
+            pb.enable_steady_tick(std::time::Duration::from_millis(250));
+        }
+        pb.set_position(sent);
+    }
+}
+
 fn enter_code() -> eyre::Result<String> {
     use dialoguer::Input;
 
@@ -790,14 +801,7 @@ async fn send(
         file_name,
         transit_abilities,
         &transit::log_transit_connection,
-        move |sent, total| {
-            if sent == 0 {
-                pb.reset_elapsed();
-                pb.set_length(total);
-                pb.enable_steady_tick(std::time::Duration::from_millis(250));
-            }
-            pb.set_position(sent);
-        },
+        create_progress_handler(pb),
         ctrl_c(),
     )
     .await
@@ -898,14 +902,7 @@ async fn send_many(
                     file_name.deref(),
                     transit_abilities,
                     &transit::log_transit_connection,
-                    move |sent, total| {
-                        if sent == 0 {
-                            pb2.reset_elapsed();
-                            pb2.set_length(total);
-                            pb2.enable_steady_tick(std::time::Duration::from_millis(250));
-                        }
-                        pb2.set_position(sent);
-                    },
+                    create_progress_handler(pb2),
                     cancel,
                 )
                 .await?;
@@ -980,15 +977,6 @@ async fn receive(
 
     let pb = create_progress_bar(req.filesize);
 
-    let on_progress = move |received, total| {
-        if received == 0 {
-            pb.reset_elapsed();
-            pb.set_length(total);
-            pb.enable_steady_tick(std::time::Duration::from_millis(250));
-        }
-        pb.set_position(received);
-    };
-
     /* Then, accept if the file exists */
     if !file_path.exists() || noconfirm {
         let mut file = OpenOptions::new()
@@ -1000,7 +988,7 @@ async fn receive(
         return req
             .accept(
                 &transit::log_transit_connection,
-                on_progress,
+                create_progress_handler(pb),
                 &mut file,
                 ctrl_c(),
             )
@@ -1027,7 +1015,7 @@ async fn receive(
     Ok(req
         .accept(
             &transit::log_transit_connection,
-            on_progress,
+            create_progress_handler(pb),
             &mut file,
             ctrl_c(),
         )
