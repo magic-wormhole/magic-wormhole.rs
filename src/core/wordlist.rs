@@ -69,6 +69,11 @@ impl Wordlist {
     }
 }
 
+fn load_bip39words() -> Vec<Vec<String>> {
+    let words = include_str!("bip39_english.txt").split("\n").map(String::from).collect();
+    vec![words]
+}
+
 fn load_pgpwords() -> Vec<Vec<String>> {
     let raw_words_value: Value = serde_json::from_str(include_str!("pgpwords.json")).unwrap();
     let raw_words = raw_words_value.as_object().unwrap();
@@ -100,7 +105,7 @@ fn load_pgpwords() -> Vec<Vec<String>> {
 pub fn default_wordlist(num_words: usize) -> Wordlist {
     Wordlist {
         num_words,
-        words: load_pgpwords(),
+        words: load_bip39words(),
     }
 }
 
