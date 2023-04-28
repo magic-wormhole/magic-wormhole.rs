@@ -13,13 +13,13 @@ use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
+use serde_json::Value;
 use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use serde_json::Value;
 
-use magic_wormhole::{forwarding, transfer, transit, dilation, MailboxConnection, Wormhole};
+use magic_wormhole::{dilate, dilation, forwarding, transfer, transit, MailboxConnection, Wormhole};
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -431,17 +431,9 @@ async fn main() -> eyre::Result<()> {
             };
 
             if wormhole.enable_dilation && peer_allows_dilation(&wormhole.peer_version) {
-                let dilated_wormhole = wormhole.dilate().await?; // need to pass transit relay URL
-                // TODO receive via dilated wormhole
-
-                match dilated_wormhole.wormhole.receive_json().await {
-                    Ok(dilation::events::ManagerEvent::RxPlease{side}) => {
-                        println!("received a please message with side: {:?}", side);
-                    },
-                    other => {
-                        println!("received a message: {:?}", other);
-                    }
-                };
+                log::debug!("dilate wormhole");
+                let mut dilated_wormhole = dilate(wormhole)?; // need to pass transit relay URL
+                dilated_wormhole.run().await;
             } else {
                 Box::pin(receive(
                     wormhole,
@@ -452,7 +444,7 @@ async fn main() -> eyre::Result<()> {
                     transit_abilities,
                     ctrl_c,
                 ))
-                    .await?;
+                .await?;
             }
         },
         WormholeCommand::Forward(ForwardCommand::Serve {

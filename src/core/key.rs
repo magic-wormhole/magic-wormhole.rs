@@ -125,16 +125,19 @@ pub struct VersionsMessage {
 impl VersionsMessage {
     pub fn new(enable_dilation: bool) -> Self {
         // Default::default()
-        Self{
-            can_dilate:
-            if enable_dilation {
+        Self {
+            can_dilate: if enable_dilation {
                 Some([std::borrow::Cow::Borrowed("1")])
             } else {
                 None
             },
             dilation_abilities: std::borrow::Cow::Borrowed(&[
-                Ability{ ty: std::borrow::Cow::Borrowed("direct-tcp-v1") },
-                Ability{ ty: std::borrow::Cow::Borrowed("relay-v1") },
+                Ability {
+                    ty: std::borrow::Cow::Borrowed("direct-tcp-v1"),
+                },
+                Ability {
+                    ty: std::borrow::Cow::Borrowed("relay-v1"),
+                },
             ]),
             app_versions: serde_json::Value::Null,
         }

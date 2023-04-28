@@ -1,24 +1,30 @@
 use derive_more::Display;
-
-pub enum APIAction {
-}
+use serde_derive::{Deserialize, Serialize};
 
 // from IO to DilationCore
-#[derive(Debug, Display)]
+#[derive(Debug, Clone, PartialEq, Display, Deserialize)]
 pub enum IOEvent {
     WormholeMessageReceived(String),
     TCPConnectionLost,
     TCPConnectionMade,
 }
 
-// from DilationCore to IO
+/// Commands to be executed
 #[derive(Debug, Clone, PartialEq, Display)]
-pub enum IOAction {
+pub enum ManagerCommand {
+    // XXX: include API calls to IO layer
+    Protocol(ProtocolCommand),
+    IO(IOCommand),
+}
+
+/// Protocol level commands
+#[derive(Debug, Clone, PartialEq, Display, Serialize)]
+pub enum ProtocolCommand {
     SendPlease,
 }
 
-pub enum Action {
-    // outbound events to IO layer
-    // XXX: include API calls to IO layer
-    IO(IOAction),
+/// Protocol level commands
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum IOCommand {
+    CloseConnection,
 }

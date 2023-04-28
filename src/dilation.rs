@@ -1,17 +1,27 @@
-use std::borrow::Cow;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::{
+    borrow::Cow,
+    cell::{RefCell, RefMut},
+    ops::Deref,
+    rc::Rc,
+};
 
+use async_trait::async_trait;
+use futures::executor;
+#[cfg(test)]
+use mockall::{automock, mock, predicate::*};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::dilation::events::{ConnectionChannels, Event, ManagerChannels, Events};
+use crate::{
+    core::MySide,
+    dilation::{api::ManagerCommand, manager::ManagerMachine},
+    Wormhole, WormholeError,
+};
 
 use super::AppID;
 
-mod manager;
-pub mod events;
 mod api;
-
+mod events;
+mod manager;
 
 const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
 
@@ -27,7 +37,6 @@ pub const APP_CONFIG_RECEIVE: crate::AppConfig<AppVersion> = crate::AppConfig::<
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
     app_version: AppVersion::new(FileTransferV2Mode::Receive),
 };
-
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -65,7 +74,6 @@ pub struct AppVersion {
     app_versions: DilatedTransfer,
 }
 
-
 impl AppVersion {
     const fn new(mode: FileTransferV2Mode) -> Self {
         // let can_dilate: Option<[Cow<'static, str>; 1]> = if enable_dilation {
@@ -82,9 +90,7 @@ impl AppVersion {
             //     Ability{ ty: std::borrow::Cow::Borrowed("direct-tcp-v1") },
             //     Ability{ ty: std::borrow::Cow::Borrowed("relay-v1") },
             // ]),
-            app_versions: DilatedTransfer {
-                mode,
-            }
+            app_versions: DilatedTransfer { mode },
         }
     }
 }
@@ -95,69 +101,77 @@ impl Default for AppVersion {
     }
 }
 
-type Queue<A> = Arc<Mutex<VecDeque<A>>>;
-
-pub struct DilationCore {
-    manager: manager::ManagerMachine,
-    connection_channels: ConnectionChannels,
-    manager_channels: ManagerChannels,
+pub struct DilatedWormhole {
+    wormhole: Rc<RefCell<Wormhole>>,
+    side: MySide,
+    manager: ManagerMachine,
 }
 
-impl DilationCore {
-    pub fn new(connection_channels: ConnectionChannels, manager_channels: ManagerChannels) -> DilationCore {
-        // XXX: generate side
-        DilationCore {
-            manager: manager::ManagerMachine::new(),
-            connection_channels,
-            manager_channels,
+impl DilatedWormhole {
+    pub fn new(wormhole: Wormhole, side: MySide) -> Self {
+        let wormhole_ref = &wormhole;
+        DilatedWormhole {
+            wormhole: Rc::new(RefCell::new(wormhole)),
+            side,
+            manager: ManagerMachine::new(),
         }
     }
 
-    pub fn do_io(&mut self, event: api::IOEvent) -> Vec<api::Action> {
-        let events: events::Events = self.manager.process_io(event);
+    pub async fn run(&mut self) {
+        log::debug!(
+            "start state machine: state={}",
+            &self.manager.state.unwrap()
+        );
 
-        self.execute(events)
-    }
+        let mut command_handler = |cmd| Self::execute_command(self.wormhole.borrow_mut(), cmd);
 
-    fn run(&mut self) {
-        while let event_result = self.manager_channels.inbound.recv() {
-            let actions = match event_result {
-                Ok(Event::Manager(manager_event)) =>
-                    self.manager.process(manager_event),
-                Ok(Event::IO(io_action)) => {
-                    println!("manager received IOAction {}", io_action);
-                    // XXX to be filled in later
-                    Events::new()
-                },
+        loop {
+            let event_result = self.wormhole.borrow_mut().receive_json().await;
+
+            match event_result {
+                Ok(manager_event) => self.manager.process(manager_event, &mut command_handler),
                 Err(error) => {
-                    eprintln!("received error {}", error);
-                    Events::new()
-                }
+                    log::warn!("received error {}", error);
+                },
             };
-            // XXX do something with "actions", some of them could
-            // be input to other state machines, some of them could
-            // be IO actions.
-        }
-    }
 
-    fn execute(&mut self, events: events::Events) -> Vec<api::Action> {
-        // process until all the events are consumed and produce a
-        // bunch of Actions.
-        let mut action_queue: Vec<api::Action> = Vec::new();
-        let mut event_queue: VecDeque<events::Event> = VecDeque::new();
-
-        event_queue.append(&mut VecDeque::from(events.events));
-
-        while let Some(event) = event_queue.pop_front() {
-            let actions: events::Events = match event {
-                events::Event::IO(_) => todo!(),
-                events::Event::Manager(e) => self.manager.process(e),
-            };
-            for a in actions.events {
-                event_queue.push_back(a)
+            if self.manager.is_done() {
+                break;
             }
         }
+    }
 
-        action_queue
+    fn execute_command(
+        mut wormhole: RefMut<Wormhole>,
+        command: ManagerCommand,
+    ) -> Result<(), WormholeError> {
+        log::debug!("execute_command");
+        match command {
+            ManagerCommand::Protocol(protocol_command) => {
+                log::debug!("       command: {}", protocol_command);
+                executor::block_on(wormhole.send_json(&protocol_command))
+            },
+            ManagerCommand::IO(io_command) => {
+                println!("io command: {}", io_command);
+                Ok(())
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::dilation::{
+        api::ProtocolCommand, events::ManagerEvent, manager::MockManagerMachine,
+    };
+
+    use super::*;
+
+    #[test]
+    fn test_dilated_wormhole() {
+        let mut manager = MockManagerMachine::default();
+        // let mut wormhole = MockWormhole::default();
+        //
+        // let dilated_wormhole = DilatedWormhole { manager, side: MySide::generate(23), wormhole };
     }
 }

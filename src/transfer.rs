@@ -14,8 +14,6 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::dilation;
-
 use super::{core::WormholeError, transit, transit::Transit, util, AppID, Wormhole};
 use futures::Future;
 use log::*;
@@ -145,9 +143,8 @@ pub struct AppVersion {
     // when it is a "Some" value?
     // overall versions payload is of the form:
     // b'{"can-dilate": ["1"], "dilation-abilities": [{"type": "direct-tcp-v1"}, {"type": "relay-v1"}], "app_versions": {"transfer": {"mode": "send", "features": {}}}}'
-
     can_dilate: Option<[Cow<'static, str>; 1]>,
-    dilation_abilities: Cow<'static, [Ability; 2]>
+    dilation_abilities: Cow<'static, [Ability; 2]>,
 }
 
 // TODO check invariants during deserialization
@@ -165,9 +162,13 @@ impl AppVersion {
             // transfer_v2: Some(AppVersionTransferV2Hint::new())
             can_dilate: can_dilate,
             dilation_abilities: std::borrow::Cow::Borrowed(&[
-                Ability{ ty: std::borrow::Cow::Borrowed("direct-tcp-v1") },
-                Ability{ ty: std::borrow::Cow::Borrowed("relay-v1") },
-            ])
+                Ability {
+                    ty: std::borrow::Cow::Borrowed("direct-tcp-v1"),
+                },
+                Ability {
+                    ty: std::borrow::Cow::Borrowed("relay-v1"),
+                },
+            ]),
         }
     }
 

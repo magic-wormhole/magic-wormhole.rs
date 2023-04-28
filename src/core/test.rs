@@ -245,7 +245,8 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
         .name("sender".to_owned())
         .spawn(async {
             let config = transfer::APP_CONFIG.id(TEST_APPID);
-            let mailbox = MailboxConnection::create(config, 2).await?;
+            let mailbox = MailboxConnection::create(config, 2)
+                    .await?;
             if let Some(welcome) = &mailbox.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -319,7 +320,8 @@ pub async fn test_empty_file_rust2rust() -> eyre::Result<()> {
         .name("sender".to_owned())
         .spawn(async {
             let (welcome, connector) =
-                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2)
+                    .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -456,9 +458,13 @@ pub async fn test_send_many() -> eyre::Result<()> {
     /* Receive many */
     for i in 0..5usize {
         log::info!("Receiving file #{}", i);
-        let (_welcome, wormhole) =
-            Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code.clone(), true)
-                .await?;
+        let (_welcome, wormhole) = Wormhole::connect_with_code(
+            transfer::APP_CONFIG.id(TEST_APPID),
+            code.clone(),
+            true,
+            false,
+        )
+        .await?;
         log::info!("Got key: {}", &wormhole.key);
         let req = crate::transfer::request_file(
             wormhole,
