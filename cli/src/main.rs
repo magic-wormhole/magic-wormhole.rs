@@ -18,7 +18,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use magic_wormhole::{forwarding, transfer, transit, Wormhole};
+use magic_wormhole::{forwarding, transfer, transit, MailboxConnection, Wormhole};
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -646,7 +646,7 @@ async fn parse_and_connect(
         uri_rendezvous = Some(rendezvous_server.clone());
         app_config = app_config.rendezvous_url(rendezvous_server.to_string().into());
     }
-    let (wormhole, code) = match code {
+    let mailbox_connection = match code {
         Some(code) => {
             if is_send {
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
@@ -655,21 +655,16 @@ async fn parse_and_connect(
                     &uri_rendezvous,
                 )?;
             }
-            let (server_welcome, wormhole) =
-                magic_wormhole::Wormhole::connect_with_code(app_config, code, false).await?;
-            print_welcome(term, &server_welcome)?;
-            (wormhole, server_welcome.code)
+            MailboxConnection::connect(app_config, code, true).await?
         },
         None => {
-            let numwords = code_length.unwrap();
+            let mailbox_connection =
+                MailboxConnection::create(app_config, code_length.unwrap()).await?;
 
-            let (server_welcome, connector) =
-                magic_wormhole::Wormhole::connect_without_code(app_config, numwords).await?;
-            print_welcome(term, &server_welcome)?;
             /* Print code and also copy it to clipboard */
             if is_send {
                 if let Some(clipboard) = clipboard {
-                    match clipboard.set_contents(server_welcome.code.to_string()) {
+                    match clipboard.set_contents(mailbox_connection.code.to_string()) {
                         Ok(()) => log::info!("Code copied to clipboard"),
                         Err(err) => log::warn!("Failed to copy code to clipboard: {}", err),
                     }
@@ -677,14 +672,16 @@ async fn parse_and_connect(
 
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
                     term,
-                    &server_welcome.code,
+                    &mailbox_connection.code,
                     &uri_rendezvous,
                 )?;
             }
-            let wormhole = connector.await?;
-            (wormhole, server_welcome.code)
+            mailbox_connection
         },
     };
+    print_welcome(term, &mailbox_connection.welcome)?;
+    let code = mailbox_connection.code.clone();
+    let wormhole = Wormhole::connect(mailbox_connection).await?;
     eyre::Result::<_>::Ok((wormhole, code, relay_hints))
 }
 
@@ -722,8 +719,8 @@ fn enter_code() -> eyre::Result<String> {
         .map_err(From::from)
 }
 
-fn print_welcome(term: &mut Term, welcome: &magic_wormhole::WormholeWelcome) -> eyre::Result<()> {
-    if let Some(welcome) = &welcome.welcome {
+fn print_welcome(term: &mut Term, welcome: &Option<String>) -> eyre::Result<()> {
+    if let Some(welcome) = &welcome {
         writeln!(term, "Got welcome from server: {}", welcome)?;
     }
     Ok(())
@@ -863,9 +860,11 @@ async fn send_many(
             break;
         }
 
-        let (_server_welcome, wormhole) =
-            magic_wormhole::Wormhole::connect_with_code(transfer::APP_CONFIG, code.clone(), false)
-                .await?;
+        let wormhole = Wormhole::connect(
+            MailboxConnection::connect(transfer::APP_CONFIG, code.clone(), false).await?,
+        )
+        .await?;
+
         send_in_background(
             relay_hints.clone(),
             Arc::clone(&file_path),
