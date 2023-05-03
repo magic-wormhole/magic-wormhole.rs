@@ -160,7 +160,7 @@ impl AppVersion {
         Self {
             // abilities: Cow::Borrowed([Cow::Borrowed("transfer-v1"), Cow::Borrowed("transfer-v2")]),
             // transfer_v2: Some(AppVersionTransferV2Hint::new())
-            can_dilate: can_dilate,
+            can_dilate,
             dilation_abilities: std::borrow::Cow::Borrowed(&[
                 Ability {
                     ty: std::borrow::Cow::Borrowed("direct-tcp-v1"),

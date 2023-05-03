@@ -1,3 +1,4 @@
+use crate::core::MySide;
 use derive_more::Display;
 use serde_derive::{Deserialize, Serialize};
 
@@ -19,8 +20,10 @@ pub enum ManagerCommand {
 
 /// Protocol level commands
 #[derive(Debug, Clone, PartialEq, Display, Serialize)]
+#[serde(tag = "type")]
 pub enum ProtocolCommand {
-    SendPlease,
+    #[serde(rename = "please")]
+    SendPlease { side: MySide },
 }
 
 /// Protocol level commands

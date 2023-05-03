@@ -3,7 +3,7 @@ use derive_more::Display;
 #[cfg(test)]
 use mockall::automock;
 
-use crate::{core::TheirSide, dilation::api::ManagerCommand, WormholeError};
+use crate::{core::MySide, dilation::api::ManagerCommand, WormholeError};
 
 use super::{
     api::{IOEvent, ProtocolCommand},
@@ -56,6 +56,7 @@ impl ManagerMachine {
     pub fn process(
         &mut self,
         event: ManagerEvent,
+        side: &MySide,
         command_handler: &mut dyn FnMut(ManagerCommand) -> Result<(), WormholeError>,
     ) {
         log::debug!(
@@ -71,7 +72,9 @@ impl ManagerMachine {
         let new_state = match current_state {
             Waiting => match event {
                 ManagerEvent::Start => {
-                    command = Some(ManagerCommand::from(ProtocolCommand::SendPlease));
+                    command = Some(ManagerCommand::from(ProtocolCommand::SendPlease {
+                        side: side.clone(),
+                    }));
                     Wanting
                 },
                 ManagerEvent::Stop => {
@@ -83,8 +86,10 @@ impl ManagerMachine {
                 },
             },
             Wanting => match event {
-                ManagerEvent::RxPlease { side: theirSide } => {
-                    command = Some(ManagerCommand::from(ProtocolCommand::SendPlease));
+                ManagerEvent::RxPlease { side: _their_side } => {
+                    command = Some(ManagerCommand::from(ProtocolCommand::SendPlease {
+                        side: side.clone(),
+                    }));
                     Connecting
                 },
                 ManagerEvent::Stop => Stopped,
@@ -177,6 +182,8 @@ impl ManagerMachine {
 
 #[cfg(test)]
 mod test {
+    use crate::core::TheirSide;
+
     use super::*;
 
     struct TestHandler {
@@ -198,6 +205,7 @@ mod test {
     fn test_manager_machine() {
         // Sends Start event during construction:
         let mut manager_fsm = ManagerMachine::new();
+        let side = MySide::generate(8);
 
         // generate an input Event and see if we get the desired state and output Actions
         assert_eq!(manager_fsm.get_current_state(), Some(State::Wanting));
@@ -208,13 +216,16 @@ mod test {
             ManagerEvent::RxPlease {
                 side: TheirSide::from("test"),
             },
+            &side,
             &mut |cmd| handler.handle_command(cmd),
         );
 
         assert_eq!(manager_fsm.get_current_state(), Some(State::Connecting));
         assert_eq!(
             handler.command,
-            Some(ManagerCommand::Protocol(ProtocolCommand::SendPlease))
+            Some(ManagerCommand::Protocol(ProtocolCommand::SendPlease {
+                side: side,
+            }))
         )
     }
 }

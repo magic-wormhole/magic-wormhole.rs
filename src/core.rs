@@ -422,6 +422,18 @@ impl Wormhole {
         Ok(())
     }
 
+    /** Send an encrypted dilation phase message to peer */
+    pub async fn send_dilation_message(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
+        let phase_string = Phase::dilation(self.phase);
+        self.phase += 1;
+        let data_key = key::derive_phase_key(self.server.side(), &self.key, &phase_string);
+        let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
+        self.server
+            .send_peer_message(phase_string, encrypted)
+            .await?;
+        Ok(())
+    }
+
     /**
      * Serialize and send an encrypted message to peer
      *
@@ -437,6 +449,15 @@ impl Wormhole {
         message: &T,
     ) -> Result<(), WormholeError> {
         self.send(serde_json::to_vec(message).unwrap()).await
+    }
+
+    // XXX this function's name could be better than this..
+    pub async fn send_json_dilation_message<T: serde::Serialize + Send + Sync + 'static>(
+        &mut self,
+        message: &T,
+    ) -> Result<(), WormholeError> {
+        self.send_dilation_message(serde_json::to_vec(message).unwrap())
+            .await
     }
 
     /** Receive an encrypted message from peer */
@@ -664,6 +685,10 @@ impl Phase {
 
     pub fn numeric(phase: u64) -> Self {
         Phase(phase.to_string().into())
+    }
+
+    pub fn dilation(phase: u64) -> Self {
+        Phase(format!("dilate-{}", phase.to_string()).to_string().into())
     }
 
     pub fn is_version(&self) -> bool {

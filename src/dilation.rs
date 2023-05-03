@@ -129,7 +129,10 @@ impl DilatedWormhole {
             let event_result = self.wormhole.borrow_mut().receive_json().await;
 
             match event_result {
-                Ok(manager_event) => self.manager.process(manager_event, &mut command_handler),
+                Ok(manager_event) => {
+                    self.manager
+                        .process(manager_event, &self.side, &mut command_handler)
+                },
                 Err(error) => {
                     log::warn!("received error {}", error);
                 },
@@ -149,7 +152,7 @@ impl DilatedWormhole {
         match command {
             ManagerCommand::Protocol(protocol_command) => {
                 log::debug!("       command: {}", protocol_command);
-                executor::block_on(wormhole.send_json(&protocol_command))
+                executor::block_on(wormhole.send_json_dilation_message(&protocol_command))
             },
             ManagerCommand::IO(io_command) => {
                 println!("io command: {}", io_command);
