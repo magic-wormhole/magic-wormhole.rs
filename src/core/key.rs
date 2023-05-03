@@ -3,6 +3,7 @@ use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
+use std::ptr::addr_of_mut;
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
     aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
@@ -123,14 +124,10 @@ pub struct VersionsMessage {
 }
 
 impl VersionsMessage {
-    pub fn new(enable_dilation: bool) -> Self {
+    pub fn new() -> Self {
         // Default::default()
         Self {
-            can_dilate: if enable_dilation {
-                Some([std::borrow::Cow::Borrowed("1")])
-            } else {
-                None
-            },
+            can_dilate: None,
             dilation_abilities: std::borrow::Cow::Borrowed(&[
                 Ability {
                     ty: std::borrow::Cow::Borrowed("direct-tcp-v1"),
@@ -145,6 +142,10 @@ impl VersionsMessage {
 
     pub fn set_app_versions(&mut self, versions: serde_json::Value) {
         self.app_versions = versions;
+    }
+
+    pub fn enable_dilation(&mut self) {
+        self.can_dilate = Some([std::borrow::Cow::Borrowed("1")])
     }
 
     // pub fn add_resume_ability(&mut self, _resume: ()) {
@@ -390,4 +391,15 @@ mod test {
     //         None => panic!(),
     //     }
     // }
+
+    #[test]
+    fn test_versions_message_can_dilate() {
+        let mut message = VersionsMessage::new();
+
+        assert_eq!(message.can_dilate, None);
+
+        message.enable_dilation();
+
+        assert_eq!(message.can_dilate, Some([std::borrow::Cow::Borrowed("1")]));
+    }
 }

@@ -18,11 +18,12 @@ pub const APP_CONFIG: AppConfig<()> = AppConfig::<()> {
     id: TEST_APPID,
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
     app_version: (),
+    with_dilation: false,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
-fn init_logger() {
+pub fn init_logger() {
     /* Ignore errors from succeedent initialization tries */
     let _ = env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
@@ -93,7 +94,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
         .name("sender".to_owned())
         .spawn(async {
             let (welcome, wormhole_future) =
-                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2, false)
+                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
                     .await?;
             if let Some(welcome) = &welcome.welcome {
                 log::info!("Got welcome: {}", welcome);
@@ -245,8 +246,7 @@ pub async fn test_4096_file_rust2rust() -> eyre::Result<()> {
         .name("sender".to_owned())
         .spawn(async {
             let config = transfer::APP_CONFIG.id(TEST_APPID);
-            let mailbox = MailboxConnection::create(config, 2)
-                    .await?;
+            let mailbox = MailboxConnection::create(config, 2).await?;
             if let Some(welcome) = &mailbox.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
@@ -319,10 +319,8 @@ pub async fn test_empty_file_rust2rust() -> eyre::Result<()> {
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
         .spawn(async {
-            let (welcome, connector) =
-                Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2)
-                    .await?;
-            if let Some(welcome) = &welcome.welcome {
+            let mailbox = MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+            if let Some(welcome) = &mailbox.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
             log::info!("This wormhole's code is: {}", &mailbox.code);
@@ -349,8 +347,8 @@ pub async fn test_empty_file_rust2rust() -> eyre::Result<()> {
         .spawn(async {
             let code = code_rx.await?;
             log::info!("Got code over local: {}", &code);
-            let (welcome, wormhole) =
-                Wormhole::connect_with_code(transfer::APP_CONFIG.id(TEST_APPID), code, true)
+            let mailbox =
+                MailboxConnection::connect(transfer::APP_CONFIG.id(TEST_APPID), code, false)
                     .await?;
             if let Some(welcome) = &mailbox.welcome {
                 log::info!("Got welcome: {}", welcome);
@@ -391,10 +389,8 @@ pub async fn test_empty_file_rust2rust() -> eyre::Result<()> {
 pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
 
-    let (welcome, connector) =
-        Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
-
-    let code = welcome.code;
+    let mailbox = MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+    let code = mailbox.code.clone();
     log::info!("The code is {:?}", code);
 
     let correct_data = std::fs::read("tests/example-file.bin")?;
@@ -428,10 +424,13 @@ pub async fn test_send_many() -> eyre::Result<()> {
 
         for i in 1..5usize {
             log::info!("Sending file #{}", i);
-            let (_welcome, wormhole) = Wormhole::connect_with_code(
-                transfer::APP_CONFIG.id(TEST_APPID),
-                sender_code.clone(),
-                false,
+            let wormhole = Wormhole::connect(
+                MailboxConnection::connect(
+                    transfer::APP_CONFIG.id(TEST_APPID),
+                    sender_code.clone(),
+                    true,
+                )
+                .await?,
             )
             .await?;
             senders.push(async_std::task::spawn(async move {
@@ -458,11 +457,9 @@ pub async fn test_send_many() -> eyre::Result<()> {
     /* Receive many */
     for i in 0..5usize {
         log::info!("Receiving file #{}", i);
-        let (_welcome, wormhole) = Wormhole::connect_with_code(
-            transfer::APP_CONFIG.id(TEST_APPID),
-            code.clone(),
-            true,
-            false,
+        let wormhole = Wormhole::connect(
+            MailboxConnection::connect(transfer::APP_CONFIG.id(TEST_APPID), code.clone(), true)
+                .await?,
         )
         .await?;
         log::info!("Got key: {}", &wormhole.key);
@@ -503,8 +500,8 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
         .spawn(async {
-            let (welcome, connector) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
-            if let Some(welcome) = &welcome.welcome {
+            let mailbox = MailboxConnection::create(APP_CONFIG, 2).await?;
+            if let Some(welcome) = &mailbox.welcome {
                 log::info!("Got welcome: {}", welcome);
             }
             let code = mailbox.code.clone();
@@ -521,11 +518,14 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
         .spawn(async {
             let nameplate = code_rx.await?;
             log::info!("Got nameplate over local: {}", &nameplate);
-            let result = Wormhole::connect_with_code(
-                APP_CONFIG,
-                /* Making a wrong code here by appending bullshit */
-                Code::new(&nameplate, "foo-bar"),
-                true,
+            let result = Wormhole::connect(
+                MailboxConnection::connect(
+                    APP_CONFIG,
+                    /* Making a wrong code here by appending bullshit */
+                    Code::new(&nameplate, "foo-bar"),
+                    true,
+                )
+                .await?,
             )
             .await;
 
@@ -545,14 +545,17 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
 pub async fn test_crowded() -> eyre::Result<()> {
     init_logger();
 
-    let (welcome, connector1) = Wormhole::connect_without_code(APP_CONFIG, 2).await?;
-    log::info!("This test's code is: {}", &welcome.code);
+    let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await?;
+    log::info!("This test's code is: {}", &initial_mailbox_connection.code);
+    let code = initial_mailbox_connection.code.clone();
 
-    let connector2 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone(), true);
+    let mailbox_connection_1 = MailboxConnection::connect(APP_CONFIG.clone(), code.clone(), false);
+    let mailbox_connection_2 = MailboxConnection::connect(APP_CONFIG.clone(), code.clone(), false);
 
-    let connector3 = Wormhole::connect_with_code(APP_CONFIG, welcome.code.clone(), true);
-
-    match futures::try_join!(connector1, connector2, connector3).unwrap_err() {
+    match futures::try_join!(mailbox_connection_1, mailbox_connection_2)
+        .err()
+        .unwrap()
+    {
         magic_wormhole::WormholeError::ServerError(
             magic_wormhole::rendezvous::RendezvousError::Server(error),
         ) => {
@@ -566,12 +569,10 @@ pub async fn test_crowded() -> eyre::Result<()> {
 
 #[async_std::test]
 pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
-    // the max nameplate number is 999, so this will not impact a real nameplate
-    let code = Code("1000-guitarist-revenge".to_owned());
-    let connector = Wormhole::connect_with_code(APP_CONFIG, code, true)
-        .await
-        .unwrap_err();
-    match connector {
+    let code = generate_random_code();
+    let result = MailboxConnection::connect(APP_CONFIG, code.clone(), false).await;
+    let error = result.err().unwrap();
+    match error {
         magic_wormhole::WormholeError::UnclaimedNameplate(x) => {
             assert_eq!(x, code.nameplate());
         },

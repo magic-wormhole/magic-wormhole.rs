@@ -41,6 +41,7 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
         transit_abilities: transit::Abilities::ALL_ABILITIES,
         other: serde_json::Value::Null,
     },
+    with_dilation: false,
 };
 
 /**

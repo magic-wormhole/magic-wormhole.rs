@@ -3,14 +3,26 @@ use derive_more::Display;
 #[cfg(test)]
 use mockall::automock;
 
-use crate::{core::MySide, dilation::api::ManagerCommand, WormholeError};
+use crate::{
+    core::{MySide, TheirSide},
+    dilation::api::ManagerCommand,
+    WormholeError,
+};
 
 use super::{
     api::{IOEvent, ProtocolCommand},
     events::ManagerEvent,
 };
 
+#[derive(Debug, PartialEq, Display)]
+pub enum Role {
+    Leader,
+    Follower,
+}
+
 pub struct ManagerMachine {
+    pub side: MySide,
+    pub role: Role,
     pub state: Option<State>,
 }
 
@@ -29,11 +41,17 @@ pub enum State {
 
 #[cfg_attr(test, automock)]
 impl ManagerMachine {
-    pub fn new() -> Self {
+    pub fn new(side: MySide) -> Self {
         let mut machine = ManagerMachine {
+            side,
+            role: Role::Follower,
             state: Some(State::Wanting),
         };
         machine
+    }
+
+    pub fn current_state(&self) -> Option<State> {
+        self.state
     }
 
     pub fn is_waiting(&self) -> bool {
@@ -51,6 +69,15 @@ impl ManagerMachine {
 
     pub fn get_current_state(&self) -> Option<State> {
         self.state
+    }
+
+    fn choose_role(&self, theirside: &TheirSide) -> Role {
+        let myside: TheirSide = self.side.clone().into();
+        if myside > *theirside {
+            Role::Leader
+        } else {
+            Role::Follower
+        }
     }
 
     pub fn process(
@@ -86,20 +113,34 @@ impl ManagerMachine {
                 },
             },
             Wanting => match event {
-                ManagerEvent::RxPlease { side: _their_side } => {
+                ManagerEvent::RxPlease { side: their_side } => {
                     command = Some(ManagerCommand::from(ProtocolCommand::SendPlease {
                         side: side.clone(),
                     }));
+                    let role = self.choose_role(&their_side.clone());
+                    log::debug!(
+                        "role: {}",
+                        if role == Role::Leader {
+                            "leader"
+                        } else {
+                            "follower"
+                        }
+                    );
+                    self.role = role;
                     Connecting
                 },
                 ManagerEvent::Stop => Stopped,
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => current_state,
                 _ => {
                     panic! {"unexpected event {:?} for state {:?}", current_state, event}
                 },
             },
             Connecting => match event {
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => {
+                    log::debug!("received connection hints: {:?}", hints);
+                    // TODO store the other side's hints
+                    current_state
+                },
                 ManagerEvent::Stop => Stopped,
                 ManagerEvent::ConnectionMade => Connected,
                 ManagerEvent::RxReconnect => current_state,
@@ -109,7 +150,7 @@ impl ManagerMachine {
             },
             Connected => match event {
                 ManagerEvent::RxReconnect => Abandoning,
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => current_state,
                 ManagerEvent::ConnectionLostFollower => Lonely,
                 ManagerEvent::ConnectionLostLeader => Flushing,
                 ManagerEvent::Stop => Stopped,
@@ -118,7 +159,7 @@ impl ManagerMachine {
                 },
             },
             Abandoning => match event {
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => current_state,
                 ManagerEvent::ConnectionLostFollower => Connecting,
                 ManagerEvent::Stop => Stopped,
                 _ => {
@@ -128,7 +169,7 @@ impl ManagerMachine {
             Flushing => match event {
                 ManagerEvent::RxReconnecting => Connecting,
                 ManagerEvent::Stop => Stopped,
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => current_state,
                 _ => {
                     panic! {"unexpected event {:?} for state {:?}", current_state, event}
                 },
@@ -136,13 +177,13 @@ impl ManagerMachine {
             Lonely => match event {
                 ManagerEvent::RxReconnect => Connecting,
                 ManagerEvent::Stop => Stopped,
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => current_state,
                 _ => {
                     panic! {"unexpected event {:?} for state {:?}", current_state, event}
                 },
             },
             Stopping => match event {
-                ManagerEvent::RxHints => current_state,
+                ManagerEvent::RxHints { hints } => current_state,
                 ManagerEvent::ConnectionLostFollower => Stopped,
                 ManagerEvent::ConnectionLostLeader => Stopped,
                 _ => {
@@ -170,7 +211,7 @@ impl ManagerMachine {
                 );
             },
             Err(wormhole_error) => {
-                log::warn!("processing event errored: {}", wormhole_error);
+                panic!("processing event errored: {}", wormhole_error);
             },
         };
     }
@@ -182,7 +223,7 @@ impl ManagerMachine {
 
 #[cfg(test)]
 mod test {
-    use crate::core::TheirSide;
+    use crate::core::{MySide, TheirSide};
 
     use super::*;
 
@@ -204,14 +245,15 @@ mod test {
     #[test]
     fn test_manager_machine() {
         // Sends Start event during construction:
-        let mut manager_fsm = ManagerMachine::new();
+        let mut manager_fsm =
+            ManagerMachine::new(MySide::unchecked_from_string("test123".to_string()));
         let side = MySide::generate(8);
 
-        // generate an input Event and see if we get the desired state and output Actions
         assert_eq!(manager_fsm.get_current_state(), Some(State::Wanting));
 
         let mut handler = TestHandler::new();
 
+        // generate an input Event and see if we get the desired state and output Actions
         manager_fsm.process(
             ManagerEvent::RxPlease {
                 side: TheirSide::from("test"),

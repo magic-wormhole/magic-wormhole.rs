@@ -259,7 +259,7 @@ enum HintSerde {
 }
 
 /** Information about how to find a peer */
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hints {
     /** Hints for direct connection */
     pub direct_tcp: HashSet<DirectHint>,

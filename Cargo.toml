@@ -33,6 +33,7 @@ base64 = "0.20.0"
 futures_ringbuf = "0.3.1"
 time = { version = "0.3.7", features = ["formatting"] }
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
+mockall_double = "0.3.0"
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
 thiserror = "1.0.24"
@@ -81,7 +82,7 @@ getrandom_2 = { package = "getrandom", version = "0.1.16", features = ["js-sys"]
 [dev-dependencies]
 env_logger = "0.10.0"
 eyre = "0.6.5"
-mockall = "0.11"
+mockall = "0.11.4"
 
 [features]
 transit = ["socket2", "stun_codec", "if-addrs", "bytecodec", "async-trait", "noise-protocol", "noise-rust-crypto"]

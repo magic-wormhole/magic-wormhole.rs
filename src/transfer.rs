@@ -38,6 +38,7 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
     id: AppID(Cow::Borrowed(APPID_RAW)),
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
     app_version: AppVersion::new(false),
+    with_dilation: false,
 };
 
 // TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)

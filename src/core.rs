@@ -16,7 +16,7 @@ pub(super) mod key;
 pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
-mod test;
+pub(crate) mod test;
 mod wordlist;
 
 #[derive(Debug, thiserror::Error)]
@@ -271,12 +271,6 @@ pub struct Wormhole {
      * (e.g. by the file transfer API).
      */
     pub peer_version: serde_json::Value,
-    /**
-     * Enable dilatation. This is off by default. Any application that
-     * would want to use a dilated wormhole would turn it on, which
-     * results in app specific exchange in the "version" message.
-     */
-    pub enable_dilation: bool,
 }
 
 impl Wormhole {
@@ -297,7 +291,6 @@ impl Wormhole {
     pub async fn connect_without_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code_length: usize,
-        enable_dilation: bool,
     ) -> Result<
         (
             WormholeWelcome,
@@ -327,7 +320,6 @@ impl Wormhole {
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
         expect_claimed_nameplate: bool,
-        enable_dilation: bool,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
         let mailbox_connection =
             MailboxConnection::connect(config, code.clone(), !expect_claimed_nameplate).await?;
@@ -366,12 +358,11 @@ impl Wormhole {
             .map(|key| *secretbox::Key::from_slice(&key))?;
 
         /* Send versions message */
-        let mut versions = key::VersionsMessage::new(enable_dilation);
+        let mut versions = key::VersionsMessage::new();
         versions.set_app_versions(serde_json::to_value(&config.app_version).unwrap());
-        println!(
-            "versions msg: {}",
-            serde_json::to_value(&app_versions).unwrap()
-        );
+        if config.with_dilation {
+            versions.enable_dilation();
+        }
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
@@ -401,7 +392,6 @@ impl Wormhole {
             verifier: Box::new(key::derive_verifier(&key)),
             our_version: Box::new(config.app_version),
             peer_version,
-            enable_dilation,
         })
     }
 
@@ -412,24 +402,20 @@ impl Wormhole {
 
     /** Send an encrypted message to peer */
     pub async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
-        let phase_string = Phase::numeric(self.phase);
-        self.phase += 1;
-        let data_key = key::derive_phase_key(self.server.side(), &self.key, &phase_string);
-        let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
-        self.server
-            .send_peer_message(phase_string, encrypted)
-            .await?;
-        Ok(())
+        self.send_with_phase(plaintext, Phase::numeric).await
     }
 
-    /** Send an encrypted dilation phase message to peer */
-    pub async fn send_dilation_message(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
-        let phase_string = Phase::dilation(self.phase);
+    pub async fn send_with_phase(
+        &mut self,
+        plaintext: Vec<u8>,
+        phase_provider: PhaseProvider,
+    ) -> Result<(), WormholeError> {
+        let current_phase = phase_provider(self.phase);
         self.phase += 1;
-        let data_key = key::derive_phase_key(self.server.side(), &self.key, &phase_string);
+        let data_key = key::derive_phase_key(self.server.side(), &self.key, &current_phase);
         let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
         self.server
-            .send_peer_message(phase_string, encrypted)
+            .send_peer_message(current_phase, encrypted)
             .await?;
         Ok(())
     }
@@ -448,15 +434,15 @@ impl Wormhole {
         &mut self,
         message: &T,
     ) -> Result<(), WormholeError> {
-        self.send(serde_json::to_vec(message).unwrap()).await
+        self.send_json_with_phase(message, Phase::numeric).await
     }
 
-    // XXX this function's name could be better than this..
-    pub async fn send_json_dilation_message<T: serde::Serialize + Send + Sync + 'static>(
+    pub async fn send_json_with_phase<T: serde::Serialize + Send + Sync + 'static>(
         &mut self,
         message: &T,
+        phase_provider: PhaseProvider,
     ) -> Result<(), WormholeError> {
-        self.send_dilation_message(serde_json::to_vec(message).unwrap())
+        self.send_with_phase(serde_json::to_vec(message).unwrap(), phase_provider)
             .await
     }
 
@@ -577,6 +563,7 @@ pub struct AppConfig<V> {
     pub id: AppID,
     pub rendezvous_url: Cow<'static, str>,
     pub app_version: V,
+    pub with_dilation: bool,
 }
 
 impl<V> AppConfig<V> {
@@ -587,6 +574,11 @@ impl<V> AppConfig<V> {
 
     pub fn rendezvous_url(mut self, rendezvous_url: Cow<'static, str>) -> Self {
         self.rendezvous_url = rendezvous_url;
+        self
+    }
+
+    pub fn with_dilation(mut self, with_dilation: bool) -> Self {
+        self.with_dilation = with_dilation;
         self
     }
 }
@@ -623,7 +615,15 @@ impl From<String> for AppID {
 
 // MySide is used for the String that we send in all our outbound messages
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "MySide({})", "&*_0")]
@@ -649,7 +649,15 @@ impl MySide {
 
 // TheirSide is used for the string that arrives inside inbound messages
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "TheirSide({})", "&*_0")]
@@ -662,7 +670,15 @@ impl<S: Into<String>> From<S> for TheirSide {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[deref(forward)]
@@ -672,6 +688,12 @@ pub struct EitherSide(pub String);
 impl<S: Into<String>> From<S> for EitherSide {
     fn from(s: S) -> EitherSide {
         EitherSide(s.into())
+    }
+}
+
+impl From<MySide> for TheirSide {
+    fn from(side: MySide) -> TheirSide {
+        TheirSide(side.0.into())
     }
 }
 
@@ -701,6 +723,8 @@ impl Phase {
         self.0.parse().ok()
     }
 }
+
+type PhaseProvider = fn(u64) -> Phase;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
