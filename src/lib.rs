@@ -37,5 +37,6 @@ pub mod uri;
 
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
-    rendezvous, AppConfig, AppID, Code, Wormhole, WormholeError, WormholeWelcome,
+    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole,
+    WormholeError,
 };
