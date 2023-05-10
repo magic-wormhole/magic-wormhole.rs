@@ -1,4 +1,4 @@
-use crate::core::*;
+use crate::{core::*, transit};
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Digest, Sha256};
@@ -105,18 +105,11 @@ pub fn make_pake(password: &str, appid: &AppID) -> (Spake2<Ed25519Group>, Vec<u8
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct Ability {
-    #[serde(rename = "type")]
-    ty: Cow<'static, str>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 pub struct VersionsMessage {
     //#[serde(default)]
     pub can_dilate: Option<[Cow<'static, str>; 1]>,
     //#[serde(default)]
-    pub dilation_abilities: Cow<'static, [Ability; 2]>,
+    pub dilation_abilities: Cow<'static, [transit::Ability; 2]>,
     //#[serde(default)]
     #[serde(rename = "app_versions")]
     pub app_versions: serde_json::Value,
@@ -129,12 +122,8 @@ impl VersionsMessage {
         Self {
             can_dilate: None,
             dilation_abilities: std::borrow::Cow::Borrowed(&[
-                Ability {
-                    ty: std::borrow::Cow::Borrowed("direct-tcp-v1"),
-                },
-                Ability {
-                    ty: std::borrow::Cow::Borrowed("relay-v1"),
-                },
+                transit::Ability::DirectTcpV1,
+                transit::Ability::RelayV1,
             ]),
             app_versions: serde_json::Value::Null,
         }

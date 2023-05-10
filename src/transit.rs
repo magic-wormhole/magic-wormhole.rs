@@ -209,23 +209,23 @@ impl serde::Serialize for Abilities {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Ability {
+    DirectTcpV1,
+    RelayV1,
+    RelayV2,
+    #[cfg(all())]
+    NoiseCryptoV1,
+    #[serde(other)]
+    Other,
+}
+
 impl<'de> serde::Deserialize<'de> for Abilities {
     fn deserialize<D>(de: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "kebab-case", tag = "type")]
-        enum Ability {
-            DirectTcpV1,
-            RelayV1,
-            RelayV2,
-            #[cfg(all())]
-            NoiseCryptoV1,
-            #[serde(other)]
-            Other,
-        }
-
         let mut abilities = Self::default();
         /* Specifying a hint multiple times is undefined behavior. Here, we simply merge all features. */
         for ability in <Vec<Ability> as serde::Deserialize>::deserialize(de)? {

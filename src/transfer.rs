@@ -118,13 +118,6 @@ impl TransferError {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct Ability {
-    #[serde(rename = "type")]
-    ty: Cow<'static, str>,
-}
-
 /**
  * The application specific version information for this protocol.
  *
@@ -145,7 +138,7 @@ pub struct AppVersion {
     // overall versions payload is of the form:
     // b'{"can-dilate": ["1"], "dilation-abilities": [{"type": "direct-tcp-v1"}, {"type": "relay-v1"}], "app_versions": {"transfer": {"mode": "send", "features": {}}}}'
     can_dilate: Option<[Cow<'static, str>; 1]>,
-    dilation_abilities: Cow<'static, [Ability; 2]>,
+    dilation_abilities: Cow<'static, [transit::Ability; 2]>,
 }
 
 // TODO check invariants during deserialization
@@ -163,12 +156,8 @@ impl AppVersion {
             // transfer_v2: Some(AppVersionTransferV2Hint::new())
             can_dilate,
             dilation_abilities: std::borrow::Cow::Borrowed(&[
-                Ability {
-                    ty: std::borrow::Cow::Borrowed("direct-tcp-v1"),
-                },
-                Ability {
-                    ty: std::borrow::Cow::Borrowed("relay-v1"),
-                },
+                transit::Ability::DirectTcpV1,
+                transit::Ability::RelayV1,
             ]),
         }
     }
