@@ -4,7 +4,7 @@ use serde_derive::Deserialize;
 use crate::{
     core::TheirSide,
     dilation::api::{IOEvent, ManagerCommand},
-    transit,
+    transit::Hints,
 };
 
 use super::api::ProtocolCommand;
@@ -30,9 +30,10 @@ impl From<ManagerEvent> for Event {
 }
 
 // individual fsm events
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Display, Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "type")]
 pub enum ManagerEvent {
+    #[serde(rename = "start")]
     Start,
     #[serde(rename = "please")]
     RxPlease {
@@ -40,7 +41,7 @@ pub enum ManagerEvent {
     },
     #[serde(rename = "connection-hints")]
     RxHints {
-        hints: transit::Hints,
+        hints: Hints,
     },
     RxReconnect,
     RxReconnecting,
@@ -50,35 +51,39 @@ pub enum ManagerEvent {
     Stop,
 }
 
-impl std::fmt::Display for ManagerEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self {
-            ManagerEvent::Start => write!(f, "start"),
-            ManagerEvent::RxPlease { side } => write!(f, "please"),
-            ManagerEvent::RxHints { hints } => write!(f, "connection-hints"),
-            ManagerEvent::RxReconnect => write!(f, "reconnect"),
-            ManagerEvent::RxReconnecting => write!(f, "reconnecting"),
-            ManagerEvent::ConnectionMade => write!(f, "connection-made"),
-            ManagerEvent::ConnectionLostLeader => write!(f, "connection-lost-leader"),
-            ManagerEvent::ConnectionLostFollower => write!(f, "connection-lost-follower"),
-            ManagerEvent::Stop => write!(f, "stop"),
-        }
-    }
-}
-
-#[test]
-fn test_manager_event_deserialisation() {
-    let result: ManagerEvent =
-        serde_json::from_str(r#"{"type": "please", "side": "f91dcdaccc7cc336"}"#)
-            .expect("parse error");
-    assert_eq!(
-        result,
-        ManagerEvent::RxPlease {
-            side: TheirSide::from("f91dcdaccc7cc336")
-        }
-    );
-}
-
 // XXX: for Connector fsm events
 // ...
 // XXX
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_display_please_event() {
+        let event = ManagerEvent::RxPlease {
+            side: TheirSide::from("f91dcdaccc7cc336"),
+        };
+        assert_eq!(format!("{}", event), "TheirSide(f91dcdaccc7cc336)");
+    }
+
+    #[test]
+    fn test_manager_event_deserialisation_start() {
+        let result: ManagerEvent =
+            serde_json::from_str(r#"{"type": "start"}"#).expect("parse error");
+        assert_eq!(result, ManagerEvent::Start);
+    }
+
+    #[test]
+    fn test_manager_event_deserialisation_rxplease() {
+        let result: ManagerEvent =
+            serde_json::from_str(r#"{"type": "please", "side": "f91dcdaccc7cc336"}"#)
+                .expect("parse error");
+        assert_eq!(
+            result,
+            ManagerEvent::RxPlease {
+                side: TheirSide::from("f91dcdaccc7cc336")
+            }
+        );
+    }
+}

@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use derive_more::Display;
 #[cfg(test)]
 use mockall::automock;
@@ -9,21 +8,12 @@ use crate::{
     WormholeError,
 };
 
-use super::{
-    api::{IOEvent, ProtocolCommand},
-    events::ManagerEvent,
-};
+use super::{api::ProtocolCommand, events::ManagerEvent};
 
 #[derive(Debug, PartialEq, Display)]
 pub enum Role {
     Leader,
     Follower,
-}
-
-pub struct ManagerMachine {
-    pub side: MySide,
-    pub role: Role,
-    pub state: Option<State>,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Display)]
@@ -39,10 +29,16 @@ pub enum State {
     Stopped,
 }
 
+pub struct ManagerMachine {
+    pub side: MySide,
+    pub role: Role,
+    pub state: Option<State>,
+}
+
 #[cfg_attr(test, automock)]
 impl ManagerMachine {
     pub fn new(side: MySide) -> Self {
-        let mut machine = ManagerMachine {
+        let machine = ManagerMachine {
             side,
             role: Role::Follower,
             state: Some(State::Wanting),
@@ -51,23 +47,6 @@ impl ManagerMachine {
     }
 
     pub fn current_state(&self) -> Option<State> {
-        self.state
-    }
-
-    pub fn is_waiting(&self) -> bool {
-        self.state == Some(State::Waiting)
-    }
-
-    pub fn process_io(&mut self, event: IOEvent) -> Vec<ManagerCommand> {
-        // XXX: which Manager states process IO events?
-        let mut actions = Vec::<ManagerCommand>::new();
-
-        // XXX: big match expression here
-
-        actions
-    }
-
-    pub fn get_current_state(&self) -> Option<State> {
         self.state
     }
 
@@ -130,7 +109,7 @@ impl ManagerMachine {
                     Connecting
                 },
                 ManagerEvent::Stop => Stopped,
-                ManagerEvent::RxHints { hints } => current_state,
+                ManagerEvent::RxHints { hints: _ } => current_state,
                 _ => {
                     panic! {"unexpected event {:?} for state {:?}", current_state, event}
                 },
@@ -150,7 +129,7 @@ impl ManagerMachine {
             },
             Connected => match event {
                 ManagerEvent::RxReconnect => Abandoning,
-                ManagerEvent::RxHints { hints } => current_state,
+                ManagerEvent::RxHints { hints: _ } => current_state,
                 ManagerEvent::ConnectionLostFollower => Lonely,
                 ManagerEvent::ConnectionLostLeader => Flushing,
                 ManagerEvent::Stop => Stopped,
@@ -159,7 +138,7 @@ impl ManagerMachine {
                 },
             },
             Abandoning => match event {
-                ManagerEvent::RxHints { hints } => current_state,
+                ManagerEvent::RxHints { hints: _ } => current_state,
                 ManagerEvent::ConnectionLostFollower => Connecting,
                 ManagerEvent::Stop => Stopped,
                 _ => {
@@ -169,7 +148,7 @@ impl ManagerMachine {
             Flushing => match event {
                 ManagerEvent::RxReconnecting => Connecting,
                 ManagerEvent::Stop => Stopped,
-                ManagerEvent::RxHints { hints } => current_state,
+                ManagerEvent::RxHints { hints: _ } => current_state,
                 _ => {
                     panic! {"unexpected event {:?} for state {:?}", current_state, event}
                 },
@@ -177,13 +156,13 @@ impl ManagerMachine {
             Lonely => match event {
                 ManagerEvent::RxReconnect => Connecting,
                 ManagerEvent::Stop => Stopped,
-                ManagerEvent::RxHints { hints } => current_state,
+                ManagerEvent::RxHints { hints: _ } => current_state,
                 _ => {
                     panic! {"unexpected event {:?} for state {:?}", current_state, event}
                 },
             },
             Stopping => match event {
-                ManagerEvent::RxHints { hints } => current_state,
+                ManagerEvent::RxHints { hints: _ } => current_state,
                 ManagerEvent::ConnectionLostFollower => Stopped,
                 ManagerEvent::ConnectionLostLeader => Stopped,
                 _ => {
@@ -199,7 +178,7 @@ impl ManagerMachine {
         };
 
         match command_result {
-            Ok(result) => {
+            Ok(_result) => {
                 self.state = Some(new_state);
                 log::debug!(
                     "processing event finished: state={}, command={}",
@@ -249,7 +228,8 @@ mod test {
             ManagerMachine::new(MySide::unchecked_from_string("test123".to_string()));
         let side = MySide::generate(8);
 
-        assert_eq!(manager_fsm.get_current_state(), Some(State::Wanting));
+        assert_eq!(manager_fsm.current_state(), Some(State::Wanting));
+        assert_eq!(manager_fsm.is_done(), false);
 
         let mut handler = TestHandler::new();
 
@@ -262,12 +242,29 @@ mod test {
             &mut |cmd| handler.handle_command(cmd),
         );
 
-        assert_eq!(manager_fsm.get_current_state(), Some(State::Connecting));
+        assert_eq!(manager_fsm.current_state(), Some(State::Connecting));
         assert_eq!(
             handler.command,
             Some(ManagerCommand::Protocol(ProtocolCommand::SendPlease {
                 side: side,
             }))
         )
+    }
+
+    #[test]
+    #[should_panic(expected = "Protocol error: foo")]
+    fn test_manager_machine_handle_error() {
+        let side = MySide::generate(8);
+        let mut manager_fsm = ManagerMachine {
+            side: side.clone(),
+            role: Role::Follower,
+            state: Some(State::Waiting),
+        };
+
+        assert_eq!(manager_fsm.current_state(), Some(State::Waiting));
+
+        manager_fsm.process(ManagerEvent::Start, &side, &mut |cmd| {
+            Err(WormholeError::Protocol("foo".into()))
+        });
     }
 }

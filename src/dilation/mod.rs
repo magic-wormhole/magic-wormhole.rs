@@ -1,15 +1,6 @@
-use std::{
-    borrow::Cow,
-    cell::{RefCell, RefMut},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
-use async_trait::async_trait;
 use futures::executor;
-#[cfg(test)]
-use mockall::{automock, mock, predicate::*};
-use mockall_double::double;
-use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     core::{MySide, Phase},
@@ -17,103 +8,24 @@ use crate::{
     Wormhole, WormholeError,
 };
 
-#[double]
-use crate::dilation::manager::ManagerMachine;
+#[cfg(test)]
+use crate::core::protocol::MockWormholeProtocol;
 
-use super::AppID;
+#[mockall_double::double]
+use crate::dilation::manager::ManagerMachine;
 
 mod api;
 mod events;
 mod manager;
 
-const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
-
-// XXX define an dilation::APP_CONFIG
-pub const APP_CONFIG_SEND: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersion> {
-    id: AppID(Cow::Borrowed(APPID_RAW)),
-    rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
-    app_version: AppVersion::new(FileTransferV2Mode::Send),
-    with_dilation: false,
-};
-
-pub const APP_CONFIG_RECEIVE: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersion> {
-    id: AppID(Cow::Borrowed(APPID_RAW)),
-    rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
-    app_version: AppVersion::new(FileTransferV2Mode::Receive),
-    with_dilation: false,
-};
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[serde(rename = "transfer")]
-enum FileTransferV2Mode {
-    Send,
-    Receive,
-    Connect,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-struct DilatedTransfer {
-    mode: FileTransferV2Mode,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct AppVersion {
-    // #[serde(default)]
-    // abilities: Cow<'static, [Cow<'static, str>]>,
-    // #[serde(default)]
-    // transfer_v2: Option<AppVersionTransferV2Hint>,
-
-    // XXX: we don't want to send "can-dilate" key for non-dilated
-    // wormhole, would making this an Option help? i.e. when the value
-    // is a None, we don't serialize that into the json and do it only
-    // when it is a "Some" value?
-    // overall versions payload is of the form:
-    // b'{"can-dilate": ["1"], "dilation-abilities": [{"type": "direct-tcp-v1"}, {"type": "relay-v1"}], "app_versions": {"transfer": {"mode": "send", "features": {}}}}'
-
-    //can_dilate: Option<[Cow<'static, str>; 1]>,
-    //dilation_abilities: Cow<'static, [Ability; 2]>,
-    #[serde(rename = "transfer")]
-    app_versions: DilatedTransfer,
-}
-
-impl AppVersion {
-    const fn new(mode: FileTransferV2Mode) -> Self {
-        // let can_dilate: Option<[Cow<'static, str>; 1]> = if enable_dilation {
-        //     Some([std::borrow::Cow::Borrowed("1")])
-        // } else {
-        //     None
-        // };
-
-        Self {
-            // abilities: Cow::Borrowed([Cow::Borrowed("transfer-v1"), Cow::Borrowed("transfer-v2")]),
-            // transfer_v2: Some(AppVersionTransferV2Hint::new())
-            // can_dilate: can_dilate,
-            // dilation_abilities: std::borrow::Cow::Borrowed(&[
-            //     Ability{ ty: std::borrow::Cow::Borrowed("direct-tcp-v1") },
-            //     Ability{ ty: std::borrow::Cow::Borrowed("relay-v1") },
-            // ]),
-            app_versions: DilatedTransfer { mode },
-        }
-    }
-}
-
-impl Default for AppVersion {
-    fn default() -> Self {
-        Self::new(FileTransferV2Mode::Send)
-    }
-}
-
-#[double]
+#[mockall_double::double]
 type WormholeConnection = WormholeConnectionDefault;
 
 pub struct WormholeConnectionDefault {
     wormhole: Rc<RefCell<Wormhole>>,
 }
 
-#[cfg_attr(test, automock)]
+#[cfg_attr(test, mockall::automock)]
 impl WormholeConnectionDefault {
     fn new(wormhole: Wormhole) -> Self {
         Self {
@@ -126,7 +38,13 @@ impl WormholeConnectionDefault {
         T: for<'a> serde::Deserialize<'a> + 'static,
     {
         let message = self.wormhole.borrow_mut().receive_json().await;
-        message
+        match message {
+            Ok(result) => match result {
+                Ok(result) => Ok(result),
+                Err(error) => Err(WormholeError::ProtocolJson(error)),
+            },
+            Err(error) => Err(error),
+        }
     }
 
     async fn send_json(&self, command: &ProtocolCommand) -> Result<(), WormholeError> {
@@ -210,11 +128,119 @@ mod test {
             events::ManagerEvent,
             manager::{MockManagerMachine, State},
         },
-        rendezvous::RendezvousError,
     };
     use std::sync::{Arc, Mutex};
 
     use super::*;
+
+    use mockall::predicate::{always, eq};
+
+    #[async_std::test]
+    async fn test_wormhole_connection_send() {
+        let mut protocol = MockWormholeProtocol::default();
+        let command = ProtocolCommand::SendPlease {
+            side: MySide::generate(2),
+        };
+
+        let serialized_bytes = serde_json::to_vec(&command).unwrap();
+
+        protocol
+            .expect_send_with_phase()
+            .withf(move |bytes, provider| {
+                bytes == &serialized_bytes && provider(0) == Phase::dilation(0)
+            })
+            .return_once(|_, _| Ok(()));
+
+        let connection = WormholeConnectionDefault::new(Wormhole::new(Box::new(protocol)));
+
+        let result = connection.send_json(&command).await;
+
+        assert!(result.is_ok())
+    }
+
+    #[async_std::test]
+    async fn test_wormhole_connection_send_error() {
+        let mut protocol = MockWormholeProtocol::default();
+        let command = ProtocolCommand::SendPlease {
+            side: MySide::generate(2),
+        };
+
+        protocol
+            .expect_send_with_phase()
+            .return_once(|_, _| Err(WormholeError::Protocol(Box::from("foo"))));
+
+        let connection = WormholeConnectionDefault::new(Wormhole::new(Box::new(protocol)));
+
+        let result = connection.send_json(&command).await;
+
+        assert!(result.is_err())
+    }
+
+    #[async_std::test]
+    async fn test_wormhole_connection_receive() {
+        let mut protocol = MockWormholeProtocol::default();
+
+        let serialized_bytes = r#"{"type": "start"}"#.as_bytes().to_vec();
+
+        protocol
+            .expect_receive()
+            .return_once(|| Ok(serialized_bytes));
+
+        let connection = WormholeConnectionDefault::new(Wormhole::new(Box::new(protocol)));
+
+        let result = connection.receive_json::<ManagerEvent>().await;
+
+        assert!(result.is_ok())
+    }
+
+    #[async_std::test]
+    async fn test_wormhole_connection_receive_error() {
+        let mut protocol = MockWormholeProtocol::default();
+
+        protocol
+            .expect_receive()
+            .return_once(|| Err(WormholeError::Protocol(Box::from("foo"))));
+
+        let connection = WormholeConnectionDefault::new(Wormhole::new(Box::new(protocol)));
+
+        let result = connection.receive_json::<ManagerEvent>().await;
+
+        assert!(result.is_err())
+    }
+
+    #[async_std::test]
+    async fn test_wormhole_connection_receive_deserialization_error() {
+        let mut protocol = MockWormholeProtocol::default();
+
+        let serialized_bytes = r#"{"type": "foo"}"#.as_bytes().to_vec();
+
+        protocol
+            .expect_receive()
+            .return_once(|| Ok(serialized_bytes));
+
+        let connection = WormholeConnectionDefault::new(Wormhole::new(Box::new(protocol)));
+
+        let result = connection.receive_json::<ManagerEvent>().await;
+
+        assert!(result.is_err())
+    }
+
+    #[async_std::test]
+    async fn test_dilated_wormhole_new() {
+        let protocol = MockWormholeProtocol::default();
+
+        let wc_ctx = MockWormholeConnectionDefault::new_context();
+        wc_ctx
+            .expect()
+            .with(always())
+            .return_once(move |_| WormholeConnection::default());
+
+        let mm_ctx = MockManagerMachine::new_context();
+        mm_ctx
+            .expect()
+            .with(always())
+            .return_once(move |_| ManagerMachine::default());
+    }
 
     #[async_std::test]
     async fn test_dilated_wormhole() {
@@ -304,11 +330,11 @@ mod test {
             .times(2)
             .returning(move || events.pop().unwrap());
 
-        let mut verify_events = Arc::new(Mutex::new(vec![ManagerEvent::Stop, ManagerEvent::Start]));
+        let verify_events = Arc::new(Mutex::new(vec![ManagerEvent::Stop, ManagerEvent::Start]));
         let verify_my_side = my_side.clone();
         manager
             .expect_process()
-            .withf(move |event, side, handler| {
+            .withf(move |event, side, _| {
                 *event == verify_events.lock().unwrap().pop().unwrap() && side == &verify_my_side
             })
             .times(2)

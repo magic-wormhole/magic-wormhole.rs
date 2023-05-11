@@ -462,7 +462,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                 .await?,
         )
         .await?;
-        log::info!("Got key: {}", &wormhole.key);
+        log::info!("Got key: {}", &wormhole.key());
         let req = crate::transfer::request_file(
             wormhole,
             default_relay_hints(),

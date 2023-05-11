@@ -1,9 +1,8 @@
-use crate::{core::*, transit};
+use crate::core::*;
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
-use std::ptr::addr_of_mut;
 use xsalsa20poly1305 as secretbox;
 use xsalsa20poly1305::{
     aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
@@ -106,10 +105,12 @@ pub fn make_pake(password: &str, appid: &AppID) -> (Spake2<Ed25519Group>, Vec<u8
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct VersionsMessage {
+    #[serde(default)]
+    pub abilities: Vec<String>,
     //#[serde(default)]
     pub can_dilate: Option<[Cow<'static, str>; 1]>,
     //#[serde(default)]
-    pub dilation_abilities: Cow<'static, [transit::Ability; 2]>,
+    pub dilation_abilities: Option<Cow<'static, [Ability; 2]>>,
     //#[serde(default)]
     #[serde(rename = "app_versions")]
     pub app_versions: serde_json::Value,
@@ -120,11 +121,12 @@ impl VersionsMessage {
     pub fn new() -> Self {
         // Default::default()
         Self {
+            abilities: vec![],
             can_dilate: None,
-            dilation_abilities: std::borrow::Cow::Borrowed(&[
-                transit::Ability::DirectTcpV1,
-                transit::Ability::RelayV1,
-            ]),
+            dilation_abilities: Some(std::borrow::Cow::Borrowed(&[
+                Ability::DirectTcpV1,
+                Ability::RelayV1,
+            ])),
             app_versions: serde_json::Value::Null,
         }
     }
@@ -150,7 +152,6 @@ pub fn build_version_msg(
     let phase = Phase::VERSION;
     let data_key = derive_phase_key(side, key, &phase);
     let plaintext = serde_json::to_vec(versions).unwrap();
-    println!("versions message before encryption: {:?}", plaintext);
     let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext);
     (phase, encrypted)
 }

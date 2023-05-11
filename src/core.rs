@@ -1,18 +1,19 @@
-use std::borrow::Cow;
+use std::{any::Any, borrow::Cow};
 
+use crate::core::protocol::{WormholeProtocol, WormholeProtocolDefault};
 #[cfg(feature = "dilation")]
 use crate::dilation::DilatedWormhole;
 use log::*;
-#[cfg(test)]
-use mockall::automock;
 use serde;
 use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
 use xsalsa20poly1305 as secretbox;
 
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
 
 pub(super) mod key;
+pub(crate) mod protocol;
 pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
@@ -187,7 +188,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// use magic_wormhole::{transfer::APP_CONFIG, Code, MailboxConnection, Nameplate};
     /// let config = APP_CONFIG;
     /// let code = Code::new(&Nameplate::new("5"), "password");
-    /// let mailbox_connection = MailboxConnection::connect(config, code, false).await?;
+    /// let mut mailbox_connection = MailboxConnection::connect(config, code, false).await?;
     /// # Ok(()) })}
     /// ```
     pub async fn connect(
@@ -229,12 +230,12 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection, Mood};
     /// let config = APP_CONFIG;
-    /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret")
+    /// let mut mailbox_connection = MailboxConnection::create_with_password(config, "secret")
     ///     .await?;
     /// mailbox_connection.shutdown(Mood::Happy).await?;
     /// # Ok(())})}
     /// ```
-    pub async fn shutdown(self, mood: Mood) -> Result<(), WormholeError> {
+    pub async fn shutdown(&mut self, mood: Mood) -> Result<(), WormholeError> {
         self.server
             .shutdown(mood)
             .await
@@ -244,36 +245,15 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
 
 #[derive(Debug)]
 pub struct Wormhole {
-    server: RendezvousServer,
-    phase: u64,
-    key: key::Key<key::WormholeKey>,
-    appid: AppID,
-    /**
-     * If you're paranoid, let both sides check that they calculated the same verifier.
-     *
-     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
-     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
-     * the passwords usually are not of hight entropy, there is a low-probability possible of
-     * an attacker guessing the password correctly, enabling them to MitM the connection.
-     *
-     * Not only is that probability low, but they also have only one try per connection and a failed
-     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
-     * attack vector.
-     */
-    pub verifier: Box<secretbox::Key>,
-    /**
-     * Our "app version" information that we sent. See the [`peer_version`] for more information.
-     */
-    pub our_version: Box<dyn std::any::Any + Send + Sync>,
-    /**
-     * Protocol version information from the other side.
-     * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
-     * (e.g. by the file transfer API).
-     */
-    pub peer_version: serde_json::Value,
+    protocol: Box<dyn WormholeProtocol>,
 }
 
 impl Wormhole {
+    #[cfg(test)]
+    pub fn new(protocol: Box<dyn WormholeProtocol>) -> Self {
+        Wormhole { protocol }
+    }
+
     /**
      * Generate a code and connect to the rendezvous server.
      *
@@ -360,6 +340,7 @@ impl Wormhole {
         /* Send versions message */
         let mut versions = key::VersionsMessage::new();
         versions.set_app_versions(serde_json::to_value(&config.app_version).unwrap());
+        #[cfg(feature = "dilation")]
         if config.with_dilation {
             versions.enable_dilation();
         }
@@ -385,13 +366,12 @@ impl Wormhole {
 
         /* We are now fully initialized! Up and running! :tada: */
         Ok(Self {
-            server,
-            appid: config.id,
-            phase: 0,
-            key: key::Key::new(key.into()),
-            verifier: Box::new(key::derive_verifier(&key)),
-            our_version: Box::new(config.app_version),
-            peer_version,
+            protocol: Box::new(WormholeProtocolDefault::new(
+                server,
+                config,
+                key::Key::new(key.into()),
+                peer_version,
+            )),
         })
     }
 
@@ -400,24 +380,19 @@ impl Wormhole {
         todo!()
     }
 
-    /** Send an encrypted message to peer */
-    pub async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
-        self.send_with_phase(plaintext, Phase::numeric).await
-    }
+    /**
+     * create a dilated wormhole
+     */
+    #[cfg(feature = "dilation")]
+    pub fn dilate(self) -> Result<DilatedWormhole, WormholeError> {
+        // XXX: create endpoints?
+        // get versions from the other side and check if they support dilation.
+        let can_they_dilate = &self.protocol.peer_version()["can-dilate"];
+        if !can_they_dilate.is_null() && can_they_dilate[0] != "1" {
+            return Err(WormholeError::DilationVersion);
+        }
 
-    pub async fn send_with_phase(
-        &mut self,
-        plaintext: Vec<u8>,
-        phase_provider: PhaseProvider,
-    ) -> Result<(), WormholeError> {
-        let current_phase = phase_provider(self.phase);
-        self.phase += 1;
-        let data_key = key::derive_phase_key(self.server.side(), &self.key, &current_phase);
-        let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
-        self.server
-            .send_peer_message(current_phase, encrypted)
-            .await?;
-        Ok(())
+        Ok(DilatedWormhole::new(self, MySide::generate(8)))
     }
 
     /**
@@ -442,26 +417,9 @@ impl Wormhole {
         message: &T,
         phase_provider: PhaseProvider,
     ) -> Result<(), WormholeError> {
-        self.send_with_phase(serde_json::to_vec(message).unwrap(), phase_provider)
+        self.protocol
+            .send_with_phase(serde_json::to_vec(message).unwrap(), phase_provider)
             .await
-    }
-
-    /** Receive an encrypted message from peer */
-    pub async fn receive(&mut self) -> Result<Vec<u8>, WormholeError> {
-        loop {
-            let peer_message = match self.server.next_peer_message().await? {
-                Some(peer_message) => peer_message,
-                None => continue,
-            };
-
-            // TODO maybe reorder incoming messages by phase numeral?
-            let decrypted_message = peer_message
-                .decrypt(&self.key)
-                .ok_or(WormholeError::Crypto)?;
-
-            // Send to client
-            return Ok(decrypted_message);
-        }
     }
 
     /**
@@ -471,24 +429,23 @@ impl Wormhole {
      * used by upper layer protocols. We distinguish between the different layers
      * on which a serialization error happened, hence the double `Result`.
      */
-    pub async fn receive_json<T>(&mut self) -> Result<T, WormholeError>
+    pub async fn receive_json<T>(&mut self) -> Result<Result<T, serde_json::Error>, WormholeError>
     where
         T: for<'a> serde::Deserialize<'a>,
     {
-        self.receive().await.and_then(|data: Vec<u8>| {
+        self.protocol.receive().await.map(|data: Vec<u8>| {
             serde_json::from_slice(&data).map_err(|e| {
                 log::error!(
                     "Received invalid data from peer: '{}'",
                     String::from_utf8_lossy(&data)
                 );
-                WormholeError::ProtocolJson(e)
+                e
             })
         })
     }
 
-    pub async fn close(self) -> Result<(), WormholeError> {
-        log::debug!("Closing Wormhole…");
-        self.server.shutdown(Mood::Happy).await.map_err(Into::into)
+    pub async fn close(&mut self) -> Result<(), WormholeError> {
+        self.protocol.close().await
     }
 
     /**
@@ -496,7 +453,7 @@ impl Wormhole {
      * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
      */
     pub fn appid(&self) -> &AppID {
-        &self.appid
+        self.protocol.appid()
     }
 
     /**
@@ -504,23 +461,16 @@ impl Wormhole {
      * Can be used to derive sub-keys for different purposes.
      */
     pub fn key(&self) -> &key::Key<key::WormholeKey> {
-        &self.key
-    }
-}
-
-/**
- * create a dilated wormhole
- */
-#[cfg(feature = "dilation")]
-pub fn dilate(wormhole: Wormhole) -> Result<DilatedWormhole, WormholeError> {
-    // XXX: create endpoints?
-    // get versions from the other side and check if they support dilation.
-    let can_they_dilate = &wormhole.peer_version["can-dilate"];
-    if !can_they_dilate.is_null() && can_they_dilate[0] != "1" {
-        return Err(WormholeError::DilationVersion);
+        self.protocol.key()
     }
 
-    Ok(DilatedWormhole::new(wormhole, MySide::generate(8)))
+    pub fn peer_version(&self) -> &Value {
+        self.protocol.peer_version()
+    }
+
+    pub fn our_version(&self) -> &Box<dyn Any + Send + Sync> {
+        &self.protocol.our_version()
+    }
 }
 
 // the serialized forms of these variants are part of the wire protocol, so
@@ -547,6 +497,8 @@ pub enum Mood {
     Unwelcome,
 }
 
+pub const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
+
 /**
  * Wormhole configuration corresponding to an upper layer protocol
  *
@@ -559,14 +511,14 @@ pub enum Mood {
  * See [`crate::transfer::APP_CONFIG`], which entails
  */
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct AppConfig<V> {
+pub struct AppConfig<V: serde::Serialize> {
     pub id: AppID,
     pub rendezvous_url: Cow<'static, str>,
     pub app_version: V,
     pub with_dilation: bool,
 }
 
-impl<V> AppConfig<V> {
+impl<V: serde::Serialize> AppConfig<V> {
     pub fn id(mut self, id: AppID) -> Self {
         self.id = id;
         self
@@ -581,9 +533,7 @@ impl<V> AppConfig<V> {
         self.with_dilation = with_dilation;
         self
     }
-}
 
-impl<V: serde::Serialize> AppConfig<V> {
     pub fn app_version(mut self, app_version: V) -> Self {
         self.app_version = app_version;
         self
@@ -630,10 +580,10 @@ impl From<String> for AppID {
 pub struct MySide(EitherSide);
 
 impl MySide {
-    pub fn generate(n: usize) -> MySide {
+    pub fn generate(length: usize) -> MySide {
         use rand::{rngs::OsRng, RngCore};
 
-        let mut bytes = vec![0; n];
+        let mut bytes = vec![0; length];
         OsRng.fill_bytes(&mut bytes);
 
         MySide(EitherSide(hex::encode(bytes)))
@@ -775,4 +725,16 @@ impl Code {
     pub fn nameplate(&self) -> Nameplate {
         Nameplate::new(self.0.splitn(2, '-').next().unwrap())
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Ability {
+    DirectTcpV1,
+    RelayV1,
+    RelayV2,
+    #[cfg(all())]
+    NoiseCryptoV1,
+    #[serde(other)]
+    Other,
 }

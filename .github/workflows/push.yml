@@ -97,6 +97,11 @@ jobs:
         with:
           command: build
           args: -p magic-wormhole --no-default-features --features=forwarding
+      - name: build library (features=dilation)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p magic-wormhole --no-default-features --features=dilation
       - name: build CLI
         uses: actions-rs/cargo@v1
         with:
@@ -183,10 +188,6 @@ jobs:
         uses: codecov/codecov-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-      - uses: sonarsource/sonarqube-scan-action@master
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   cargo-deny:
     name: Cargo deny

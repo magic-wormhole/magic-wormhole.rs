@@ -27,6 +27,8 @@
 mod util;
 mod core;
 #[cfg(feature = "dilation")]
+pub mod dilated_transfer;
+#[cfg(feature = "dilation")]
 pub mod dilation;
 #[cfg(feature = "forwarding")]
 pub mod forwarding;
@@ -42,9 +44,6 @@ pub use crate::core::{
     rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole,
     WormholeError,
 };
-
-#[cfg(feature = "dilation")]
-pub use crate::core::dilate;
 
 #[cfg(feature = "dilation")]
 pub use crate::dilation::DilatedWormhole;

@@ -1,5 +1,4 @@
 use rand::{rngs::OsRng, seq::SliceRandom};
-use serde_json::{self, Value};
 use std::fmt;
 
 #[derive(PartialEq)]
@@ -70,7 +69,8 @@ impl Wordlist {
 }
 
 fn load_pgpwords() -> Vec<Vec<String>> {
-    let raw_words_value: Value = serde_json::from_str(include_str!("pgpwords.json")).unwrap();
+    let raw_words_value: serde_json::Value =
+        serde_json::from_str(include_str!("pgpwords.json")).unwrap();
     let raw_words = raw_words_value.as_object().unwrap();
     let mut even_words: Vec<String> = Vec::with_capacity(256);
     even_words.resize(256, String::from(""));

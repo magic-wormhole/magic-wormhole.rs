@@ -13,14 +13,13 @@ use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
-use serde_json::Value;
 use std::{
     io::Write,
     path::{Path, PathBuf},
 };
 
 use magic_wormhole::{
-    dilate, dilation, forwarding, transfer, transit, MailboxConnection, Wormhole,
+    dilated_transfer, forwarding, transfer, transit, MailboxConnection, Wormhole,
 };
 
 fn install_ctrlc_handler(
@@ -59,6 +58,14 @@ fn install_ctrlc_handler(
         }
         .boxed()
     })
+}
+
+// send, receive,
+#[derive(Debug, Args)]
+struct CommonTransferArgs {
+    /// Enable dilation
+    #[clap(long = "with-dilation", alias = "with-dilation")]
+    with_dilation: bool,
 }
 
 // send, send-many
@@ -183,6 +190,8 @@ enum WormholeCommand {
         common_leader: CommonLeaderArgs,
         #[clap(flatten)]
         common_send: CommonSenderArgs,
+        #[clap(flatten)]
+        common_transfer: CommonTransferArgs,
     },
     /// Send a file to many recipients. READ HELP PAGE FIRST!
     #[clap(
@@ -225,6 +234,8 @@ enum WormholeCommand {
         common_follower: CommonFollowerArgs,
         #[clap(flatten)]
         common_receiver: CommonReceiverArgs,
+        #[clap(flatten)]
+        common_transfer: CommonTransferArgs,
     },
     /// Forward ports from one machine to another
     #[clap(subcommand)]
@@ -256,9 +267,6 @@ struct WormholeCli {
     /// Enable logging to stdout, for debugging purposes
     #[clap(short = 'v', long = "verbose", alias = "log", global = true)]
     log: bool,
-    /// Enable dilation
-    #[clap(long = "with-dilation", alias = "with-dilation", global = true)]
-    with_dilation: bool,
     #[clap(subcommand)]
     command: WormholeCommand,
 }
@@ -327,6 +335,7 @@ async fn main() -> eyre::Result<()> {
                     file_name,
                     file: file_path,
                 },
+            common_transfer: CommonTransferArgs { with_dilation: _ },
             ..
         } => {
             let file_name = concat_file_name(&file_path, file_name.as_ref())?;
@@ -341,7 +350,7 @@ async fn main() -> eyre::Result<()> {
                     code,
                     Some(code_length),
                     true,
-                    dilation::APP_CONFIG_SEND.with_dilation(app.with_dilation),
+                    transfer::APP_CONFIG,
                     Some(&sender_print_code),
                     clipboard.as_mut(),
                 )),
@@ -379,7 +388,7 @@ async fn main() -> eyre::Result<()> {
                     code,
                     Some(code_length),
                     true,
-                    dilation::APP_CONFIG_SEND.with_dilation(app.with_dilation),
+                    transfer::APP_CONFIG,
                     Some(&sender_print_code),
                     clipboard.as_mut(),
                 ));
@@ -415,17 +424,31 @@ async fn main() -> eyre::Result<()> {
                     file_name,
                     file_path,
                 },
+            common_transfer: CommonTransferArgs { with_dilation },
             ..
         } => {
+            if with_dilation {
+                log::warn!("The dilation feature is still work in progress. Please remove the `--with-dilation` argument to avoid this.");
+            }
+
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = {
+                let app_config = dilated_transfer::APP_CONFIG.with_dilation(with_dilation);
+                let app_config = if with_dilation {
+                    app_config.app_version(dilated_transfer::AppVersion::new(Some(
+                        dilated_transfer::FileTransferV2Mode::Receive,
+                    )))
+                } else {
+                    app_config
+                };
+
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
                     code,
                     None,
                     false,
-                    dilation::APP_CONFIG_RECEIVE.with_dilation(app.with_dilation),
+                    app_config,
                     None,
                     clipboard.as_mut(),
                 ));
@@ -435,9 +458,9 @@ async fn main() -> eyre::Result<()> {
                 }
             };
 
-            if app.with_dilation && peer_allows_dilation(&wormhole.peer_version) {
+            if with_dilation && peer_allows_dilation(&wormhole.peer_version()) {
                 log::debug!("dilate wormhole");
-                let mut dilated_wormhole = dilate(wormhole)?; // need to pass transit relay URL
+                let mut dilated_wormhole = wormhole.dilate()?; // need to pass transit relay URL
                 dilated_wormhole.run().await;
             } else {
                 Box::pin(receive(
@@ -498,7 +521,7 @@ async fn main() -> eyre::Result<()> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             loop {
-                let mut app_config = forwarding::APP_CONFIG.with_dilation(app.with_dilation);
+                let mut app_config = forwarding::APP_CONFIG;
                 app_config.app_version.transit_abilities = parse_transit_args(&common);
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
@@ -534,7 +557,7 @@ async fn main() -> eyre::Result<()> {
         }) => {
             // TODO make fancy
             log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
-            let mut app_config = forwarding::APP_CONFIG.with_dilation(app.with_dilation);
+            let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = parse_and_connect(
                 &mut term,
@@ -603,7 +626,7 @@ async fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-fn peer_allows_dilation(version: &Value) -> bool {
+fn peer_allows_dilation(_version: &serde_json::Value) -> bool {
     // TODO needs to be implemented
     true
 }
@@ -877,9 +900,10 @@ async fn send_many(
             break;
         }
 
-        let wormhole =
-            Wormhole::connect(MailboxConnection::connect(transfer::APP_CONFIG, code.clone(), false).await?)
-                .await?;
+        let wormhole = Wormhole::connect(
+            MailboxConnection::connect(transfer::APP_CONFIG, code.clone(), false).await?,
+        )
+        .await?;
         send_in_background(
             relay_hints.clone(),
             Arc::clone(&file_path),
