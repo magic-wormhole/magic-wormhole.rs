@@ -50,6 +50,23 @@ impl ManagerMachine {
         self.state
     }
 
+    pub fn is_waiting(&self) -> bool {
+        self.state == Some(State::Waiting)
+    }
+
+    pub fn process_io(&mut self, event: IOEvent) -> Vec<ManagerCommand> {
+        // XXX: which Manager states process IO events?
+        let actions = Vec::<ManagerCommand>::new();
+
+        // XXX: big match expression here
+
+        actions
+    }
+
+    pub fn get_current_state(&self) -> Option<State> {
+        self.state
+    }
+
     fn choose_role(&self, theirside: &TheirSide) -> Role {
         let myside: TheirSide = self.side.clone().into();
         if myside > *theirside {

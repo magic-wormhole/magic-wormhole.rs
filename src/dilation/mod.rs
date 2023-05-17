@@ -15,6 +15,7 @@ use crate::core::protocol::MockWormholeProtocol;
 use crate::dilation::manager::ManagerMachine;
 
 mod api;
+mod connector;
 mod events;
 mod manager;
 
@@ -39,10 +40,8 @@ impl WormholeConnectionDefault {
     {
         let message = self.wormhole.borrow_mut().receive_json().await;
         match message {
-            Ok(result) => match result {
-                Ok(result) => Ok(result),
-                Err(error) => Err(WormholeError::ProtocolJson(error)),
-            },
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(error)) => Err(WormholeError::ProtocolJson(error)),
             Err(error) => Err(error),
         }
     }
