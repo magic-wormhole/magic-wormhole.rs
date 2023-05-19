@@ -1313,6 +1313,7 @@ dependencies = [
 name = "magic-wormhole"
 version = "0.6.0"
 dependencies = [
+ "async-channel",
  "async-io",
  "async-std",
  "async-tar",

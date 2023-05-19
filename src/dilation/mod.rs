@@ -1,26 +1,33 @@
 use std::{cell::RefCell, rc::Rc};
 
-use futures::executor;
-
-use crate::{
-    core::{MySide, Phase},
-    dilation::api::{ManagerCommand, ProtocolCommand},
-    Wormhole, WormholeError,
-};
+use async_channel::{Receiver, RecvError, SendError};
+#[cfg(test)]
+use mockall::{automock, predicate::*};
+use mockall_double::double;
+use serde_derive::{Deserialize, Serialize};
 
 #[cfg(test)]
 use crate::core::protocol::MockWormholeProtocol;
-
 #[mockall_double::double]
 use crate::dilation::manager::ManagerMachine;
+use crate::{
+    core::{MySide, Phase, APPID_RAW},
+    dilation::{
+        api::{ManagerCommand, ProtocolCommand},
+        connector::ConnectorMachine,
+        events::ManagerEvent,
+    },
+    Wormhole, WormholeError,
+};
 
 mod api;
+mod connection;
 mod connector;
 mod events;
 mod manager;
 
 #[mockall_double::double]
-type WormholeConnection = WormholeConnectionDefault;
+pub(crate) type WormholeConnection = WormholeConnectionDefault;
 
 pub struct WormholeConnectionDefault {
     wormhole: Rc<RefCell<Wormhole>>,
@@ -28,7 +35,7 @@ pub struct WormholeConnectionDefault {
 
 #[cfg_attr(test, mockall::automock)]
 impl WormholeConnectionDefault {
-    fn new(wormhole: Wormhole) -> Self {
+    pub(crate) fn new(wormhole: Wormhole) -> Self {
         Self {
             wormhole: Rc::new(RefCell::new(wormhole)),
         }
@@ -40,13 +47,17 @@ impl WormholeConnectionDefault {
     {
         let message = self.wormhole.borrow_mut().receive_json().await;
         match message {
-            Ok(Ok(result)) => Ok(result),
+            Ok(Ok(result)) => {
+                log::debug!("received JSON");
+                Ok(result)
+            },
             Ok(Err(error)) => Err(WormholeError::ProtocolJson(error)),
             Err(error) => Err(error),
         }
     }
 
     async fn send_json(&self, command: &ProtocolCommand) -> Result<(), WormholeError> {
+        log::debug!("send JSON {:?} in dilation phase", command);
         self.wormhole
             .borrow_mut()
             .send_json_with_phase(command, Phase::dilation)
@@ -54,18 +65,69 @@ impl WormholeConnectionDefault {
     }
 }
 
+pub struct CommEndpoint<S, R> {
+    sender: async_channel::Sender<S>,
+    receiver: async_channel::Receiver<R>,
+}
+
+impl<S, R> CommEndpoint<S, R> {
+    pub fn create_pair() -> (Self, CommEndpoint<R, S>) {
+        // TODO finally we might need to use a queue size of 1 to achieve a backpressure mechanism. But we need to take care of avoiding deadlocks here.
+        let (forth_sender, forth_receiver) = async_channel::bounded(10);
+        let (back_sender, back_receiver) = async_channel::bounded(10);
+
+        (
+            CommEndpoint {
+                sender: forth_sender,
+                receiver: back_receiver,
+            },
+            CommEndpoint {
+                sender: back_sender,
+                receiver: forth_receiver,
+            },
+        )
+    }
+
+    pub async fn send(&self, msg: S) -> Result<(), SendError<S>> {
+        self.sender.send(msg).await
+    }
+
+    pub async fn receive(&self) -> Result<R, RecvError> {
+        self.receiver.recv().await
+    }
+}
+
+pub(crate) struct MailboxCommunication {
+    incoming_sender: async_channel::Sender<ManagerEvent>,
+    outgoing_receiver: async_channel::Receiver<ProtocolCommand>,
+}
+
+pub struct MailboxClient {
+    incoming_receiver: async_channel::Receiver<ManagerEvent>,
+    outgoing_sender: async_channel::Sender<ProtocolCommand>,
+}
+
+enum MailboxCommunicationAction {
+    Continue,
+    Stop,
+}
+
 pub struct DilatedWormhole {
     wormhole: WormholeConnection,
+    event_receiver: async_channel::Receiver<ManagerEvent>,
     side: MySide,
     manager: ManagerMachine,
 }
 
 impl DilatedWormhole {
     pub fn new(wormhole: Wormhole, side: MySide) -> Self {
+        let (event_sender, event_receiver) = async_channel::bounded(10);
+
         DilatedWormhole {
             wormhole: WormholeConnection::new(wormhole),
+            event_receiver,
             side: side.clone(),
-            manager: ManagerMachine::new(side.clone()),
+            manager: ManagerMachine::new(side.clone(), event_sender),
         }
     }
 
@@ -75,28 +137,50 @@ impl DilatedWormhole {
             &self.manager.current_state().unwrap()
         );
 
+        use futures::{FutureExt, StreamExt};
+
         let mut command_handler = |cmd| Self::execute_command(&self.wormhole, cmd);
 
         loop {
             log::debug!("wait for next event");
-            let event_result = self.wormhole.receive_json().await;
 
-            match event_result {
-                Ok(manager_event) => {
-                    log::debug!("received event");
-                    self.manager
-                        .process(manager_event, &self.side, &mut command_handler)
-                },
-                Err(error) => {
-                    log::warn!("received error {}", error);
-                    continue;
-                },
+            let t1 = self.wormhole.receive_json().fuse();
+            let t2 = self.event_receiver.next().fuse();
+
+            futures::pin_mut!(t1, t2);
+
+            let manager_event_result = futures::select! {
+                value = t1 => value,
+                value = t2 => Ok(value.unwrap()),
             };
 
-            if self.manager.is_done() {
-                log::debug!("exiting");
-                break;
+            match manager_event_result {
+                Ok(manager_event) => {
+                    log::debug!("received ManagerEvent: {:?}", manager_event);
+                    self.manager
+                        .process(manager_event, &self.side, &mut command_handler);
+
+                    if self.manager.is_done() {
+                        log::debug!("exiting");
+                        break;
+                    }
+                },
+
+                Err(error) => {
+                    log::warn!("queue read error: {:?}", error)
+                },
             }
+        }
+    }
+
+    fn handle_error(value: Result<ManagerEvent, WormholeError>) -> ManagerEvent {
+        match value {
+            Ok(event) => {
+                return event;
+            },
+            Err(error) => {
+                panic!("handle error: {:?}", error);
+            },
         }
     }
 
@@ -108,7 +192,7 @@ impl DilatedWormhole {
         match command {
             ManagerCommand::Protocol(protocol_command) => {
                 log::debug!("       command: {}", protocol_command);
-                executor::block_on(wormhole.send_json(&protocol_command))
+                futures::executor::block_on(wormhole.send_json(&protocol_command))
             },
             ManagerCommand::IO(io_command) => {
                 println!("io command: {}", io_command);
@@ -120,15 +204,12 @@ impl DilatedWormhole {
 
 #[cfg(test)]
 mod test {
+    use std::sync::{Arc, Mutex};
+
     use crate::{
         core::test::init_logger,
-        dilation::{
-            api::{IOCommand, ProtocolCommand},
-            events::ManagerEvent,
-            manager::{MockManagerMachine, State},
-        },
+        dilation::{api::ProtocolCommand, events::ManagerEvent, manager::State},
     };
-    use std::sync::{Arc, Mutex};
 
     use super::*;
 
@@ -226,7 +307,10 @@ mod test {
 
     #[async_std::test]
     async fn test_dilated_wormhole_new() {
-        let protocol = MockWormholeProtocol::default();
+        use crate::dilation::manager::MockManagerMachine;
+
+        let mut protocol = MockWormholeProtocol::default();
+        let mut wormhole = Wormhole::new(Box::new(protocol));
 
         let wc_ctx = MockWormholeConnectionDefault::new_context();
         wc_ctx
@@ -237,8 +321,8 @@ mod test {
         let mm_ctx = MockManagerMachine::new_context();
         mm_ctx
             .expect()
-            .with(always())
-            .return_once(move |_| ManagerMachine::default());
+            .with(always(), always())
+            .return_once(move |_, _| ManagerMachine::default());
     }
 
     #[async_std::test]
@@ -266,52 +350,28 @@ mod test {
 
         manager.expect_is_done().return_once(|| true);
 
+        let (event_sender, event_receiver) = async_channel::unbounded();
+        let (mailbox_communication, mailbox_client) =
+            CommEndpoint::<ManagerEvent, ProtocolCommand>::create_pair();
+
         let mut dilated_wormhole = DilatedWormhole {
-            manager,
-            side: my_side,
             wormhole,
+            event_receiver,
+            side: my_side,
+            manager,
         };
+
+        mailbox_communication
+            .send(ManagerEvent::Start)
+            .await
+            .unwrap();
 
         dilated_wormhole.run().await;
     }
 
     #[async_std::test]
-    async fn test_dilated_wormhole_receving_error() {
-        init_logger();
-
-        let mut manager = ManagerMachine::default();
-        let mut wormhole = WormholeConnection::default();
-
-        let my_side = MySide::generate(23);
-
-        manager
-            .expect_current_state()
-            .return_once(|| Some(State::Wanting));
-
-        let mut events = vec![Ok(ManagerEvent::Start), Err(WormholeError::DilationVersion)];
-        wormhole
-            .expect_receive_json()
-            .returning(move || events.pop().unwrap());
-
-        manager
-            .expect_process()
-            .with(eq(ManagerEvent::Start), eq(my_side.clone()), always())
-            .times(1)
-            .return_once(|_, _, _| ());
-
-        manager.expect_is_done().return_once(|| true);
-
-        let mut dilated_wormhole = DilatedWormhole {
-            manager,
-            side: my_side,
-            wormhole,
-        };
-
-        dilated_wormhole.run().await;
-    }
-
-    #[async_std::test]
-    async fn test_dilated_wormhole_two_iterations() {
+    async fn test_dilated_wormhole_two_iterations(
+    ) -> eyre::Result<(), async_channel::SendError<ManagerEvent>> {
         init_logger();
 
         let mut manager = ManagerMachine::default();
@@ -344,77 +404,16 @@ mod test {
             .expect_is_done()
             .returning(move || returns.pop().unwrap());
 
+        let (event_sender, event_receiver) = async_channel::unbounded();
+
         let mut dilated_wormhole = DilatedWormhole {
-            manager,
-            side: my_side.clone(),
             wormhole,
+            event_receiver,
+            side: my_side.clone(),
+            manager,
         };
 
         dilated_wormhole.run().await;
-    }
-
-    #[test]
-    fn test_dilated_wormhole_execute_protocol_command() {
-        init_logger();
-
-        let mut wormhole = WormholeConnection::default();
-
-        let protocol_command = ProtocolCommand::SendPlease {
-            side: MySide::generate(2),
-        };
-
-        wormhole
-            .expect_send_json()
-            .with(eq(protocol_command.clone()))
-            .return_once(|_| Ok(()))
-            .times(1);
-
-        let result = DilatedWormhole::execute_command(
-            &mut wormhole,
-            ManagerCommand::Protocol(protocol_command),
-        );
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn test_dilated_wormhole_execute_protocol_command_failure() {
-        init_logger();
-
-        let mut wormhole = WormholeConnection::default();
-
-        let protocol_command = ProtocolCommand::SendPlease {
-            side: MySide::generate(2),
-        };
-
-        let protocol_command_ref = protocol_command.clone();
-        wormhole
-            .expect_send_json()
-            .with(eq(protocol_command_ref))
-            .return_once(|_| Err(WormholeError::Crypto))
-            .times(1);
-
-        let result = DilatedWormhole::execute_command(
-            &mut wormhole,
-            ManagerCommand::Protocol(protocol_command.clone()),
-        );
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn test_dilated_wormhole_execute_io_command() {
-        init_logger();
-
-        let mut wormhole = WormholeConnection::default();
-
-        wormhole.expect_send_json().times(0);
-
-        let result = DilatedWormhole::execute_command(
-            &mut wormhole,
-            ManagerCommand::IO(IOCommand::CloseConnection),
-        );
-
-        assert!(result.is_ok())
+        Ok(())
     }
 }

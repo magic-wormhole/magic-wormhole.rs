@@ -3,7 +3,11 @@ use serde_derive::Deserialize;
 
 use crate::{
     core::TheirSide,
-    dilation::api::{IOEvent, ManagerCommand},
+    dilation::{
+        api::{IOEvent, ManagerCommand},
+        connector::ConnectionId,
+    },
+    transit,
     transit::Hints,
 };
 
@@ -100,16 +104,11 @@ mod test {
 // XXX
 #[derive(Display, Debug, Clone, PartialEq, Deserialize)]
 pub enum ConnectorEvent {
-    AddRelay {
-        hints: transit::Hints,
-    },
-    GotHints {
-        hints: transit::Hints,
-    },
-    ListenerReady {
-        hints: transit::Hints,
-    },
+    GotTheirSide { their_side: TheirSide },
+    GotHints { hints: transit::Hints },
+    ListenerReady { hints: transit::Hints },
     AddCandidate,
     Accept,
     Stop,
+    Stopped { connection_id: ConnectionId },
 }
