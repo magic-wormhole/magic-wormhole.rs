@@ -1097,8 +1097,8 @@ async fn receive_inner_v2(
     .await
     .context("Receive process failed")?;
 
-    /* Put in all the symlinks last, this greatly reduces the attack surface */
-    offer.create_symlinks(&tmp_dir).await?;
+    // /* Put in all the symlinks last, this greatly reduces the attack surface */
+    // offer.create_symlinks(&tmp_dir).await?;
 
     /* TODO walk the output directory and delete things we did not accept; this will be important for resumption */
 

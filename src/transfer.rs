@@ -418,14 +418,14 @@ impl<T> Offer<T> {
         Ok(())
     }
 
-    #[cfg(not(target_family = "wasm"))]
-    pub async fn create_symlinks(&self, target_path: &Path) -> std::io::Result<()> {
-        // TODO this could be made more efficient by passing around just one buffer
-        for (name, file) in &self.content {
-            file.create_symlinks(&target_path.join(name)).await?;
-        }
-        Ok(())
-    }
+    // #[cfg(not(target_family = "wasm"))]
+    // pub async fn create_symlinks(&self, target_path: &Path) -> std::io::Result<()> {
+    //     // TODO this could be made more efficient by passing around just one buffer
+    //     for (name, file) in &self.content {
+    //         file.create_symlinks(&target_path.join(name)).await?;
+    //     }
+    //     Ok(())
+    // }
 
     pub fn offer_name(&self) -> String {
         let (name, entry) = self.content.iter().next().unwrap();
@@ -529,9 +529,9 @@ pub enum OfferEntry<T = ()> {
     Directory {
         content: BTreeMap<String, Self>,
     },
-    Symlink {
-        target: String,
-    },
+    // Symlink {
+    //     target: String,
+    // },
 }
 
 impl OfferSendEntry {
@@ -546,7 +546,8 @@ impl OfferSendEntry {
         }
 
         let path = path.as_ref();
-        let metadata = async_std::fs::symlink_metadata(path).await?;
+        // let metadata = async_std::fs::symlink_metadata(path).await?;
+        let metadata = async_std::fs::metadata(path).await?;
         // let mtime = metadata.modified()?
         //     .duration_since(std::time::SystemTime::UNIX_EPOCH)
         //     .unwrap_or_default()
@@ -561,20 +562,20 @@ impl OfferSendEntry {
                     async_std::fs::File::open(path)
                 }),
             })
-        } else if metadata.is_symlink() {
-            log::trace!("OfferSendEntry::new {path:?} is symlink");
-            let target = async_std::fs::read_link(path).await?;
-            Ok(Self::Symlink {
-                target: target
-                    .to_str()
-                    .ok_or_else(|| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("{} is not UTF-8 encoded", target.display()),
-                        )
-                    })?
-                    .to_string(),
-            })
+        // } else if metadata.is_symlink() {
+        //     log::trace!("OfferSendEntry::new {path:?} is symlink");
+        //     let target = async_std::fs::read_link(path).await?;
+        //     Ok(Self::Symlink {
+        //         target: target
+        //             .to_str()
+        //             .ok_or_else(|| {
+        //                 std::io::Error::new(
+        //                     std::io::ErrorKind::Other,
+        //                     format!("{} is not UTF-8 encoded", target.display()),
+        //                 )
+        //             })?
+        //             .to_string(),
+        //     })
         } else if metadata.is_dir() {
             use futures::TryStreamExt;
             log::trace!("OfferSendEntry::new {path:?} is directory");
@@ -624,7 +625,7 @@ impl<T> OfferEntry<T> {
             Self::RegularFile { content, size } => {
                 Box::new(std::iter::once((vec![], content, *size))) as Box<dyn Iterator<Item = _>>
             },
-            Self::Symlink { .. } => Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _>>,
+            // Self::Symlink { .. } => Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _>>,
         }
     }
 
@@ -676,28 +677,28 @@ impl<T> OfferEntry<T> {
         }
     }
 
-    #[cfg(not(target_family = "wasm"))]
-    async fn create_symlinks(&self, target_path: &Path) -> std::io::Result<()> {
-        #[inline(always)]
-        fn recurse<'a, T>(
-            this: &'a OfferEntry<T>,
-            path: &'a Path,
-        ) -> futures::future::LocalBoxFuture<'a, std::io::Result<()>> {
-            Box::pin(OfferEntry::create_symlinks(this, path))
-        }
-        match self {
-            Self::Symlink { target } => {
-                todo!()
-            },
-            Self::Directory { content, .. } => {
-                for (name, file) in content {
-                    recurse(file, &target_path.join(name)).await?;
-                }
-                Ok(())
-            },
-            _ => Ok(()),
-        }
-    }
+    // #[cfg(not(target_family = "wasm"))]
+    // async fn create_symlinks(&self, target_path: &Path) -> std::io::Result<()> {
+    //     #[inline(always)]
+    //     fn recurse<'a, T>(
+    //         this: &'a OfferEntry<T>,
+    //         path: &'a Path,
+    //     ) -> futures::future::LocalBoxFuture<'a, std::io::Result<()>> {
+    //         Box::pin(OfferEntry::create_symlinks(this, path))
+    //     }
+    //     match self {
+    //         Self::Symlink { target } => {
+    //             todo!()
+    //         },
+    //         Self::Directory { content, .. } => {
+    //             for (name, file) in content {
+    //                 recurse(file, &target_path.join(name)).await?;
+    //             }
+    //             Ok(())
+    //         },
+    //         _ => Ok(()),
+    //     }
+    // }
 
     fn set_content<U>(
         &self,
@@ -720,9 +721,9 @@ impl<T> OfferEntry<T> {
                     })
                     .collect(),
             },
-            OfferEntry::Symlink { target } => OfferEntry::Symlink {
-                target: target.clone(),
-            },
+            // OfferEntry::Symlink { target } => OfferEntry::Symlink {
+            //     target: target.clone(),
+            // },
         }
     }
 }
@@ -745,9 +746,9 @@ impl<T: 'static + Send> OfferEntry<T> {
                 Box::new(std::iter::once((vec![], content, size)))
                     as Box<dyn Iterator<Item = _> + Send>
             },
-            Self::Symlink { .. } => {
-                Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _> + Send>
-            },
+            // Self::Symlink { .. } => {
+            //     Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _> + Send>
+            // },
         }
     }
 }

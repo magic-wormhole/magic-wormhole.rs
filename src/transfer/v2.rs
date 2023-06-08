@@ -244,7 +244,7 @@ async fn send_inner(
         sha256,
     } in &files
     {
-        let mut offset = *offset;
+        let offset = *offset;
         /* This must be split into two statements to appease the borrow checker (unfortunate side effect of borrow-through) */
         let content = (offer.get_file(&file).unwrap().0)();
         let mut content = content.await?;
