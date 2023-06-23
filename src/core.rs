@@ -1,18 +1,24 @@
-pub(super) mod key;
-pub mod rendezvous;
-mod server_messages;
-#[cfg(test)]
-mod test;
-mod wordlist;
+use std::{any::Any, borrow::Cow};
 
+use crate::core::protocol::{WormholeProtocol, WormholeProtocolDefault};
+#[cfg(feature = "dilation")]
+use crate::dilation::DilatedWormhole;
+use log::*;
+use serde;
 use serde_derive::{Deserialize, Serialize};
-use std::borrow::Cow;
+use serde_json::Value;
+use xsalsa20poly1305 as secretbox;
 
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
-use log::*;
 
-use xsalsa20poly1305 as secretbox;
+pub(super) mod key;
+pub(crate) mod protocol;
+pub mod rendezvous;
+mod server_messages;
+#[cfg(test)]
+pub(crate) mod test;
+mod wordlist;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -44,6 +50,8 @@ pub enum WormholeError {
     Crypto,
     #[error("Nameplate is unclaimed: {}", _0)]
     UnclaimedNameplate(Nameplate),
+    #[error("Dilation version mismatch")]
+    DilationVersion,
 }
 
 impl WormholeError {
@@ -180,7 +188,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// use magic_wormhole::{transfer::APP_CONFIG, Code, MailboxConnection, Nameplate};
     /// let config = APP_CONFIG;
     /// let code = Code::new(&Nameplate::new("5"), "password");
-    /// let mailbox_connection = MailboxConnection::connect(config, code, false).await?;
+    /// let mut mailbox_connection = MailboxConnection::connect(config, code, false).await?;
     /// # Ok(()) })}
     /// ```
     pub async fn connect(
@@ -222,12 +230,12 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection, Mood};
     /// let config = APP_CONFIG;
-    /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret")
+    /// let mut mailbox_connection = MailboxConnection::create_with_password(config, "secret")
     ///     .await?;
     /// mailbox_connection.shutdown(Mood::Happy).await?;
     /// # Ok(())})}
     /// ```
-    pub async fn shutdown(self, mood: Mood) -> Result<(), WormholeError> {
+    pub async fn shutdown(&mut self, mood: Mood) -> Result<(), WormholeError> {
         self.server
             .shutdown(mood)
             .await
@@ -237,36 +245,15 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
 
 #[derive(Debug)]
 pub struct Wormhole {
-    server: RendezvousServer,
-    phase: u64,
-    key: key::Key<key::WormholeKey>,
-    appid: AppID,
-    /**
-     * If you're paranoid, let both sides check that they calculated the same verifier.
-     *
-     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
-     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
-     * the passwords usually are not of hight entropy, there is a low-probability possible of
-     * an attacker guessing the password correctly, enabling them to MitM the connection.
-     *
-     * Not only is that probability low, but they also have only one try per connection and a failed
-     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
-     * attack vector.
-     */
-    pub verifier: Box<secretbox::Key>,
-    /**
-     * Our "app version" information that we sent. See the [`peer_version`] for more information.
-     */
-    pub our_version: Box<dyn std::any::Any + Send + Sync>,
-    /**
-     * Protocol version information from the other side.
-     * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
-     * (e.g. by the file transfer API).
-     */
-    pub peer_version: serde_json::Value,
+    protocol: Box<dyn WormholeProtocol>,
 }
 
 impl Wormhole {
+    #[cfg(test)]
+    pub fn new(protocol: Box<dyn WormholeProtocol>) -> Self {
+        Wormhole { protocol }
+    }
+
     /**
      * Generate a code and connect to the rendezvous server.
      *
@@ -353,6 +340,10 @@ impl Wormhole {
         /* Send versions message */
         let mut versions = key::VersionsMessage::new();
         versions.set_app_versions(serde_json::to_value(&config.app_version).unwrap());
+        #[cfg(feature = "dilation")]
+        if config.with_dilation {
+            versions.enable_dilation();
+        }
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
@@ -375,13 +366,12 @@ impl Wormhole {
 
         /* We are now fully initialized! Up and running! :tada: */
         Ok(Self {
-            server,
-            appid: config.id,
-            phase: 0,
-            key: key::Key::new(key.into()),
-            verifier: Box::new(key::derive_verifier(&key)),
-            our_version: Box::new(config.app_version),
-            peer_version,
+            protocol: Box::new(WormholeProtocolDefault::new(
+                server,
+                config,
+                key::Key::new(key.into()),
+                peer_version,
+            )),
         })
     }
 
@@ -390,16 +380,19 @@ impl Wormhole {
         todo!()
     }
 
-    /** Send an encrypted message to peer */
-    pub async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
-        let phase_string = Phase::numeric(self.phase);
-        self.phase += 1;
-        let data_key = key::derive_phase_key(self.server.side(), &self.key, &phase_string);
-        let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
-        self.server
-            .send_peer_message(phase_string, encrypted)
-            .await?;
-        Ok(())
+    /**
+     * create a dilated wormhole
+     */
+    #[cfg(feature = "dilation")]
+    pub fn dilate(self) -> Result<DilatedWormhole, WormholeError> {
+        // XXX: create endpoints?
+        // get versions from the other side and check if they support dilation.
+        let can_they_dilate = &self.protocol.peer_version()["can-dilate"];
+        if !can_they_dilate.is_null() && can_they_dilate[0] != "1" {
+            return Err(WormholeError::DilationVersion);
+        }
+
+        Ok(DilatedWormhole::new(self, MySide::generate(8)))
     }
 
     /**
@@ -412,33 +405,21 @@ impl Wormhole {
      *
      * If the serialization fails
      */
-    pub async fn send_json<T: serde::Serialize>(
+    pub async fn send_json<T: serde::Serialize + Send + Sync + 'static>(
         &mut self,
         message: &T,
     ) -> Result<(), WormholeError> {
-        self.send(serde_json::to_vec(message).unwrap()).await
+        self.send_json_with_phase(message, Phase::numeric).await
     }
 
-    /** Receive an encrypted message from peer */
-    pub async fn receive(&mut self) -> Result<Vec<u8>, WormholeError> {
-        loop {
-            let peer_message = match self.server.next_peer_message().await? {
-                Some(peer_message) => peer_message,
-                None => continue,
-            };
-            if peer_message.phase.to_num().is_none() {
-                // TODO: log and ignore, for future expansion
-                todo!("log and ignore, for future expansion");
-            }
-
-            // TODO maybe reorder incoming messages by phase numeral?
-            let decrypted_message = peer_message
-                .decrypt(&self.key)
-                .ok_or(WormholeError::Crypto)?;
-
-            // Send to client
-            return Ok(decrypted_message);
-        }
+    pub async fn send_json_with_phase<T: serde::Serialize + Send + Sync + 'static>(
+        &mut self,
+        message: &T,
+        phase_provider: PhaseProvider,
+    ) -> Result<(), WormholeError> {
+        self.protocol
+            .send_with_phase(serde_json::to_vec(message).unwrap(), phase_provider)
+            .await
     }
 
     /**
@@ -452,7 +433,7 @@ impl Wormhole {
     where
         T: for<'a> serde::Deserialize<'a>,
     {
-        self.receive().await.map(|data: Vec<u8>| {
+        self.protocol.receive().await.map(|data: Vec<u8>| {
             serde_json::from_slice(&data).map_err(|e| {
                 log::error!(
                     "Received invalid data from peer: '{}'",
@@ -463,9 +444,8 @@ impl Wormhole {
         })
     }
 
-    pub async fn close(self) -> Result<(), WormholeError> {
-        log::debug!("Closing Wormhole…");
-        self.server.shutdown(Mood::Happy).await.map_err(Into::into)
+    pub async fn close(&mut self) -> Result<(), WormholeError> {
+        self.protocol.close().await
     }
 
     /**
@@ -473,7 +453,7 @@ impl Wormhole {
      * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
      */
     pub fn appid(&self) -> &AppID {
-        &self.appid
+        self.protocol.appid()
     }
 
     /**
@@ -481,13 +461,29 @@ impl Wormhole {
      * Can be used to derive sub-keys for different purposes.
      */
     pub fn key(&self) -> &key::Key<key::WormholeKey> {
-        &self.key
+        self.protocol.key()
+    }
+
+    pub fn peer_version(&self) -> &Value {
+        self.protocol.peer_version()
+    }
+
+    pub fn our_version(&self) -> &Box<dyn Any + Send + Sync> {
+        &self.protocol.our_version()
     }
 }
 
 // the serialized forms of these variants are part of the wire protocol, so
 // they must be spelled exactly as shown
-#[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize, derive_more::Display)]
+#[derive(
+    Debug,
+    PartialEq,
+    Copy,
+    Clone,
+    serde_derive::Deserialize,
+    serde_derive::Serialize,
+    derive_more::Display,
+)]
 pub enum Mood {
     #[serde(rename = "happy")]
     Happy,
@@ -501,8 +497,10 @@ pub enum Mood {
     Unwelcome,
 }
 
+pub const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
+
 /**
- * Wormhole configuration corresponding to an uppler layer protocol
+ * Wormhole configuration corresponding to an upper layer protocol
  *
  * There are multiple different protocols built on top of the core
  * Wormhole protocol. They are identified by a unique URI-like ID string
@@ -513,13 +511,14 @@ pub enum Mood {
  * See [`crate::transfer::APP_CONFIG`], which entails
  */
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct AppConfig<V> {
+pub struct AppConfig<V: serde::Serialize> {
     pub id: AppID,
     pub rendezvous_url: Cow<'static, str>,
     pub app_version: V,
+    pub with_dilation: bool,
 }
 
-impl<V> AppConfig<V> {
+impl<V: serde::Serialize> AppConfig<V> {
     pub fn id(mut self, id: AppID) -> Self {
         self.id = id;
         self
@@ -529,9 +528,12 @@ impl<V> AppConfig<V> {
         self.rendezvous_url = rendezvous_url;
         self
     }
-}
 
-impl<V: serde::Serialize> AppConfig<V> {
+    pub fn with_dilation(mut self, with_dilation: bool) -> Self {
+        self.with_dilation = with_dilation;
+        self
+    }
+
     pub fn app_version(mut self, app_version: V) -> Self {
         self.app_version = app_version;
         self
@@ -563,17 +565,25 @@ impl From<String> for AppID {
 
 // MySide is used for the String that we send in all our outbound messages
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "MySide({})", "&*_0")]
 pub struct MySide(EitherSide);
 
 impl MySide {
-    pub fn generate() -> MySide {
+    pub fn generate(length: usize) -> MySide {
         use rand::{rngs::OsRng, RngCore};
 
-        let mut bytes: [u8; 5] = [0; 5];
+        let mut bytes = vec![0; length];
         OsRng.fill_bytes(&mut bytes);
 
         MySide(EitherSide(hex::encode(bytes)))
@@ -589,7 +599,15 @@ impl MySide {
 
 // TheirSide is used for the string that arrives inside inbound messages
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "TheirSide({})", "&*_0")]
@@ -602,7 +620,15 @@ impl<S: Into<String>> From<S> for TheirSide {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[deref(forward)]
@@ -612,6 +638,12 @@ pub struct EitherSide(pub String);
 impl<S: Into<String>> From<S> for EitherSide {
     fn from(s: S) -> EitherSide {
         EitherSide(s.into())
+    }
+}
+
+impl From<MySide> for TheirSide {
+    fn from(side: MySide) -> TheirSide {
+        TheirSide(side.0.into())
     }
 }
 
@@ -627,6 +659,10 @@ impl Phase {
         Phase(phase.to_string().into())
     }
 
+    pub fn dilation(phase: u64) -> Self {
+        Phase(format!("dilate-{}", phase.to_string()).to_string().into())
+    }
+
     pub fn is_version(&self) -> bool {
         self == &Self::VERSION
     }
@@ -637,6 +673,8 @@ impl Phase {
         self.0.parse().ok()
     }
 }
+
+type PhaseProvider = fn(u64) -> Phase;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
@@ -687,4 +725,16 @@ impl Code {
     pub fn nameplate(&self) -> Nameplate {
         Nameplate::new(self.0.splitn(2, '-').next().unwrap())
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Ability {
+    DirectTcpV1,
+    RelayV1,
+    RelayV2,
+    #[cfg(all())]
+    NoiseCryptoV1,
+    #[serde(other)]
+    Other,
 }

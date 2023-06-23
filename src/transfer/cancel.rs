@@ -100,7 +100,7 @@ pub async fn handle_run_result(
     result: Result<(Result<(), TransferError>, impl Future<Output = ()>), Cancelled>,
 ) -> Result<(), TransferError> {
     match handle_run_result_noclose(wormhole, result).await {
-        Ok(Some(((), wormhole, cancel))) => {
+        Ok(Some(((), mut wormhole, cancel))) => {
             /* Happy case: everything went okay. Now close the wormholhe */
             log::debug!("Transfer done, doing cleanup logic");
             wrap_timeout(

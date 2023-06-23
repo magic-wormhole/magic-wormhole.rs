@@ -165,7 +165,7 @@ pub async fn send(
     futures::pin_mut!(cancel);
 
     /* Establish transit connection, close the Wormhole and switch to using the transit connection (msgpack instead of json) */
-    let (mut transit, wormhole, cancel) = cancel::with_cancel_wormhole!(
+    let (mut transit, mut wormhole, cancel) = cancel::with_cancel_wormhole!(
         wormhole,
         run = async {
             Ok(make_transit(
@@ -346,7 +346,7 @@ pub async fn request(
     futures::pin_mut!(cancel);
 
     /* Establish transit connection, close the Wormhole and switch to using the transit connection (msgpack instead of json) */
-    let ((mut transit, info), wormhole, cancel) = cancel::with_cancel_wormhole!(
+    let ((mut transit, info), mut wormhole, cancel) = cancel::with_cancel_wormhole!(
         wormhole,
         run = async {
             make_transit(

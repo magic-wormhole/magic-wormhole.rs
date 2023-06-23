@@ -2,7 +2,7 @@ name: Rust
 
 on:
   push:
-    branches: [master, dev]
+    branches: [master, dev, dilation-1]
   pull_request:
     branches: [master, dev]
 
@@ -97,6 +97,11 @@ jobs:
         with:
           command: build
           args: -p magic-wormhole --no-default-features --features=forwarding
+      - name: build library (features=dilation)
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p magic-wormhole --no-default-features --features=dilation
       - name: build CLI
         uses: actions-rs/cargo@v1
         with:

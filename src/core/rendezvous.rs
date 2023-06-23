@@ -339,7 +339,7 @@ impl RendezvousServer {
         appid: &AppID,
         relay_url: &str,
     ) -> Result<(Self, Option<String>), RendezvousError> {
-        let side = MySide::generate();
+        let side = MySide::generate(5);
         let mut connection;
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -588,28 +588,31 @@ impl RendezvousServer {
         Ok(())
     }
 
-    pub async fn shutdown(mut self, mood: Mood) -> Result<(), RendezvousError> {
+    pub async fn shutdown(&mut self, mood: Mood) -> Result<(), RendezvousError> {
         if let Some(MailboxMachine {
-            nameplate,
-            mailbox,
-            mut queue,
+            ref nameplate,
+            ref mailbox,
+            ref mut queue,
             ..
         }) = self.state
         {
             if let Some(nameplate) = nameplate {
                 self.connection
-                    .send_message(&OutboundMessage::release(nameplate), Some(&mut queue))
+                    .send_message(&OutboundMessage::release(nameplate.to_owned()), Some(queue))
                     .await?;
-                match self.connection.receive_reply(Some(&mut queue)).await? {
+                match self.connection.receive_reply(Some(queue)).await? {
                     RendezvousReply::Released => (),
                     other => return Err(RendezvousError::invalid_message("released", other)),
                 };
             }
 
             self.connection
-                .send_message(&OutboundMessage::close(mailbox, mood), Some(&mut queue))
+                .send_message(
+                    &OutboundMessage::close(mailbox.to_owned(), mood),
+                    Some(queue),
+                )
                 .await?;
-            match self.connection.receive_reply(Some(&mut queue)).await? {
+            match self.connection.receive_reply(Some(queue)).await? {
                 RendezvousReply::Closed => (),
                 other => return Err(RendezvousError::invalid_message("closed", other)),
             };

@@ -18,11 +18,12 @@ pub const APP_CONFIG: AppConfig<()> = AppConfig::<()> {
     id: TEST_APPID,
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
     app_version: (),
+    with_dilation: false,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
-fn init_logger() {
+pub fn init_logger() {
     /* Ignore errors from succeedent initialization tries */
     let _ = env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
@@ -183,7 +184,8 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
             .name("sender".to_owned())
             .spawn(async {
                 let (welcome, wormhole_future) =
-                    Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+                    Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
+                        .await?;
                 if let Some(welcome) = &welcome.welcome {
                     log::info!("Got welcome: {}", welcome);
                 }
@@ -257,7 +259,8 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             .name("sender".to_owned())
             .spawn(async {
                 let mailbox_connection =
-                    MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+                    MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
+                        .await?;
                 if let Some(welcome) = &mailbox_connection.welcome {
                     log::info!("Got welcome: {}", welcome);
                 }
@@ -402,7 +405,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                 .await?,
         )
         .await?;
-        log::info!("Got key: {}", &wormhole.key);
+        log::info!("Got key: {}", &wormhole.key());
         let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
             wormhole,
             default_relay_hints(),
