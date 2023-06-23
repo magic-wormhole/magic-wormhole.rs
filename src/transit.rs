@@ -834,6 +834,29 @@ impl TransitConnector {
     }
 
     /**
+     * Forwards to either [`leader_connect`] or [`follower_connect`].
+     *
+     * It usually is better to call the respective functions directly by their name, as it makes
+     * them less easy to confuse (confusion may still happen though). Nevertheless, sometimes it
+     * is desirable to use the same code for both sides and only track the side with a boolean.
+     */
+    pub async fn connect(
+        self,
+        is_leader: bool,
+        transit_key: Key<TransitKey>,
+        their_abilities: Abilities,
+        their_hints: Arc<Hints>,
+    ) -> Result<(Transit, TransitInfo), TransitConnectError> {
+        if is_leader {
+            self.leader_connect(transit_key, their_abilities, their_hints)
+                .await
+        } else {
+            self.follower_connect(transit_key, their_abilities, their_hints)
+                .await
+        }
+    }
+
+    /**
      * Connect to the other side, as sender.
      */
     pub async fn leader_connect(
@@ -852,7 +875,7 @@ impl TransitConnector {
 
         let start = instant::Instant::now();
         let mut connection_stream = Box::pin(
-            Self::connect(
+            Self::connect_inner(
                 true,
                 transit_key,
                 our_abilities,
@@ -957,7 +980,7 @@ impl TransitConnector {
         let transit_key = Arc::new(transit_key);
 
         let mut connection_stream = Box::pin(
-            Self::connect(
+            Self::connect_inner(
                 false,
                 transit_key,
                 our_abilities,
@@ -1018,7 +1041,7 @@ impl TransitConnector {
      * If the receiving end of the channel for the results is closed before all futures in the return
      * value are cancelled/dropped.
      */
-    fn connect(
+    fn connect_inner(
         is_leader: bool,
         transit_key: Arc<Key<TransitKey>>,
         our_abilities: Abilities,

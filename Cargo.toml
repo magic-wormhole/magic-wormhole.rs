@@ -52,6 +52,7 @@ noise-rust-crypto = { version = "0.5.0", optional = true }
 # Transfer dependencies
 
 rmp-serde = { version = "1.0.0", optional = true }
+tar = { version = "0.4.33", optional = true }
 
 # Forwarding dependencies
 
@@ -69,7 +70,8 @@ if-addrs = { version = "0.10.0", optional = true }
 
 # Transfer
 
-async-tar = { version = "0.4.2", optional = true }
+async-tar = { version = "0.4", optional = true }
+zstd = { version = "0.11.1", optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-timer = "0.2.5"
@@ -83,7 +85,7 @@ eyre = "0.6.5"
 
 [features]
 transit = ["socket2", "stun_codec", "if-addrs", "bytecodec", "async-trait", "noise-protocol", "noise-rust-crypto"]
-transfer = ["transit", "async-tar", "rmp-serde"]
+transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transit", "transfer"]
 all = ["default", "forwarding"]
