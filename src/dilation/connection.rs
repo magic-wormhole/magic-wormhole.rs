@@ -114,23 +114,49 @@ impl ConnectionMachine {
                     ConnectionState::Stopped
                 },
                 ConnectionEvent::DataReceived { data } => {
+                    let mut next_state = ConnectionState::Connected;
                     log::debug!(
                         "received data ({} bytes): {:?}",
                         data.len(),
                         std::str::from_utf8(&data).unwrap()
                     );
 
-                    let response = if self.role == Role::Leader {
-                        "Magic-Wormhole Dilation Handshake v1 Leader\n\n"
+                    let leader_message = "Magic-Wormhole Dilation Handshake v1 Leader\n\n";
+                    let follower_message = "Magic-Wormhole Dilation Handshake v1 Follower\n\n";
+
+                    let is_leader = self.role == Role::Leader;
+
+                    let received_message = std::str::from_utf8(&data);
+
+                    if let Ok(message) = received_message {
+                        if is_leader && message == follower_message
+                            || !is_leader && message == leader_message
+                        {
+                            log::debug!("verified handshake message");
+
+                            let response = if is_leader {
+                                leader_message
+                            } else {
+                                follower_message
+                            };
+                            self.tcp_writer
+                                .write(response.as_bytes())
+                                .await
+                                .expect("could not write to tcp");
+                            log::debug!("sent response: {:?}", response);
+                            if is_leader {
+                                // initiate noise protocol
+                            }
+                        } else {
+                            log::debug!("handshake message mismatch");
+                            next_state = ConnectionState::Stopped;
+                        }
                     } else {
-                        "Magic-Wormhole Dilation Handshake v1 Follower\n\n"
-                    };
-                    self.tcp_writer
-                        .write(response.as_bytes())
-                        .await
-                        .expect("could not write to tcp");
-                    log::debug!("sent response: {}", response);
-                    ConnectionState::Connected
+                        log::debug!("handshake message not utf8");
+                        next_state = ConnectionState::Stopped;
+                    }
+
+                    next_state
                 },
             },
             ConnectionState::Connected => match connection_event {
