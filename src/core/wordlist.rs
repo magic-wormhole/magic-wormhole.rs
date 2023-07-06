@@ -1,6 +1,6 @@
 use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
-use std::fmt;
+
 
 use dialoguer::Completion;
 use std::collections::HashMap;
@@ -14,8 +14,8 @@ pub struct PgpWordList {
 impl PgpWordList {
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng;
-        let components: Vec<String>;
-        components = self
+        
+        let components: Vec<String> = self
             .words
             .iter()
             .cycle()
@@ -62,15 +62,15 @@ impl Completion for PgpWordList {
             let mut suffix: String = input.to_owned();
             if word.starts_with(last_partial_word.unwrap()) {
                 if lp == 0 {
-                    suffix.push_str(&word);
+                    suffix.push_str(word);
                 } else {
                     let p = input.len() - lp;
-                    suffix.truncate(p as usize);
-                    suffix.push_str(&word);
+                    suffix.truncate(p);
+                    suffix.push_str(word);
                 }
 
                 if count_dashes + 1 < self.num_words {
-                    suffix.push_str("-");
+                    suffix.push('-');
                 }
 
                 completions.push(suffix);
@@ -78,7 +78,7 @@ impl Completion for PgpWordList {
         }
         if completions.len() == 1 {
             Some(completions.first().unwrap().clone())
-        } else if completions.len() == 0 {
+        } else if completions.is_empty() {
             None
         } else {
             // TODO: show vector of suggestions somehow

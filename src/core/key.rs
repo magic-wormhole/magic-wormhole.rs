@@ -49,7 +49,7 @@ impl Key<WormholeKey> {
      */
     #[cfg(feature = "transit")]
     pub fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
-        let transit_purpose = format!("{}/transit-key", &*appid);
+        let transit_purpose = format!("{}/transit-key", appid);
 
         let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
         trace!(
@@ -68,7 +68,7 @@ impl<P: KeyPurpose> Key<P> {
     }
 
     pub fn to_hex(&self) -> String {
-        hex::encode(&**self)
+        hex::encode(**self)
     }
 
     /**
@@ -76,7 +76,7 @@ impl<P: KeyPurpose> Key<P> {
      */
     pub fn derive_subkey_from_purpose<NewP: KeyPurpose>(&self, purpose: &str) -> Key<NewP> {
         Key(
-            Box::new(derive_key(&*self, purpose.as_bytes())),
+            Box::new(derive_key(self, purpose.as_bytes())),
             std::marker::PhantomData,
         )
     }

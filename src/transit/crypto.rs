@@ -293,7 +293,7 @@ impl TransitCryptoInit for NoiseInit {
             builder.set_is_initiator(true);
             builder.build_handshake_state()
         };
-        handshake.push_psk(&*self.key);
+        handshake.push_psk(&self.key);
 
         // → psk, e
         write_transit_message(socket, &handshake.write_message_vec(&[])?).await?;
@@ -307,7 +307,7 @@ impl TransitCryptoInit for NoiseInit {
         // ← ""
         let peer_confirmation_message = rx.decrypt_vec(&read_transit_message(socket).await?)?;
         ensure!(
-            peer_confirmation_message.len() == 0,
+            peer_confirmation_message.is_empty(),
             TransitHandshakeError::HandshakeFailed
         );
 
@@ -354,7 +354,7 @@ impl TransitCryptoInit for NoiseInit {
             builder.set_is_initiator(false);
             builder.build_handshake_state()
         };
-        handshake.push_psk(&*self.key);
+        handshake.push_psk(&self.key);
 
         // ← psk, e
         handshake.read_message(&read_transit_message(socket).await?, &mut [])?;
@@ -372,7 +372,7 @@ impl TransitCryptoInit for NoiseInit {
         // ← ""
         let peer_confirmation_message = rx.decrypt_vec(&read_transit_message(socket).await?)?;
         ensure!(
-            peer_confirmation_message.len() == 0,
+            peer_confirmation_message.is_empty(),
             TransitHandshakeError::HandshakeFailed
         );
 

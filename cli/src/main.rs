@@ -2,7 +2,6 @@
 mod util;
 
 use std::{
-    fs,
     ops::Deref,
     time::{Duration, Instant},
 };
@@ -12,13 +11,12 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
-use dialoguer::{Completion, Input};
+use dialoguer::{Input};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use magic_wormhole::PgpWordList;
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::{
-    collections::HashMap,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -577,7 +575,7 @@ async fn main() -> eyre::Result<()> {
                         out,
                     );
 
-                    std::io::stdout().write_all(&out.as_bytes())?;
+                    std::io::stdout().write_all(out.as_bytes())?;
                 },
                 shell => {
                     let mut out = std::io::stdout();
@@ -1023,7 +1021,7 @@ async fn receive(
         .truncate(true)
         .open(&file_path)
         .await?;
-    Ok(req
+    req
         .accept(
             &transit::log_transit_connection,
             on_progress,
@@ -1031,7 +1029,7 @@ async fn receive(
             ctrl_c(),
         )
         .await
-        .context("Receive process failed")?)
+        .context("Receive process failed")
 }
 
 #[cfg(test)]
