@@ -1,5 +1,3 @@
-use futures::Future;
-
 macro_rules! ensure {
     ($cond:expr, $err:expr $(,)?) => {
         if !$cond {
@@ -79,6 +77,7 @@ impl std::fmt::Display for DisplayBytes<'_> {
  * TODO remove after https://github.com/quininer/memsec/issues/11 is resolved.
  * Original implementation: https://github.com/jedisct1/libsodium/blob/6d566070b48efd2fa099bbe9822914455150aba9/src/libsodium/sodium/utils.c#L262-L307
  */
+#[allow(unused)]
 pub fn sodium_increment_le(n: &mut [u8]) {
     let mut c = 1u16;
     for b in n {
@@ -171,41 +170,34 @@ pub fn hashcash(resource: String, bits: u32) -> String {
         }
     }
 }
-
-/// A weird mixture of [`futures::future::Abortable`], [`async_std::sync::Condvar`] and [`futures::future::Select`] tailored to our Ctrl+C handling.
-///
-/// At it's core, it is an `Abortable` but instead of having an `AbortHandle`, we use a future that resolves as trigger.
-/// Under the hood, it is implementing the same functionality as a `select`, but mapping one of the outcomes to an error type.
-pub async fn cancellable<T>(
-    future: impl Future<Output = T> + Unpin,
-    cancel: impl Future<Output = ()>,
-) -> Result<T, Cancelled> {
-    use futures::future::Either;
-    futures::pin_mut!(cancel);
-    match futures::future::select(cancel, future).await {
-        Either::Left(((), _)) => Err(Cancelled),
-        Either::Right((val, _)) => Ok(val),
-    }
+#[cfg(not(target_family = "wasm"))]
+pub async fn sleep(duration: std::time::Duration) {
+    async_std::task::sleep(duration).await
 }
 
-/** Like `cancellable`, but you'll get back the cancellation future in case the code terminates for future use */
-pub async fn cancellable_2<T, C: Future<Output = ()> + Unpin>(
-    future: impl Future<Output = T> + Unpin,
-    cancel: C,
-) -> Result<(T, C), Cancelled> {
-    use futures::future::Either;
-    match futures::future::select(cancel, future).await {
-        Either::Left(((), _)) => Err(Cancelled),
-        Either::Right((val, cancel)) => Ok((val, cancel)),
-    }
+#[cfg(target_family = "wasm")]
+pub async fn sleep(duration: std::time::Duration) {
+    /* Skip error handling. Waiting is best effort anyways */
+    let _ = wasm_timer::Delay::new(duration).await;
 }
 
-/// Indicator that the [`Cancellable`] task was cancelled.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Cancelled;
+#[cfg(not(target_family = "wasm"))]
+pub async fn timeout<F, T>(
+    duration: std::time::Duration,
+    future: F,
+) -> Result<T, async_std::future::TimeoutError>
+where
+    F: futures::Future<Output = T>,
+{
+    async_std::future::timeout(duration, future).await
+}
 
-impl std::fmt::Display for Cancelled {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Task has been cancelled")
-    }
+#[cfg(target_family = "wasm")]
+pub async fn timeout<F, T>(duration: std::time::Duration, future: F) -> Result<T, std::io::Error>
+where
+    F: futures::Future<Output = T>,
+{
+    use futures::FutureExt;
+    use wasm_timer::TryFutureExt;
+    future.map(Result::Ok).timeout(duration).await
 }

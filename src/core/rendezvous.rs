@@ -2,6 +2,7 @@
 //!
 //! Wormhole builds upon this, so you usually don't need to bother.
 
+#[cfg(not(target_family = "wasm"))]
 use async_tungstenite::tungstenite as ws2;
 use futures::prelude::*;
 use std::collections::VecDeque;
@@ -38,11 +39,19 @@ pub enum RendezvousError {
         _0
     )]
     Login(Vec<String>),
+    #[cfg(not(target_family = "wasm"))]
     #[error("Websocket IO error")]
     IO(
         #[from]
         #[source]
-        async_tungstenite::tungstenite::Error,
+        ws2::Error,
+    ),
+    #[cfg(target_family = "wasm")]
+    #[error("Websocket IO error")]
+    IO(
+        #[from]
+        #[source]
+        ws_stream_wasm::WsErr,
     ),
 }
 
@@ -65,11 +74,23 @@ impl RendezvousError {
 
 type MessageQueue = VecDeque<EncryptedMessage>;
 
+#[derive(Clone, Debug, derive_more::Display)]
+#[display(fmt = "{:?}", _0)]
+struct NameplateList(Vec<Nameplate>);
+
+#[cfg(not(target_family = "wasm"))]
 struct WsConnection {
     connection: async_tungstenite::WebSocketStream<async_tungstenite::async_std::ConnectStream>,
 }
 
+#[cfg(target_family = "wasm")]
+struct WsConnection {
+    connection: ws_stream_wasm::WsStream,
+    meta: ws_stream_wasm::WsMeta,
+}
+
 impl WsConnection {
+    #[cfg(not(target_family = "wasm"))]
     async fn send_message(
         &mut self,
         message: &OutboundMessage,
@@ -78,6 +99,22 @@ impl WsConnection {
         log::debug!("Sending {}", message);
         self.connection
             .send(ws2::Message::Text(serde_json::to_string(message).unwrap()))
+            .await?;
+        self.receive_ack(queue).await?;
+        Ok(())
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn send_message(
+        &mut self,
+        message: &OutboundMessage,
+        queue: Option<&mut MessageQueue>,
+    ) -> Result<(), RendezvousError> {
+        log::debug!("Sending {:?}", message);
+        self.connection
+            .send(ws_stream_wasm::WsMessage::Text(
+                serde_json::to_string(message).unwrap(),
+            ))
             .await?;
         self.receive_ack(queue).await?;
         Ok(())
@@ -141,6 +178,9 @@ impl WsConnection {
                 Some(InboundMessage::Error { error, orig: _ }) => {
                     break Err(RendezvousError::Server(error.into()));
                 },
+                Some(InboundMessage::Nameplates { nameplates }) => {
+                    break Ok(RendezvousReply::Nameplates(NameplateList(nameplates)))
+                },
                 Some(other) => {
                     break Err(RendezvousError::protocol(format!(
                         "Got unexpected message type from server '{}'",
@@ -160,6 +200,7 @@ impl WsConnection {
         }
     }
 
+    #[cfg(not(target_family = "wasm"))]
     async fn receive_message(&mut self) -> Result<Option<InboundMessage>, RendezvousError> {
         let message = self
             .connection
@@ -195,6 +236,42 @@ impl WsConnection {
             },
         }
     }
+
+    #[cfg(target_family = "wasm")]
+    async fn receive_message(&mut self) -> Result<Option<InboundMessage>, RendezvousError> {
+        let message = self
+            .connection
+            .next()
+            .await
+            .expect("TODO this should always be Some");
+        match message {
+            ws_stream_wasm::WsMessage::Text(message_plain) => {
+                let message = serde_json::from_str(&message_plain)?;
+                log::debug!("Received {:?}", message);
+                match message {
+                    InboundMessage::Unknown => {
+                        log::warn!("Got unknown message, ignoring: '{}'", message_plain);
+                        Ok(None)
+                    },
+                    InboundMessage::Error { error, orig: _ } => Err(RendezvousError::server(error)),
+                    message => Ok(Some(message)),
+                }
+            },
+            ws_stream_wasm::WsMessage::Binary(_) => Err(RendezvousError::protocol(
+                "WebSocket messages must be UTF-8 encoded text",
+            )),
+        }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    async fn close(&mut self) -> Result<(), ws2::Error> {
+        self.connection.close(None).await
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn close(&mut self) -> Result<ws_stream_wasm::CloseEvent, ws_stream_wasm::WsErr> {
+        self.meta.close().await
+    }
 }
 
 #[derive(Clone, Debug, derive_more::Display)]
@@ -203,6 +280,7 @@ enum RendezvousReply {
     Released,
     Claimed(Mailbox),
     Closed,
+    Nameplates(NameplateList),
 }
 
 #[derive(Clone, Debug, derive_more::Display)]
@@ -261,9 +339,23 @@ impl RendezvousServer {
         appid: &AppID,
         relay_url: &str,
     ) -> Result<(Self, Option<String>), RendezvousError> {
-        let side = MySide::generate();
-        let (connection, _) = async_tungstenite::async_std::connect_async(relay_url).await?;
-        let mut connection = WsConnection { connection };
+        let side = MySide::generate(5);
+        let mut connection;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (stream, _) = async_tungstenite::async_std::connect_async(relay_url).await?;
+            connection = WsConnection { connection: stream };
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let (meta, stream) = ws_stream_wasm::WsMeta::connect(relay_url, None).await?;
+            connection = WsConnection {
+                meta,
+                connection: stream,
+            };
+        }
 
         let welcome = match connection.receive_message_some().await? {
             InboundMessage::Welcome { welcome } => welcome,
@@ -444,6 +536,19 @@ impl RendezvousServer {
             .is_some()
     }
 
+    /**
+     * Gets the list of currently claimed nameplates.
+     * This can be called at any time.
+     */
+    pub async fn list_nameplates(&mut self) -> Result<Vec<Nameplate>, RendezvousError> {
+        self.send_message(&OutboundMessage::List).await?;
+        let nameplate_reply = self.receive_reply().await?;
+        match nameplate_reply {
+            RendezvousReply::Nameplates(x) => Ok(x.0),
+            other => Err(RendezvousError::invalid_message("nameplates", other)),
+        }
+    }
+
     pub async fn release_nameplate(&mut self) -> Result<(), RendezvousError> {
         let nameplate = &mut self
             .state
@@ -483,34 +588,37 @@ impl RendezvousServer {
         Ok(())
     }
 
-    pub async fn shutdown(mut self, mood: Mood) -> Result<(), RendezvousError> {
+    pub async fn shutdown(&mut self, mood: Mood) -> Result<(), RendezvousError> {
         if let Some(MailboxMachine {
-            nameplate,
-            mailbox,
-            mut queue,
+            ref nameplate,
+            ref mailbox,
+            ref mut queue,
             ..
         }) = self.state
         {
             if let Some(nameplate) = nameplate {
                 self.connection
-                    .send_message(&OutboundMessage::release(nameplate), Some(&mut queue))
+                    .send_message(&OutboundMessage::release(nameplate.to_owned()), Some(queue))
                     .await?;
-                match self.connection.receive_reply(Some(&mut queue)).await? {
+                match self.connection.receive_reply(Some(queue)).await? {
                     RendezvousReply::Released => (),
                     other => return Err(RendezvousError::invalid_message("released", other)),
                 };
             }
 
             self.connection
-                .send_message(&OutboundMessage::close(mailbox, mood), Some(&mut queue))
+                .send_message(
+                    &OutboundMessage::close(mailbox.to_owned(), mood),
+                    Some(queue),
+                )
                 .await?;
-            match self.connection.receive_reply(Some(&mut queue)).await? {
+            match self.connection.receive_reply(Some(queue)).await? {
                 RendezvousReply::Closed => (),
                 other => return Err(RendezvousError::invalid_message("closed", other)),
             };
         }
 
-        self.connection.connection.close(None).await?;
+        self.connection.close().await?;
         Ok(())
     }
 }

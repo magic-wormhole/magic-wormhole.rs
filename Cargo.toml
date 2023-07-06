@@ -14,7 +14,7 @@ repository = "https://github.com/magic-wormhole/magic-wormhole.rs"
 documentation = "https://docs.rs/magic-wormhole/latest/"
 license = "EUPL-1.2"
 edition = "2021"
-rust-version = "1.61" # MSRV (also change in CI)
+rust-version = "1.66" # MSRV (also change in CI)
 
 [dependencies]
 dialoguer = { version = "0.10", features = ["completion"] }
@@ -27,53 +27,71 @@ sha-1 = "0.10.0"
 sha2 = "0.10.0"
 hkdf = "0.12.2"
 hex = { version = "0.4.2", features = ["serde"] }
-rand = "0.8.3"
+rand = "0.8.0"
 log = "0.4.13"
 # zeroize = { version = "1.2.0", features = ["zeroize_derive"] }
-base64 = "0.20.0"
-futures_ringbuf = "0.3.1"
+base64 = "0.21.0"
+futures_ringbuf = "0.4.0"
+async-trait = "0.1.57"
+mockall_double = "0.3.0"
 time = { version = "0.3.7", features = ["formatting"] }
+instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 
 derive_more = { version = "0.99.0", default-features = false, features = ["display", "deref", "from"] }
 thiserror = "1.0.24"
 
 futures = "0.3.12"
-async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
-async-tungstenite = { version = "0.17.1", features = ["async-std-runtime", "async-tls"] }
-async-io = "1.6.0"
-libc = "0.2.101"
 url = { version = "2.2.2", features = ["serde"] }
 percent-encoding = { version = "2.1.0" }
 
 # Transit dependencies
 
-socket2 = { version = "0.4.1", optional = true }
-stun_codec = { version = "0.2.0", optional = true }
-if-addrs = { version = "0.7.0", optional = true }
+stun_codec = { version = "0.3.0", optional = true }
 bytecodec = { version = "0.4.15", optional = true }
-async-trait = { version = "0.1.57", optional = true }
 noise-protocol = { version = "0.1.4", optional = true }
 noise-rust-crypto = { version = "0.5.0", optional = true }
 
 # Transfer dependencies
 
-async-tar = { version = "0.4.2", optional = true }
 rmp-serde = { version = "1.0.0", optional = true }
+tar = { version = "0.4.33", optional = true }
 
 # Forwarding dependencies
 
 # rmp-serde = … # defined above
 
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+libc = "0.2.101"
+async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
+async-tungstenite = { version = "0.22.2", features = ["async-std-runtime", "async-tls"] }
+async-io = "1.6.0"
+
+# Transit
+socket2 = { version = "0.5.0", optional = true, features = ["all"] }
+if-addrs = { version = "0.10.0", optional = true }
+
+# Transfer
+
+async-tar = { version = "0.4", optional = true }
+zstd = { version = "0.11.1", optional = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-timer = "0.2.5"
+ws_stream_wasm = "0.7.3"
+getrandom = { version = "0.2.5", features = ["js"] }
+
 # for some tests
 [dev-dependencies]
 env_logger = "0.10.0"
 eyre = "0.6.5"
+mockall = "0.11.4"
 
 [features]
-transit = ["socket2", "stun_codec", "if-addrs", "bytecodec", "async-trait", "noise-protocol", "noise-rust-crypto"]
-transfer = ["transit", "async-tar", "rmp-serde"]
+transit = ["socket2", "stun_codec", "if-addrs", "bytecodec", "noise-protocol", "noise-rust-crypto"]
+transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
+dilation = ["transit"]
 forwarding = ["transit", "rmp-serde"]
-default = ["transit", "transfer"]
+default = ["transfer", "dilation"]
 all = ["default", "forwarding"]
 
 [profile.release]

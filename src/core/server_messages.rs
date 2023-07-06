@@ -244,7 +244,8 @@ pub enum InboundMessage {
     #[display(fmt = "Error {{ error: {:?}, .. }}", error)]
     Error {
         error: String,
-        orig: Box<InboundMessage>,
+        /// A copy of the original message that caused the error.
+        orig: Box<serde_json::Value>,
     },
     #[serde(other)]
     Unknown,
@@ -253,7 +254,6 @@ pub enum InboundMessage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use serde_json::{from_str, json, Value};
 
     #[test]
     fn test_bind() {
@@ -262,10 +262,10 @@ mod test {
             MySide::unchecked_from_string(String::from("side1")),
         );
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(
             m2,
-            json!({"type": "bind", "appid": "appid",
+            serde_json::json!({"type": "bind", "appid": "appid",
                    "side": "side1"})
         );
     }
@@ -274,50 +274,59 @@ mod test {
     fn test_list() {
         let m1 = OutboundMessage::List;
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
-        assert_eq!(m2, json!({"type": "list"}));
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(m2, serde_json::json!({"type": "list"}));
     }
 
     #[test]
     fn test_allocate() {
         let m1 = OutboundMessage::Allocate;
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
-        assert_eq!(m2, json!({"type": "allocate"}));
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(m2, serde_json::json!({"type": "allocate"}));
     }
 
     #[test]
     fn test_claim() {
         let m1 = OutboundMessage::claim("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
-        assert_eq!(m2, json!({"type": "claim", "nameplate": "nameplate1"}));
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            serde_json::json!({"type": "claim", "nameplate": "nameplate1"})
+        );
     }
 
     #[test]
     fn test_release() {
         let m1 = OutboundMessage::release("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
-        assert_eq!(m2, json!({"type": "release", "nameplate": "nameplate1"}));
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            serde_json::json!({"type": "release", "nameplate": "nameplate1"})
+        );
     }
 
     #[test]
     fn test_open() {
         let m1 = OutboundMessage::open(Mailbox(String::from("mailbox1")));
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
-        assert_eq!(m2, json!({"type": "open", "mailbox": "mailbox1"}));
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(
+            m2,
+            serde_json::json!({"type": "open", "mailbox": "mailbox1"})
+        );
     }
 
     #[test]
     fn test_add() {
         let m1 = OutboundMessage::add(Phase("phase1".into()), b"body".to_vec());
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(
             m2,
-            json!({"type": "add", "phase": "phase1",
+            serde_json::json!({"type": "add", "phase": "phase1",
                    "body": "626f6479"})
         ); // body is hex-encoded
     }
@@ -326,10 +335,10 @@ mod test {
     fn test_close() {
         let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(
             m2,
-            json!({"type": "close", "mailbox": "mailbox1",
+            serde_json::json!({"type": "close", "mailbox": "mailbox1",
                    "mood": "happy"})
         );
     }
@@ -338,10 +347,10 @@ mod test {
     fn test_close_errory() {
         let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Errory);
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(
             m2,
-            json!({"type": "close", "mailbox": "mailbox1",
+            serde_json::json!({"type": "close", "mailbox": "mailbox1",
                    "mood": "errory"})
         );
     }
@@ -350,10 +359,10 @@ mod test {
     fn test_close_scared() {
         let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Scared);
         let s = serde_json::to_string(&m1).unwrap();
-        let m2: Value = from_str(&s).unwrap();
+        let m2: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(
             m2,
-            json!({"type": "close", "mailbox": "mailbox1",
+            serde_json::json!({"type": "close", "mailbox": "mailbox1",
                    "mood": "scary"})
         );
     }
@@ -422,9 +431,12 @@ mod test {
                             bits: 6,
                             resource: "resource-string".into(),
                         }),
-                        other: [("dark-ritual".to_string(), json!({ "hocrux": true }))]
-                            .into_iter()
-                            .collect()
+                        other: [(
+                            "dark-ritual".to_string(),
+                            serde_json::json!({ "hocrux": true })
+                        )]
+                        .into_iter()
+                        .collect()
                     }),
                     current_cli_version: None,
                     error: None,

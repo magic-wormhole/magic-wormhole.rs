@@ -13,17 +13,20 @@
 //! and received as they come in, no additional buffering is applied. (Under the assumption that those applications
 //! that need buffering already do it on their side, and those who don't, don't.)
 
-use super::*;
-use async_std::net::{TcpListener, TcpStream};
-use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
-use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     rc::Rc,
     sync::Arc,
 };
+
+use async_std::net::{TcpListener, TcpStream};
+use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
+use serde::{Deserialize, Serialize};
+
 use transit::{TransitConnectError, TransitError};
+
+use super::*;
 
 const APPID_RAW: &str = "piegames.de/wormhole/port-forwarding";
 
@@ -41,6 +44,7 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
         transit_abilities: transit::Abilities::ALL_ABILITIES,
         other: serde_json::Value::Null,
     },
+    with_dilation: false,
 };
 
 /**
@@ -135,23 +139,23 @@ impl ForwardingError {
 /// as the value.
 pub async fn serve(
     mut wormhole: Wormhole,
-    transit_handler: impl FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    transit_handler: impl FnOnce(transit::TransitInfo),
     relay_hints: Vec<transit::RelayHint>,
     targets: Vec<(Option<url::Host>, u16)>,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
-    let our_version: &AppVersion = wormhole
-        .our_version
-        .downcast_ref()
-        .expect("You may only use a Wormhole instance with the correct AppVersion type!");
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
+    let our_version = wormhole
+        .our_version()
+        .downcast_ref::<AppVersion>()
+        .expect("You may only use a Wormhole instance with the correct AppVersion type!")
+        .to_owned();
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().to_owned())?;
     let connector = transit::init(
-        our_version.transit_abilities,
-        Some(peer_version.transit_abilities),
+        our_version.transit_abilities.clone(),
+        Some(peer_version.transit_abilities.clone()),
         relay_hints,
     )
     .await?;
-
     /* Send our transit hints */
     wormhole
         .send_json(&PeerMessage::Transit {
@@ -167,7 +171,7 @@ pub async fn serve(
                     log::warn!("It seems like you are trying to forward a remote HTTP target ('{}'). Due to HTTP being host-aware this will very likely fail!", host);
                 }
                 (format!("{}:{}", host, port), (Some(host), port))
-            },
+            }
             None => (port.to_string(), (host, port)),
         })
         .collect();
@@ -190,7 +194,7 @@ pub async fn serve(
         },
     };
 
-    let (mut transit, info, addr) = match connector
+    let (mut transit, info) = match connector
         .leader_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
@@ -207,7 +211,7 @@ pub async fn serve(
             return Err(error);
         },
     };
-    transit_handler(info, addr);
+    transit_handler(info);
 
     /* We got a transit, now close the Wormhole */
     wormhole.close().await?;
@@ -518,16 +522,16 @@ impl ForwardingServe {
 /// no more than 1024 ports may be forwarded at once.
 pub async fn connect(
     mut wormhole: Wormhole,
-    transit_handler: impl FnOnce(transit::TransitInfo, std::net::SocketAddr),
+    transit_handler: impl FnOnce(transit::TransitInfo),
     relay_hints: Vec<transit::RelayHint>,
     bind_address: Option<std::net::IpAddr>,
     custom_ports: &[u16],
 ) -> Result<ConnectOffer, ForwardingError> {
     let our_version: &AppVersion = wormhole
-        .our_version
+        .our_version()
         .downcast_ref()
         .expect("You may only use a Wormhole instance with the correct AppVersion type!");
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().to_owned())?;
     let connector = transit::init(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),
@@ -561,7 +565,7 @@ pub async fn connect(
         },
     };
 
-    let (mut transit, info, addr) = match connector
+    let (mut transit, info) = match connector
         .follower_connect(
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
@@ -578,7 +582,7 @@ pub async fn connect(
             return Err(error);
         },
     };
-    transit_handler(info, addr);
+    transit_handler(info);
 
     /* We got a transit, now close the Wormhole */
     wormhole.close().await?;

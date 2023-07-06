@@ -1,18 +1,24 @@
-pub(super) mod key;
-pub mod rendezvous;
-mod server_messages;
-#[cfg(test)]
-mod test;
-pub mod wordlist;
+use std::{any::Any, borrow::Cow};
 
+use crate::core::protocol::{WormholeProtocol, WormholeProtocolDefault};
+#[cfg(feature = "dilation")]
+use crate::dilation::DilatedWormhole;
+use log::*;
+use serde;
 use serde_derive::{Deserialize, Serialize};
-use std::borrow::Cow;
+use serde_json::Value;
+use xsalsa20poly1305 as secretbox;
 
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
-use log::*;
 
-use xsalsa20poly1305 as secretbox;
+pub(super) mod key;
+pub(crate) mod protocol;
+pub mod rendezvous;
+mod server_messages;
+#[cfg(test)]
+pub(crate) mod test;
+mod wordlist;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -42,6 +48,10 @@ pub enum WormholeError {
     PakeFailed,
     #[error("Cannot decrypt a received message")]
     Crypto,
+    #[error("Nameplate is unclaimed: {}", _0)]
+    UnclaimedNameplate(Nameplate),
+    #[error("Dilation version mismatch")]
+    DilationVersion,
 }
 
 impl WormholeError {
@@ -61,6 +71,10 @@ impl From<std::convert::Infallible> for WormholeError {
  * The result of the client-server handshake
  */
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[deprecated(
+    since = "0.7.0",
+    note = "part of the response of `Wormhole::connect_without_code(...)` and `Wormhole::connect_with_code(...) please use 'MailboxConnection::create(...)`/`MailboxConnection::connect(..)` and `Wormhole::connect(mailbox_connection)' instead"
+)]
 pub struct WormholeWelcome {
     /** A welcome message from the server (think of "message of the day"). Should be displayed to the user if present. */
     pub welcome: Option<String>,
@@ -73,9 +87,8 @@ pub struct WormholeWelcome {
  * You can send and receive arbitrary messages in form of byte slices over it, using [`Wormhole::send`] and [`Wormhole::receive`].
  * Everything else (including encryption) will be handled for you.
  *
- * To create a wormhole, use the [`Wormhole::connect_without_code`], [`Wormhole::connect_with_code`] etc. methods, depending on
- * which values you have. Typically, the sender side connects without a code (which will create one), and the receiver side
- * has one (the user entered it, who got it from the sender).
+ * To create a wormhole, use the mailbox connection created via [`MailboxConnection::create`] or [`MailboxConnection::connect*`] with the [`Wormhole::connect`] method.
+ * Typically, the sender side connects without a code (which will create one), and the receiver side has one (the user entered it, who got it from the sender).
  *
  * # Clean shutdown
  *
@@ -85,38 +98,162 @@ pub struct WormholeWelcome {
  * Maybe a better way to handle application level protocols is to create a trait for them and then
  * to paramterize over them.
  */
+
+/// A `MailboxConnection` contains a `RendezvousServer` which is connected to the mailbox
+pub struct MailboxConnection<V: serde::Serialize + Send + Sync + 'static> {
+    /// A copy of `AppConfig`,
+    config: AppConfig<V>,
+    /// The `RendezvousServer` with an open mailbox connection
+    server: RendezvousServer,
+    /// The welcome message received from the mailbox server
+    pub welcome: Option<String>,
+    /// The mailbox id of the created mailbox
+    pub mailbox: Mailbox,
+    /// The Code which is required to connect to the mailbox.
+    pub code: Code,
+}
+
+impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
+    /// Create a connection to a mailbox which is configured with a `Code` starting with the nameplate and by a given number of wordlist based random words.
+    ///
+    /// # Arguments
+    ///
+    /// * `config`: Application configuration
+    /// * `code_length`: number of words used for the password. The words are taken from the default wordlist.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// use magic_wormhole::{transfer::APP_CONFIG, AppConfig, MailboxConnection};
+    /// let config = APP_CONFIG;
+    /// let mailbox_connection = MailboxConnection::create(config, 2).await?;
+    /// # Ok(()) })}
+    /// ```
+    pub async fn create(config: AppConfig<V>, code_length: usize) -> Result<Self, WormholeError> {
+        Self::create_with_password(
+            config,
+            &wordlist::default_wordlist(code_length).choose_words(),
+        )
+        .await
+    }
+
+    /// Create a connection to a mailbox which is configured with a `Code` containing the nameplate and the given password.
+    ///
+    /// # Arguments
+    ///
+    /// * `config`: Application configuration
+    /// * `password`: Free text password which will be appended to the nameplate number to form the `Code`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection};
+    /// let config = APP_CONFIG;
+    /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret").await?;
+    /// # Ok(()) })}
+    /// ```
+    pub async fn create_with_password(
+        config: AppConfig<V>,
+        password: &str,
+    ) -> Result<Self, WormholeError> {
+        let (mut server, welcome) =
+            RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
+        let (nameplate, mailbox) = server.allocate_claim_open().await?;
+        let code = Code::new(&nameplate, &password);
+
+        Ok(MailboxConnection {
+            config,
+            server,
+            mailbox,
+            code,
+            welcome,
+        })
+    }
+
+    /// Create a connection to a mailbox defined by a `Code` which contains the `Nameplate` and the password to authorize the access.
+    ///
+    /// # Arguments
+    ///
+    /// * `config`: Application configuration
+    /// * `code`: The `Code` required to authorize to connect to an existing mailbox.
+    /// * `allocate`: `true`: Allocates a `Nameplate` if it does not exist.
+    ///               `false`: The call fails with a `WormholeError::UnclaimedNameplate` when the `Nameplate` does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// use magic_wormhole::{transfer::APP_CONFIG, Code, MailboxConnection, Nameplate};
+    /// let config = APP_CONFIG;
+    /// let code = Code::new(&Nameplate::new("5"), "password");
+    /// let mut mailbox_connection = MailboxConnection::connect(config, code, false).await?;
+    /// # Ok(()) })}
+    /// ```
+    pub async fn connect(
+        config: AppConfig<V>,
+        code: Code,
+        allocate: bool,
+    ) -> Result<Self, WormholeError> {
+        let (mut server, welcome) =
+            RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
+        let nameplate = code.nameplate();
+        if !allocate {
+            let nameplates = server.list_nameplates().await?;
+            if !nameplates.contains(&nameplate) {
+                server.shutdown(Mood::Errory).await?;
+                return Err(WormholeError::UnclaimedNameplate(nameplate));
+            }
+        }
+        let mailbox = server.claim_open(nameplate).await?;
+
+        Ok(MailboxConnection {
+            config,
+            server,
+            mailbox,
+            code,
+            welcome,
+        })
+    }
+
+    /// Shut down the connection to the mailbox
+    ///
+    /// # Arguments
+    ///
+    /// * `mood`: `Mood` should give a hint of the reason of the shutdown
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> eyre::Result<()> { use magic_wormhole::WormholeError;
+    /// async_std::task::block_on(async {
+    /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection, Mood};
+    /// let config = APP_CONFIG;
+    /// let mut mailbox_connection = MailboxConnection::create_with_password(config, "secret")
+    ///     .await?;
+    /// mailbox_connection.shutdown(Mood::Happy).await?;
+    /// # Ok(())})}
+    /// ```
+    pub async fn shutdown(&mut self, mood: Mood) -> Result<(), WormholeError> {
+        self.server
+            .shutdown(mood)
+            .await
+            .map_err(WormholeError::ServerError)
+    }
+}
+
 #[derive(Debug)]
 pub struct Wormhole {
-    server: RendezvousServer,
-    phase: u64,
-    key: key::Key<key::WormholeKey>,
-    appid: AppID,
-    /**
-     * If you're paranoid, let both sides check that they calculated the same verifier.
-     *
-     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
-     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
-     * the passwords usually are not of hight entropy, there is a low-probability possible of
-     * an attacker guessing the password correctly, enabling them to MitM the connection.
-     *
-     * Not only is that probability low, but they also have only one try per connection and a failed
-     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
-     * attack vector.
-     */
-    pub verifier: Box<secretbox::Key>,
-    /**
-     * Our "app version" information that we sent. See the [`peer_version`] for more information.
-     */
-    pub our_version: Box<dyn std::any::Any + Send + Sync>,
-    /**
-     * Protocol version information from the other side.
-     * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
-     * (e.g. by the file transfer API).
-     */
-    pub peer_version: serde_json::Value,
+    protocol: Box<dyn WormholeProtocol>,
 }
 
 impl Wormhole {
+    #[cfg(test)]
+    pub fn new(protocol: Box<dyn WormholeProtocol>) -> Self {
+        Wormhole { protocol }
+    }
+
     /**
      * Generate a code and connect to the rendezvous server.
      *
@@ -126,6 +263,11 @@ impl Wormhole {
      * do the rest of the client-client handshake and yield the [`Wormhole`] object
      * on success.
      */
+    #[deprecated(
+        since = "0.7.0",
+        note = "please use 'MailboxConnection::create(...) and Wormhole::connect(mailbox_connection)' instead"
+    )]
+    #[allow(deprecated)]
     pub async fn connect_without_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code_length: usize,
@@ -136,77 +278,56 @@ impl Wormhole {
         ),
         WormholeError,
     > {
-        let AppConfig {
-            id: appid,
-            rendezvous_url,
-            app_version: versions,
-        } = config;
-        let (mut server, welcome) = RendezvousServer::connect(&appid, &rendezvous_url).await?;
-        let (nameplate, mailbox) = server.allocate_claim_open().await?;
-        log::debug!("Connected to mailbox {}", mailbox);
-
-        let code = Code::new(
-            &nameplate,
-            &wordlist::default_wordlist(code_length).choose_words(),
-        );
-
+        let mailbox_connection = MailboxConnection::create(config, code_length).await?;
         Ok((
             WormholeWelcome {
-                welcome,
-                code: code.clone(),
+                welcome: mailbox_connection.welcome.clone(),
+                code: mailbox_connection.code.clone(),
             },
-            Self::connect_custom(server, appid, code.0, versions),
+            Self::connect(mailbox_connection),
         ))
     }
 
     /**
      * Connect to a peer with a code.
      */
+    #[deprecated(
+        since = "0.7.0",
+        note = "please use 'MailboxConnection::connect(...) and Wormhole::connect(mailbox_connection)' instead"
+    )]
+    #[allow(deprecated)]
     pub async fn connect_with_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
+        expect_claimed_nameplate: bool,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
-        let AppConfig {
-            id: appid,
-            rendezvous_url,
-            app_version: versions,
-        } = config;
-        let (mut server, welcome) = RendezvousServer::connect(&appid, &rendezvous_url).await?;
-
-        let nameplate = code.nameplate();
-        let mailbox = server.claim_open(nameplate).await?;
-        log::debug!("Connected to mailbox {}", mailbox);
-
-        Ok((
+        let mailbox_connection =
+            MailboxConnection::connect(config, code.clone(), !expect_claimed_nameplate).await?;
+        return Ok((
             WormholeWelcome {
-                welcome,
-                code: code.clone(),
+                welcome: mailbox_connection.welcome.clone(),
+                code: code,
             },
-            Self::connect_custom(server, appid, code.0, versions).await?,
-        ))
+            Self::connect(mailbox_connection).await?,
+        ));
     }
 
-    /** TODO */
-    pub async fn connect_with_seed() {
-        todo!()
-    }
-
-    /// Do only the client-client part of the connection setup
+    /// Set up a Wormhole which is the client-client part of the connection setup
     ///
-    /// The rendezvous server must already have an opened mailbox.
-    ///
-    /// # Panics
-    ///
-    /// If the [`RendezvousServer`] is not properly initialized, i.e. if the
-    /// mailbox is not open.
-    pub async fn connect_custom(
-        mut server: RendezvousServer,
-        appid: AppID,
-        password: String,
-        app_versions: impl serde::Serialize + Send + Sync + 'static,
+    /// The MailboxConnection already contains a rendezvous server with an opened mailbox.
+    pub async fn connect(
+        mailbox_connection: MailboxConnection<impl serde::Serialize + Send + Sync + 'static>,
     ) -> Result<Self, WormholeError> {
+        let MailboxConnection {
+            config,
+            mut server,
+            mailbox: _mailbox,
+            code,
+            welcome: _welcome,
+        } = mailbox_connection;
+
         /* Send PAKE */
-        let (pake_state, pake_msg_ser) = key::make_pake(&password, &appid);
+        let (pake_state, pake_msg_ser) = key::make_pake(&code.0, &config.id);
         server.send_peer_message(Phase::PAKE, pake_msg_ser).await?;
 
         /* Receive PAKE */
@@ -218,7 +339,11 @@ impl Wormhole {
 
         /* Send versions message */
         let mut versions = key::VersionsMessage::new();
-        versions.set_app_versions(serde_json::to_value(&app_versions).unwrap());
+        versions.set_app_versions(serde_json::to_value(&config.app_version).unwrap());
+        #[cfg(feature = "dilation")]
+        if config.with_dilation {
+            versions.enable_dilation();
+        }
         let (version_phase, version_msg) = key::build_version_msg(server.side(), &key, &versions);
         server.send_peer_message(version_phase, version_msg).await?;
         let peer_version = server.next_peer_message_some().await?;
@@ -241,26 +366,33 @@ impl Wormhole {
 
         /* We are now fully initialized! Up and running! :tada: */
         Ok(Self {
-            server,
-            appid,
-            phase: 0,
-            key: key::Key::new(key.into()),
-            verifier: Box::new(key::derive_verifier(&key)),
-            our_version: Box::new(app_versions),
-            peer_version,
+            protocol: Box::new(WormholeProtocolDefault::new(
+                server,
+                config,
+                key::Key::new(key.into()),
+                peer_version,
+            )),
         })
     }
 
-    /** Send an encrypted message to peer */
-    pub async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
-        let phase_string = Phase::numeric(self.phase);
-        self.phase += 1;
-        let data_key = key::derive_phase_key(self.server.side(), &self.key, &phase_string);
-        let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
-        self.server
-            .send_peer_message(phase_string, encrypted)
-            .await?;
-        Ok(())
+    /** TODO */
+    pub async fn connect_with_seed() {
+        todo!()
+    }
+
+    /**
+     * create a dilated wormhole
+     */
+    #[cfg(feature = "dilation")]
+    pub fn dilate(self) -> Result<DilatedWormhole, WormholeError> {
+        // XXX: create endpoints?
+        // get versions from the other side and check if they support dilation.
+        let can_they_dilate = &self.protocol.peer_version()["can-dilate"];
+        if !can_they_dilate.is_null() && can_they_dilate[0] != "1" {
+            return Err(WormholeError::DilationVersion);
+        }
+
+        Ok(DilatedWormhole::new(self, MySide::generate(8)))
     }
 
     /**
@@ -273,33 +405,21 @@ impl Wormhole {
      *
      * If the serialization fails
      */
-    pub async fn send_json<T: serde::Serialize>(
+    pub async fn send_json<T: serde::Serialize + Send + Sync + 'static>(
         &mut self,
         message: &T,
     ) -> Result<(), WormholeError> {
-        self.send(serde_json::to_vec(message).unwrap()).await
+        self.send_json_with_phase(message, Phase::numeric).await
     }
 
-    /** Receive an encrypted message from peer */
-    pub async fn receive(&mut self) -> Result<Vec<u8>, WormholeError> {
-        loop {
-            let peer_message = match self.server.next_peer_message().await? {
-                Some(peer_message) => peer_message,
-                None => continue,
-            };
-            if peer_message.phase.to_num().is_none() {
-                // TODO: log and ignore, for future expansion
-                todo!("log and ignore, for future expansion");
-            }
-
-            // TODO maybe reorder incoming messages by phase numeral?
-            let decrypted_message = peer_message
-                .decrypt(&self.key)
-                .ok_or(WormholeError::Crypto)?;
-
-            // Send to client
-            return Ok(decrypted_message);
-        }
+    pub async fn send_json_with_phase<T: serde::Serialize + Send + Sync + 'static>(
+        &mut self,
+        message: &T,
+        phase_provider: PhaseProvider,
+    ) -> Result<(), WormholeError> {
+        self.protocol
+            .send_with_phase(serde_json::to_vec(message).unwrap(), phase_provider)
+            .await
     }
 
     /**
@@ -313,7 +433,7 @@ impl Wormhole {
     where
         T: for<'a> serde::Deserialize<'a>,
     {
-        self.receive().await.map(|data: Vec<u8>| {
+        self.protocol.receive().await.map(|data: Vec<u8>| {
             serde_json::from_slice(&data).map_err(|e| {
                 log::error!(
                     "Received invalid data from peer: '{}'",
@@ -324,9 +444,8 @@ impl Wormhole {
         })
     }
 
-    pub async fn close(self) -> Result<(), WormholeError> {
-        log::debug!("Closing Wormhole…");
-        self.server.shutdown(Mood::Happy).await.map_err(Into::into)
+    pub async fn close(&mut self) -> Result<(), WormholeError> {
+        self.protocol.close().await
     }
 
     /**
@@ -334,7 +453,7 @@ impl Wormhole {
      * This determines the upper-layer protocol. Only wormholes with the same value can talk to each other.
      */
     pub fn appid(&self) -> &AppID {
-        &self.appid
+        self.protocol.appid()
     }
 
     /**
@@ -342,13 +461,29 @@ impl Wormhole {
      * Can be used to derive sub-keys for different purposes.
      */
     pub fn key(&self) -> &key::Key<key::WormholeKey> {
-        &self.key
+        self.protocol.key()
+    }
+
+    pub fn peer_version(&self) -> &Value {
+        self.protocol.peer_version()
+    }
+
+    pub fn our_version(&self) -> &Box<dyn Any + Send + Sync> {
+        &self.protocol.our_version()
     }
 }
 
 // the serialized forms of these variants are part of the wire protocol, so
 // they must be spelled exactly as shown
-#[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize, derive_more::Display)]
+#[derive(
+    Debug,
+    PartialEq,
+    Copy,
+    Clone,
+    serde_derive::Deserialize,
+    serde_derive::Serialize,
+    derive_more::Display,
+)]
 pub enum Mood {
     #[serde(rename = "happy")]
     Happy,
@@ -362,8 +497,10 @@ pub enum Mood {
     Unwelcome,
 }
 
+pub const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
+
 /**
- * Wormhole configuration corresponding to an uppler layer protocol
+ * Wormhole configuration corresponding to an upper layer protocol
  *
  * There are multiple different protocols built on top of the core
  * Wormhole protocol. They are identified by a unique URI-like ID string
@@ -374,13 +511,14 @@ pub enum Mood {
  * See [`crate::transfer::APP_CONFIG`], which entails
  */
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct AppConfig<V> {
+pub struct AppConfig<V: serde::Serialize> {
     pub id: AppID,
     pub rendezvous_url: Cow<'static, str>,
     pub app_version: V,
+    pub with_dilation: bool,
 }
 
-impl<V> AppConfig<V> {
+impl<V: serde::Serialize> AppConfig<V> {
     pub fn id(mut self, id: AppID) -> Self {
         self.id = id;
         self
@@ -390,9 +528,12 @@ impl<V> AppConfig<V> {
         self.rendezvous_url = rendezvous_url;
         self
     }
-}
 
-impl<V: serde::Serialize> AppConfig<V> {
+    pub fn with_dilation(mut self, with_dilation: bool) -> Self {
+        self.with_dilation = with_dilation;
+        self
+    }
+
     pub fn app_version(mut self, app_version: V) -> Self {
         self.app_version = app_version;
         self
@@ -424,17 +565,25 @@ impl From<String> for AppID {
 
 // MySide is used for the String that we send in all our outbound messages
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "MySide({})", "&*_0")]
 pub struct MySide(EitherSide);
 
 impl MySide {
-    pub fn generate() -> MySide {
+    pub fn generate(length: usize) -> MySide {
         use rand::{rngs::OsRng, RngCore};
 
-        let mut bytes: [u8; 5] = [0; 5];
+        let mut bytes = vec![0; length];
         OsRng.fill_bytes(&mut bytes);
 
         MySide(EitherSide(hex::encode(bytes)))
@@ -450,7 +599,15 @@ impl MySide {
 
 // TheirSide is used for the string that arrives inside inbound messages
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "TheirSide({})", "&*_0")]
@@ -463,7 +620,15 @@ impl<S: Into<String>> From<S> for TheirSide {
 }
 
 #[derive(
-    PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
+    PartialOrd,
+    PartialEq,
+    Eq,
+    Clone,
+    Debug,
+    Deserialize,
+    Serialize,
+    derive_more::Display,
+    derive_more::Deref,
 )]
 #[serde(transparent)]
 #[deref(forward)]
@@ -473,6 +638,12 @@ pub struct EitherSide(pub String);
 impl<S: Into<String>> From<S> for EitherSide {
     fn from(s: S) -> EitherSide {
         EitherSide(s.into())
+    }
+}
+
+impl From<MySide> for TheirSide {
+    fn from(side: MySide) -> TheirSide {
+        TheirSide(side.0.into())
     }
 }
 
@@ -488,6 +659,10 @@ impl Phase {
         Phase(phase.to_string().into())
     }
 
+    pub fn dilation(phase: u64) -> Self {
+        Phase(format!("dilate-{}", phase.to_string()).to_string().into())
+    }
+
     pub fn is_version(&self) -> bool {
         self == &Self::VERSION
     }
@@ -498,6 +673,8 @@ impl Phase {
         self.0.parse().ok()
     }
 }
+
+type PhaseProvider = fn(u64) -> Phase;
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
@@ -510,6 +687,7 @@ pub struct Mailbox(pub String);
 #[deref(forward)]
 #[display(fmt = "{}", _0)]
 pub struct Nameplate(pub String);
+
 impl Nameplate {
     pub fn new(n: &str) -> Self {
         Nameplate(String::from(n))
@@ -547,4 +725,16 @@ impl Code {
     pub fn nameplate(&self) -> Nameplate {
         Nameplate::new(self.0.split('-').next().unwrap())
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Ability {
+    DirectTcpV1,
+    RelayV1,
+    RelayV2,
+    #[cfg(all())]
+    NoiseCryptoV1,
+    #[serde(other)]
+    Other,
 }

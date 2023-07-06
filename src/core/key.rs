@@ -102,22 +102,41 @@ pub fn make_pake(password: &str, appid: &AppID) -> (Spake2<Ed25519Group>, Vec<u8
     (pake_state, pake_msg_ser)
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct VersionsMessage {
     #[serde(default)]
     pub abilities: Vec<String>,
-    #[serde(default)]
+    //#[serde(default)]
+    pub can_dilate: Option<[Cow<'static, str>; 1]>,
+    //#[serde(default)]
+    pub dilation_abilities: Option<Cow<'static, [Ability; 2]>>,
+    //#[serde(default)]
+    #[serde(rename = "app_versions")]
     pub app_versions: serde_json::Value,
     // resume: Option<WormholeResume>,
 }
 
 impl VersionsMessage {
     pub fn new() -> Self {
-        Default::default()
+        // Default::default()
+        Self {
+            abilities: vec![],
+            can_dilate: None,
+            dilation_abilities: Some(std::borrow::Cow::Borrowed(&[
+                Ability::DirectTcpV1,
+                Ability::RelayV1,
+            ])),
+            app_versions: serde_json::Value::Null,
+        }
     }
 
     pub fn set_app_versions(&mut self, versions: serde_json::Value) {
         self.app_versions = versions;
+    }
+
+    pub fn enable_dilation(&mut self) {
+        self.can_dilate = Some([std::borrow::Cow::Borrowed("1")])
     }
 
     // pub fn add_resume_ability(&mut self, _resume: ()) {
@@ -362,4 +381,15 @@ mod test {
     //         None => panic!(),
     //     }
     // }
+
+    #[test]
+    fn test_versions_message_can_dilate() {
+        let mut message = VersionsMessage::new();
+
+        assert_eq!(message.can_dilate, None);
+
+        message.enable_dilation();
+
+        assert_eq!(message.can_dilate, Some([std::borrow::Cow::Borrowed("1")]));
+    }
 }
