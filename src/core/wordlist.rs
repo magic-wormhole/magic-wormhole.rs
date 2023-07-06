@@ -167,10 +167,10 @@ mod test {
         ];
 
         let w = Wordlist::new(2, words);
-        assert_eq!(w.get_completions(""), vec!["green-", "purple-", "yellow-"]);
-        assert_eq!(w.get_completions("pur"), vec!["purple-"]);
-        assert_eq!(w.get_completions("blu"), Vec::<String>::new());
-        assert_eq!(w.get_completions("purple-sa"), vec!["purple-sausages"]);
+        assert_eq!(w.get(""), vec!["green-", "purple-", "yellow-"]);
+        assert_eq!(w.get("pur"), vec!["purple-"]);
+        assert_eq!(w.get("blu"), Vec::<String>::new());
+        assert_eq!(w.get("purple-sa"), vec!["purple-sausages"]);
     }
 
     #[test]
