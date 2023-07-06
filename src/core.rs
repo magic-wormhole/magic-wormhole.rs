@@ -3,7 +3,7 @@ pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
 mod test;
-mod wordlist;
+pub mod wordlist;
 
 use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;

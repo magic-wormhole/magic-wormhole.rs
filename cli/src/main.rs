@@ -15,6 +15,7 @@ use console::{style, Term};
 use dialoguer::{Completion, Input};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
+use magic_wormhole::PgpWordList;
 use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::{
     collections::HashMap,
@@ -702,52 +703,6 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
             .progress_chars("#>-"),
     );
     pb
-}
-
-struct PgpWordList {
-    even_words: Vec<String>,
-    odd_words: Vec<String>,
-}
-
-impl Default for PgpWordList {
-    fn default() -> Self {
-        let json = fs::read_to_string("./src/core/pgpwords.json").unwrap();
-        let word_map: HashMap<String, Vec<String>> = serde_json::from_str(&json).unwrap();
-        let mut even_words: Vec<String> = vec![];
-        let mut odd_words: Vec<String> = vec![];
-        for (_idx, words) in word_map {
-            even_words.push(words[0].to_lowercase());
-            odd_words.push(words[1].to_lowercase());
-        }
-
-        PgpWordList {
-            even_words,
-            odd_words,
-        }
-    }
-}
-
-impl Completion for PgpWordList {
-    fn get(&self, input: &str) -> Option<String> {
-        let count = input.matches("-").count();
-        // we start with the odd words
-        let word_list: Vec<String> = if count % 2 == 0 {
-            self.odd_words.clone()
-        } else {
-            self.even_words.clone()
-        };
-
-        let matches = word_list
-            .iter()
-            .filter(|word| word.starts_with(input))
-            .collect::<Vec<_>>();
-
-        if matches.len() == 1 {
-            Some(matches[0].to_string())
-        } else {
-            None
-        }
-    }
 }
 
 fn enter_code() -> eyre::Result<String> {

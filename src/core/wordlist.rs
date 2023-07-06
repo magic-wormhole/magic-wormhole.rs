@@ -2,59 +2,16 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
 
-#[derive(PartialEq)]
-pub struct Wordlist {
-    pub num_words: usize,
+use dialoguer::Completion;
+use std::collections::HashMap;
+use std::fs;
+
+pub struct PgpWordList {
     words: Vec<Vec<String>>,
+    num_words: usize,
 }
 
-impl fmt::Debug for Wordlist {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Wordlist ( {}, lots of words...)", self.num_words)
-    }
-}
-
-impl Wordlist {
-    #[cfg(test)]
-    pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
-        Wordlist { num_words, words }
-    }
-
-    #[allow(dead_code)] // TODO make this API public one day
-    pub fn get_completions(&self, prefix: &str) -> Vec<String> {
-        let count_dashes = prefix.matches('-').count();
-        let mut completions = Vec::new();
-        let words = &self.words[count_dashes % self.words.len()];
-
-        let last_partial_word = prefix.split('-').last();
-        let lp = if let Some(w) = last_partial_word {
-            w.len()
-        } else {
-            0
-        };
-
-        for word in words {
-            let mut suffix: String = prefix.to_owned();
-            if word.starts_with(last_partial_word.unwrap()) {
-                if lp == 0 {
-                    suffix.push_str(&word);
-                } else {
-                    let p = prefix.len() - lp;
-                    suffix.truncate(p as usize);
-                    suffix.push_str(&word);
-                }
-
-                if count_dashes + 1 < self.num_words {
-                    suffix.push_str("-");
-                }
-
-                completions.push(suffix);
-            }
-        }
-        completions.sort();
-        completions
-    }
-
+impl PgpWordList {
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng;
         let components: Vec<String>;
@@ -66,6 +23,68 @@ impl Wordlist {
             .map(|words| words.choose(&mut rng).unwrap().to_string())
             .collect();
         components.join("-")
+    }
+}
+
+impl Default for PgpWordList {
+    fn default() -> Self {
+        let json = fs::read_to_string("./src/core/pgpwords.json").unwrap();
+        let word_map: HashMap<String, Vec<String>> = serde_json::from_str(&json).unwrap();
+        let mut even_words: Vec<String> = vec![];
+        let mut odd_words: Vec<String> = vec![];
+        for (_idx, words) in word_map {
+            even_words.push(words[0].to_lowercase());
+            odd_words.push(words[1].to_lowercase());
+        }
+        let words = vec![even_words, odd_words];
+
+        PgpWordList {
+            words: words.clone(),
+            num_words: words.len(),
+        }
+    }
+}
+
+impl Completion for PgpWordList {
+    fn get(&self, input: &str) -> Option<String> {
+        let count_dashes = input.matches('-').count();
+        let mut completions = Vec::new();
+        let words = &self.words[count_dashes % self.words.len()];
+
+        let last_partial_word = input.split('-').last();
+        let lp = if let Some(w) = last_partial_word {
+            w.len()
+        } else {
+            0
+        };
+
+        for word in words {
+            let mut suffix: String = input.to_owned();
+            if word.starts_with(last_partial_word.unwrap()) {
+                if lp == 0 {
+                    suffix.push_str(&word);
+                } else {
+                    let p = input.len() - lp;
+                    suffix.truncate(p as usize);
+                    suffix.push_str(&word);
+                }
+
+                if count_dashes + 1 < self.num_words {
+                    suffix.push_str("-");
+                }
+
+                completions.push(suffix);
+            }
+        }
+        if completions.len() == 1 {
+            Some(completions.first().unwrap().clone())
+        } else if completions.len() == 0 {
+            None
+        } else {
+            // TODO: show vector of suggestions somehow
+            // println!("Suggestions: {:#?}", &completions);
+            None
+        }
     }
 }
 
@@ -97,8 +116,8 @@ fn load_pgpwords() -> Vec<Vec<String>> {
     vec![even_words, odd_words]
 }
 
-pub fn default_wordlist(num_words: usize) -> Wordlist {
-    Wordlist {
+pub fn default_wordlist(num_words: usize) -> PgpWordList {
+    PgpWordList {
         num_words,
         words: load_pgpwords(),
     }
