@@ -41,9 +41,9 @@ pub mod uri;
 
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
+    rendezvous,
     wordlist::PgpWordList,
-    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole,
-    WormholeError,
+    AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole, WormholeError,
 };
 
 #[cfg(feature = "dilation")]

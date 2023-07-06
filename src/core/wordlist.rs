@@ -3,8 +3,7 @@ use serde_json::{self, Value};
 use std::fmt;
 
 use dialoguer::Completion;
-use std::collections::HashMap;
-use std::fs;
+use std::{collections::HashMap, fs};
 
 pub struct PgpWordList {
     words: Vec<Vec<String>>,
@@ -14,7 +13,7 @@ pub struct PgpWordList {
 impl PgpWordList {
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng;
-        
+
         let components: Vec<String> = self
             .words
             .iter()

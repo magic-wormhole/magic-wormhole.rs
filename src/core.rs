@@ -18,7 +18,7 @@ pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
 pub(crate) mod test;
-mod wordlist;
+pub mod wordlist;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

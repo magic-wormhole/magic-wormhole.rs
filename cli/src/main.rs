@@ -8,17 +8,14 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
-use dialoguer::{Input};
+use dialoguer::Input;
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use magic_wormhole::PgpWordList;
-use magic_wormhole::{forwarding, transfer, transit, Wormhole};
 use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-
-use std::{io::Write, path::PathBuf};
 
 use magic_wormhole::{
     dilated_transfer, forwarding, transfer, transit, MailboxConnection, Wormhole,
@@ -1069,15 +1066,14 @@ async fn receive_inner_v1(
         .truncate(true)
         .open(&file_path)
         .await?;
-    req
-        .accept(
-            &transit::log_transit_connection,
-            &mut file,
-            create_progress_handler(pb),
-            ctrl_c(),
-        )
-        .await
-        .context("Receive process failed")
+    req.accept(
+        &transit::log_transit_connection,
+        &mut file,
+        create_progress_handler(pb),
+        ctrl_c(),
+    )
+    .await
+    .context("Receive process failed")
 }
 
 async fn receive_inner_v2(
