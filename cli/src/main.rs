@@ -766,7 +766,7 @@ fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
 }
 
 fn enter_code() -> eyre::Result<String> {
-    let completion = PgpWordList::default();
+    let completion = WordList::default();
     let input = Input::new()
         .with_prompt("Enter code")
         .completion_with(&completion)
@@ -1178,6 +1178,77 @@ async fn receive_inner_v2(
     Ok(())
 }
 
+use dialoguer::Completion;
+use magic_wormhole::core::wordlist;
+use std::collections::HashMap;
+use std::fs;
+
+struct WordList(PgpWordList);
+
+impl Default for WordList {
+    fn default() -> Self {
+        let json = fs::read_to_string("./src/core/pgpwords.json").unwrap();
+        let word_map: HashMap<String, Vec<String>> = serde_json::from_str(&json).unwrap();
+        let mut even_words: Vec<String> = vec![];
+        let mut odd_words: Vec<String> = vec![];
+        for (_idx, words) in word_map {
+            even_words.push(words[0].to_lowercase());
+            odd_words.push(words[1].to_lowercase());
+        }
+        let words = vec![even_words, odd_words];
+
+        WordList {
+            0: PgpWordList {
+                words: words.clone(),
+                num_words: words.len(),
+            },
+        }
+    }
+}
+
+impl Completion for WordList {
+    fn get(&self, input: &str) -> Option<String> {
+        let count_dashes = input.matches('-').count();
+        let mut completions = Vec::new();
+        let words = &self.0.words[count_dashes % self.0.words.len()];
+
+        let last_partial_word = input.split('-').last();
+        let lp = if let Some(w) = last_partial_word {
+            w.len()
+        } else {
+            0
+        };
+
+        for word in words {
+            let mut suffix: String = input.to_owned();
+            if word.starts_with(last_partial_word.unwrap()) {
+                if lp == 0 {
+                    suffix.push_str(word);
+                } else {
+                    let p = input.len() - lp;
+                    suffix.truncate(p);
+                    suffix.push_str(word);
+                }
+
+                if count_dashes + 1 < self.0.num_words {
+                    suffix.push('-');
+                }
+
+                completions.push(suffix);
+            }
+        }
+        if completions.len() == 1 {
+            Some(completions.first().unwrap().clone())
+        } else if completions.is_empty() {
+            None
+        } else {
+            // TODO: show vector of suggestions somehow
+            // println!("Suggestions: {:#?}", &completions);
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1194,5 +1265,22 @@ mod test {
             clap_complete::generate(*shell, &mut cmd, &binary_name, &mut out);
             String::from_utf8(out).unwrap();
         }
+    }
+
+    #[test]
+    fn test_passphrase_completion() {
+        let words: Vec<Vec<String>> = vec![
+            wordlist::vecstrings("purple green yellow"),
+            wordlist::vecstrings("sausages seltzer snobol"),
+        ];
+
+        let w = WordList(PgpWordList {
+            words,
+            num_words: 2,
+        });
+        assert_eq!(w.get(""), None);
+        assert_eq!(w.get("pur").unwrap(), "purple-");
+        assert_eq!(w.get("blu"), None);
+        assert_eq!(w.get("purple-sa").unwrap(), "purple-sausages");
     }
 }

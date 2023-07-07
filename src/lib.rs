@@ -25,7 +25,7 @@
 
 #[macro_use]
 mod util;
-mod core;
+pub mod core;
 #[cfg(feature = "dilation")]
 pub mod dilated_transfer;
 #[cfg(feature = "dilation")]
