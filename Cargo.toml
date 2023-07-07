@@ -17,7 +17,6 @@ edition = "2021"
 rust-version = "1.66" # MSRV (also change in CI)
 
 [dependencies]
-dialoguer = { version = "0.10", features = ["completion"] }
 serde = { version = "1.0.120", features = ["rc"] }
 serde_json = "1.0.61"
 serde_derive = "1.0.120"

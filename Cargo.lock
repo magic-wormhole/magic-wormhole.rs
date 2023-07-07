@@ -1321,7 +1321,6 @@ dependencies = [
  "base64",
  "bytecodec",
  "derive_more",
- "dialoguer",
  "env_logger",
  "eyre",
  "futures",
