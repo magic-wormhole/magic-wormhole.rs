@@ -1180,8 +1180,7 @@ async fn receive_inner_v2(
 
 use dialoguer::Completion;
 use magic_wormhole::core::wordlist;
-use std::collections::HashMap;
-use std::fs;
+use std::{collections::HashMap, fs};
 
 struct WordList(PgpWordList);
 

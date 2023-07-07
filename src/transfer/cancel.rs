@@ -49,7 +49,11 @@ macro_rules! with_cancel_wormhole {
     ($wormhole:ident, run = $run:expr, $cancel:expr, ret_cancel = $ret_cancel:expr $(,)?) => {{
         let run = Box::pin($run);
         let result = cancel::cancellable_2(run, $cancel).await;
-        let Some((transit, wormhole, cancel)) = cancel::handle_run_result_noclose($wormhole, result).await? else { return Ok($ret_cancel); };
+        let Some((transit, wormhole, cancel)) =
+            cancel::handle_run_result_noclose($wormhole, result).await?
+        else {
+            return Ok($ret_cancel);
+        };
         (transit, wormhole, cancel)
     }};
 }
@@ -238,8 +242,8 @@ pub async fn handle_run_result_transit<T>(
                      */
                     loop {
                         let Ok(msg) = transit.receive_record().await else {
-                        break;
-                    };
+                            break;
+                        };
                         match parse_message(&msg) {
                             Ok(None) => continue,
                             Ok(Some(err)) => {
