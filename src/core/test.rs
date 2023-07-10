@@ -228,8 +228,9 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                     futures::future::pending(),
                 )
                 .await?
-                .unwrap()
-                else {panic!("v2 should be disabled for now")};
+                .unwrap() else {
+                    panic!("v2 should be disabled for now")
+                };
                 req.accept(
                     &transit::log_transit_connection,
                     &mut answer,
@@ -302,8 +303,9 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                     futures::future::pending(),
                 )
                 .await?
-                .unwrap()
-                else {panic!("v2 should be disabled for now")};
+                .unwrap() else {
+                    panic!("v2 should be disabled for now")
+                };
                 req.accept(
                     &transit::log_transit_connection,
                     &mut answer,
@@ -413,8 +415,9 @@ pub async fn test_send_many() -> eyre::Result<()> {
             futures::future::pending(),
         )
         .await?
-        .unwrap()
-        else {panic!("v2 should be disabled for now")};
+        .unwrap() else {
+            panic!("v2 should be disabled for now")
+        };
 
         // Hacky v1-compat conversion for now
         let mut answer = (gen_accept()
