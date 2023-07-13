@@ -1238,8 +1238,6 @@ impl Completion for WordList {
         }
         if completions.len() == 1 {
             Some(completions.first().unwrap().clone())
-        } else if completions.is_empty() {
-            None
         } else {
             // TODO: show vector of suggestions somehow
             // println!("Suggestions: {:#?}", &completions);
