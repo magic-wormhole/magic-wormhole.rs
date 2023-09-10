@@ -3,11 +3,11 @@ use std::{any::Any, borrow::Cow};
 use crate::core::protocol::{WormholeProtocol, WormholeProtocolDefault};
 #[cfg(feature = "dilation")]
 use crate::dilation::DilatedWormhole;
+use crypto_secretbox as secretbox;
 use log::*;
 use serde;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
-use xsalsa20poly1305 as secretbox;
 
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
