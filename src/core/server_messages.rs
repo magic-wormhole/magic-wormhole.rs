@@ -121,7 +121,7 @@ pub struct EncryptedMessage {
 }
 
 impl EncryptedMessage {
-    pub fn decrypt(&self, key: &xsalsa20poly1305::Key) -> Option<Vec<u8>> {
+    pub fn decrypt(&self, key: &crypto_secretbox::Key) -> Option<Vec<u8>> {
         use super::key;
         let data_key = key::derive_phase_key(&self.side, key, &self.phase);
         key::decrypt_data(&data_key, &self.body)

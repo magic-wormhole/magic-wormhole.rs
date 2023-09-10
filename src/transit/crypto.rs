@@ -9,10 +9,10 @@ use super::{
 };
 use crate::Key;
 use async_trait::async_trait;
+use crypto_secretbox as secretbox;
+use crypto_secretbox::{aead::Aead, KeyInit};
 use futures::{future::BoxFuture, io::AsyncWriteExt};
 use std::sync::Arc;
-use xsalsa20poly1305 as secretbox;
-use xsalsa20poly1305::aead::{Aead, NewAead};
 
 /// Private, because we try multiple handshakes and only
 /// one needs to succeed
@@ -443,7 +443,7 @@ impl TransitCryptoDecrypt for SecretboxCryptoDecrypt {
 
         use std::io::{Error, ErrorKind};
         ensure!(
-            enc_packet.len() >= secretbox::NONCE_SIZE,
+            enc_packet.len() >= secretbox::SecretBox::<secretbox::XSalsa20Poly1305>::NONCE_SIZE,
             Error::new(
                 ErrorKind::InvalidData,
                 "Message must be long enough to contain at least the nonce"
@@ -452,7 +452,8 @@ impl TransitCryptoDecrypt for SecretboxCryptoDecrypt {
 
         // 3. decrypt the vector 'enc_packet' with the key.
         let plaintext = {
-            let (received_nonce, ciphertext) = enc_packet.split_at(secretbox::NONCE_SIZE);
+            let (received_nonce, ciphertext) = enc_packet
+                .split_at(secretbox::SecretBox::<secretbox::XSalsa20Poly1305>::NONCE_SIZE);
             {
                 // Nonce check
                 ensure!(
