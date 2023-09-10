@@ -1,3 +1,5 @@
+use base64::Engine;
+
 macro_rules! ensure {
     ($cond:expr, $err:expr $(,)?) => {
         if !$cond {
@@ -121,15 +123,18 @@ pub fn hashcash(resource: String, bits: u32) -> String {
             time::format_description::modifier::Day::default(),
         )),
     ];
+
+    let base64_engine = base64::engine::general_purpose::STANDARD;
+
     /* I'm pretty sure HashCash should work with any time zone */
-    let date = base64::encode(
+    let date = base64_engine.encode(
         time::OffsetDateTime::now_utc()
             .date()
             .format(&format[..])
             .unwrap(),
     );
 
-    let rand: String = base64::encode(
+    let rand: String = base64_engine.encode(
         rand::thread_rng()
             .sample_iter(&Standard)
             .take(16)
@@ -149,7 +154,7 @@ pub fn hashcash(resource: String, bits: u32) -> String {
             date,
             resource,
             rand,
-            base64::encode(counter)
+            base64_engine.encode(counter)
         );
 
         hasher.update(&stamp);
