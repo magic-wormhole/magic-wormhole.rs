@@ -59,6 +59,10 @@ tar = { version = "0.4.33", optional = true }
 
 # Forwarding dependencies
 
+# Dilation dependencies
+
+async-channel = { version = "1.8.0", optional = true }
+
 # rmp-serde = … # defined above
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
@@ -100,7 +104,7 @@ transit = [
     "noise-rust-crypto",
 ]
 transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
-dilation = ["transit"]
+dilation = ["transit", "async-channel"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transfer", "dilation"]
 all = ["default", "forwarding"]

@@ -26,14 +26,14 @@ use transit::{
     Abilities as TransitAbilities, Transit, TransitConnectError, TransitConnector, TransitError,
 };
 
+use crate::core::APPID_RAW;
 mod cancel;
+
 mod v1;
 mod v2;
 
 pub use v1::ReceiveRequest as ReceiveRequestV1;
 pub use v2::ReceiveRequest as ReceiveRequestV2;
-
-use crate::core::APPID_RAW;
 
 /// The App ID associated with this protocol.
 pub const APPID: AppID = AppID(Cow::Borrowed(APPID_RAW));

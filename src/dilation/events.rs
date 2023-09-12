@@ -3,7 +3,11 @@ use serde_derive::Deserialize;
 
 use crate::{
     core::TheirSide,
-    dilation::api::{IOEvent, ManagerCommand},
+    dilation::{
+        api::{IOEvent, ManagerCommand},
+        connector::ConnectionId,
+    },
+    transit,
     transit::Hints,
 };
 
@@ -14,6 +18,7 @@ pub enum Event {
     //IO(IOAction),
     // All state machine events
     Manager(ManagerEvent),
+    Connector(ConnectorEvent),
     Connection(IOEvent),
 }
 
@@ -26,6 +31,12 @@ impl From<ProtocolCommand> for ManagerCommand {
 impl From<ManagerEvent> for Event {
     fn from(r: ManagerEvent) -> Event {
         Event::Manager(r)
+    }
+}
+
+impl From<ConnectorEvent> for Event {
+    fn from(r: ConnectorEvent) -> Event {
+        Event::Connector(r)
     }
 }
 
@@ -86,4 +97,18 @@ mod test {
             }
         );
     }
+}
+
+// XXX: for Connector fsm events
+// ...
+// XXX
+#[derive(Display, Debug, Clone, PartialEq, Deserialize)]
+pub enum ConnectorEvent {
+    GotTheirSide { their_side: TheirSide },
+    GotHints { hints: transit::Hints },
+    ListenerReady { hints: transit::Hints },
+    AddCandidate,
+    Accept,
+    Stop,
+    Stopped { connection_id: ConnectionId },
 }

@@ -1,6 +1,6 @@
-use super::{Mood, Phase};
-use rand::Rng;
 use std::{borrow::Cow, time::Duration};
+
+use rand::Rng;
 
 use crate::{
     self as magic_wormhole,
@@ -9,6 +9,8 @@ use crate::{
 };
 #[cfg(feature = "transfer")]
 use crate::{transfer, transit};
+
+use super::{Mood, Phase};
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
     "piegames.de/wormhole/rusty-wormhole-test",

@@ -80,6 +80,7 @@ impl WormholeProtocol for WormholeProtocolDefault {
         phase_provider: PhaseProvider,
     ) -> Result<(), WormholeError> {
         let current_phase = phase_provider(self.phase);
+        log::debug!("send '{:?}'with phase {:?}", plaintext, current_phase);
         self.phase += 1;
         let data_key = derive_phase_key(self.server.side(), &self.key, &current_phase);
         let (_nonce, encrypted) = encrypt_data(&data_key, &plaintext);
