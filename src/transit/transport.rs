@@ -129,7 +129,7 @@ pub(super) async fn tcp_get_external_ip() -> Result<(SocketAddr, TcpStream), Stu
         use rand::Rng;
         let random_bytes = rand::thread_rng().gen::<[u8; 12]>();
 
-        let mut message = Message::new(
+        let mut message: Message<Attribute> = Message::new(
             MessageClass::Request,
             rfc5389::methods::BINDING,
             TransactionId::new(random_bytes),
