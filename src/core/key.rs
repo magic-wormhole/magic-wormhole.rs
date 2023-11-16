@@ -1,13 +1,13 @@
 use crate::core::*;
+use crypto_secretbox as secretbox;
+use crypto_secretbox::{
+    aead::{generic_array::GenericArray, Aead, AeadCore},
+    KeyInit, XSalsa20Poly1305,
+};
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
-use xsalsa20poly1305 as secretbox;
-use xsalsa20poly1305::{
-    aead::{generic_array::GenericArray, Aead, AeadCore, NewAead},
-    XSalsa20Poly1305,
-};
 
 /// Marker trait to give encryption keys a "purpose", to not confuse them
 ///
@@ -127,7 +127,7 @@ impl VersionsMessage {
 
 pub fn build_version_msg(
     side: &MySide,
-    key: &xsalsa20poly1305::Key,
+    key: &secretbox::Key,
     versions: &VersionsMessage,
 ) -> (Phase, Vec<u8>) {
     let phase = Phase::VERSION;
@@ -144,9 +144,9 @@ pub fn extract_pake_msg(body: &[u8]) -> Result<Vec<u8>, WormholeError> {
 }
 
 fn encrypt_data_with_nonce(
-    key: &xsalsa20poly1305::Key,
+    key: &secretbox::Key,
     plaintext: &[u8],
-    nonce: &xsalsa20poly1305::Nonce,
+    nonce: &secretbox::Nonce,
 ) -> Vec<u8> {
     let cipher = XSalsa20Poly1305::new(GenericArray::from_slice(key));
     let mut ciphertext = cipher.encrypt(nonce, plaintext).unwrap();
@@ -156,18 +156,17 @@ fn encrypt_data_with_nonce(
     nonce_and_ciphertext
 }
 
-pub fn encrypt_data(
-    key: &xsalsa20poly1305::Key,
-    plaintext: &[u8],
-) -> (xsalsa20poly1305::Nonce, Vec<u8>) {
-    let nonce = xsalsa20poly1305::generate_nonce(&mut rand::thread_rng());
+pub fn encrypt_data(key: &secretbox::Key, plaintext: &[u8]) -> (secretbox::Nonce, Vec<u8>) {
+    let nonce = secretbox::SecretBox::<secretbox::XSalsa20Poly1305>::generate_nonce(
+        &mut rand::thread_rng(),
+    );
     let nonce_and_ciphertext = encrypt_data_with_nonce(key, plaintext, &nonce);
     (nonce, nonce_and_ciphertext)
 }
 
 // TODO: return a Result with a proper error type
-pub fn decrypt_data(key: &xsalsa20poly1305::Key, encrypted: &[u8]) -> Option<Vec<u8>> {
-    use xsalsa20poly1305::aead::generic_array::typenum::marker_traits::Unsigned;
+pub fn decrypt_data(key: &secretbox::Key, encrypted: &[u8]) -> Option<Vec<u8>> {
+    use secretbox::aead::generic_array::typenum::marker_traits::Unsigned;
     let nonce_size = <XSalsa20Poly1305 as AeadCore>::NonceSize::to_usize();
     let (nonce, ciphertext) = encrypted.split_at(nonce_size);
     assert_eq!(nonce.len(), nonce_size);
@@ -183,18 +182,14 @@ fn sha256_digest(input: &[u8]) -> Vec<u8> {
     hasher.finalize_fixed().to_vec()
 }
 
-pub fn derive_key(key: &xsalsa20poly1305::Key, purpose: &[u8]) -> xsalsa20poly1305::Key {
+pub fn derive_key(key: &secretbox::Key, purpose: &[u8]) -> secretbox::Key {
     let hk = Hkdf::<Sha256>::new(None, key);
-    let mut key = xsalsa20poly1305::Key::default();
+    let mut key = secretbox::Key::default();
     hk.expand(purpose, &mut key).unwrap();
     key
 }
 
-pub fn derive_phase_key(
-    side: &EitherSide,
-    key: &xsalsa20poly1305::Key,
-    phase: &Phase,
-) -> xsalsa20poly1305::Key {
+pub fn derive_phase_key(side: &EitherSide, key: &secretbox::Key, phase: &Phase) -> secretbox::Key {
     let side_digest: Vec<u8> = sha256_digest(side.0.as_bytes());
     let phase_digest: Vec<u8> = sha256_digest(phase.0.as_bytes());
     let mut purpose_vec: Vec<u8> = b"wormhole:phase:".to_vec();
@@ -204,7 +199,7 @@ pub fn derive_phase_key(
     derive_key(key, &purpose_vec)
 }
 
-pub fn derive_verifier(key: &xsalsa20poly1305::Key) -> xsalsa20poly1305::Key {
+pub fn derive_verifier(key: &secretbox::Key) -> secretbox::Key {
     derive_key(key, b"wormhole:verifier")
 }
 
@@ -234,7 +229,7 @@ mod test {
 
     #[test]
     fn test_derive_key() {
-        let main = xsalsa20poly1305::Key::from_exact_iter(
+        let main = secretbox::Key::from_exact_iter(
             hex::decode("588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1")
                 .unwrap(),
         )
@@ -254,7 +249,7 @@ mod test {
 
     #[test]
     fn test_derive_phase_key() {
-        let main = xsalsa20poly1305::Key::from_exact_iter(
+        let main = secretbox::Key::from_exact_iter(
             hex::decode("588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1")
                 .unwrap(),
         )
@@ -310,14 +305,14 @@ mod test {
 
     #[test]
     fn test_encrypt_data() {
-        let k = xsalsa20poly1305::Key::from_exact_iter(
+        let k = secretbox::Key::from_exact_iter(
             hex::decode("ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679")
                 .unwrap(),
         )
         .unwrap();
         let plaintext = hex::decode("edc089a518219ec1cee184e89d2d37af").unwrap();
         assert_eq!(plaintext.len(), 16);
-        let nonce = xsalsa20poly1305::Nonce::from_exact_iter(
+        let nonce = secretbox::Nonce::from_exact_iter(
             hex::decode("2d5e43eb465aa42e750f991e425bee485f06abad7e04af80").unwrap(),
         )
         .unwrap();
@@ -328,7 +323,7 @@ mod test {
 
     #[test]
     fn test_decrypt_data() {
-        let k = xsalsa20poly1305::Key::from_exact_iter(
+        let k = secretbox::Key::from_exact_iter(
             hex::decode("ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679")
                 .unwrap(),
         )

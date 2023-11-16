@@ -28,8 +28,6 @@ use std::{
     net::{IpAddr, SocketAddr, ToSocketAddrs},
     sync::Arc,
 };
-use xsalsa20poly1305 as secretbox;
-use xsalsa20poly1305::aead::{Aead, NewAead};
 
 mod crypto;
 
@@ -684,7 +682,7 @@ async fn get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
         use rand::Rng;
         let random_bytes = rand::thread_rng().gen::<[u8; 12]>();
 
-        let mut message = Message::new(
+        let mut message = Message::<Attribute>::new(
             MessageClass::Request,
             rfc5389::methods::BINDING,
             TransactionId::new(random_bytes),

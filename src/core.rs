@@ -10,9 +10,8 @@ use std::borrow::Cow;
 
 use self::rendezvous::*;
 pub(self) use self::server_messages::EncryptedMessage;
+use crypto_secretbox as secretbox;
 use log::*;
-
-use xsalsa20poly1305 as secretbox;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
