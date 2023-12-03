@@ -1,6 +1,6 @@
 [package]
 name = "magic-wormhole"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["piegames <info@piegames.de>", "Brian Warner <warner@lothar.com>"]
 description = "Get things from one computer to another, safely"
 keywords = ["magic-wormhole", "wormhole", "file-transfer", "transfer"]

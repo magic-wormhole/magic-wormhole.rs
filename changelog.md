@@ -5,6 +5,13 @@
 - Added compilation support for WASM targets.
 - \[lib\]\[breaking\] replaced `transit::TransitInfo` with a struct containing the address, the old enum has been renamed to `transit::ConnectionType`.
 
+## Version 0.6.1
+
+- RUSTSEC-2023-0065: Update tungstenite
+- RUSTSEC-2023-0037: Replace xsalsa20poly1305 with crypto_secretbox
+- RUSTSEC-2023-0052: Update webpki
+- Update crate dependencies
+
 ## Version 0.6.0
 
 - Add shell completion support for the CLI
