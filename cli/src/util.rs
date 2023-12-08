@@ -20,7 +20,7 @@ pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> 
         let mut answer = String::new();
         stdin.read_line(&mut answer).await.unwrap();
 
-        match &*answer.to_lowercase().trim() {
+        match answer.to_lowercase().trim() {
             "y" | "yes" => break true,
             "n" | "no" => break false,
             "" => break default_answer,

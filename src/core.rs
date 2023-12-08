@@ -18,7 +18,7 @@ pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
 pub(crate) mod test;
-mod wordlist;
+pub mod wordlist;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -694,9 +694,9 @@ impl Nameplate {
     }
 }
 
-impl Into<String> for Nameplate {
-    fn into(self) -> String {
-        self.0
+impl From<Nameplate> for String {
+    fn from(val: Nameplate) -> Self {
+        val.0
     }
 }
 
@@ -723,7 +723,7 @@ impl Code {
     }
 
     pub fn nameplate(&self) -> Nameplate {
-        Nameplate::new(self.0.splitn(2, '-').next().unwrap())
+        Nameplate::new(self.0.split('-').next().unwrap())
     }
 }
 

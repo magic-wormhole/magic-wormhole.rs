@@ -19,7 +19,7 @@ pub struct DisplayBytes<'a>(pub &'a [u8]);
 
 impl std::fmt::Display for DisplayBytes<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let hex_decode = hex::decode(&self.0);
+        let hex_decode = hex::decode(self.0);
         let (string, hex_param) = match hex_decode.as_ref().map(Vec::as_slice) {
             Ok(decoded_hex) => (decoded_hex, "hex-encoded "),
             Err(_) => (self.0, ""),

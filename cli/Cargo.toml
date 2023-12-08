@@ -20,7 +20,7 @@ clap_complete = "3.1.4"
 env_logger = "0.10.0"
 console = "0.15.0"
 indicatif = "0.17.0"
-dialoguer = "0.10.0"
+dialoguer = { version = "0.10", features = ["completion"] }
 color-eyre = "0.6.0"
 number_prefix = "0.4.0"
 ctrlc = "3.2.1"

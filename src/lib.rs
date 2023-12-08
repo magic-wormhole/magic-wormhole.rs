@@ -25,7 +25,7 @@
 
 #[macro_use]
 mod util;
-mod core;
+pub mod core;
 #[cfg(feature = "dilation")]
 pub mod dilated_transfer;
 #[cfg(feature = "dilation")]
@@ -41,8 +41,9 @@ pub mod uri;
 
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
-    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole,
-    WormholeError,
+    rendezvous,
+    wordlist::PgpWordList,
+    AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole, WormholeError,
 };
 
 #[cfg(feature = "dilation")]
