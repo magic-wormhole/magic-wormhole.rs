@@ -263,7 +263,7 @@ mod test {
 
         assert_eq!(manager_fsm.current_state(), Some(State::Waiting));
 
-        manager_fsm.process(ManagerEvent::Start, &side, &mut |cmd| {
+        manager_fsm.process(ManagerEvent::Start, &side, &mut |_cmd| {
             Err(WormholeError::Protocol("foo".into()))
         });
     }

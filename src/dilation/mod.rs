@@ -228,8 +228,6 @@ mod test {
 
     #[async_std::test]
     async fn test_dilated_wormhole_new() {
-        let protocol = MockWormholeProtocol::default();
-
         let wc_ctx = MockWormholeConnectionDefault::new_context();
         wc_ctx
             .expect()
