@@ -495,6 +495,7 @@ pub enum Mood {
     Unwelcome,
 }
 
+#[allow(dead_code)]
 pub const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 /**

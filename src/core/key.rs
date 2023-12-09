@@ -135,7 +135,7 @@ impl VersionsMessage {
         self.app_versions = versions;
     }
 
-    #[allow(dead_code)]
+    #[cfg(feature = "dilation")]
     pub fn enable_dilation(&mut self) {
         self.can_dilate = Some([std::borrow::Cow::Borrowed("1")])
     }
@@ -379,6 +379,7 @@ mod test {
     // }
 
     #[test]
+    #[cfg(dilation)]
     fn test_versions_message_can_dilate() {
         let mut message = VersionsMessage::new();
 

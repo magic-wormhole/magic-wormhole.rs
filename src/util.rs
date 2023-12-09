@@ -176,17 +176,20 @@ pub fn hashcash(resource: String, bits: u32) -> String {
     }
 }
 #[cfg(not(target_family = "wasm"))]
+#[allow(dead_code)]
 pub async fn sleep(duration: std::time::Duration) {
     async_std::task::sleep(duration).await
 }
 
 #[cfg(target_family = "wasm")]
+#[allow(dead_code)]
 pub async fn sleep(duration: std::time::Duration) {
     /* Skip error handling. Waiting is best effort anyways */
     let _ = wasm_timer::Delay::new(duration).await;
 }
 
 #[cfg(not(target_family = "wasm"))]
+#[allow(dead_code)]
 pub async fn timeout<F, T>(
     duration: std::time::Duration,
     future: F,
@@ -198,6 +201,7 @@ where
 }
 
 #[cfg(target_family = "wasm")]
+#[allow(dead_code)]
 pub async fn timeout<F, T>(duration: std::time::Duration, future: F) -> Result<T, std::io::Error>
 where
     F: futures::Future<Output = T>,
