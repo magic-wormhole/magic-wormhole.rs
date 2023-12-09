@@ -420,7 +420,7 @@ async fn main() -> eyre::Result<()> {
                 }
             };
 
-            if with_dilation && peer_allows_dilation(&wormhole.peer_version()) {
+            if with_dilation && peer_allows_dilation(wormhole.peer_version()) {
                 log::debug!("dilate wormhole");
                 let mut dilated_wormhole = wormhole.dilate()?; // need to pass transit relay URL
                 dilated_wormhole.run().await;
@@ -570,7 +570,7 @@ async fn main() -> eyre::Result<()> {
                         out,
                     );
 
-                    std::io::stdout().write_all(&out.as_bytes())?;
+                    std::io::stdout().write_all(out.as_bytes())?;
                 },
                 shell => {
                     let mut out = std::io::stdout();
@@ -601,6 +601,8 @@ fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {
     }
 }
 
+type PrintCodeFn = dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>) -> eyre::Result<()>;
+
 /**
  * Parse the necessary command line arguments to establish an initial server connection.
  * This is used over and over again by the different subcommands.
@@ -616,9 +618,7 @@ async fn parse_and_connect(
     code_length: Option<usize>,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
-    print_code: Option<
-        &dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>) -> eyre::Result<()>,
-    >,
+    print_code: Option<&PrintCodeFn>,
     clipboard: Option<&mut Clipboard>,
 ) -> eyre::Result<(Wormhole, magic_wormhole::Code, Vec<transit::RelayHint>)> {
     // TODO handle relay servers with multiple endpoints better
@@ -1059,15 +1059,14 @@ async fn receive_inner_v1(
         .truncate(true)
         .open(&file_path)
         .await?;
-    Ok(req
-        .accept(
-            &transit::log_transit_connection,
-            &mut file,
-            create_progress_handler(pb),
-            ctrl_c(),
-        )
-        .await
-        .context("Receive process failed")?)
+    req.accept(
+        &transit::log_transit_connection,
+        &mut file,
+        create_progress_handler(pb),
+        ctrl_c(),
+    )
+    .await
+    .context("Receive process failed")
 }
 
 async fn receive_inner_v2(
@@ -1107,7 +1106,7 @@ async fn receive_inner_v2(
 
     /* Create a temporary directory for receiving */
     use rand::Rng;
-    let tmp_dir = target_dir.join(&format!(
+    let tmp_dir = target_dir.join(format!(
         "wormhole-tmp-{:06}",
         rand::thread_rng().gen_range(0..1_000_000)
     ));

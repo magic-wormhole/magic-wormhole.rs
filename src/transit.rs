@@ -584,8 +584,6 @@ pub struct TransitInfo {
     /// This says nothing about the actual transport protocol used.
     #[cfg(not(target_family = "wasm"))]
     pub peer_addr: SocketAddr,
-    // Prevent exhaustive destructuring for future proofing
-    _unused: (),
 }
 
 type TransitConnection = (Box<dyn TransitTransport>, TransitInfo);

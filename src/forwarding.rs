@@ -151,8 +151,8 @@ pub async fn serve(
         .to_owned();
     let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().to_owned())?;
     let connector = transit::init(
-        our_version.transit_abilities.clone(),
-        Some(peer_version.transit_abilities.clone()),
+        our_version.transit_abilities,
+        Some(peer_version.transit_abilities),
         relay_hints,
     )
     .await?;

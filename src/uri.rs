@@ -75,7 +75,7 @@ impl TryFrom<&url::Url> for WormholeTransferUri {
             .query_pairs()
             .collect::<std::collections::HashMap<_, _>>();
         match queries.get("version").map(Deref::deref).unwrap_or("0") {
-            version if version == "0" => {},
+            "0" => {},
             unsupported => return Err(ParseError::UnsupportedVersion(unsupported.into())),
         }
         let rendezvous_server = queries
@@ -125,13 +125,13 @@ impl std::str::FromStr for WormholeTransferUri {
 impl From<&WormholeTransferUri> for url::Url {
     fn from(val: &WormholeTransferUri) -> Self {
         let mut url = url::Url::parse("wormhole-transfer:").unwrap();
-        url.set_path(&*val.code);
+        url.set_path(&val.code);
         /* Only do this if there are any query parameteres at all, otherwise the URL will have an ugly trailing '?'. */
         if val.rendezvous_server.is_some() || val.is_leader {
             let mut query = url.query_pairs_mut();
             query.clear();
             if let Some(rendezvous_server) = val.rendezvous_server.as_ref() {
-                query.append_pair("rendezvous", &rendezvous_server.to_string());
+                query.append_pair("rendezvous", rendezvous_server.as_ref());
             }
             if val.is_leader {
                 query.append_pair("role", "leader");

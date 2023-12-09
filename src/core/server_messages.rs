@@ -132,6 +132,7 @@ impl EncryptedMessage {
 #[derive(Serialize, Debug, PartialEq, derive_more::Display)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 pub enum OutboundMessage {
     #[display(fmt = "SubmitPermission({})", _0)]
     SubmitPermission(SubmitPermission),
@@ -196,6 +197,7 @@ impl OutboundMessage {
         OutboundMessage::Open { mailbox }
     }
 
+    #[allow(dead_code)]
     pub fn add(phase: Phase, body: Vec<u8>) -> Self {
         OutboundMessage::Add { body, phase }
     }
