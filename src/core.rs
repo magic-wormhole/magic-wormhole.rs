@@ -732,7 +732,7 @@ pub enum Ability {
     DirectTcpV1,
     RelayV1,
     RelayV2,
-    #[cfg(all())]
+    #[cfg(any())]
     NoiseCryptoV1,
     #[serde(other)]
     Other,

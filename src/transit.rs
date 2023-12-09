@@ -118,7 +118,7 @@ pub struct Abilities {
     pub direct_tcp_v1: bool,
     /** Connection over a relay */
     pub relay_v1: bool,
-    #[cfg(all())]
+    #[cfg(any())]
     /** **Experimental** Use the [noise protocol](https://noiseprotocol.org) for the encryption. */
     pub noise_v1: bool,
 }
@@ -127,7 +127,7 @@ impl Abilities {
     pub const ALL_ABILITIES: Self = Self {
         direct_tcp_v1: true,
         relay_v1: true,
-        #[cfg(all())]
+        #[cfg(any())]
         noise_v1: false,
     };
 
@@ -140,7 +140,7 @@ impl Abilities {
     pub const FORCE_DIRECT: Self = Self {
         direct_tcp_v1: true,
         relay_v1: false,
-        #[cfg(all())]
+        #[cfg(any())]
         noise_v1: false,
     };
 
@@ -155,7 +155,7 @@ impl Abilities {
     pub const FORCE_RELAY: Self = Self {
         direct_tcp_v1: false,
         relay_v1: true,
-        #[cfg(all())]
+        #[cfg(any())]
         noise_v1: false,
     };
 
@@ -167,16 +167,20 @@ impl Abilities {
         self.relay_v1
     }
 
-    #[cfg(all())]
+    #[cfg(any())]
     pub fn can_noise_crypto(&self) -> bool {
         self.noise_v1
+    }
+
+    pub fn can_noise_crypto(&self) -> bool {
+        false
     }
 
     /** Keep only abilities that both sides support */
     pub fn intersect(mut self, other: &Self) -> Self {
         self.direct_tcp_v1 &= other.direct_tcp_v1;
         self.relay_v1 &= other.relay_v1;
-        #[cfg(all())]
+        #[cfg(any())]
         {
             self.noise_v1 &= other.noise_v1;
         }
@@ -200,7 +204,7 @@ impl serde::Serialize for Abilities {
                 "type": "relay-v1",
             }));
         }
-        #[cfg(all())]
+        #[cfg(any())]
         if self.noise_v1 {
             hints.push(serde_json::json!({
                 "type": "noise-crypto-v1",
@@ -225,7 +229,7 @@ impl<'de> serde::Deserialize<'de> for Abilities {
                 Ability::RelayV1 => {
                     abilities.relay_v1 = true;
                 },
-                #[cfg(all())]
+                #[cfg(any())]
                 Ability::NoiseCryptoV1 => {
                     abilities.noise_v1 = true;
                 },
