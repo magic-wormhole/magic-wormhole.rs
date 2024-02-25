@@ -265,10 +265,10 @@ pub async fn send_folder(
         };
         use std::io::Result as IoResult;
 
+        type WrappedDataFut = BoxFuture<'static, IoResult<Box<dyn AsyncRead + Unpin + Send>>>;
+
         /* Type tetris :) */
-        fn wrap(
-            buffer: impl AsRef<[u8]> + Unpin + Send + 'static,
-        ) -> BoxFuture<'static, IoResult<Box<dyn AsyncRead + Unpin + Send>>> {
+        fn wrap(buffer: impl AsRef<[u8]> + Unpin + Send + 'static) -> WrappedDataFut {
             Box::pin(ready(IoResult::Ok(
                 Box::new(Cursor::new(buffer)) as Box<dyn AsyncRead + Unpin + Send>
             ))) as _
@@ -276,14 +276,11 @@ pub async fn send_folder(
 
         /* Walk our offer recursively, concatenate all our readers into a stream that will build the tar file */
         fn create_offer(
-            mut total_content: Vec<
-                BoxFuture<'static, IoResult<Box<dyn AsyncRead + Unpin + Send + 'static>>>,
-            >,
+            mut total_content: Vec<WrappedDataFut>,
             total_size: &mut u64,
             offer: OfferSendEntry,
             path: &mut Vec<String>,
-        ) -> IoResult<Vec<BoxFuture<'static, IoResult<Box<dyn AsyncRead + Unpin + Send + 'static>>>>>
-        {
+        ) -> IoResult<Vec<WrappedDataFut>> {
             match offer {
                 OfferSendEntry::Directory { content } => {
                     log::debug!("Adding directory {path:?}");
@@ -299,7 +296,7 @@ pub async fn send_folder(
                 },
                 OfferSendEntry::RegularFile { size, content } => {
                     log::debug!("Adding file {path:?}; {size} bytes");
-                    let header = tar_helper::create_header_file(&path, size)?;
+                    let header = tar_helper::create_header_file(path, size)?;
                     let padding = tar_helper::padding(size);
                     *total_size += header.len() as u64;
                     *total_size += padding.len() as u64;
@@ -330,7 +327,7 @@ pub async fn send_folder(
         total_size += 1024;
         content.push(wrap([0; 1024]));
 
-        let content = futures::stream::iter(content).then(|content| async { content.await });
+        let content = futures::stream::iter(content).then(|content| content);
 
         /* Convert to stream */
 
@@ -773,7 +770,7 @@ mod tar_helper {
         // long name extension by emitting an entry which indicates that it's the
         // filename.
         if let Err(e) = header.set_path(path) {
-            let data = path2bytes(&path);
+            let data = path2bytes(path);
             let max = header.as_old().name.len();
             // Since `e` isn't specific enough to let us know the path is indeed too
             // long, verify it first before using the extension.

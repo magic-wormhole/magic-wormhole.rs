@@ -5,12 +5,10 @@ use crate::core::protocol::{WormholeProtocol, WormholeProtocolDefault};
 use crate::dilation::DilatedWormhole;
 use crypto_secretbox as secretbox;
 use log::*;
-use serde;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 
-use self::rendezvous::*;
-pub(self) use self::server_messages::EncryptedMessage;
+use self::{rendezvous::*, server_messages::EncryptedMessage};
 
 pub(super) mod key;
 pub(crate) mod protocol;
@@ -161,7 +159,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
         let (mut server, welcome) =
             RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
         let (nameplate, mailbox) = server.allocate_claim_open().await?;
-        let code = Code::new(&nameplate, &password);
+        let code = Code::new(&nameplate, password);
 
         Ok(MailboxConnection {
             config,
@@ -303,13 +301,13 @@ impl Wormhole {
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
         let mailbox_connection =
             MailboxConnection::connect(config, code.clone(), !expect_claimed_nameplate).await?;
-        return Ok((
+        Ok((
             WormholeWelcome {
                 welcome: mailbox_connection.welcome.clone(),
-                code: code,
+                code,
             },
             Self::connect(mailbox_connection).await?,
-        ));
+        ))
     }
 
     /// Set up a Wormhole which is the client-client part of the connection setup
@@ -469,7 +467,7 @@ impl Wormhole {
     }
 
     pub fn our_version(&self) -> &Box<dyn Any + Send + Sync> {
-        &self.protocol.our_version()
+        self.protocol.our_version()
     }
 }
 
@@ -497,6 +495,7 @@ pub enum Mood {
     Unwelcome,
 }
 
+#[allow(dead_code)]
 pub const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 /**
@@ -643,7 +642,7 @@ impl<S: Into<String>> From<S> for EitherSide {
 
 impl From<MySide> for TheirSide {
     fn from(side: MySide) -> TheirSide {
-        TheirSide(side.0.into())
+        TheirSide(side.0)
     }
 }
 
@@ -660,7 +659,7 @@ impl Phase {
     }
 
     pub fn dilation(phase: u64) -> Self {
-        Phase(format!("dilate-{}", phase.to_string()).to_string().into())
+        Phase(format!("dilate-{}", phase).into())
     }
 
     pub fn is_version(&self) -> bool {
@@ -694,9 +693,9 @@ impl Nameplate {
     }
 }
 
-impl Into<String> for Nameplate {
-    fn into(self) -> String {
-        self.0
+impl From<Nameplate> for String {
+    fn from(value: Nameplate) -> Self {
+        value.0
     }
 }
 
@@ -723,7 +722,7 @@ impl Code {
     }
 
     pub fn nameplate(&self) -> Nameplate {
-        Nameplate::new(self.0.splitn(2, '-').next().unwrap())
+        Nameplate::new(self.0.split('-').next().unwrap())
     }
 }
 
@@ -733,7 +732,7 @@ pub enum Ability {
     DirectTcpV1,
     RelayV1,
     RelayV2,
-    #[cfg(all())]
+    #[cfg(any())]
     NoiseCryptoV1,
     #[serde(other)]
     Other,

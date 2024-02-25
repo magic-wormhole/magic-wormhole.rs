@@ -69,7 +69,7 @@ pub struct AnswerMessage {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case")]
-pub(self) struct AnswerMessageInner {
+struct AnswerMessageInner {
     pub file: Vec<String>,
     pub offset: u64,
     pub sha256: Option<[u8; 32]>,
@@ -108,9 +108,7 @@ async fn make_transit(
 
     /* Send our transit hints */
     wormhole
-        .send_json(&PeerMessage::transit_v2(
-            (**connector.our_hints()).clone().into(),
-        ))
+        .send_json(&PeerMessage::transit_v2((**connector.our_hints()).clone()))
         .await?;
 
     /* Receive their transit hints */
@@ -118,7 +116,7 @@ async fn make_transit(
         match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
             PeerMessage::TransitV2(transit) => {
                 debug!("received transit message: {:?}", transit);
-                transit.hints_v2.into()
+                transit.hints_v2
             },
             other => {
                 let error = TransferError::unexpected_message("transit-v2", other);
@@ -210,8 +208,7 @@ async fn send_inner(
 ) -> Result<(), TransferError> {
     transit.send_record(&{
         /* This must be split into two statements to appease the borrow checker (unfortunate side effect of borrow-through) */
-        let message = PeerMessageV2::Offer((&offer).into()).ser_msgpack();
-        message
+        PeerMessageV2::Offer((&offer).into()).ser_msgpack()
     }).await?;
 
     let files = match PeerMessageV2::de_msgpack(&transit.receive_record().await?)?.check_err()? {
@@ -246,7 +243,7 @@ async fn send_inner(
     {
         let offset = *offset;
         /* This must be split into two statements to appease the borrow checker (unfortunate side effect of borrow-through) */
-        let content = (offer.get_file(&file).unwrap().0)();
+        let content = (offer.get_file(file).unwrap().0)();
         let mut content = content.await?;
         let file = file.clone();
 
@@ -262,7 +259,7 @@ async fn send_inner(
             let our_hash = hasher.finalize_fixed();
 
             /* If it doesn't match, start at 0 instead of the originally requested offset */
-            if &*our_hash == &sha256[..] {
+            if *our_hash == sha256[..] {
                 transit
                     .send_record(
                         &PeerMessageV2::FileStart(FileStart {
@@ -585,20 +582,20 @@ async fn receive_inner(
         };
     }
 
-    let _transfer_ack = match PeerMessageV2::de_msgpack(&transit.receive_record().await?)?
-        .check_err()?
-    {
-        PeerMessageV2::TransferAck(transfer_ack) => transfer_ack,
-        PeerMessageV2::FileStart(_) => {
-            bail!(TransferError::Protocol(
-                format!("Unexpected message: got 'file-start' but did not expect any more files")
-                    .into_boxed_str()
-            ))
-        },
-        other => {
-            bail!(TransferError::unexpected_message("transfer-ack", other))
-        },
-    };
+    let _transfer_ack =
+        match PeerMessageV2::de_msgpack(&transit.receive_record().await?)?.check_err()? {
+            PeerMessageV2::TransferAck(transfer_ack) => transfer_ack,
+            PeerMessageV2::FileStart(_) => {
+                bail!(TransferError::Protocol(
+                    "Unexpected message: got 'file-start' but did not expect any more files"
+                        .to_string()
+                        .into_boxed_str()
+                ))
+            },
+            other => {
+                bail!(TransferError::unexpected_message("transfer-ack", other))
+            },
+        };
 
     Ok(())
 }

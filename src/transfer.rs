@@ -17,11 +17,11 @@ use std::sync::Arc;
 use super::{core::WormholeError, transit, AppID, Wormhole};
 use futures::Future;
 use log::*;
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{borrow::Cow, collections::BTreeMap};
+
+#[cfg(not(target_family = "wasm"))]
+use std::path::{Path, PathBuf};
+
 use transit::{
     Abilities as TransitAbilities, Transit, TransitConnectError, TransitConnector, TransitError,
 };
@@ -457,13 +457,11 @@ impl<T> Offer<T> {
                 "{name} and {} other files or directories",
                 self.content.len() - 1
             )
+        } else if self.is_directory() {
+            let count = entry.iter_files().count();
+            format!("{name} with {count} files inside")
         } else {
-            if self.is_directory() {
-                let count = entry.iter_files().count();
-                format!("{name} with {count} files inside")
-            } else {
-                name.clone()
-            }
+            name.clone()
         }
     }
 
@@ -731,11 +729,11 @@ impl<T> OfferEntry<T> {
         match self {
             OfferEntry::RegularFile { size, .. } => OfferEntry::RegularFile {
                 size: *size,
-                content: f(&base_path),
+                content: f(base_path),
             },
             OfferEntry::Directory { content } => OfferEntry::Directory {
                 content: content
-                    .into_iter()
+                    .iter()
                     .map(|(k, v)| {
                         base_path.push(k.clone());
                         let v = v.set_content(base_path, f);

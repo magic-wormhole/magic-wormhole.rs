@@ -12,6 +12,7 @@ pub enum IOEvent {
 
 /// Commands to be executed
 #[derive(Debug, Clone, PartialEq, Display)]
+#[allow(dead_code)]
 pub enum ManagerCommand {
     // XXX: include API calls to IO layer
     Protocol(ProtocolCommand),
@@ -28,6 +29,7 @@ pub enum ProtocolCommand {
 
 /// Protocol level commands
 #[derive(Debug, Clone, PartialEq, Display)]
+#[allow(dead_code)]
 pub enum IOCommand {
     CloseConnection,
 }

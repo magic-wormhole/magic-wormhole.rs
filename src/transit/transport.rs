@@ -273,7 +273,6 @@ pub(super) async fn connect_ws_relay(
         transit,
         TransitInfo {
             conn_type: ConnectionType::Relay { name },
-            _unused: (),
         },
     ))
 }
@@ -297,7 +296,6 @@ pub(super) fn wrap_tcp_connection(
         peer_addr: socket
             .peer_addr()
             .expect("Internal error: socket must be IP"),
-        _unused: (),
     };
 
     Ok((Box::new(socket), info))

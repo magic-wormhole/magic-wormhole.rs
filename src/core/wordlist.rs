@@ -36,15 +36,15 @@ impl Wordlist {
             let mut suffix: String = prefix.to_owned();
             if word.starts_with(last_partial_word.unwrap()) {
                 if lp == 0 {
-                    suffix.push_str(&word);
+                    suffix.push_str(word);
                 } else {
                     let p = prefix.len() - lp;
-                    suffix.truncate(p as usize);
-                    suffix.push_str(&word);
+                    suffix.truncate(p);
+                    suffix.push_str(word);
                 }
 
                 if count_dashes + 1 < self.num_words {
-                    suffix.push_str("-");
+                    suffix.push('-');
                 }
 
                 completions.push(suffix);
@@ -56,8 +56,7 @@ impl Wordlist {
 
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng;
-        let components: Vec<String>;
-        components = self
+        let components: Vec<String> = self
             .words
             .iter()
             .cycle()

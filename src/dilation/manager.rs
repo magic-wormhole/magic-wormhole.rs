@@ -17,6 +17,7 @@ pub enum Role {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Display)]
+#[allow(dead_code)]
 pub enum State {
     Waiting,
     Wanting,
@@ -38,12 +39,11 @@ pub struct ManagerMachine {
 #[cfg_attr(test, automock)]
 impl ManagerMachine {
     pub fn new(side: MySide) -> Self {
-        let machine = ManagerMachine {
+        ManagerMachine {
             side,
             role: Role::Follower,
             state: Some(State::Wanting),
-        };
-        machine
+        }
     }
 
     pub fn current_state(&self) -> Option<State> {
@@ -263,7 +263,7 @@ mod test {
 
         assert_eq!(manager_fsm.current_state(), Some(State::Waiting));
 
-        manager_fsm.process(ManagerEvent::Start, &side, &mut |cmd| {
+        manager_fsm.process(ManagerEvent::Start, &side, &mut |_cmd| {
             Err(WormholeError::Protocol("foo".into()))
         });
     }

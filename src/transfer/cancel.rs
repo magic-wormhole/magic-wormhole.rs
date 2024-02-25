@@ -1,7 +1,6 @@
 /// Various helpers to deal with closing connections and cancellation
 use super::*;
 use crate::util;
-use futures::Future;
 
 /// A weird mixture of [`futures::future::Abortable`], [`async_std::sync::Condvar`] and [`futures::future::Select`] tailored to our Ctrl+C handling.
 ///
