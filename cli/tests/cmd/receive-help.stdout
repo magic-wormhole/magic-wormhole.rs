@@ -1,0 +1,42 @@
+[..]
+Receive a file or a folder
+
+USAGE:
+    wormhole-rs[EXE] receive [OPTIONS] [CODE]
+
+ARGS:
+    <CODE>    Provide the code now rather than typing it interactively
+
+OPTIONS:
+        --force-direct
+            Disable the relay server support and force a direct connection
+
+        --force-relay
+            Always route traffic over a relay server. This hides your IP address from the peer (but
+            not from the server operators. Use Tor for that)
+
+    -h, --help
+            Print this help message
+
+        --noconfirm
+            Accept file transfer without asking for confirmation [aliases: yes]
+
+        --out-dir <PATH>
+            Store transferred file or folder in the specified directory. Defaults to $PWD [default:
+            .]
+
+        --relay-server <tcp://HOSTNAME:PORT>
+            Use a custom relay server (specify multiple times for multiple relays) [aliases: relay]
+
+        --rendezvous-server <ws://example.org>
+            Use a custom rendezvous server. Both sides need to use the same value in order to find
+            each other
+
+    -v, --verbose
+            Enable logging to stdout, for debugging purposes
+
+    -V, --version
+            Print version information
+
+        --with-dilation
+            Enable dilation

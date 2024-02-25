@@ -1,0 +1,3 @@
+bin.name = "wormhole-rs"
+args = "forward"
+status.code = 2

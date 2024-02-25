@@ -28,3 +28,6 @@ qr2term = "0.3.0"
 arboard = { version = "3.2.0", features = [
     "wayland-data-control",
 ] } # Wayland by default, fallback to X11.
+
+[dev-dependencies]
+trycmd = "0.15"
