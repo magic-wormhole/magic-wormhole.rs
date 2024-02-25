@@ -1,0 +1,16 @@
+Usage: wormhole-rs[EXE] [OPTIONS] <COMMAND>
+
+Commands:
+  send[..][aliases: tx]
+  receive[..][aliases: rx]
+  send-many[..]
+  forward[..]
+
+Options:
+  -v, --verbose[..]
+  -h, --help[..]
+  -V, --version[..]
+
+Run a subcommand with `--help` to know how it's used.
+To send files, use `wormhole send <PATH>`.
+To receive files, use `wormhole receive <CODE>`.

@@ -1,0 +1,9 @@
+Receive a file or a folder
+
+Usage: wormhole-rs[EXE] receive [OPTIONS] [CODE]
+
+Arguments:
+  [CODE]  Provide the code now rather than typing it interactively
+
+Options:
+...

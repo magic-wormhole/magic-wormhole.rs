@@ -1,0 +1,6 @@
+error: the following required arguments were not provided:
+  <FILENAME|DIRNAME>...
+
+Usage: wormhole-rs[EXE] send <FILENAME|DIRNAME>...
+
+For more information, try '--help'.

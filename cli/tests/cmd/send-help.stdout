@@ -1,0 +1,9 @@
+Send a file or a folder
+
+Usage: wormhole-rs[EXE] send [OPTIONS] <FILENAME|DIRNAME>...
+
+Arguments:
+  <FILENAME|DIRNAME>[..]
+
+Options:
+...

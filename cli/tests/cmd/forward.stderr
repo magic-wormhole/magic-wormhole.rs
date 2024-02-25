@@ -1,0 +1,10 @@
+Forward ports from one machine to another
+
+Usage: wormhole-rs[EXE] forward [OPTIONS] <COMMAND>
+
+Commands:
+  serve[..]
+  connect[..]
+
+Options:
+...

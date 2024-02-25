@@ -1,0 +1,12 @@
+Send a file to many recipients
+
+Usage: wormhole-rs[EXE] send-many [OPTIONS] <FILENAME|DIRNAME>...
+
+Arguments:
+  <FILENAME|DIRNAME>[..]
+
+Options:
+...
+
+[..]sending the file in a loop[..]
+...
