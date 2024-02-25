@@ -62,7 +62,7 @@ struct CommonSenderArgs {
     #[clap(
         index = 1,
         required = true,
-        min_values = 1,
+        num_args = 1..,
         value_name = "FILENAME|DIRNAME",
         value_hint = clap::ValueHint::AnyPath,
     )]
@@ -1138,7 +1138,7 @@ mod test {
 
     #[test]
     fn test_shell_completion() {
-        use clap::ArgEnum;
+        use clap::ValueEnum;
 
         for shell in clap_complete::Shell::value_variants() {
             let mut cmd = WormholeCli::command();
