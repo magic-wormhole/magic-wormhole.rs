@@ -1,0 +1,2 @@
+bin.name = "wormhole-rs"
+args = "send --help"

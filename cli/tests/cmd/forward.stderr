@@ -1,0 +1,14 @@
+[..]
+Forward ports from one machine to another
+
+USAGE:
+    wormhole-rs[EXE] forward [OPTIONS] <SUBCOMMAND>
+
+OPTIONS:
+    -h, --help       Print this help message
+    -v, --verbose    Enable logging to stdout, for debugging purposes
+    -V, --version    Print version information
+
+SUBCOMMANDS:
+    connect    Connect to some ports forwarded to you
+    serve      Make the following ports of your system available to your peer [aliases: open]

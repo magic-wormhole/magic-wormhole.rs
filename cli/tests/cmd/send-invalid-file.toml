@@ -1,0 +1,3 @@
+bin.name = "wormhole-rs"
+args = "send INVALID_FILE"
+status.code = 1
