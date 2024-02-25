@@ -57,9 +57,9 @@ fn install_ctrlc_handler(
 struct CommonSenderArgs {
     /// Suggest a different name to the receiver to keep the file's actual name secret.
     /// Not allowed when sending more than one file.
-    #[clap(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
+    #[arg(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
     file_name: Option<String>,
-    #[clap(
+    #[arg(
         index = 1,
         required = true,
         num_args = 1..,
@@ -73,10 +73,10 @@ struct CommonSenderArgs {
 #[derive(Debug, Args)]
 struct CommonLeaderArgs {
     /// Enter a code instead of generating one automatically
-    #[clap(long, value_name = "CODE")]
+    #[arg(long, value_name = "CODE")]
     code: Option<String>,
     /// Length of code (in bytes/words)
-    #[clap(short = 'c', long, value_name = "NUMWORDS", default_value = "2")]
+    #[arg(short = 'c', long, value_name = "NUMWORDS", default_value = "2")]
     code_length: usize,
 }
 
@@ -84,7 +84,7 @@ struct CommonLeaderArgs {
 #[derive(Debug, Args)]
 struct CommonReceiverArgs {
     /// Store transferred file or folder in the specified directory. Defaults to $PWD.
-    #[clap(long = "out-dir", value_name = "PATH", default_value = ".", value_hint = clap::ValueHint::DirPath)]
+    #[arg(long = "out-dir", value_name = "PATH", default_value = ".", value_hint = clap::ValueHint::DirPath)]
     file_path: PathBuf,
 }
 
@@ -92,7 +92,7 @@ struct CommonReceiverArgs {
 #[derive(Debug, Args)]
 struct CommonFollowerArgs {
     /// Provide the code now rather than typing it interactively
-    #[clap(value_name = "CODE")]
+    #[arg(value_name = "CODE")]
     code: Option<String>,
 }
 
@@ -100,7 +100,7 @@ struct CommonFollowerArgs {
 #[derive(Debug, Clone, Args)]
 struct CommonArgs {
     /// Use a custom relay server (specify multiple times for multiple relays)
-    #[clap(
+    #[arg(
         long,
         visible_alias = "relay",
         action = clap::ArgAction::Append,
@@ -109,38 +109,38 @@ struct CommonArgs {
     )]
     relay_server: Vec<url::Url>,
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
-    #[clap(long, value_name = "ws://example.org", value_hint = clap::ValueHint::Url)]
+    #[arg(long, value_name = "ws://example.org", value_hint = clap::ValueHint::Url)]
     rendezvous_server: Option<url::Url>,
     /// Disable the relay server support and force a direct connection.
-    #[clap(long)]
+    #[arg(long)]
     force_direct: bool,
     /// Always route traffic over a relay server. This hides your IP address from the peer (but not from the server operators. Use Tor for that).
-    #[clap(long, conflicts_with = "force_direct")]
+    #[arg(long, conflicts_with = "force_direct")]
     force_relay: bool,
 }
 
 #[derive(Debug, Subcommand)]
-#[clap(arg_required_else_help = true)]
+#[command(arg_required_else_help = true)]
 enum ForwardCommand {
     /// Make the following ports of your system available to your peer
-    #[clap(
+    #[command(
         visible_alias = "open",
         alias = "server", /* Muscle memory <3 */
     )]
     Serve {
         /// List of ports to open up. You can optionally specify a domain/address to forward remote ports
-        #[clap(value_name = "[DOMAIN:]PORT", action = clap::ArgAction::Append, value_hint = clap::ValueHint::Hostname)]
+        #[arg(value_name = "[DOMAIN:]PORT", action = clap::ArgAction::Append, value_hint = clap::ValueHint::Hostname)]
         targets: Vec<String>,
-        #[clap(flatten)]
+        #[command(flatten)]
         common: CommonArgs,
-        #[clap(flatten)]
+        #[command(flatten)]
         common_leader: CommonLeaderArgs,
     },
     /// Connect to some ports forwarded to you
-    #[clap()]
+    #[command()]
     Connect {
         /// Bind to specific ports instead of taking random free high ports. Can be provided multiple times.
-        #[clap(
+        #[arg(
             short = 'p',
             long = "port",
             action = clap::ArgAction::Append,
@@ -148,14 +148,14 @@ enum ForwardCommand {
         )]
         ports: Vec<u16>,
         /// Bind to a specific address to accept the forwarding. Depending on your system and firewall, this may make the forwarded ports accessible from the outside.
-        #[clap(long = "bind", value_name = "ADDRESS", default_value = "::", value_hint = clap::ValueHint::Other)]
+        #[arg(long = "bind", value_name = "ADDRESS", default_value = "::", value_hint = clap::ValueHint::Other)]
         bind_address: std::net::IpAddr,
         /// Accept the forwarding without asking for confirmation
-        #[clap(long, visible_alias = "yes")]
+        #[arg(long, visible_alias = "yes")]
         noconfirm: bool,
-        #[clap(flatten)]
+        #[command(flatten)]
         common: CommonArgs,
-        #[clap(flatten)]
+        #[command(flatten)]
         common_follower: CommonFollowerArgs,
     },
 }
@@ -163,7 +163,7 @@ enum ForwardCommand {
 #[derive(Debug, Subcommand)]
 enum WormholeCommand {
     /// Send a file or a folder
-    #[clap(visible_alias = "tx")]
+    #[command(visible_alias = "tx")]
     Send {
         #[clap(flatten)]
         common: CommonArgs,
@@ -173,20 +173,20 @@ enum WormholeCommand {
         common_send: CommonSenderArgs,
     },
     /// Receive a file or a folder
-    #[clap(visible_alias = "rx")]
+    #[command(visible_alias = "rx")]
     Receive {
         /// Accept file transfer without asking for confirmation
-        #[clap(long, visible_alias = "yes")]
+        #[arg(long, visible_alias = "yes")]
         noconfirm: bool,
-        #[clap(flatten)]
+        #[command(flatten)]
         common: CommonArgs,
-        #[clap(flatten)]
+        #[command(flatten)]
         common_follower: CommonFollowerArgs,
-        #[clap(flatten)]
+        #[command(flatten)]
         common_receiver: CommonReceiverArgs,
     },
     /// Send a file to many recipients
-    #[clap(
+    #[command(
         after_help = "This works by sending the file in a loop with the same code over \
         and over again. Note that this also gives an attacker multiple tries \
         to guess the code, whereas normally they have only one. This can be \
@@ -198,33 +198,33 @@ enum WormholeCommand {
     SendMany {
         /// Only send the file up to n times, limiting the number of people that may receive it.
         /// These are also the number of tries a potential attacker gets at guessing the password.
-        #[clap(short = 'n', long, value_name = "N", default_value = "30")]
+        #[arg(short = 'n', long, value_name = "N", default_value = "30")]
         tries: u64,
         /// Automatically stop providing the file after a certain amount of time.
-        #[clap(long, value_name = "MINUTES", default_value = "60")]
+        #[arg(long, value_name = "MINUTES", default_value = "60")]
         timeout: u64,
-        #[clap(flatten)]
+        #[command(flatten)]
         common: CommonArgs,
-        #[clap(flatten)]
+        #[command(flatten)]
         common_leader: CommonLeaderArgs,
-        #[clap(flatten)]
+        #[command(flatten)]
         common_send: CommonSenderArgs,
     },
     /// Forward ports from one machine to another
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Forward(ForwardCommand),
     /// Generate shell completions for the wormhole CLI
-    #[clap(hide = true)]
+    #[command(hide = true)]
     Completion {
         /// The shell type to generate completions for (bash, elvish, powershell, zsh)
         shell: clap_complete::Shell,
     },
-    #[clap(hide = true)]
+    #[command(hide = true)]
     Help,
 }
 
 #[derive(Debug, Parser)]
-#[clap(
+#[command(
     version,
     author,
     about,
@@ -237,7 +237,7 @@ enum WormholeCommand {
 )]
 struct WormholeCli {
     /// Enable logging to stdout, for debugging purposes
-    #[clap(
+    #[arg(
         short = 'v',
         long = "verbose",
         alias = "log",
