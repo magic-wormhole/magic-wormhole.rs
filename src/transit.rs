@@ -546,7 +546,6 @@ impl<'de> serde::Deserialize<'de> for RelayHint {
 }
 
 use crate::core::Ability;
-use std::convert::{TryFrom, TryInto};
 
 impl TryFrom<&DirectHint> for IpAddr {
     type Error = std::net::AddrParseError;
