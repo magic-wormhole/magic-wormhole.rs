@@ -13,20 +13,17 @@
 //! and received as they come in, no additional buffering is applied. (Under the assumption that those applications
 //! that need buffering already do it on their side, and those who don't, don't.)
 
+use super::*;
+use async_std::net::{TcpListener, TcpStream};
+use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     rc::Rc,
     sync::Arc,
 };
-
-use async_std::net::{TcpListener, TcpStream};
-use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
-use serde::{Deserialize, Serialize};
-
 use transit::{TransitConnectError, TransitError};
-
-use super::*;
 
 const APPID_RAW: &str = "piegames.de/wormhole/port-forwarding";
 
@@ -44,7 +41,6 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
         transit_abilities: transit::Abilities::ALL_ABILITIES,
         other: serde_json::Value::Null,
     },
-    with_dilation: false,
 };
 
 /**
@@ -144,18 +140,18 @@ pub async fn serve(
     targets: Vec<(Option<url::Host>, u16)>,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
-    let our_version = wormhole
-        .our_version()
-        .downcast_ref::<AppVersion>()
-        .expect("You may only use a Wormhole instance with the correct AppVersion type!")
-        .to_owned();
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().to_owned())?;
+    let our_version: &AppVersion = wormhole
+        .our_version
+        .downcast_ref()
+        .expect("You may only use a Wormhole instance with the correct AppVersion type!");
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     let connector = transit::init(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),
         relay_hints,
     )
     .await?;
+
     /* Send our transit hints */
     wormhole
         .send_json(&PeerMessage::Transit {
@@ -171,7 +167,7 @@ pub async fn serve(
                     log::warn!("It seems like you are trying to forward a remote HTTP target ('{}'). Due to HTTP being host-aware this will very likely fail!", host);
                 }
                 (format!("{}:{}", host, port), (Some(host), port))
-            }
+            },
             None => (port.to_string(), (host, port)),
         })
         .collect();
@@ -528,10 +524,10 @@ pub async fn connect(
     custom_ports: &[u16],
 ) -> Result<ConnectOffer, ForwardingError> {
     let our_version: &AppVersion = wormhole
-        .our_version()
+        .our_version
         .downcast_ref()
         .expect("You may only use a Wormhole instance with the correct AppVersion type!");
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().to_owned())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     let connector = transit::init(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),

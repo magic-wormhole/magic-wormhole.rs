@@ -33,7 +33,7 @@ mod v2;
 pub use v1::ReceiveRequest as ReceiveRequestV1;
 pub use v2::ReceiveRequest as ReceiveRequestV2;
 
-use crate::core::APPID_RAW;
+const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
 
 /// The App ID associated with this protocol.
 pub const APPID: AppID = AppID(Cow::Borrowed(APPID_RAW));
@@ -46,7 +46,6 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
     id: AppID(Cow::Borrowed(APPID_RAW)),
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
     app_version: AppVersion::new(),
-    with_dilation: false,
 };
 
 // TODO be more extensible on the JSON enum types (i.e. recognize unknown variants)
@@ -162,29 +161,7 @@ impl Default for AppVersion {
     }
 }
 
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// #[serde(rename_all = "kebab-case")]
-// pub struct AppVersionTransferV2Hint {
-//     supported_formats: Vec<Cow<'static, str>>,
-//     transit_abilities: Vec<Ability>,
-// }
-
-// impl AppVersionTransferV2Hint {
-//     const fn new() -> Self {
-//         Self {
-//             supported_formats: vec![Cow::Borrowed("tar.zst")],
-//             transit_abilities: Ability::all_abilities(),
-//         }
-//     }
-// }
-
-// impl Default for AppVersionTransferV2Hint {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct AppVersionTransferV2Hint {
     supported_formats: Cow<'static, [Cow<'static, str>]>,
@@ -829,7 +806,7 @@ pub async fn send(
     progress_handler: impl FnMut(u64, u64) + 'static,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError> {
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     if peer_version.supports_v2() {
         v2::send(
             wormhole,
@@ -870,7 +847,7 @@ pub async fn request(
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
     if peer_version.supports_v2() {
         v2::request(
             wormhole,

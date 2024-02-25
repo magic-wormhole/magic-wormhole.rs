@@ -29,8 +29,6 @@ rand = "0.8.0"
 log = "0.4.13"
 base64 = "0.21.0"
 futures_ringbuf = "0.4.0"
-async-trait = "0.1.57"
-mockall_double = "0.3.0"
 time = { version = "0.3.7", features = ["formatting"] }
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 
@@ -47,11 +45,12 @@ percent-encoding = { version = "2.1.0" }
 
 # Transit dependencies
 
+
 stun_codec = { version = "0.3.0", optional = true }
 bytecodec = { version = "0.4.15", optional = true }
-noise-protocol = { version = "0.2.0-rc1", optional = true }
 noise-rust-crypto = { version = "0.6.0-rc.1", optional = true }
-
+async-trait = { version = "0.1.57", optional = true }
+noise-protocol = { version = "0.2", optional = true }
 # Transfer dependencies
 
 rmp-serde = { version = "1.0.0", optional = true }
@@ -88,7 +87,6 @@ getrandom = { version = "0.2.5", features = ["js"] }
 [dev-dependencies]
 env_logger = "0.11"
 eyre = "0.6.5"
-mockall = "0.12"
 
 [features]
 transit = [
@@ -96,13 +94,13 @@ transit = [
     "stun_codec",
     "if-addrs",
     "bytecodec",
+    "async-trait",
     "noise-protocol",
     "noise-rust-crypto",
 ]
 transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
-dilation = ["transit"]
 forwarding = ["transit", "rmp-serde"]
-default = ["transfer", "dilation"]
+default = ["transit", "transfer"]
 all = ["default", "forwarding"]
 
 [profile.release]
