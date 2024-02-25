@@ -14,7 +14,6 @@
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
 use crate::{util, Key, KeyPurpose};
-use derive_more::Display;
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
@@ -219,6 +218,18 @@ impl<'de> serde::Deserialize<'de> for Abilities {
     where
         D: serde::Deserializer<'de>,
     {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "kebab-case", tag = "type")]
+        enum Ability {
+            DirectTcpV1,
+            RelayV1,
+            RelayV2,
+            #[cfg(all())]
+            NoiseCryptoV1,
+            #[serde(other)]
+            Other,
+        }
+
         let mut abilities = Self::default();
         /* Specifying a hint multiple times is undefined behavior. Here, we simply merge all features. */
         for ability in <Vec<Ability> as serde::Deserialize>::deserialize(de)? {
@@ -252,8 +263,7 @@ enum HintSerde {
 }
 
 /** Information about how to find a peer */
-#[derive(Clone, Display, Debug, Default, PartialEq)]
-#[display(fmt = "Hints(direct: {:?}, relay: {:?})", "&direct_tcp", "&relay")]
+#[derive(Clone, Debug, Default)]
 pub struct Hints {
     /** Hints for direct connection */
     pub direct_tcp: HashSet<DirectHint>,
@@ -544,8 +554,6 @@ impl<'de> serde::Deserialize<'de> for RelayHint {
         Ok(hint)
     }
 }
-
-use crate::core::Ability;
 
 impl TryFrom<&DirectHint> for IpAddr {
     type Error = std::net::AddrParseError;
