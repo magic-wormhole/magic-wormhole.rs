@@ -1,18 +1,15 @@
-[..]
+Usage: wormhole-rs[EXE] [OPTIONS] <COMMAND>
 
-USAGE:
-    wormhole-rs[EXE] [OPTIONS] <SUBCOMMAND>
+Commands:
+  send[..][aliases: tx]
+  receive[..][aliases: rx]
+  send-many[..]
+  forward[..]
 
-OPTIONS:
-    -h, --help       Print this help message
-    -v, --verbose    Enable logging to stdout, for debugging purposes
-    -V, --version    Print version information
-
-SUBCOMMANDS:
-    forward      Forward ports from one machine to another
-    receive      Receive a file or a folder [aliases: rx]
-    send         Send a file or a folder [aliases: tx]
-    send-many    Send a file to many recipients. READ HELP PAGE FIRST!
+Options:
+  -v, --verbose[..]
+  -h, --help[..]
+  -V, --version[..]
 
 Run a subcommand with `--help` to know how it's used.
 To send files, use `wormhole send <PATH>`.

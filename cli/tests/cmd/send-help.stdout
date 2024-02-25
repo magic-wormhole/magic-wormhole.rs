@@ -1,45 +1,9 @@
-[..]
 Send a file or a folder
 
-USAGE:
-    wormhole-rs[EXE] send [OPTIONS] <FILENAME|DIRNAME>...
+Usage: wormhole-rs[EXE] send [OPTIONS] <FILENAME|DIRNAME>...
 
-ARGS:
-    <FILENAME|DIRNAME>...    
+Arguments:
+  <FILENAME|DIRNAME>[..]
 
-OPTIONS:
-    -c, --code-length <NUMWORDS>
-            Length of code (in bytes/words) [default: 2]
-
-        --code <CODE>
-            Enter a code instead of generating one automatically
-
-        --force-direct
-            Disable the relay server support and force a direct connection
-
-        --force-relay
-            Always route traffic over a relay server. This hides your IP address from the peer (but
-            not from the server operators. Use Tor for that)
-
-    -h, --help
-            Print this help message
-
-        --relay-server <tcp://HOSTNAME:PORT>
-            Use a custom relay server (specify multiple times for multiple relays) [aliases: relay]
-
-        --rename <FILE_NAME>
-            Suggest a different name to the receiver to keep the file's actual name secret. Not
-            allowed when sending more than one file [aliases: name]
-
-        --rendezvous-server <ws://example.org>
-            Use a custom rendezvous server. Both sides need to use the same value in order to find
-            each other
-
-    -v, --verbose
-            Enable logging to stdout, for debugging purposes
-
-    -V, --version
-            Print version information
-
-        --with-dilation
-            Enable dilation
+Options:
+...

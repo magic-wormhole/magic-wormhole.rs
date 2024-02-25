@@ -1,58 +1,12 @@
-[..]
-Send a file to many recipients. READ HELP PAGE FIRST!
+Send a file to many recipients
 
-USAGE:
-    wormhole-rs[EXE] send-many [OPTIONS] <FILENAME|DIRNAME>...
+Usage: wormhole-rs[EXE] send-many [OPTIONS] <FILENAME|DIRNAME>...
 
-ARGS:
-    <FILENAME|DIRNAME>...    
+Arguments:
+  <FILENAME|DIRNAME>[..]
 
-OPTIONS:
-    -c, --code-length <NUMWORDS>
-            Length of code (in bytes/words) [default: 2]
+Options:
+...
 
-        --code <CODE>
-            Enter a code instead of generating one automatically
-
-        --force-direct
-            Disable the relay server support and force a direct connection
-
-        --force-relay
-            Always route traffic over a relay server. This hides your IP address from the peer (but
-            not from the server operators. Use Tor for that)
-
-    -h, --help
-            Print this help message
-
-    -n, --tries <N>
-            Only send the file up to n times, limiting the number of people that may receive it.
-            These are also the number of tries a potential attacker gets at guessing the password
-            [default: 30]
-
-        --relay-server <tcp://HOSTNAME:PORT>
-            Use a custom relay server (specify multiple times for multiple relays) [aliases: relay]
-
-        --rename <FILE_NAME>
-            Suggest a different name to the receiver to keep the file's actual name secret. Not
-            allowed when sending more than one file [aliases: name]
-
-        --rendezvous-server <ws://example.org>
-            Use a custom rendezvous server. Both sides need to use the same value in order to find
-            each other
-
-        --timeout <MINUTES>
-            Automatically stop providing the file after a certain amount of time [default: 60]
-
-    -v, --verbose
-            Enable logging to stdout, for debugging purposes
-
-    -V, --version
-            Print version information
-
-This works by sending the file in a loop with the same code over and over again. Note that this also
-gives an attacker multiple tries to guess the code, whereas normally they have only one. This can be
-countered by using a longer than usual code (default 4 bytes entropy).
-
-The application terminates on interruption, after a timeout or after a
-        number of sent files, whichever comes first. It will always try to send
-        at least one file, regardless of the limits.
+[..]sending the file in a loop[..]
+...

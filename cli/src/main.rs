@@ -101,11 +101,11 @@ struct CommonFollowerArgs {
 struct CommonArgs {
     /// Use a custom relay server (specify multiple times for multiple relays)
     #[clap(
-        long = "relay-server",
+        long,
         visible_alias = "relay",
         action = clap::ArgAction::Append,
         value_name = "tcp://HOSTNAME:PORT",
-        value_hint = clap::ValueHint::Url
+        value_hint = clap::ValueHint::Url,
     )]
     relay_server: Vec<url::Url>,
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
@@ -115,7 +115,7 @@ struct CommonArgs {
     #[clap(long)]
     force_direct: bool,
     /// Always route traffic over a relay server. This hides your IP address from the peer (but not from the server operators. Use Tor for that).
-    #[clap(long, conflicts_with = "force-direct")]
+    #[clap(long, conflicts_with = "force_direct")]
     force_relay: bool,
 }
 
@@ -126,7 +126,6 @@ enum ForwardCommand {
     #[clap(
         visible_alias = "open",
         alias = "server", /* Muscle memory <3 */
-        mut_arg("help", |a| a.help("Print this help message")),
     )]
     Serve {
         /// List of ports to open up. You can optionally specify a domain/address to forward remote ports
@@ -138,9 +137,7 @@ enum ForwardCommand {
         common_leader: CommonLeaderArgs,
     },
     /// Connect to some ports forwarded to you
-    #[clap(
-        mut_arg("help", |a| a.help("Print this help message")),
-    )]
+    #[clap()]
     Connect {
         /// Bind to specific ports instead of taking random free high ports. Can be provided multiple times.
         #[clap(
@@ -166,10 +163,7 @@ enum ForwardCommand {
 #[derive(Debug, Subcommand)]
 enum WormholeCommand {
     /// Send a file or a folder
-    #[clap(
-        visible_alias = "tx",
-        mut_arg("help", |a| a.help("Print this help message")),
-    )]
+    #[clap(visible_alias = "tx")]
     Send {
         #[clap(flatten)]
         common: CommonArgs,
@@ -178,9 +172,21 @@ enum WormholeCommand {
         #[clap(flatten)]
         common_send: CommonSenderArgs,
     },
-    /// Send a file to many recipients. READ HELP PAGE FIRST!
+    /// Receive a file or a folder
+    #[clap(visible_alias = "rx")]
+    Receive {
+        /// Accept file transfer without asking for confirmation
+        #[clap(long, visible_alias = "yes")]
+        noconfirm: bool,
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_follower: CommonFollowerArgs,
+        #[clap(flatten)]
+        common_receiver: CommonReceiverArgs,
+    },
+    /// Send a file to many recipients
     #[clap(
-        mut_arg("help", |a| a.help("Print this help message")),
         after_help = "This works by sending the file in a loop with the same code over \
         and over again. Note that this also gives an attacker multiple tries \
         to guess the code, whereas normally they have only one. This can be \
@@ -203,22 +209,6 @@ enum WormholeCommand {
         common_leader: CommonLeaderArgs,
         #[clap(flatten)]
         common_send: CommonSenderArgs,
-    },
-    /// Receive a file or a folder
-    #[clap(
-        visible_alias = "rx",
-        mut_arg("help", |a| a.help("Print this help message")),
-    )]
-    Receive {
-        /// Accept file transfer without asking for confirmation
-        #[clap(long, visible_alias = "yes")]
-        noconfirm: bool,
-        #[clap(flatten)]
-        common: CommonArgs,
-        #[clap(flatten)]
-        common_follower: CommonFollowerArgs,
-        #[clap(flatten)]
-        common_receiver: CommonReceiverArgs,
     },
     /// Forward ports from one machine to another
     #[clap(subcommand)]
@@ -243,12 +233,17 @@ enum WormholeCommand {
     propagate_version = true,
     after_help = "Run a subcommand with `--help` to know how it's used.\n\
                  To send files, use `wormhole send <PATH>`.\n\
-                 To receive files, use `wormhole receive <CODE>`.",
-    mut_arg("help", |a| a.help("Print this help message")),
+                 To receive files, use `wormhole receive <CODE>`."
 )]
 struct WormholeCli {
     /// Enable logging to stdout, for debugging purposes
-    #[clap(short = 'v', long = "verbose", alias = "log", global = true)]
+    #[clap(
+        short = 'v',
+        long = "verbose",
+        alias = "log",
+        global = true,
+        display_order = 100
+    )]
     log: bool,
     #[clap(subcommand)]
     command: WormholeCommand,
