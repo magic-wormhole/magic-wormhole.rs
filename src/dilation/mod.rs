@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use futures::executor;
 
@@ -22,14 +22,14 @@ mod manager;
 type WormholeConnection = WormholeConnectionDefault;
 
 pub struct WormholeConnectionDefault {
-    wormhole: Rc<async_std::sync::Mutex<Wormhole>>,
+    wormhole: Rc<RefCell<Wormhole>>,
 }
 
 #[cfg_attr(test, mockall::automock)]
 impl WormholeConnectionDefault {
     fn new(wormhole: Wormhole) -> Self {
         Self {
-            wormhole: Rc::new(async_std::sync::Mutex::new(wormhole)),
+            wormhole: Rc::new(RefCell::new(wormhole)),
         }
     }
 
@@ -37,7 +37,7 @@ impl WormholeConnectionDefault {
     where
         T: for<'a> serde::Deserialize<'a> + 'static,
     {
-        let message = self.wormhole.lock().await.receive_json().await;
+        let message = self.wormhole.borrow_mut().receive_json().await;
         match message {
             Ok(result) => match result {
                 Ok(result) => Ok(result),
@@ -49,8 +49,7 @@ impl WormholeConnectionDefault {
 
     async fn send_json(&self, command: &ProtocolCommand) -> Result<(), WormholeError> {
         self.wormhole
-            .lock()
-            .await
+            .borrow_mut()
             .send_json_with_phase(command, Phase::dilation)
             .await
     }
