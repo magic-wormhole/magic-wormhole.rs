@@ -7,7 +7,7 @@ use mockall::automock;
 use crate::{
     core::{
         key::{derive_phase_key, derive_verifier, encrypt_data},
-        Phase, PhaseProvider,
+        PhaseProvider,
     },
     rendezvous::RendezvousServer,
     AppConfig, AppID, Key, Mood, WormholeError, WormholeKey,
@@ -70,10 +70,6 @@ impl WormholeProtocolDefault {
 #[async_trait]
 impl WormholeProtocol for WormholeProtocolDefault {
     /** Send an encrypted message to peer */
-    async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
-        self.send_with_phase(plaintext, Phase::numeric).await
-    }
-
     async fn send_with_phase(
         &mut self,
         plaintext: Vec<u8>,
@@ -140,7 +136,6 @@ impl WormholeProtocol for WormholeProtocolDefault {
 #[cfg_attr(test, automock)]
 #[async_trait]
 pub trait WormholeProtocol: Debug + Send + Sync {
-    async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError>;
     async fn send_with_phase(
         &mut self,
         plaintext: Vec<u8>,
