@@ -13,7 +13,7 @@ license = "EUPL-1.2"
 edition = "2021"
 
 # MSRV (also change in CI)
-rust-version = "1.70"
+rust-version = "1.75"
 
 [dependencies]
 serde = { version = "1.0.120", features = ["rc"] }
