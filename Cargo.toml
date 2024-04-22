@@ -63,10 +63,7 @@ tar = { version = "0.4.33", optional = true }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2.101"
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
-async-tungstenite = { version = "0.25", features = [
-    "async-std-runtime",
-    "async-tls",
-] }
+async-tungstenite = { version = "0.25", features = ["async-std-runtime"] }
 async-io = "2.2.0"
 
 # Transit
@@ -102,6 +99,11 @@ transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transit", "transfer"]
 all = ["default", "forwarding"]
+
+# TLS implementations for websocket connections via async-tungstenite
+# required for optional wss connection to the mailbox server
+tls = ["async-tungstenite/async-tls"]
+native-tls = ["async-tungstenite/async-native-tls"]
 
 [profile.release]
 overflow-checks = true
