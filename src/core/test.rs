@@ -183,7 +183,8 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
             .name("sender".to_owned())
             .spawn(async {
                 let (welcome, wormhole_future) =
-                    Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+                    Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
+                        .await?;
                 if let Some(welcome) = &welcome.welcome {
                     log::info!("Got welcome: {}", welcome);
                 }
@@ -258,7 +259,8 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
             .name("sender".to_owned())
             .spawn(async {
                 let mailbox_connection =
-                    MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+                    MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
+                        .await?;
                 if let Some(welcome) = &mailbox_connection.welcome {
                     log::info!("Got welcome: {}", welcome);
                 }
