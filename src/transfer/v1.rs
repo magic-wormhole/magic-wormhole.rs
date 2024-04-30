@@ -584,8 +584,9 @@ pub async fn send_records<'a>(
 
     let mut hasher = Sha256::default();
 
-    // Yeah, maybe don't allocate 4kiB on the stack…
-    let mut plaintext = Box::new([0u8; 4096]);
+    // Yeah, maybe don't allocate 16kiB on the stack…
+    // Update chunk size from 4KB to 16KB: https://github.com/magic-wormhole/magic-wormhole.rs/issues/224
+    let mut plaintext = Box::new([0u8; 16384]);
     let mut sent_size = 0;
     futures::pin_mut!(files);
     while let Some(mut file) = files.next().await.transpose()? {
