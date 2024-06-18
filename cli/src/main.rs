@@ -59,6 +59,9 @@ struct CommonSenderArgs {
     /// Not allowed when sending more than one file.
     #[clap(long = "rename", visible_alias = "name", value_name = "FILE_NAME")]
     file_name: Option<String>,
+    /// text message to send, instead of a file. Use '-' to read from stdin.
+    #[clap(long = "text", action)]
+    text: bool,
     #[clap(
         index = 1,
         required = true,
@@ -290,9 +293,17 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Send {
             common,
             common_leader: CommonLeaderArgs { code, code_length },
-            common_send: CommonSenderArgs { file_name, files },
+            common_send:
+                CommonSenderArgs {
+                    file_name,
+                    text,
+                    files,
+                },
             ..
         } => {
+            if text {
+                unimplemented!("text mode not implemented yet");
+            }
             let offer = make_send_offer(files, file_name).await?;
 
             let transit_abilities = parse_transit_args(&common);
@@ -330,9 +341,17 @@ async fn main() -> eyre::Result<()> {
             timeout,
             common,
             common_leader: CommonLeaderArgs { code, code_length },
-            common_send: CommonSenderArgs { file_name, files },
+            common_send:
+                CommonSenderArgs {
+                    file_name,
+                    text,
+                    files,
+                },
             ..
         } => {
+            if text {
+                unimplemented!("text mode not implemented yet");
+            }
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, code, relay_hints) = {
                 let connect_fut = Box::pin(parse_and_connect(
