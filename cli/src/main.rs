@@ -971,6 +971,12 @@ async fn receive_inner_v1(
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     use async_std::fs::OpenOptions;
+    let req = match req {
+        transfer::ReceiveRequestV1::File(req) => req,
+        transfer::ReceiveRequestV1::Text(x) => {
+            return x.accept().await.context("receive process failed");
+        },
+    };
 
     /*
      * Control flow is a bit tricky here:

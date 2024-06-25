@@ -407,9 +407,25 @@ pub async fn request(
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
+    enum InnerData {
+        File {
+            filename: String,
+            filesize: u64,
+            their_abilities: transit::Abilities,
+            their_hints: transit::Hints,
+        },
+        Text {
+            message: String,
+        },
+    }
+
     // Error handling
     let run = Box::pin(async {
+        let first_message = wormhole.receive_json::<PeerMessage>().await??.check_err()?;
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
+        if let PeerMessage::Offer(v1::OfferMessage::Message(message)) = first_message {
+            return Ok((connector, InnerData::Text { message }));
+        }
 
         // send the transit message
         debug!("Sending transit message '{:?}", connector.our_hints());
@@ -422,7 +438,7 @@ pub async fn request(
 
         // receive transit message
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
-            match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
+            match first_message {
                 PeerMessage::Transit(transit) => {
                     debug!("received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
@@ -452,7 +468,15 @@ pub async fn request(
                 },
             };
 
-        Ok((filename, filesize, connector, their_abilities, their_hints))
+        Ok((
+            connector,
+            InnerData::File {
+                filename,
+                filesize,
+                their_abilities,
+                their_hints,
+            },
+        ))
     });
 
     futures::pin_mut!(cancel);
@@ -460,28 +484,28 @@ pub async fn request(
     cancel::handle_run_result_noclose(wormhole, result)
         .await
         .map(|inner: Option<_>| {
-            inner.map(
-                |((filename, filesize, connector, their_abilities, their_hints), wormhole, _)| {
-                    ReceiveRequest {
-                        wormhole,
-                        filename,
-                        filesize,
-                        connector,
-                        their_abilities,
-                        their_hints: Arc::new(their_hints),
-                    }
+            inner.map(|((connector, data), wormhole, _)| match data {
+                InnerData::File {
+                    filename,
+                    filesize,
+                    their_abilities,
+                    their_hints,
+                } => ReceiveRequest::File(ReceiveFileRequest {
+                    wormhole,
+                    filename,
+                    filesize,
+                    connector,
+                    their_abilities,
+                    their_hints: Arc::new(their_hints),
+                }),
+                InnerData::Text { message } => {
+                    ReceiveRequest::Text(ReceiveTextRequest { wormhole, message })
                 },
-            )
+            })
         })
 }
 
-/**
- * A pending files send offer from the other side
- *
- * You *should* consume this object, either by calling [`accept`](ReceiveRequest::accept) or [`reject`](ReceiveRequest::reject).
- */
-#[must_use]
-pub struct ReceiveRequest {
+pub struct ReceiveFileRequest {
     wormhole: Wormhole,
     connector: TransitConnector,
     /// **Security warning:** this is untrusted and unverified input
@@ -491,12 +515,7 @@ pub struct ReceiveRequest {
     their_hints: Arc<transit::Hints>,
 }
 
-impl ReceiveRequest {
-    /**
-     * Accept the file offer
-     *
-     * This will transfer the file and save it on disk.
-     */
+impl ReceiveFileRequest {
     pub async fn accept<F, G, W>(
         mut self,
         transit_handler: G,
@@ -544,11 +563,6 @@ impl ReceiveRequest {
         cancel::handle_run_result(self.wormhole, result).await
     }
 
-    /**
-     * Reject the file offer
-     *
-     * This will send an error message to the other side so that it knows the transfer failed.
-     */
     pub async fn reject(mut self) -> Result<(), TransferError> {
         self.wormhole
             .send_json(&PeerMessage::error_message("transfer rejected"))
@@ -556,6 +570,83 @@ impl ReceiveRequest {
         self.wormhole.close().await?;
 
         Ok(())
+    }
+}
+
+pub struct ReceiveTextRequest {
+    wormhole: Wormhole,
+    pub message: String,
+}
+
+impl ReceiveTextRequest {
+    pub async fn accept(mut self) -> Result<(), TransferError>
+where {
+        debug!("Sending ack");
+        self.wormhole
+            .send_json(&PeerMessage::message_ack_v1("ok"))
+            .await?;
+
+        println!("{}", self.message);
+        Ok(())
+    }
+    pub async fn reject(mut self) -> Result<(), TransferError> {
+        self.wormhole
+            .send_json(&PeerMessage::error_message("transfer rejected"))
+            .await?;
+        self.wormhole.close().await?;
+
+        Ok(())
+    }
+}
+
+/**
+ * A pending file or text send offer from the other side
+ *
+ * You *should* consume this object, either by calling [`accept`](ReceiveRequest::accept) or [`reject`](ReceiveRequest::reject).
+ */
+#[must_use]
+pub enum ReceiveRequest {
+    File(ReceiveFileRequest),
+    Text(ReceiveTextRequest),
+}
+
+impl ReceiveRequest {
+    /**
+     * Accept the file offer
+     *
+     * This will transfer the file and save it on disk.
+     */
+    pub async fn accept<F, G, W>(
+        self,
+        transit_handler: G,
+        content_handler: &mut W,
+        progress_handler: F,
+        cancel: impl Future<Output = ()>,
+    ) -> Result<(), TransferError>
+    where
+        F: FnMut(u64, u64) + 'static,
+        G: FnOnce(transit::TransitInfo),
+        W: AsyncWrite + Unpin,
+    {
+        match self {
+            ReceiveRequest::Text(req) => req.accept().await,
+            ReceiveRequest::File(req) => {
+                req.accept(transit_handler, content_handler, progress_handler, cancel)
+                    .await
+            },
+        }
+    }
+
+    /**
+     * Reject the file offer
+     *
+     * This will send an error message to the other side so that it knows the transfer failed.
+     */
+    pub async fn reject(self) -> Result<(), TransferError> {
+        match self {
+            ReceiveRequest::File(req) => req.reject().await,
+            ReceiveRequest::Text(req) => req.reject().await,
+        }
     }
 }
 

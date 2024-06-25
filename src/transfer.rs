@@ -30,7 +30,10 @@ mod cancel;
 mod v1;
 mod v2;
 
-pub use v1::ReceiveRequest as ReceiveRequestV1;
+pub use v1::{
+    ReceiveFileRequest as ReceiveFileRequestV1, ReceiveRequest as ReceiveRequestV1,
+    ReceiveTextRequest as ReceiveTextRequestV1,
+};
 pub use v2::ReceiveRequest as ReceiveRequestV2;
 
 const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
@@ -247,7 +250,6 @@ impl PeerMessage {
         })
     }
 
-    #[allow(dead_code)]
     fn message_ack_v1(msg: impl Into<String>) -> Self {
         PeerMessage::Answer(v1::AnswerMessage::MessageAck(msg.into()))
     }
