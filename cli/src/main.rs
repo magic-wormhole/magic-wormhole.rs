@@ -1,7 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 mod util;
 
-use std::time::{Duration, Instant};
+use std::{
+    io::Read,
+    time::{Duration, Instant},
+};
 
 use arboard::Clipboard;
 use async_std::sync::Arc;
@@ -12,7 +15,11 @@ use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use std::{io::Write, path::PathBuf};
 
-use magic_wormhole::{forwarding, transfer, transit, MailboxConnection, Wormhole};
+use magic_wormhole::{
+    forwarding,
+    transfer::{self, send_text},
+    transit, MailboxConnection, Wormhole,
+};
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -301,11 +308,6 @@ async fn main() -> eyre::Result<()> {
                 },
             ..
         } => {
-            if text {
-                unimplemented!("text mode not implemented yet");
-            }
-            let offer = make_send_offer(files, file_name).await?;
-
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = match util::cancellable(
                 Box::pin(parse_and_connect(
@@ -326,6 +328,18 @@ async fn main() -> eyre::Result<()> {
                 Err(_) => return Ok(()),
             };
 
+            if text {
+                let mut input = Vec::new();
+                let stdin = std::io::stdin();
+                let mut handle = stdin.lock();
+                handle.read_to_end(&mut input)?;
+                let message = String::from_utf8(input)?;
+                return send_text(wormhole, message, relay_hints, transit_abilities)
+                    .await
+                    .context("failed to send text message");
+            }
+
+            let offer = make_send_offer(files, file_name).await?;
             Box::pin(send(
                 wormhole,
                 relay_hints,
