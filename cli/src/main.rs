@@ -308,6 +308,20 @@ async fn main() -> eyre::Result<()> {
                 },
             ..
         } => {
+            let message = if text {
+                let message_bytes = match file_name.as_ref().map(|x| (x == "-", x)) {
+                    None | Some((true, _)) => {
+                        println!("Enter message to send:");
+                        let mut input = Vec::new();
+                        std::io::stdin().lock().read_to_end(&mut input)?;
+                        input
+                    },
+                    Some((_, x)) => std::fs::read(x)?,
+                };
+                Some(String::from_utf8(message_bytes)?)
+            } else {
+                None
+            };
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = match util::cancellable(
                 Box::pin(parse_and_connect(
@@ -329,12 +343,7 @@ async fn main() -> eyre::Result<()> {
             };
 
             if text {
-                let mut input = Vec::new();
-                let stdin = std::io::stdin();
-                let mut handle = stdin.lock();
-                handle.read_to_end(&mut input)?;
-                let message = String::from_utf8(input)?;
-                return send_text(wormhole, message, relay_hints, transit_abilities)
+                return send_text(wormhole, message.unwrap(), relay_hints, transit_abilities)
                     .await
                     .context("failed to send text message");
             }
