@@ -264,6 +264,19 @@ struct WormholeCli {
     command: WormholeCommand,
 }
 
+fn read_message(file_name: Option<String>) -> eyre::Result<String> {
+    let message_bytes = match file_name.as_ref().map(|x| (x == "-", x)) {
+        None | Some((true, _)) => {
+            println!("Enter message to send:");
+            let mut input = Vec::new();
+            std::io::stdin().lock().read_to_end(&mut input)?;
+            input
+        },
+        Some((_, x)) => std::fs::read(x)?,
+    };
+    Ok(String::from_utf8(message_bytes)?)
+}
+
 #[async_std::main]
 async fn main() -> eyre::Result<()> {
     color_eyre::install()?;
@@ -309,16 +322,7 @@ async fn main() -> eyre::Result<()> {
             ..
         } => {
             let message = if text {
-                let message_bytes = match file_name.as_ref().map(|x| (x == "-", x)) {
-                    None | Some((true, _)) => {
-                        println!("Enter message to send:");
-                        let mut input = Vec::new();
-                        std::io::stdin().lock().read_to_end(&mut input)?;
-                        input
-                    },
-                    Some((_, x)) => std::fs::read(x)?,
-                };
-                Some(String::from_utf8(message_bytes)?)
+                Some(read_message(file_name.clone())?)
             } else {
                 None
             };
@@ -372,9 +376,11 @@ async fn main() -> eyre::Result<()> {
                 },
             ..
         } => {
-            if text {
-                unimplemented!("text mode not implemented yet");
-            }
+            let message = if text {
+                Some(read_message(file_name.clone())?)
+            } else {
+                None
+            };
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, code, relay_hints) = {
                 let connect_fut = Box::pin(parse_and_connect(
@@ -403,6 +409,7 @@ async fn main() -> eyre::Result<()> {
                 timeout,
                 wormhole,
                 &mut term,
+                message,
                 transit_abilities,
                 ctrl_c,
             ))
@@ -866,6 +873,7 @@ async fn send_many(
     timeout: Duration,
     wormhole: Wormhole,
     term: &mut Term,
+    message: Option<String>,
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
@@ -881,11 +889,16 @@ async fn send_many(
     /* Special-case the first send with reusing the existing connection */
     send_in_background(
         relay_hints.clone(),
-        make_send_offer(files.clone(), file_name.clone()).await?,
+        if let Some(_) = message {
+            None
+        } else {
+            Some(make_send_offer(files.clone(), file_name.clone()).await?)
+        },
         wormhole,
         term.clone(),
         &mp,
         transit_abilities,
+        message.clone(),
         ctrl_c(),
     )
     .await?;
@@ -910,11 +923,16 @@ async fn send_many(
 
         send_in_background(
             relay_hints.clone(),
-            make_send_offer(files.clone(), file_name.clone()).await?,
+            if let Some(_) = message {
+                None
+            } else {
+                Some(make_send_offer(files.clone(), file_name.clone()).await?)
+            },
             wormhole,
             term.clone(),
             &mp,
             transit_abilities,
+            message.clone(),
             ctrl_c(),
         )
         .await?;
@@ -922,11 +940,12 @@ async fn send_many(
 
     async fn send_in_background(
         relay_hints: Vec<transit::RelayHint>,
-        offer: transfer::OfferSend,
+        offer: Option<transfer::OfferSend>,
         wormhole: Wormhole,
         mut term: Term,
         mp: &MultiProgress,
         transit_abilities: transit::Abilities,
+        message: Option<String>,
         cancel: impl Future<Output = ()> + Send + 'static,
     ) -> eyre::Result<()> {
         writeln!(&mut term, "Sending file to peer").unwrap();
@@ -935,16 +954,25 @@ async fn send_many(
         async_std::task::spawn(async move {
             let pb2 = pb.clone();
             let result = async move {
-                transfer::send(
-                    wormhole,
-                    relay_hints,
-                    transit_abilities,
-                    offer,
-                    &transit::log_transit_connection,
-                    create_progress_handler(pb2),
-                    cancel,
-                )
-                .await?;
+                match message {
+                    Some(message) => {
+                        send_text(wormhole, message, relay_hints, transit_abilities)
+                            .await
+                            .context("failed to send text message")?;
+                    },
+                    None => {
+                        transfer::send(
+                            wormhole,
+                            relay_hints,
+                            transit_abilities,
+                            offer.unwrap(),
+                            &transit::log_transit_connection,
+                            create_progress_handler(pb2),
+                            cancel,
+                        )
+                        .await?;
+                    },
+                }
                 eyre::Result::<_>::Ok(())
             };
             match result.await {
