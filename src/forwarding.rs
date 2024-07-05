@@ -141,10 +141,10 @@ pub async fn serve(
     cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
     let our_version: &AppVersion = wormhole
-        .our_version
+        .our_version()
         .downcast_ref()
         .expect("You may only use a Wormhole instance with the correct AppVersion type!");
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
     let connector = transit::init(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),
@@ -524,10 +524,10 @@ pub async fn connect(
     custom_ports: &[u16],
 ) -> Result<ConnectOffer, ForwardingError> {
     let our_version: &AppVersion = wormhole
-        .our_version
+        .our_version()
         .downcast_ref()
         .expect("You may only use a Wormhole instance with the correct AppVersion type!");
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
     let connector = transit::init(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),
