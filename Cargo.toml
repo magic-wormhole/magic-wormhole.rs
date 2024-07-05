@@ -27,7 +27,7 @@ hkdf = "0.12.2"
 hex = { version = "0.4.2", features = ["serde"] }
 rand = "0.8.0"
 log = "0.4.13"
-base64 = "0.21.0"
+base64 = "0.22.0"
 futures_ringbuf = "0.4.0"
 time = { version = "0.3.7", features = ["formatting"] }
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
@@ -63,12 +63,12 @@ tar = { version = "0.4.33", optional = true }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2.101"
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
-async-tungstenite = { version = "0.25", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.26", features = ["async-std-runtime"] }
 async-io = "2.2.0"
 
 # Transit
 socket2 = { version = "0.5.0", optional = true, features = ["all"] }
-if-addrs = { version = "0.11", optional = true }
+if-addrs = { version = "0.13", optional = true }
 
 # Transfer
 
@@ -98,7 +98,7 @@ transit = [
 transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transit", "transfer"]
-all = ["default", "forwarding"]
+all = ["default", "forwarding", "native-tls"]
 
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
