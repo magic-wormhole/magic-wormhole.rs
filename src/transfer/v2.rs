@@ -233,7 +233,7 @@ async fn send_inner(
     // use zstd::stream::raw::Encoder;
     // let zstd = Encoder::new(zstd::DEFAULT_COMPRESSION_LEVEL);
     const BUFFER_LEN: usize = 16 * 1024;
-    let mut buffer = Box::new([0u8; BUFFER_LEN]);
+    let mut buffer = vec![0u8; BUFFER_LEN].into_boxed_slice();
 
     for AnswerMessageInner {
         file,
