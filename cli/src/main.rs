@@ -620,7 +620,7 @@ async fn parse_and_connect(
             /* Print code and also copy it to clipboard */
             if is_send {
                 if let Some(clipboard) = clipboard {
-                    match clipboard.set_text(mailbox_connection.code.to_string()) {
+                    match clipboard.set_text(mailbox_connection.code().to_string()) {
                         Ok(()) => log::info!("Code copied to clipboard"),
                         Err(err) => log::warn!("Failed to copy code to clipboard: {}", err),
                     }
@@ -628,15 +628,15 @@ async fn parse_and_connect(
 
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
                     term,
-                    &mailbox_connection.code,
+                    mailbox_connection.code(),
                     &uri_rendezvous,
                 )?;
             }
             mailbox_connection
         },
     };
-    print_welcome(term, &mailbox_connection.welcome)?;
-    let code = mailbox_connection.code.clone();
+    print_welcome(term, mailbox_connection.welcome())?;
+    let code = mailbox_connection.code().clone();
     let wormhole = Wormhole::connect(mailbox_connection).await?;
     eyre::Result::<_>::Ok((wormhole, code, relay_hints))
 }
@@ -724,7 +724,7 @@ fn enter_code() -> eyre::Result<String> {
         .map_err(From::from)
 }
 
-fn print_welcome(term: &mut Term, welcome: &Option<String>) -> eyre::Result<()> {
+fn print_welcome(term: &mut Term, welcome: Option<&str>) -> eyre::Result<()> {
     if let Some(welcome) = &welcome {
         writeln!(term, "Got welcome from server: {}", welcome)?;
     }

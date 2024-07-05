@@ -98,11 +98,11 @@ pub struct MailboxConnection<V: serde::Serialize + Send + Sync + 'static> {
     /// The `RendezvousServer` with an open mailbox connection
     server: RendezvousServer,
     /// The welcome message received from the mailbox server
-    pub welcome: Option<String>,
+    welcome: Option<String>,
     /// The mailbox id of the created mailbox
-    pub mailbox: Mailbox,
+    mailbox: Mailbox,
     /// The Code which is required to connect to the mailbox.
-    pub code: Code,
+    code: Code,
 }
 
 impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
@@ -232,6 +232,21 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
             .shutdown(mood)
             .await
             .map_err(WormholeError::ServerError)
+    }
+
+    /// The welcome message received from the mailbox server
+    pub fn welcome(&self) -> Option<&str> {
+        self.welcome.as_deref()
+    }
+
+    /// The mailbox id of the created mailbox
+    pub fn mailbox(&self) -> &Mailbox {
+        &self.mailbox
+    }
+
+    /// The Code that was used to connect to the mailbox.
+    pub fn code(&self) -> &Code {
+        &self.code
     }
 }
 
