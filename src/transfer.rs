@@ -806,7 +806,7 @@ pub async fn send(
     progress_handler: impl FnMut(u64, u64) + 'static,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError> {
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
     if peer_version.supports_v2() {
         v2::send(
             wormhole,
@@ -847,7 +847,7 @@ pub async fn request(
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version.clone())?;
+    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
     if peer_version.supports_v2() {
         v2::request(
             wormhole,

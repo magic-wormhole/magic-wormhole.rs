@@ -79,7 +79,7 @@ pub struct WormholeWelcome {
  * You can send and receive arbitrary messages in form of byte slices over it, using [`Wormhole::send`] and [`Wormhole::receive`].
  * Everything else (including encryption) will be handled for you.
  *
- * To create a wormhole, use the mailbox connection created via [`MailboxConnection::create`] or [`MailboxConnection::connect*`] with the [`Wormhole::connect`] method.
+ * To create a wormhole, use the mailbox connection created via [`MailboxConnection::create`] or [`MailboxConnection::connect`] with the [`Wormhole::connect`] method.
  * Typically, the sender side connects without a code (which will create one), and the receiver side has one (the user entered it, who got it from the sender).
  *
  * # Clean shutdown
@@ -256,29 +256,9 @@ pub struct Wormhole {
     phase: u64,
     key: key::Key<key::WormholeKey>,
     appid: AppID,
-    /**
-     * If you're paranoid, let both sides check that they calculated the same verifier.
-     *
-     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
-     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
-     * the passwords usually are not of hight entropy, there is a low-probability possible of
-     * an attacker guessing the password correctly, enabling them to MitM the connection.
-     *
-     * Not only is that probability low, but they also have only one try per connection and a failed
-     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
-     * attack vector.
-     */
-    pub verifier: Box<secretbox::Key>,
-    /**
-     * Our "app version" information that we sent. See the [`peer_version`] for more information.
-     */
-    pub our_version: Box<dyn std::any::Any + Send + Sync>,
-    /**
-     * Protocol version information from the other side.
-     * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
-     * (e.g. by the file transfer API).
-     */
-    pub peer_version: serde_json::Value,
+    verifier: Box<secretbox::Key>,
+    our_version: Box<dyn std::any::Any + Send + Sync>,
+    peer_version: serde_json::Value,
 }
 
 impl Wormhole {
@@ -497,6 +477,38 @@ impl Wormhole {
      */
     pub fn key(&self) -> &key::Key<key::WormholeKey> {
         &self.key
+    }
+
+    /**
+     * If you're paranoid, let both sides check that they calculated the same verifier.
+     *
+     * PAKE hardens a standard key exchange with a password ("password authenticated") in order
+     * to mitigate potential man in the middle attacks that would otherwise be possible. Since
+     * the passwords usually are not of hight entropy, there is a low-probability possible of
+     * an attacker guessing the password correctly, enabling them to MitM the connection.
+     *
+     * Not only is that probability low, but they also have only one try per connection and a failed
+     * attempts will be noticed by both sides. Nevertheless, comparing the verifier mitigates that
+     * attack vector.
+     */
+    pub fn verifier(&self) -> &secretbox::Key {
+        &self.verifier
+    }
+
+    /**
+     * Our "app version" information that we sent. See the [`peer_version`] for more information.
+     */
+    pub fn our_version(&self) -> &(dyn std::any::Any + Send + Sync) {
+        &self.our_version
+    }
+
+    /**
+     * Protocol version information from the other side.
+     * This is bound by the [`AppID`]'s protocol and thus shall be handled on a higher level
+     * (e.g. by the file transfer API).
+     */
+    pub fn peer_version(&self) -> &serde_json::Value {
+        &self.peer_version
     }
 }
 
