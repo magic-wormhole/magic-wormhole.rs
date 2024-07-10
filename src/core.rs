@@ -9,7 +9,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 use self::rendezvous::*;
-pub(self) use self::server_messages::EncryptedMessage;
+use self::server_messages::EncryptedMessage;
 use log::*;
 
 use crypto_secretbox as secretbox;
