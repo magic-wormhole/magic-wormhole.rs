@@ -123,6 +123,7 @@ tls = ["async-tungstenite/async-tls"]
 native-tls = ["async-tungstenite/async-native-tls"]
 # Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
 experimental-transfer-v2 = []
+experimental = ["experimental-transfer-v2"]
 
 [profile.release]
 overflow-checks = true
