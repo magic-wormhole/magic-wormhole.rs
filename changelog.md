@@ -14,12 +14,17 @@
 - \[lib\]\[breaking\] changed the signature of the `transit_handler` function to take just the newly combined `transit::TransitInfo`
 - \[lib\]\[breaking\] changed the signature of the `file_name` argument to `transfer::send_*` to take `Into<String>` instead of `Into<PathBuf>`
 - \[lib\]\[breaking\] replaced `transfer::AppVersion` with a struct with private fields that implements `std::default::Default`
-- \[lib\]\[breaking\] split `Wormhole` in `MailboxConnection` and `Wormhole`
+- \[lib\]\[deprecated\] split `Wormhole` in `MailboxConnection` and `Wormhole`
+- \[lib\]\[deprecated\] `Wormhole::connect_with(out)_code`, `WormholeWelcome`, use `MailboxConnection::create()` and then `Wormhole::connect()` instead
+- \[lib\]\[deprecated\] `Wormhole` public struct fields. Use the provided accessor methods instead.
 - \[lib\]\[deprecated\] `ReceiveRequest.filename` is deprecated and replaced by `ReceiveRequest.file_name(..)`
 - \[lib\]\[deprecated\] `ReceiveRequest.filesize` is deprecated and replaced by `ReceiveRequest.file_size(..)`
-- \[lib\]\[deprecated\] `Wormhole` public struct fields. Use the provided accessor methods instead.
-- \[lib\]\[deprecated\] `transit::log_transit_connection` and implemented `Display` on `TransitInfo` instead.
+- \[lib\]\[deprecated\] `GenericKey`, implement `KeyPurpose` on a custom struct instead
+- \[lib\]\[deprecated\] `rendezvous::RendezvousServer` will be removed in the future with no planned public replacement.
 - \[lib\]\[deprecated\] `transfer::PeerMessage` will be removed in the future with no planned public replacement.
+- \[lib\]\[deprecated\] `transit::TransitConnector` will be removed in the future with no planned public replacement.
+- \[lib\]\[deprecated\] `transit::log_transit_connection` and implemented `Display` on `TransitInfo` instead.
+- \[lib\]\[deprecated\] `transit::init()` will be removed in the future with no planned public replacement.
 
 ## Version 0.6.1
 
