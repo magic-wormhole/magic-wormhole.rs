@@ -12,7 +12,11 @@ use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use std::{io::Write, path::PathBuf};
 
-use magic_wormhole::{forwarding, transfer, transit, MailboxConnection, Wormhole};
+use magic_wormhole::{
+    forwarding, transfer,
+    transit::{self, TransitInfo},
+    MailboxConnection, Wormhole,
+};
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -461,7 +465,7 @@ async fn main() -> eyre::Result<()> {
                     };
                 async_std::task::spawn(forwarding::serve(
                     wormhole,
-                    &transit::log_transit_connection,
+                    &transit_handler,
                     relay_hints,
                     targets.clone(),
                     ctrl_c(),
@@ -494,7 +498,7 @@ async fn main() -> eyre::Result<()> {
 
             let offer = forwarding::connect(
                 wormhole,
-                &transit::log_transit_connection,
+                &transit_handler,
                 relay_hints,
                 Some(bind_address),
                 &ports,
@@ -800,7 +804,7 @@ async fn send(
         relay_hints,
         transit_abilities,
         offer,
-        &transit::log_transit_connection,
+        &transit_handler,
         create_progress_handler(pb),
         ctrl_c(),
     )
@@ -893,7 +897,7 @@ async fn send_many(
                     relay_hints,
                     transit_abilities,
                     offer,
-                    &transit::log_transit_connection,
+                    &transit_handler,
                     create_progress_handler(pb2),
                     cancel,
                 )
@@ -991,7 +995,7 @@ async fn receive_inner_v1(
             .context("Failed to create destination file")?;
         return req
             .accept(
-                &transit::log_transit_connection,
+                &transit_handler,
                 &mut file,
                 create_progress_handler(pb),
                 ctrl_c(),
@@ -1017,7 +1021,7 @@ async fn receive_inner_v1(
         .open(&file_path)
         .await?;
     req.accept(
-        &transit::log_transit_connection,
+        &transit_handler,
         &mut file,
         create_progress_handler(pb),
         ctrl_c(),
@@ -1077,14 +1081,9 @@ async fn receive_inner_v2(
 
     /* Accept the offer and receive it */
     let answer = offer.accept_all(&tmp_dir);
-    req.accept(
-        &transit::log_transit_connection,
-        answer,
-        on_progress,
-        ctrl_c(),
-    )
-    .await
-    .context("Receive process failed")?;
+    req.accept(&transit_handler, answer, on_progress, ctrl_c())
+        .await
+        .context("Receive process failed")?;
 
     // /* Put in all the symlinks last, this greatly reduces the attack surface */
     // offer.create_symlinks(&tmp_dir).await?;
@@ -1127,6 +1126,10 @@ async fn receive_inner_v2(
         ))?;
 
     Ok(())
+}
+
+fn transit_handler(info: TransitInfo) {
+    log::info!("{info}");
 }
 
 #[cfg(test)]
