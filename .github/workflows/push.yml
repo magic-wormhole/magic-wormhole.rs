@@ -112,7 +112,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --all
+          args: --verbose --workspace --features=all,native-tls,experimental
 
   dist:
     runs-on: ${{ matrix.os }}
