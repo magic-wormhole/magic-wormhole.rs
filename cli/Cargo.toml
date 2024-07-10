@@ -51,6 +51,9 @@ trycmd = "0.15"
 # required for optional wss connection to the mailbox server
 tls = ["magic-wormhole/tls"]
 native-tls = ["magic-wormhole/native-tls"]
+# Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
+experimental-transfer-v2 = ["magic-wormhole/experimental-transfer-v2"]
+experimental = ["experimental-transfer-v2"]
 
 default = ["magic-wormhole/default", "magic-wormhole/forwarding"]
 all = ["default", "magic-wormhole/native-tls"]

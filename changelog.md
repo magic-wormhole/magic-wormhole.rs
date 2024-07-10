@@ -2,10 +2,17 @@
 
 ## Unreleased
 
-- Added compilation support for WASM targets.
-- By default websocket TLS support is now disabled in the library crate. TLS is required for secure websocket connections to the mailbox server (`wss://`). As the handshake protocol itself is encrypted, this extra layer of encryption is superfluous. Most WASM targets however refuse to connect to non-TLS websockets. For maximum compatibility with all mailbox servers, or for web browser support, select a TLS implementation by specifying the feature flag `tls` for a statically linked implementation via the `ring` crate, or `native-tls` for dynamically linking with the system-native TLS implementation.
-- The CLI includes `native-tls` in the `all` feature preset.
+- \[all\]\[breaking\] By default websocket TLS support is now disabled in the library crate. TLS is required for secure websocket connections to the mailbox server (`wss://`). As the handshake protocol itself is encrypted, this extra layer of encryption is superfluous. Most WASM targets however refuse to connect to non-TLS websockets. For maximum compatibility with all mailbox servers, or for web browser support, select a TLS implementation by specifying the feature flag `tls` for a statically linked implementation via the `ring` crate, or `native-tls` for dynamically linking with the system-native TLS implementation.
+- \[all\] For experimental (unstable) `transfer-v2` protocol support, enable feature flag `experimental-transfer-v2`. The protocol is not yet finalized. 
+- \[cli\] Added compilation support for WASM targets.
+- \[cli\] Include `native-tls` in the `all` feature preset.
 - \[lib\]\[breaking\] replaced `transit::TransitInfo` with a struct containing the address, the old enum has been renamed to `transit::ConnectionType`.
+- \[lib\]\[breaking\] replaced `transit::TransitInfo` with a struct containing the address and a `conn_type` field which contains the old enum that has been renamed to `transit::ConnectionType`
+- \[lib\]\[breaking\] replaced `transfer::AppVersion` with a struct with private fields that implements `std::default::Default`
+- \[lib\]\[breaking\] split `Wormhole` in `MailboxConnection` and `Wormhole`. `Wormhole` now uses accessor methods for the previously exposed fields.
+- \[lib\]\[breaking\] `WormholeWelcome` ow uses accessor methods for the previously exposed fields.
+- \[lib\]\[breaking\] refactor `magic_wormhole::transfer::` methods to take an `OfferSend` and `OfferReceive` instead of using separate methods for files and folders. Use `transfer::send()` and `transfer::receive()`
+- \[lib\]\[breaking\] struct `transfer::ReceiveRequest` became an enum to prepare for transfer v2
 
 ## Version 0.6.1
 

@@ -58,6 +58,7 @@ macro_rules! with_cancel_wormhole {
 }
 
 // Make macro public
+#[cfg(feature = "experimental-transfer-v2")]
 pub(super) use with_cancel_wormhole;
 
 // Rustfmt has a bug where it will indent a few lines again and again and again and again and again anda
@@ -77,6 +78,7 @@ macro_rules! with_cancel_transit {
 }
 
 // Make macro public
+#[cfg(feature = "experimental-transfer-v2")]
 pub(super) use with_cancel_transit;
 
 /// Run a future with timeout and cancellation, ignore errors
@@ -210,6 +212,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
 /**
  * Handle the post-{transfer, failure, cancellation} logic where the error signaling is done over the transit channel
  */
+#[cfg(feature = "experimental-transfer-v2")]
 pub async fn handle_run_result_transit<T>(
     mut transit: transit::Transit,
     result: Result<(Result<T, TransferError>, impl Future<Output = ()>), Cancelled>,

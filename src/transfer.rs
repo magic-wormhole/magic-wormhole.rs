@@ -28,9 +28,12 @@ use transit::{
 
 mod cancel;
 mod v1;
+#[cfg(feature = "experimental-transfer-v2")]
 mod v2;
 
 pub use v1::ReceiveRequest as ReceiveRequestV1;
+
+#[cfg(feature = "experimental-transfer-v2")]
 pub use v2::ReceiveRequest as ReceiveRequestV2;
 
 const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
@@ -143,7 +146,7 @@ impl AppVersion {
         Self {
             // Dont advertize v2 for now
             abilities: Cow::Borrowed(&[
-                Cow::Borrowed("transfer-v1"), /* Cow::Borrowed("transfer-v2") */
+                Cow::Borrowed("transfer-v1"), /* Cow::Borrowed("experimental-transfer-v2") */
             ]),
             transfer_v2: Some(AppVersionTransferV2Hint::new()),
         }
@@ -206,6 +209,7 @@ pub enum PeerMessage {
     #[display(fmt = "answer")]
     Answer(v1::AnswerMessage),
     /* V2 */
+    #[cfg(feature = "experimental-transfer-v2")]
     #[display(fmt = "transit-v2")]
     TransitV2(v2::TransitV2),
 
@@ -267,6 +271,7 @@ impl PeerMessage {
         })
     }
 
+    #[cfg(feature = "experimental-transfer-v2")]
     fn transit_v2(hints_v2: transit::Hints) -> Self {
         PeerMessage::TransitV2(v2::TransitV2 { hints_v2 })
     }
@@ -807,30 +812,34 @@ pub async fn send(
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError> {
     let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
-    if peer_version.supports_v2() {
-        v2::send(
-            wormhole,
-            relay_hints,
-            transit_abilities,
-            offer,
-            progress_handler,
-            peer_version,
-            cancel,
-        )
-        .await
-    } else {
-        v1::send(
-            wormhole,
-            relay_hints,
-            transit_abilities,
-            offer,
-            progress_handler,
-            transit_handler,
-            peer_version,
-            cancel,
-        )
-        .await
+
+    #[cfg(feature = "experimental-transfer-v2")]
+    {
+        if peer_version.supports_v2() {
+            return v2::send(
+                wormhole,
+                relay_hints,
+                transit_abilities,
+                offer,
+                progress_handler,
+                peer_version,
+                cancel,
+            )
+            .await;
+        }
     }
+
+    v1::send(
+        wormhole,
+        relay_hints,
+        transit_abilities,
+        offer,
+        progress_handler,
+        transit_handler,
+        peer_version,
+        cancel,
+    )
+    .await
 }
 
 /**
@@ -847,22 +856,24 @@ pub async fn request(
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
-    let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
-    if peer_version.supports_v2() {
-        v2::request(
-            wormhole,
-            relay_hints,
-            peer_version,
-            transit_abilities,
-            cancel,
-        )
-        .await
-        .map(|req| req.map(ReceiveRequest::V2))
-    } else {
-        v1::request(wormhole, relay_hints, transit_abilities, cancel)
+    #[cfg(feature = "experimental-transfer-v2")]
+    {
+        let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
+        if peer_version.supports_v2() {
+            return v2::request(
+                wormhole,
+                relay_hints,
+                peer_version,
+                transit_abilities,
+                cancel,
+            )
             .await
-            .map(|req| req.map(ReceiveRequest::V1))
+            .map(|req| req.map(ReceiveRequest::V2));
+        }
     }
+    v1::request(wormhole, relay_hints, transit_abilities, cancel)
+        .await
+        .map(|req| req.map(ReceiveRequest::V1))
 }
 
 /**
@@ -873,7 +884,45 @@ pub async fn request(
 #[must_use]
 pub enum ReceiveRequest {
     V1(ReceiveRequestV1),
+    #[cfg(feature = "experimental-transfer-v2")]
     V2(ReceiveRequestV2),
+}
+
+impl ReceiveRequest {
+    #[cfg(not(feature = "experimental-transfer-v2"))]
+    pub async fn accept<F, G, W>(
+        self,
+        transit_handler: G,
+        content_handler: &mut W,
+        progress_handler: F,
+        cancel: impl Future<Output = ()>,
+    ) -> Result<(), TransferError>
+    where
+        F: FnMut(u64, u64) + 'static,
+        G: FnOnce(transit::TransitInfo),
+        W: AsyncWrite + Unpin,
+    {
+        match self {
+            ReceiveRequest::V1(request) => {
+                request
+                    .accept(transit_handler, content_handler, progress_handler, cancel)
+                    .await
+            },
+        }
+    }
+
+    /**
+     * Reject the file offer
+     *
+     * This will send an error message to the other side so that it knows the transfer failed.
+     */
+    #[cfg(feature = "experimental-transfer-v2")]
+    pub async fn reject(self) -> Result<(), TransferError> {
+        match self {
+            ReceiveRequest::V1(request) => request.reject().await,
+            ReceiveRequest::V2(request) => request.reject().await,
+        }
+    }
 }
 
 #[cfg(test)]
