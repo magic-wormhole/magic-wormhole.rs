@@ -16,10 +16,6 @@ pub trait KeyPurpose: std::fmt::Debug {}
 
 /// The type of main key of the Wormhole
 #[derive(Debug)]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
 pub struct WormholeKey;
 impl KeyPurpose for WormholeKey {}
 

@@ -3,12 +3,12 @@ members = [".", "cli"]
 default-members = ["cli"]
 
 [workspace.package]
+version = "0.7.0"
 authors = [
     "Fina Wilke <code@felinira.net>",
     "piegames <info@piegames.de>",
     "Brian Warner <warner@lothar.com>",
 ]
-version = "0.6.1"
 description = "Get things from one computer to another, safely"
 keywords = ["magic-wormhole", "wormhole", "file-transfer", "transfer"]
 homepage = "http://magic-wormhole.io/"
@@ -86,7 +86,7 @@ tar = { version = "0.4.33", optional = true }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2.101"
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
-async-tungstenite = { version = "0.26", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.27", features = ["async-std-runtime"] }
 async-io = "2.2.0"
 
 # Transit
