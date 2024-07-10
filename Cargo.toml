@@ -3,8 +3,12 @@ members = [".", "cli"]
 default-members = ["cli"]
 
 [workspace.package]
+authors = [
+    "Fina Wilke <code@felinira.net>",
+    "piegames <info@piegames.de>",
+    "Brian Warner <warner@lothar.com>",
+]
 version = "0.6.1"
-authors = ["piegames <info@piegames.de>", "Brian Warner <warner@lothar.com>"]
 description = "Get things from one computer to another, safely"
 keywords = ["magic-wormhole", "wormhole", "file-transfer", "transfer"]
 homepage = "http://magic-wormhole.io/"
@@ -48,7 +52,6 @@ hex = { version = "0.4.2", features = ["serde"] }
 rand = "0.8.0"
 log = "0.4.13"
 base64 = "0.22.0"
-futures_ringbuf = "0.4.0"
 time = { version = "0.3.7", features = ["formatting"] }
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 
@@ -87,6 +90,7 @@ async-tungstenite = { version = "0.26", features = ["async-std-runtime"] }
 async-io = "2.2.0"
 
 # Transit
+
 socket2 = { version = "0.5.0", optional = true, features = ["all"] }
 if-addrs = { version = "0.13", optional = true }
 
@@ -103,6 +107,8 @@ env_logger = "0.11"
 eyre = "0.6.5"
 
 [features]
+
+transfer = ["transit", "dep:tar", "dep:rmp-serde"]
 transit = [
     "dep:noise-rust-crypto",
     "dep:noise-protocol",
@@ -112,7 +118,6 @@ transit = [
     "dep:bytecodec",
     "dep:async-trait",
 ]
-transfer = ["transit", "dep:tar", "dep:rmp-serde"]
 forwarding = ["transit", "dep:rmp-serde"]
 default = ["transit", "transfer"]
 all = ["default", "forwarding"]

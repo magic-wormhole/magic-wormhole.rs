@@ -230,8 +230,6 @@ async fn send_inner(
     }
     let mut total_sent = 0;
 
-    // use zstd::stream::raw::Encoder;
-    // let zstd = Encoder::new(zstd::DEFAULT_COMPRESSION_LEVEL);
     const BUFFER_LEN: usize = 16 * 1024;
     let mut buffer = vec![0u8; BUFFER_LEN].into_boxed_slice();
 
