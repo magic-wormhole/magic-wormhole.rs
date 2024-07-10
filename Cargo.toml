@@ -121,6 +121,8 @@ all = ["default", "forwarding"]
 # required for optional wss connection to the mailbox server
 tls = ["async-tungstenite/async-tls"]
 native-tls = ["async-tungstenite/async-native-tls"]
+# Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
+experimental-transfer-v2 = []
 
 [profile.release]
 overflow-checks = true

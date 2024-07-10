@@ -933,6 +933,7 @@ async fn receive(
         Some(transfer::ReceiveRequest::V1(req)) => {
             receive_inner_v1(req, target_dir, noconfirm, ctrl_c).await
         },
+        #[cfg(feature = "experimental-transfer-v2")]
         Some(transfer::ReceiveRequest::V2(req)) => {
             receive_inner_v2(req, target_dir, noconfirm, ctrl_c).await
         },
@@ -1025,6 +1026,7 @@ async fn receive_inner_v1(
     .context("Receive process failed")
 }
 
+#[cfg(feature = "experimental-transfer-v2")]
 async fn receive_inner_v2(
     req: transfer::ReceiveRequestV2,
     target_dir: &std::path::Path,

@@ -1,3 +1,5 @@
+#![allow(irrefutable_let_patterns)]
+
 use super::{Mood, Phase};
 use rand::Rng;
 use std::{borrow::Cow, time::Duration};
