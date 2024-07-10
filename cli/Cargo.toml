@@ -31,3 +31,12 @@ arboard = { version = "3.2.0", features = [
 
 [dev-dependencies]
 trycmd = "0.15"
+
+[features]
+# TLS implementations for websocket connections via async-tungstenite
+# required for optional wss connection to the mailbox server
+tls = ["magic-wormhole/tls"]
+native-tls = ["magic-wormhole/native-tls"]
+
+default = ["magic-wormhole/default", "magic-wormhole/forwarding"]
+all = ["default", "magic-wormhole/native-tls"]
