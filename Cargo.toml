@@ -1,19 +1,36 @@
-[package]
-name = "magic-wormhole"
+[workspace]
+members = [".", "cli"]
+default-members = ["cli"]
+
+[workspace.package]
 version = "0.6.1"
 authors = ["piegames <info@piegames.de>", "Brian Warner <warner@lothar.com>"]
 description = "Get things from one computer to another, safely"
 keywords = ["magic-wormhole", "wormhole", "file-transfer", "transfer"]
-categories = ["network-programming", "command-line-utilities"]
-readme = "README.md"
 homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/magic-wormhole/magic-wormhole.rs"
-documentation = "https://docs.rs/magic-wormhole/latest/"
 license = "EUPL-1.2"
-edition = "2021"
 
 # MSRV (also change in CI)
 rust-version = "1.75"
+edition = "2021"
+
+[package]
+name = "magic-wormhole"
+categories = ["network-programming", "asynchronous"]
+documentation = "https://docs.rs/magic-wormhole/latest/"
+readme = "README.md"
+
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+
+rust-version.workspace = true
+edition.workspace = true
 
 [dependencies]
 serde = { version = "1.0.120", features = ["rc"] }
@@ -109,7 +126,3 @@ native-tls = ["async-tungstenite/async-native-tls"]
 overflow-checks = true
 strip = "debuginfo"
 lto = "thin"
-
-[workspace]
-members = [".", "cli"]
-default-members = ["cli"]

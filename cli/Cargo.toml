@@ -1,7 +1,21 @@
 [package]
+name = "magic-wormhole-cli"
+categories = ["command-line-utilities"]
+
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+
+rust-version.workspace = true
+edition.workspace = true
+
+[[bin]]
 name = "wormhole-rs"
-version = "0.6.1"
-edition = "2021"
+path = "src/main.rs"
 
 [dependencies]
 serde = { version = "1.0.120", features = ["rc"] }
