@@ -8,8 +8,7 @@ mod wordlist;
 use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 
-use self::rendezvous::*;
-use self::server_messages::EncryptedMessage;
+use self::{rendezvous::*, server_messages::EncryptedMessage};
 use log::*;
 
 use crypto_secretbox as secretbox;
