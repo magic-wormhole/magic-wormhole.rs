@@ -35,6 +35,29 @@ fn init_logger() {
         .try_init();
 }
 
+/// Utility method that logs information of the transit result
+///
+/// Example usage:
+///
+/// ```no_run
+/// use magic_wormhole as mw;
+/// # #[async_std::main] async fn main() -> Result<(), mw::transit::TransitConnectError> {
+/// # let derived_key = unimplemented!();
+/// # let their_abilities = unimplemented!();
+/// # let their_hints = unimplemented!();
+/// let connector: mw::transit::TransitConnector = unimplemented!("transit::init(…).await?");
+/// let (mut transit, info) = connector
+///     .leader_connect(derived_key, their_abilities, their_hints)
+///     .await?;
+/// mw::log_transit_connection(info);
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(not(target_family = "wasm"))]
+pub(crate) fn log_transit_connection(info: crate::transit::TransitInfo) {
+    log::info!("{info}")
+}
+
 fn default_relay_hints() -> Vec<transit::RelayHint> {
     vec![
         transit::RelayHint::from_urls(None, [transit::DEFAULT_RELAY_SERVER.parse().unwrap()])
@@ -199,7 +222,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                         default_relay_hints(),
                         magic_wormhole::transit::Abilities::ALL_ABILITIES,
                         offer,
-                        &transit::log_transit_connection,
+                        &log_transit_connection,
                         |_sent, _total| {},
                         futures::future::pending(),
                     )
@@ -233,7 +256,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                     panic!("v2 should be disabled for now")
                 };
                 req.accept(
-                    &transit::log_transit_connection,
+                    &log_transit_connection,
                     &mut answer,
                     |_received, _total| {},
                     futures::future::pending(),
@@ -275,7 +298,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                         default_relay_hints(),
                         magic_wormhole::transit::Abilities::ALL_ABILITIES,
                         offer,
-                        &transit::log_transit_connection,
+                        &log_transit_connection,
                         |_sent, _total| {},
                         futures::future::pending(),
                     )
@@ -308,7 +331,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                     panic!("v2 should be disabled for now")
                 };
                 req.accept(
-                    &transit::log_transit_connection,
+                    &log_transit_connection,
                     &mut answer,
                     |_received, _total| {},
                     futures::future::pending(),
@@ -359,7 +382,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                         default_relay_hints(),
                         magic_wormhole::transit::Abilities::ALL_ABILITIES,
                         gen_offer().await?,
-                        &transit::log_transit_connection,
+                        &log_transit_connection,
                         |_, _| {},
                         futures::future::pending(),
                     )
@@ -387,7 +410,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
                         default_relay_hints(),
                         magic_wormhole::transit::Abilities::ALL_ABILITIES,
                         gen_offer().await?,
-                        &transit::log_transit_connection,
+                        &log_transit_connection,
                         |_, _| {},
                         futures::future::pending(),
                     )
@@ -431,7 +454,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         .await?;
 
         req.accept(
-            &transit::log_transit_connection,
+            &log_transit_connection,
             &mut answer,
             |_, _| {},
             futures::future::pending(),

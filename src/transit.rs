@@ -622,46 +622,32 @@ enum StunError {
     ),
 }
 
-/// Utility method that logs information of the transit result
-///
-/// Example usage:
-///
-/// ```no_run
-/// use magic_wormhole as mw;
-/// # #[async_std::main] async fn main() -> Result<(), mw::transit::TransitConnectError> {
-/// # let derived_key = unimplemented!();
-/// # let their_abilities = unimplemented!();
-/// # let their_hints = unimplemented!();
-/// let connector: mw::transit::TransitConnector = unimplemented!("transit::init(…).await?");
-/// let (mut transit, info) = connector
-///     .leader_connect(derived_key, their_abilities, their_hints)
-///     .await?;
-/// mw::transit::log_transit_connection(info);
-/// # Ok(())
-/// # }
-/// ```
 #[cfg(not(target_family = "wasm"))]
-pub fn log_transit_connection(info: TransitInfo) {
-    match info.conn_type {
-        ConnectionType::Direct => {
-            log::info!(
-                "Established direct transit connection to '{}'",
-                info.peer_addr,
-            );
-        },
-        ConnectionType::Relay { name: Some(name) } => {
-            log::info!(
-                "Established transit connection via relay '{}' ({})",
-                name,
-                info.peer_addr,
-            );
-        },
-        ConnectionType::Relay { name: None } => {
-            log::info!(
-                "Established transit connection via relay ({})",
-                info.peer_addr,
-            );
-        },
+impl std::fmt::Display for TransitInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.conn_type {
+            ConnectionType::Direct => {
+                write!(
+                    f,
+                    "Established direct transit connection to '{}'",
+                    self.peer_addr,
+                )
+            },
+            ConnectionType::Relay { name: Some(name) } => {
+                write!(
+                    f,
+                    "Established transit connection via relay '{}' ({})",
+                    name, self.peer_addr,
+                )
+            },
+            ConnectionType::Relay { name: None } => {
+                write!(
+                    f,
+                    "Established transit connection via relay ({})",
+                    self.peer_addr,
+                )
+            },
+        }
     }
 }
 
