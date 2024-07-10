@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Added compilation support for WASM targets.
+- By default websocket TLS support is now disabled in the library crate. TLS is required for secure websocket connections to the mailbox server (`wss://`). As the handshake protocol itself is encrypted, this extra layer of encryption is superfluous. Most WASM targets however refuse to connect to non-TLS websockets. For maximum compatibility with all mailbox servers, or for web browser support, select a TLS implementation by specifying the feature flag `tls` for a statically linked implementation via the `ring` crate, or `native-tls` for dynamically linking with the system-native TLS implementation.
+- The CLI includes `native-tls` in the `all` feature preset.
 - \[lib\]\[breaking\] replaced `transit::TransitInfo` with a struct containing the address, the old enum has been renamed to `transit::ConnectionType`.
 
 ## Version 0.6.1

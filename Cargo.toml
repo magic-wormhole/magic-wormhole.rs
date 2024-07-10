@@ -98,7 +98,7 @@ transit = [
 transfer = ["transit", "tar", "async-tar", "rmp-serde", "zstd"]
 forwarding = ["transit", "rmp-serde"]
 default = ["transit", "transfer"]
-all = ["default", "forwarding", "native-tls"]
+all = ["default", "forwarding"]
 
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
