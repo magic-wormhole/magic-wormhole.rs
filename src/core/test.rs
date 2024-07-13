@@ -245,7 +245,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 let mut answer =
                     (answer.into_iter_files().next().unwrap().1.content)(false).await?;
 
-                let transfer::ReceiveRequest::V1(req) = transfer::request_new(
+                let transfer::ReceiveRequest::V1(req) = transfer::request(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -257,8 +257,8 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 };
                 req.accept(
                     &log_transit_connection,
-                    &mut answer,
                     |_received, _total| {},
+                    &mut answer,
                     futures::future::pending(),
                 )
                 .await?;
@@ -293,6 +293,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 code_tx.send(mailbox_connection.code.clone()).unwrap();
                 let wormhole = Wormhole::connect(mailbox_connection).await?;
                 eyre::Result::<_>::Ok(
+                    #[allow(deprecated)]
                     transfer::send(
                         wormhole,
                         default_relay_hints(),
@@ -320,7 +321,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 let mut answer =
                     (answer.into_iter_files().next().unwrap().1.content)(false).await?;
 
-                let transfer::ReceiveRequest::V1(req) = transfer::request_new(
+                let transfer::ReceiveRequest::V1(req) = transfer::request(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -332,8 +333,8 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 };
                 req.accept(
                     &log_transit_connection,
-                    &mut answer,
                     |_received, _total| {},
+                    &mut answer,
                     futures::future::pending(),
                 )
                 .await?;
@@ -377,6 +378,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
             let wormhole = Wormhole::connect(mailbox).await?;
             senders.push(async_std::task::spawn(async move {
                 eyre::Result::Ok(
+                    #[allow(deprecated)]
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
@@ -405,6 +407,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
             let gen_offer = gen_offer.clone();
             senders.push(async_std::task::spawn(async move {
                 eyre::Result::Ok(
+                    #[allow(deprecated)]
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
@@ -432,7 +435,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         )
         .await?;
         log::info!("Got key: {}", &wormhole.key);
-        let transfer::ReceiveRequest::V1(req) = crate::transfer::request_new(
+        let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
             wormhole,
             default_relay_hints(),
             magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -455,8 +458,8 @@ pub async fn test_send_many() -> eyre::Result<()> {
 
         req.accept(
             &log_transit_connection,
-            &mut answer,
             |_, _| {},
+            &mut answer,
             futures::future::pending(),
         )
         .await?;

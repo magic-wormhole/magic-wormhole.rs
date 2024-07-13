@@ -421,8 +421,8 @@ impl ReceiveRequest {
     pub async fn accept(
         self,
         transit_handler: impl FnOnce(transit::TransitInfo),
-        answer: OfferAccept,
         progress_handler: impl FnMut(u64, u64) + 'static,
+        answer: OfferAccept,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError> {
         transit_handler(self.info);
