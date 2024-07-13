@@ -27,7 +27,7 @@ use transit::{
 };
 
 mod cancel;
-mod v1;
+pub mod v1;
 #[cfg(feature = "experimental-transfer-v2")]
 mod v2;
 
@@ -845,12 +845,27 @@ pub async fn send(
 /**
  * Wait for a file offer from the other side
  *
- * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
+ * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequestV1).
  * It will also start building a TCP connection to the other side using the transit protocol.
  *
  * Returns `None` if the task got cancelled.
  */
+#[cfg(not(feature = "experimental-transfer-v2"))]
+#[deprecated(
+    since = "0.7",
+    note = "use transfer::v1::request to keep making only transfer protocol version 1 requests in the future"
+)]
 pub async fn request(
+    wormhole: Wormhole,
+    relay_hints: Vec<transit::RelayHint>,
+    transit_abilities: transit::Abilities,
+    cancel: impl Future<Output = ()>,
+) -> Result<Option<ReceiveRequestV1>, TransferError> {
+    v1::request(wormhole, relay_hints, transit_abilities, cancel).await
+}
+
+#[allow(dead_code)]
+pub(crate) async fn request_new(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
@@ -871,9 +886,28 @@ pub async fn request(
             .map(|req| req.map(ReceiveRequest::V2));
         }
     }
+
     v1::request(wormhole, relay_hints, transit_abilities, cancel)
         .await
         .map(|req| req.map(ReceiveRequest::V1))
+}
+
+/**
+ * Wait for a file offer from the other side
+ *
+ * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
+ * It will also start building a TCP connection to the other side using the transit protocol.
+ *
+ * Returns `None` if the task got cancelled.
+ */
+#[cfg(feature = "experimental-transfer-v2")]
+pub async fn request(
+    wormhole: Wormhole,
+    relay_hints: Vec<transit::RelayHint>,
+    transit_abilities: transit::Abilities,
+    cancel: impl Future<Output = ()>,
+) -> Result<Option<ReceiveRequest>, TransferError> {
+    request_new(wormhole, relay_hints, transit_abilities, cancel).await
 }
 
 /**

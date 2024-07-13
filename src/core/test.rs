@@ -245,7 +245,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 let mut answer =
                     (answer.into_iter_files().next().unwrap().1.content)(false).await?;
 
-                let transfer::ReceiveRequest::V1(req) = transfer::request(
+                let transfer::ReceiveRequest::V1(req) = transfer::request_new(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -320,7 +320,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 let mut answer =
                     (answer.into_iter_files().next().unwrap().1.content)(false).await?;
 
-                let transfer::ReceiveRequest::V1(req) = transfer::request(
+                let transfer::ReceiveRequest::V1(req) = transfer::request_new(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -432,7 +432,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         )
         .await?;
         log::info!("Got key: {}", &wormhole.key);
-        let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
+        let transfer::ReceiveRequest::V1(req) = crate::transfer::request_new(
             wormhole,
             default_relay_hints(),
             magic_wormhole::transit::Abilities::ALL_ABILITIES,

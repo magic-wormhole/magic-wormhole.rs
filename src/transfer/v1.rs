@@ -67,7 +67,7 @@ impl TransitAck {
     }
 }
 
-pub async fn send(
+pub(crate) async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
@@ -131,7 +131,7 @@ pub async fn send(
     }
 }
 
-pub async fn send_file<F, G, H>(
+pub(crate) async fn send_file<F, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     file: &mut F,
@@ -230,7 +230,7 @@ where
     cancel::handle_run_result(wormhole, result).await
 }
 
-pub async fn send_folder(
+pub(crate) async fn send_folder(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     mut folder_name: String,
@@ -561,7 +561,7 @@ impl ReceiveRequest {
 
 // encrypt and send the file to tcp stream and return the sha256 sum
 // of the file before encryption.
-pub async fn send_records<'a>(
+pub(crate) async fn send_records<'a>(
     transit: &mut Transit,
     files: impl futures::Stream<Item = std::io::Result<Box<dyn AsyncRead + Unpin + Send + 'a>>>,
     file_size: u64,
@@ -621,7 +621,7 @@ pub async fn send_records<'a>(
     Ok(hasher.finalize_fixed().to_vec())
 }
 
-pub async fn receive_records<F, W>(
+pub(crate) async fn receive_records<F, W>(
     filesize: u64,
     transit: &mut Transit,
     mut progress_handler: F,
@@ -661,7 +661,7 @@ where
     Ok(hasher.finalize_fixed().to_vec())
 }
 
-pub async fn tcp_file_receive<F, W>(
+pub(crate) async fn tcp_file_receive<F, W>(
     transit: &mut Transit,
     filesize: u64,
     progress_handler: F,
@@ -701,7 +701,7 @@ mod tar_helper {
         str,
     };
 
-    pub fn create_header_file(path: &[String], size: u64) -> std::io::Result<Vec<u8>> {
+    pub(crate) fn create_header_file(path: &[String], size: u64) -> std::io::Result<Vec<u8>> {
         let mut header = tar::Header::new_gnu();
         header.set_size(size);
         let mut data = Vec::with_capacity(1024);
@@ -712,7 +712,7 @@ mod tar_helper {
         Ok(data)
     }
 
-    pub fn create_header_directory(path: &[String]) -> std::io::Result<Vec<u8>> {
+    pub(crate) fn create_header_directory(path: &[String]) -> std::io::Result<Vec<u8>> {
         let mut header = tar::Header::new_gnu();
         header.set_entry_type(tar::EntryType::Directory);
         let mut data = Vec::with_capacity(1024);
@@ -724,7 +724,7 @@ mod tar_helper {
         Ok(data)
     }
 
-    pub fn padding(size: u64) -> &'static [u8] {
+    pub(crate) fn padding(size: u64) -> &'static [u8] {
         const BLOCK: [u8; 512] = [0; 512];
         if size % 512 != 0 {
             &BLOCK[size as usize % 512..]
@@ -796,7 +796,7 @@ mod tar_helper {
     }
 
     #[cfg(any(windows, target_arch = "wasm32"))]
-    pub fn path2bytes(p: &str) -> Cow<[u8]> {
+    pub(crate) fn path2bytes(p: &str) -> Cow<[u8]> {
         let bytes = p.as_bytes();
         if bytes.contains(&b'\\') {
             // Normalize to Unix-style path separators
@@ -813,7 +813,7 @@ mod tar_helper {
     }
 
     #[cfg(unix)]
-    pub fn path2bytes(p: &str) -> Cow<[u8]> {
+    pub(crate) fn path2bytes(p: &str) -> Cow<[u8]> {
         Cow::Borrowed(p.as_bytes())
     }
 }
