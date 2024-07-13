@@ -309,10 +309,8 @@ impl Wormhole {
     pub async fn connect_with_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
-        expect_claimed_nameplate: bool,
     ) -> Result<(WormholeWelcome, Self), WormholeError> {
-        let mailbox_connection =
-            MailboxConnection::connect(config, code.clone(), !expect_claimed_nameplate).await?;
+        let mailbox_connection = MailboxConnection::connect(config, code.clone(), true).await?;
         Ok((
             WormholeWelcome {
                 welcome: mailbox_connection.welcome.clone(),
