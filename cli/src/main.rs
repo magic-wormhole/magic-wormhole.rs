@@ -929,19 +929,39 @@ async fn receive(
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
-    let req = transfer::request(wormhole, relay_hints, transit_abilities, ctrl_c())
-        .await
-        .context("Could not get an offer")?;
-    /* If None, the task got cancelled */
-    match req {
-        Some(transfer::ReceiveRequest::V1(req)) => {
+    #[cfg(feature = "experimental-transfer-v2")]
+    {
+        let req = transfer::request(wormhole, relay_hints, transit_abilities, ctrl_c())
+            .await
+            .context("Could not get an offer")?;
+        /* If None, the task got cancelled */
+        if let Some(req) = req {
+            #[cfg(feature = "experimental-transfer-v2")]
+            {
+                match req {
+                    transfer::ReceiveRequest::V1(req) => {
+                        receive_inner_v1(req, target_dir, noconfirm, ctrl_c).await
+                    },
+                    transfer::ReceiveRequest::V2(req) => {
+                        receive_inner_v2(req, target_dir, noconfirm, ctrl_c).await
+                    },
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+    #[cfg(not(feature = "experimental-transfer-v2"))]
+    {
+        let req = transfer::v1::request(wormhole, relay_hints, transit_abilities, ctrl_c())
+            .await
+            .context("Could not get an offer")?;
+        /* If None, the task got cancelled */
+        if let Some(req) = req {
             receive_inner_v1(req, target_dir, noconfirm, ctrl_c).await
-        },
-        #[cfg(feature = "experimental-transfer-v2")]
-        Some(transfer::ReceiveRequest::V2(req)) => {
-            receive_inner_v2(req, target_dir, noconfirm, ctrl_c).await
-        },
-        None => Ok(()),
+        } else {
+            Ok(())
+        }
     }
 }
 

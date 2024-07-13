@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Version 0.7.0
 
 - \[all\]\[breaking\] By default websocket TLS support is now disabled in the library crate. TLS is required for secure websocket connections to the mailbox server (`wss://`). As the handshake protocol itself is encrypted, this extra layer of encryption is superfluous. Most WASM targets however refuse to connect to non-TLS websockets. For maximum compatibility with all mailbox servers, or for web browser support, select a TLS implementation by specifying the feature flag `tls` for a statically linked implementation via the `ring` crate, or `native-tls` for dynamically linking with the system-native TLS implementation.
 - \[all\] For experimental (unstable) `transfer-v2` protocol support, enable feature flag `experimental-transfer-v2`. The protocol is not yet finalized. 
