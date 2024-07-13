@@ -235,8 +235,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 let code = code_rx.await?;
                 let config = transfer::APP_CONFIG.id(TEST_APPID);
                 log::info!("Got code over local: {}", &code);
-                let (welcome, wormhole) =
-                    Wormhole::connect_with_code(config.clone(), code, true).await?;
+                let (welcome, wormhole) = Wormhole::connect_with_code(config.clone(), code).await?;
                 if let Some(welcome) = &welcome.welcome {
                     log::info!("Got welcome: {}", welcome);
                 }
