@@ -802,6 +802,7 @@ pub struct AcceptInner {
     pub content: AcceptContent,
 }
 
+/// Send a previously constructed offer
 pub async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -845,27 +846,12 @@ pub async fn send(
 /**
  * Wait for a file offer from the other side
  *
- * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequestV1).
+ * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
  * It will also start building a TCP connection to the other side using the transit protocol.
  *
  * Returns `None` if the task got cancelled.
  */
-#[cfg(not(feature = "experimental-transfer-v2"))]
-#[deprecated(
-    since = "0.7",
-    note = "use transfer::v1::request to keep making only transfer protocol version 1 requests in the future"
-)]
 pub async fn request(
-    wormhole: Wormhole,
-    relay_hints: Vec<transit::RelayHint>,
-    transit_abilities: transit::Abilities,
-    cancel: impl Future<Output = ()>,
-) -> Result<Option<ReceiveRequestV1>, TransferError> {
-    v1::request(wormhole, relay_hints, transit_abilities, cancel).await
-}
-
-#[allow(dead_code)]
-pub(crate) async fn request_new(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
@@ -892,22 +878,174 @@ pub(crate) async fn request_new(
         .map(|req| req.map(ReceiveRequest::V1))
 }
 
-/**
- * Wait for a file offer from the other side
- *
- * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
- * It will also start building a TCP connection to the other side using the transit protocol.
- *
- * Returns `None` if the task got cancelled.
- */
-#[cfg(feature = "experimental-transfer-v2")]
-pub async fn request(
+/// Wait for a file offer from the other side
+///
+/// This method waits for an offer message and builds up a ReceiveRequest. It will also start building a TCP connection to the other side using the transit protocol.
+///
+/// Returns None if the task got cancelled.
+#[cfg_attr(
+    feature = "experimental-transfer-v2",
+    deprecated(
+        since = "0.7.0",
+        note = "transfer::request_file does not support file transfer protocol version 2.
+        To continue only supporting version 1, use transfer::v1::request. To support both protocol versions, use transfer::request"
+    )
+)]
+pub async fn request_file(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
-) -> Result<Option<ReceiveRequest>, TransferError> {
-    request_new(wormhole, relay_hints, transit_abilities, cancel).await
+) -> Result<Option<ReceiveRequestV1>, TransferError> {
+    v1::request(wormhole, relay_hints, transit_abilities, cancel).await
+}
+
+/// Send a file to the other side
+///
+/// You must ensure that the Reader contains exactly as many bytes as advertized in file_size.
+///
+/// This API will be deprecated in the future.
+#[cfg_attr(
+    feature = "experimental-transfer-v2",
+    deprecated(
+        since = "0.7.0",
+        note = "transfer::send_file does not support file transfer protocol version 2, use transfer::send"
+    )
+)]
+#[cfg(not(target_family = "wasm"))]
+pub async fn send_file<F, N, G, H>(
+    wormhole: Wormhole,
+    relay_hints: Vec<transit::RelayHint>,
+    file: &mut F,
+    file_name: N,
+    file_size: u64,
+    transit_abilities: transit::Abilities,
+    transit_handler: G,
+    progress_handler: H,
+    cancel: impl Future<Output = ()>,
+) -> Result<(), TransferError>
+where
+    F: AsyncRead + Unpin + Send,
+    N: Into<PathBuf>,
+    G: FnOnce(transit::TransitInfo),
+    H: FnMut(u64, u64) + 'static,
+{
+    v1::send_file(
+        wormhole,
+        relay_hints,
+        file,
+        file_name.into().to_string_lossy(),
+        file_size,
+        transit_abilities,
+        transit_handler,
+        progress_handler,
+        cancel,
+    )
+    .await
+}
+
+/// Send a file or folder
+#[cfg_attr(
+    feature = "experimental-transfer-v2",
+    deprecated(
+        since = "0.7.0",
+        note = "transfer::send_file_or_folder does not support file transfer protocol version 2, use transfer::send"
+    )
+)]
+#[allow(deprecated)]
+#[cfg(not(target_family = "wasm"))]
+pub async fn send_file_or_folder<N, M, G, H>(
+    wormhole: Wormhole,
+    relay_hints: Vec<transit::RelayHint>,
+    file_path: N,
+    file_name: M,
+    transit_abilities: transit::Abilities,
+    transit_handler: G,
+    progress_handler: H,
+    cancel: impl Future<Output = ()>,
+) -> Result<(), TransferError>
+where
+    N: AsRef<Path>,
+    M: AsRef<Path>,
+    G: FnOnce(transit::TransitInfo),
+    H: FnMut(u64, u64) + 'static,
+{
+    use async_std::fs::File;
+    let file_path = file_path.as_ref();
+    let file_name = file_name.as_ref();
+
+    let mut file = File::open(file_path).await?;
+    let metadata = file.metadata().await?;
+    if metadata.is_dir() {
+        send_folder(
+            wormhole,
+            relay_hints,
+            file_path,
+            file_name,
+            transit_abilities,
+            transit_handler,
+            progress_handler,
+            cancel,
+        )
+        .await?;
+    } else {
+        let file_size = metadata.len();
+        send_file(
+            wormhole,
+            relay_hints,
+            &mut file,
+            file_name,
+            file_size,
+            transit_abilities,
+            transit_handler,
+            progress_handler,
+            cancel,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Send a folder to the other side
+/// This isn’t a proper folder transfer as per the Wormhole protocol because it sends it in a way so
+/// that the receiver still has to manually unpack it. But it’s better than nothing
+#[cfg_attr(
+    feature = "experimental-transfer-v2",
+    deprecated(
+        since = "0.7.0",
+        note = "transfer::send_folder does not support file transfer protocol version 2, use transfer::send"
+    )
+)]
+#[cfg(not(target_family = "wasm"))]
+pub async fn send_folder<N, M, G, H>(
+    wormhole: Wormhole,
+    relay_hints: Vec<transit::RelayHint>,
+    folder_path: N,
+    folder_name: M,
+    transit_abilities: transit::Abilities,
+    transit_handler: G,
+    progress_handler: H,
+    cancel: impl Future<Output = ()>,
+) -> Result<(), TransferError>
+where
+    N: Into<PathBuf>,
+    M: Into<PathBuf>,
+    G: FnOnce(transit::TransitInfo),
+    H: FnMut(u64, u64) + 'static,
+{
+    let offer = OfferSendEntry::new(folder_path.into()).await?;
+
+    v1::send_folder(
+        wormhole,
+        relay_hints,
+        folder_name.into().to_string_lossy().to_string(),
+        offer,
+        transit_abilities,
+        transit_handler,
+        progress_handler,
+        cancel,
+    )
+    .await
 }
 
 /**
@@ -927,8 +1065,8 @@ impl ReceiveRequest {
     pub async fn accept<F, G, W>(
         self,
         transit_handler: G,
-        content_handler: &mut W,
         progress_handler: F,
+        content_handler: &mut W,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
     where
@@ -939,7 +1077,7 @@ impl ReceiveRequest {
         match self {
             ReceiveRequest::V1(request) => {
                 request
-                    .accept(transit_handler, content_handler, progress_handler, cancel)
+                    .accept(transit_handler, progress_handler, content_handler, cancel)
                     .await
             },
         }

@@ -500,8 +500,8 @@ impl ReceiveRequest {
     pub async fn accept<F, G, W>(
         mut self,
         transit_handler: G,
-        content_handler: &mut W,
         progress_handler: F,
+        content_handler: &mut W,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
     where
