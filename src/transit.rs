@@ -651,6 +651,19 @@ impl std::fmt::Display for TransitInfo {
     }
 }
 
+#[deprecated(
+    since = "0.7.0",
+    note = "use the `Display` implementation of `TransitInfo` instead"
+)]
+pub fn log_transit_connection(conn_type: ConnectionType, peer_addr: SocketAddr) {
+    let info = TransitInfo {
+        conn_type,
+        peer_addr,
+    };
+
+    log::info!("{info}");
+}
+
 /**
  * Initialize a relay handshake
  *
