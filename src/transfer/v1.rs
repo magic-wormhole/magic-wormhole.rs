@@ -4,8 +4,7 @@ use futures::{
 };
 use sha2::{digest::FixedOutput, Digest, Sha256};
 
-use super::offer::*;
-use super::*;
+use super::{offer::*, *};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "kebab-case")]

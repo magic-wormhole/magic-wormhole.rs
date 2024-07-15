@@ -2,8 +2,7 @@ use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Sha256};
 
-use super::offer::*;
-use super::*;
+use super::{offer::*, *};
 
 /**
  * A set of hints for both sides to find each other

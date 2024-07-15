@@ -6,11 +6,10 @@ use std::{borrow::Cow, time::Duration};
 
 #[cfg(feature = "transfer")]
 use crate::transfer;
-use crate::transit;
 use crate::{
     self as magic_wormhole,
     core::{MailboxConnection, Nameplate},
-    AppConfig, AppID, Code, Wormhole, WormholeError,
+    transit, AppConfig, AppID, Code, Wormhole, WormholeError,
 };
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
