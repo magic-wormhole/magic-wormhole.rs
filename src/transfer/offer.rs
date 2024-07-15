@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+#[cfg(not(target_family = "wasm"))]
 use std::path::{Path, PathBuf};
 
 use futures::{AsyncRead, AsyncSeek, AsyncWrite, Future};

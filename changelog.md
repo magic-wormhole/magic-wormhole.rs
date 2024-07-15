@@ -14,7 +14,8 @@
 - \[lib\]\[breaking\] changed the signature of the `transit_handler` function to take just the newly combined `transit::TransitInfo`
 - \[lib\]\[breaking\] replaced `transfer::AppVersion` with a struct with private fields that implements `std::default::Default`
 - \[lib\]\[breaking\] split `Wormhole` in `MailboxConnection` and `Wormhole`
-- \[lib\]\[breaking\] `ReceiveRequest.filename` is now of type `String`
+- \[lib\]\[deprecated\] `ReceiveRequest.filename` is deprecated and replaced by `ReceiveRequest.file_name(..)`
+- \[lib\]\[deprecated\] `ReceiveRequest.filesize` is deprecated and replaced by `ReceiveRequest.file_size(..)`
 - \[lib\]\[deprecated\] `Wormhole` public struct fields. Use the provided accessor methods instead.
 - \[lib\]\[deprecated\] removed `transit::log_transit_connection` and implemented `Display` on `TransitInfo` instead.
 

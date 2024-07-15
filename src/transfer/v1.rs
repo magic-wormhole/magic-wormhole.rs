@@ -486,16 +486,22 @@ pub struct ReceiveRequest {
     wormhole: Wormhole,
     connector: TransitConnector,
     /// **Security warning:** this is untrusted and unverified input
-    pub filename: String,
+    #[deprecated(since = "0.7.0", note = "use ReceiveRequest::file_name(..) instead")]
+    #[cfg(not(target_family = "wasm"))]
+    pub filename: PathBuf,
+    file_name: String,
+    #[deprecated(since = "0.7.0", note = "use ReceiveRequest::file_size(..) instead")]
     pub filesize: u64,
+    #[allow(dead_code)]
     offer: Arc<Offer>,
     their_abilities: transit::Abilities,
     their_hints: Arc<transit::Hints>,
 }
 
+#[allow(deprecated)]
 impl ReceiveRequest {
     fn new(
-        filename: String,
+        file_name: String,
         filesize: u64,
         connector: TransitConnector,
         their_abilities: transit::Abilities,
@@ -507,7 +513,7 @@ impl ReceiveRequest {
 
         // Synthesize an offer to make transfer v1 more similar to transfer v2
         content.insert(
-            filename.clone(),
+            file_name.clone(),
             OfferEntry::RegularFile {
                 size: filesize,
                 content: (),
@@ -520,7 +526,9 @@ impl ReceiveRequest {
         Self {
             wormhole,
             connector,
-            filename,
+            #[cfg(not(target_family = "wasm"))]
+            filename: PathBuf::from(file_name.clone()),
+            file_name,
             filesize,
             offer,
             their_abilities,
@@ -594,8 +602,21 @@ impl ReceiveRequest {
         Ok(())
     }
 
+    #[cfg(feature = "experimental-transfer-v2")]
     pub fn offer(&self) -> Arc<Offer> {
         self.offer.clone()
+    }
+
+    /// The name of the offered file.
+    ///
+    /// This is untrusted and unverified input.
+    pub fn file_name(&self) -> String {
+        self.file_name.clone()
+    }
+
+    /// The expected file size
+    pub fn file_size(&self) -> u64 {
+        self.filesize
     }
 }
 

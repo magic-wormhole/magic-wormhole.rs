@@ -981,8 +981,8 @@ async fn receive_inner_v1(
         || util::ask_user(
             format!(
                 "Receive file '{}' ({})?",
-                req.filename,
-                match NumberPrefix::binary(req.filesize as f64) {
+                req.file_name(),
+                match NumberPrefix::binary(req.file_size() as f64) {
                     NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
                     NumberPrefix::Prefixed(prefix, n) =>
                         format!("{:.1} {}B in size", n, prefix.symbol()),
@@ -996,9 +996,9 @@ async fn receive_inner_v1(
     }
 
     // TODO validate untrusted input here
-    let file_path = std::path::Path::new(target_dir).join(&req.filename);
+    let file_path = std::path::Path::new(target_dir).join(&req.file_name());
 
-    let pb = create_progress_bar(req.filesize);
+    let pb = create_progress_bar(req.file_size());
 
     /* Then, accept if the file exists */
     if !file_path.exists() || noconfirm {
