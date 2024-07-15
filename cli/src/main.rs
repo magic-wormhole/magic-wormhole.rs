@@ -648,7 +648,7 @@ async fn parse_and_connect(
 async fn make_send_offer(
     mut files: Vec<PathBuf>,
     file_name: Option<String>,
-) -> eyre::Result<transfer::OfferSend> {
+) -> eyre::Result<transfer::offer::OfferSend> {
     for file in &files {
         eyre::ensure!(
             async_std::path::Path::new(&file).exists().await,
@@ -662,7 +662,7 @@ async fn make_send_offer(
         (0, _) => unreachable!("Already checked by CLI parser"),
         (1, Some(file_name)) => {
             let file = files.remove(0);
-            Ok(transfer::OfferSend::new_file_or_folder(file_name, file).await?)
+            Ok(transfer::offer::OfferSend::new_file_or_folder(file_name, file).await?)
         },
         (1, None) => {
             let file = files.remove(0);
@@ -674,7 +674,7 @@ async fn make_send_offer(
                 .to_str()
                 .ok_or_else(|| eyre::format_err!("File path must be a valid UTF-8 string"))?
                 .to_owned();
-            Ok(transfer::OfferSend::new_file_or_folder(file_name, file).await?)
+            Ok(transfer::offer::OfferSend::new_file_or_folder(file_name, file).await?)
         },
         (_, Some(_)) => Err(eyre::format_err!(
             "Can't customize file name when sending multiple files"
@@ -689,7 +689,7 @@ async fn make_send_offer(
                     );
                 }
             }
-            Ok(transfer::OfferSend::new_paths(files).await?)
+            Ok(transfer::offer::OfferSend::new_paths(files).await?)
         },
     }
 }
@@ -793,7 +793,7 @@ fn server_print_code(
 async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
-    offer: transfer::OfferSend,
+    offer: transfer::offer::OfferSend,
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
@@ -879,7 +879,7 @@ async fn send_many(
 
     async fn send_in_background(
         relay_hints: Vec<transit::RelayHint>,
-        offer: transfer::OfferSend,
+        offer: transfer::offer::OfferSend,
         wormhole: Wormhole,
         mut term: Term,
         mp: &MultiProgress,
@@ -1096,7 +1096,7 @@ async fn receive_inner_v2(
 
     /* Accept the offer and receive it */
     let answer = offer.accept_all(&tmp_dir);
-    req.accept(&transit_handler, on_progress, answer, ctrl_c())
+    req.accept(&transit_handler, answer, on_progress, ctrl_c())
         .await
         .context("Receive process failed")?;
 

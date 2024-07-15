@@ -27,20 +27,17 @@ use transit::{
 };
 
 mod cancel;
-mod offer;
+#[doc(hidden)]
+pub mod offer;
 mod v1;
 #[cfg(feature = "experimental-transfer-v2")]
 mod v2;
 
-pub use offer::*;
+#[doc(hidden)]
 pub use v1::ReceiveRequest as ReceiveRequestV1;
 
 #[cfg(not(feature = "experimental-transfer-v2"))]
-#[deprecated(
-    since = "0.7.0",
-    note = "deprecated type alias for transfer::ReceiveRequestV1"
-)]
-pub use ReceiveRequestV1 as ReceiveRequest;
+pub type ReceiveRequest = v1::ReceiveRequest;
 
 #[cfg(feature = "experimental-transfer-v2")]
 pub use v2::ReceiveRequest as ReceiveRequestV2;
@@ -312,7 +309,7 @@ pub async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
-    offer: OfferSend,
+    offer: offer::OfferSend,
     transit_handler: impl FnOnce(transit::TransitInfo),
     progress_handler: impl FnMut(u64, u64) + 'static,
     cancel: impl Future<Output = ()>,
@@ -405,7 +402,7 @@ pub async fn request_file(
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
-) -> Result<Option<ReceiveRequestV1>, TransferError> {
+) -> Result<Option<v1::ReceiveRequest>, TransferError> {
     v1::request(wormhole, relay_hints, transit_abilities, cancel).await
 }
 
@@ -542,7 +539,7 @@ where
     G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
-    let offer = OfferSendEntry::new(folder_path.into()).await?;
+    let offer = offer::OfferSendEntry::new(folder_path.into()).await?;
 
     v1::send_folder(
         wormhole,
@@ -575,7 +572,7 @@ impl ReceiveRequest {
         self,
         transit_handler: G,
         progress_handler: F,
-        mut answer: OfferAccept,
+        mut answer: offer::OfferAccept,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
     where
@@ -591,7 +588,9 @@ impl ReceiveRequest {
                 );
 
                 let mut acceptor = match entry {
-                    OfferEntry::RegularFile { content, .. } => (content.content)(true).await?,
+                    offer::OfferEntry::RegularFile { content, .. } => {
+                        (content.content)(true).await?
+                    },
                     _ => panic!(
                         "when using transfer v1 you must call accept(..) with file offers only",
                     ),
@@ -603,7 +602,7 @@ impl ReceiveRequest {
             },
             ReceiveRequest::V2(request) => {
                 request
-                    .accept(transit_handler, progress_handler, answer, cancel)
+                    .accept(transit_handler, answer, progress_handler, cancel)
                     .await
             },
         }
@@ -621,7 +620,7 @@ impl ReceiveRequest {
         }
     }
 
-    pub fn offer(&self) -> Arc<Offer> {
+    pub fn offer(&self) -> Arc<offer::Offer> {
         match self {
             ReceiveRequest::V1(req) => req.offer(),
             ReceiveRequest::V2(req) => req.offer(),
