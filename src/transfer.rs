@@ -35,6 +35,13 @@ mod v2;
 pub use offer::*;
 pub use v1::ReceiveRequest as ReceiveRequestV1;
 
+#[cfg(not(feature = "experimental-transfer-v2"))]
+#[deprecated(
+    since = "0.7.0",
+    note = "deprecated type alias for transfer::ReceiveRequestV1"
+)]
+pub use ReceiveRequestV1 as ReceiveRequest;
+
 #[cfg(feature = "experimental-transfer-v2")]
 pub use v2::ReceiveRequest as ReceiveRequestV2;
 
@@ -296,7 +303,11 @@ impl PeerMessage {
     }
 }
 
-/// Send a previously constructed offer
+/// Send a previously constructed offer.
+///
+/// Part of the experimental and unstable transfer-v2 API.
+/// Expect some amount of API breakage in the future to adapt to protocol changes and API ergonomics.
+#[cfg_attr(not(feature = "experimental-transfer-v2"), doc(hidden))]
 pub async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -344,7 +355,11 @@ pub async fn send(
  * It will also start building a TCP connection to the other side using the transit protocol.
  *
  * Returns `None` if the task got cancelled.
+ *
+ * Part of the experimental and unstable transfer-v2 API.
+ * Expect some amount of API breakage in the future to adapt to protocol changes and API ergonomics.
  */
+#[cfg(feature = "experimental-transfer-v2")]
 pub async fn request(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -355,7 +370,7 @@ pub async fn request(
     {
         let peer_version: AppVersion = serde_json::from_value(wormhole.peer_version().clone())?;
         if peer_version.supports_v2() {
-            return v2::request(
+            v2::request(
                 wormhole,
                 relay_hints,
                 peer_version,
@@ -363,13 +378,13 @@ pub async fn request(
                 cancel,
             )
             .await
-            .map(|req| req.map(ReceiveRequest::V2));
+            .map(|req| req.map(ReceiveRequest::V2))
+        } else {
+            v1::request(wormhole, relay_hints, transit_abilities, cancel)
+                .await
+                .map(|req| req.map(ReceiveRequest::V1))
         }
     }
-
-    v1::request(wormhole, relay_hints, transit_abilities, cancel)
-        .await
-        .map(|req| req.map(ReceiveRequest::V1))
 }
 
 /// Wait for a file offer from the other side
@@ -548,14 +563,14 @@ where
  * You *should* consume this object, by matching on the protocol version and then calling either `accept` or `reject`.
  */
 #[must_use]
+#[cfg(feature = "experimental-transfer-v2")]
 pub enum ReceiveRequest {
     V1(ReceiveRequestV1),
-    #[cfg(feature = "experimental-transfer-v2")]
     V2(ReceiveRequestV2),
 }
 
+#[cfg(feature = "experimental-transfer-v2")]
 impl ReceiveRequest {
-    #[cfg(not(feature = "experimental-transfer-v2"))]
     pub async fn accept<F, G, W>(
         self,
         transit_handler: G,
@@ -586,7 +601,6 @@ impl ReceiveRequest {
                     .accept(transit_handler, progress_handler, &mut acceptor, cancel)
                     .await
             },
-            #[cfg(feature = "experimental-transfer-v2")]
             ReceiveRequest::V2(request) => {
                 request
                     .accept(transit_handler, progress_handler, answer, cancel)
@@ -603,7 +617,6 @@ impl ReceiveRequest {
     pub async fn reject(self) -> Result<(), TransferError> {
         match self {
             ReceiveRequest::V1(request) => request.reject().await,
-            #[cfg(feature = "experimental-transfer-v2")]
             ReceiveRequest::V2(request) => request.reject().await,
         }
     }
@@ -611,7 +624,6 @@ impl ReceiveRequest {
     pub fn offer(&self) -> Arc<Offer> {
         match self {
             ReceiveRequest::V1(req) => req.offer(),
-            #[cfg(feature = "experimental-transfer-v2")]
             ReceiveRequest::V2(req) => req.offer(),
         }
     }

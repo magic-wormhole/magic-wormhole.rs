@@ -4,13 +4,15 @@ use super::{Mood, Phase};
 use rand::Rng;
 use std::{borrow::Cow, time::Duration};
 
+#[cfg(feature = "transfer")]
+use crate::transfer;
+#[cfg(feature = "experimental-transfer-v2")]
+use crate::transit;
 use crate::{
     self as magic_wormhole,
     core::{MailboxConnection, Nameplate},
     AppConfig, AppID, Code, Wormhole, WormholeError,
 };
-#[cfg(feature = "transfer")]
-use crate::{transfer, transit};
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
     "piegames.de/wormhole/rusty-wormhole-test",
@@ -54,10 +56,12 @@ fn init_logger() {
 /// # }
 /// ```
 #[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "experimental-transfer-v2")]
 pub(crate) fn log_transit_connection(info: crate::transit::TransitInfo) {
     log::info!("{info}")
 }
 
+#[cfg(feature = "experimental-transfer-v2")]
 fn default_relay_hints() -> Vec<transit::RelayHint> {
     vec![
         transit::RelayHint::from_urls(None, [transit::DEFAULT_RELAY_SERVER.parse().unwrap()])
@@ -106,6 +110,7 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
 }
 
 /** Generate common offers for testing, together with a pre-made answer that checks the received content */
+#[cfg(feature = "experimental-transfer-v2")]
 async fn file_offers() -> eyre::Result<Vec<(transfer::OfferSend, transfer::OfferAccept)>> {
     async fn offer(name: &str) -> eyre::Result<(transfer::OfferSend, transfer::OfferAccept)> {
         let path = format!("tests/{name}");
@@ -198,6 +203,7 @@ async fn file_offers() -> eyre::Result<Vec<(transfer::OfferSend, transfer::Offer
 #[cfg(feature = "transfer")]
 #[async_std::test]
 #[allow(deprecated)]
+#[cfg(feature = "experimental-transfer-v2")]
 pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
     init_logger();
 
@@ -273,6 +279,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
 #[async_std::test]
+#[cfg(feature = "experimental-transfer-v2")]
 pub async fn test_file_rust2rust() -> eyre::Result<()> {
     init_logger();
 
@@ -350,6 +357,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
  */
 #[cfg(feature = "transfer")]
 #[async_std::test]
+#[cfg(feature = "experimental-transfer-v2")]
 pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
 
