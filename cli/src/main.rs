@@ -996,7 +996,7 @@ async fn receive_inner_v1(
     }
 
     // TODO validate untrusted input here
-    let file_path = std::path::Path::new(target_dir).join(&req.file_name());
+    let file_path = std::path::Path::new(target_dir).join(req.file_name());
 
     let pb = create_progress_bar(req.file_size());
 

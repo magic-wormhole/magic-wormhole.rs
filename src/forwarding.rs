@@ -3,7 +3,7 @@
 //! This is a new (and still slightly experimental feature) that allows you to forward TCP connections over a wormhole
 //! `transit` connection.
 //!
-//! It is bound to an [`APPID`](APPID), which is distinct to the one used for file transfer. Therefore, the codes used
+//! It is bound to an [`APPID`], which is distinct to the one used for file transfer. Therefore, the codes used
 //! for port forwarding are in an independent namespace than those for sending files.
 //!
 //! At its core, "peer messages" are exchanged over an established wormhole connection with the other side.
@@ -12,6 +12,8 @@
 //! "logical" and not "raw"; because "TCP in TCP" tunneling is known to be problematic. Packages are sent
 //! and received as they come in, no additional buffering is applied. (Under the assumption that those applications
 //! that need buffering already do it on their side, and those who don't, don't.)
+
+#![allow(deprecated)]
 
 use super::*;
 use async_std::net::{TcpListener, TcpStream};

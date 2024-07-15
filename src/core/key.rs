@@ -12,16 +12,23 @@ use spake2::{Ed25519Group, Identity, Password, Spake2};
 /// Marker trait to give encryption keys a "purpose", to not confuse them
 ///
 /// See [`Key`].
-// TODO Once const generics are stabilized, try out if a const string generic may replace this.
 pub trait KeyPurpose: std::fmt::Debug {}
 
 /// The type of main key of the Wormhole
 #[derive(Debug)]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct WormholeKey;
 impl KeyPurpose for WormholeKey {}
 
 /// A generic key purpose for ad-hoc subkeys or if you don't care.
 #[derive(Debug)]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct GenericKey;
 impl KeyPurpose for GenericKey {}
 
@@ -34,7 +41,12 @@ impl KeyPurpose for GenericKey {}
 #[display(fmt = "{:?}", _0)]
 #[deref(forward)]
 pub struct Key<P: KeyPurpose>(
-    #[deref] pub Box<secretbox::Key>,
+    #[deref]
+    #[deprecated(
+        since = "0.7.0",
+        note = "Use the AsRef<Key> implementation to get access to the secretbox key"
+    )]
+    pub Box<secretbox::Key>,
     #[deref(ignore)] std::marker::PhantomData<P>,
 );
 
@@ -48,6 +60,10 @@ impl Key<WormholeKey> {
      * The new key is derived with the `"{appid}/transit-key"` purpose.
      */
     #[cfg(feature = "transit")]
+    #[deprecated(
+        since = "0.7.0",
+        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
+    )]
     pub fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
         let transit_purpose = format!("{}/transit-key", appid);
 
