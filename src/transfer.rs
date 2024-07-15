@@ -28,7 +28,7 @@ use transit::{
 
 mod cancel;
 mod offer;
-pub mod v1;
+mod v1;
 #[cfg(feature = "experimental-transfer-v2")]
 mod v2;
 
@@ -139,6 +139,7 @@ pub struct AppVersion {
     #[serde(default)]
     abilities: Cow<'static, [Cow<'static, str>]>,
     #[serde(default)]
+    #[cfg(feature = "experimental-transfer-v2")]
     transfer_v2: Option<AppVersionTransferV2Hint>,
 }
 
@@ -150,6 +151,7 @@ impl AppVersion {
             abilities: Cow::Borrowed(&[
                 Cow::Borrowed("transfer-v1"), /* Cow::Borrowed("experimental-transfer-v2") */
             ]),
+            #[cfg(feature = "experimental-transfer-v2")]
             transfer_v2: Some(AppVersionTransferV2Hint::new()),
         }
     }
@@ -166,6 +168,7 @@ impl Default for AppVersion {
     }
 }
 
+#[cfg(feature = "experimental-transfer-v2")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct AppVersionTransferV2Hint {
@@ -173,6 +176,7 @@ pub struct AppVersionTransferV2Hint {
     transit_abilities: transit::Abilities,
 }
 
+#[cfg(feature = "experimental-transfer-v2")]
 impl AppVersionTransferV2Hint {
     const fn new() -> Self {
         Self {
@@ -182,6 +186,7 @@ impl AppVersionTransferV2Hint {
     }
 }
 
+#[cfg(feature = "experimental-transfer-v2")]
 impl Default for AppVersionTransferV2Hint {
     fn default() -> Self {
         Self::new()
