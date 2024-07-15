@@ -6,7 +6,6 @@ use std::{borrow::Cow, time::Duration};
 
 #[cfg(feature = "transfer")]
 use crate::transfer;
-#[cfg(feature = "experimental-transfer-v2")]
 use crate::transit;
 use crate::{
     self as magic_wormhole,
@@ -56,12 +55,10 @@ fn init_logger() {
 /// # }
 /// ```
 #[cfg(not(target_family = "wasm"))]
-#[cfg(feature = "experimental-transfer-v2")]
 pub(crate) fn log_transit_connection(info: crate::transit::TransitInfo) {
     log::info!("{info}")
 }
 
-#[cfg(feature = "experimental-transfer-v2")]
 fn default_relay_hints() -> Vec<transit::RelayHint> {
     vec![
         transit::RelayHint::from_urls(None, [transit::DEFAULT_RELAY_SERVER.parse().unwrap()])
@@ -110,7 +107,6 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
 }
 
 /** Generate common offers for testing, together with a pre-made answer that checks the received content */
-#[cfg(feature = "experimental-transfer-v2")]
 async fn file_offers(
 ) -> eyre::Result<Vec<(transfer::offer::OfferSend, transfer::offer::OfferAccept)>> {
     async fn offer(
@@ -206,7 +202,6 @@ async fn file_offers(
 #[cfg(feature = "transfer")]
 #[async_std::test]
 #[allow(deprecated)]
-#[cfg(feature = "experimental-transfer-v2")]
 pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
     init_logger();
 
@@ -253,7 +248,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 let mut answer =
                     (answer.into_iter_files().next().unwrap().1.content)(false).await?;
 
-                let transfer::ReceiveRequest::V1(req) = transfer::request(
+                /*let transfer::ReceiveRequest::V1(req) = transfer::request(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -262,7 +257,16 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 .await?
                 .unwrap() else {
                     panic!("v2 should be disabled for now")
-                };
+                };*/
+                let req = transfer::request_file(
+                    wormhole,
+                    default_relay_hints(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    futures::future::pending(),
+                )
+                .await?
+                .unwrap();
+
                 req.accept(
                     &log_transit_connection,
                     |_received, _total| {},
@@ -282,7 +286,6 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
 #[async_std::test]
-#[cfg(feature = "experimental-transfer-v2")]
 pub async fn test_file_rust2rust() -> eyre::Result<()> {
     init_logger();
 
@@ -330,7 +333,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 let mut answer =
                     (answer.into_iter_files().next().unwrap().1.content)(false).await?;
 
-                let transfer::ReceiveRequest::V1(req) = transfer::request(
+                /*let transfer::ReceiveRequest::V1(req) = transfer::request(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -339,7 +342,17 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 .await?
                 .unwrap() else {
                     panic!("v2 should be disabled for now")
-                };
+                };*/
+
+                let req = transfer::request_file(
+                    wormhole,
+                    default_relay_hints(),
+                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    futures::future::pending(),
+                )
+                .await?
+                .unwrap();
+
                 req.accept(
                     &log_transit_connection,
                     |_received, _total| {},
@@ -360,7 +373,6 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
  */
 #[cfg(feature = "transfer")]
 #[async_std::test]
-#[cfg(feature = "experimental-transfer-v2")]
 pub async fn test_send_many() -> eyre::Result<()> {
     init_logger();
 
@@ -445,7 +457,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         )
         .await?;
         log::info!("Got key: {}", &wormhole.key);
-        let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
+        /*let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
             wormhole,
             default_relay_hints(),
             magic_wormhole::transit::Abilities::ALL_ABILITIES,
@@ -454,7 +466,16 @@ pub async fn test_send_many() -> eyre::Result<()> {
         .await?
         .unwrap() else {
             panic!("v2 should be disabled for now")
-        };
+        };*/
+
+        let req = transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL_ABILITIES,
+            futures::future::pending(),
+        )
+        .await?
+        .unwrap();
 
         // Hacky v1-compat conversion for now
         let mut answer = (gen_accept()

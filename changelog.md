@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- \[lib\]\[deprecated\] `magic_wormhole::transfer::send_*` and `request_file` methods to take an `OfferSend` and `OfferReceive` instead of using separate methods for files and folders. Use `transfer::send()` and `transfer::receive()` for the new methods.
+- \[lib\]\[breaking\] struct `transfer::ReceiveRequest` became an enum to prepare for transfer v2
+
 ## Version 0.7.0
 
 - \[all\]\[breaking\] By default websocket TLS support is now disabled in the library crate. TLS is required for secure websocket connections to the mailbox server (`wss://`). As the handshake protocol itself is encrypted, this extra layer of encryption is superfluous. Most WASM targets however refuse to connect to non-TLS websockets. For maximum compatibility with all mailbox servers, or for web browser support, select a TLS implementation by specifying the feature flag `tls` for a statically linked implementation via the `ring` crate, or `native-tls` for dynamically linking with the system-native TLS implementation.
@@ -11,10 +14,8 @@
 - \[lib\]\[breaking\] changed the signature of the `transit_handler` function to take just the newly combined `transit::TransitInfo`
 - \[lib\]\[breaking\] replaced `transfer::AppVersion` with a struct with private fields that implements `std::default::Default`
 - \[lib\]\[breaking\] split `Wormhole` in `MailboxConnection` and `Wormhole`
-- \[lib\]\[breaking\] struct `transfer::ReceiveRequest` became an enum to prepare for transfer v2
 - \[lib\]\[breaking\] `ReceiveRequest.filename` is now of type `String`
 - \[lib\]\[deprecated\] `Wormhole` public struct fields. Use the provided accessor methods instead.
-- \[lib\]\[deprecated\] `magic_wormhole::transfer::send_*` and `request_file` methods to take an `OfferSend` and `OfferReceive` instead of using separate methods for files and folders. Use `transfer::send()` and `transfer::receive()` for the new methods.
 - \[lib\]\[deprecated\] removed `transit::log_transit_connection` and implemented `Display` on `TransitInfo` instead.
 
 ## Version 0.6.1
