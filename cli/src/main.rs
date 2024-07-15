@@ -553,7 +553,7 @@ async fn main() -> eyre::Result<()> {
 
 fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {
     match (args.force_direct, args.force_relay) {
-        (false, false) => transit::Abilities::ALL_ABILITIES,
+        (false, false) => transit::Abilities::ALL,
         (true, false) => transit::Abilities::FORCE_DIRECT,
         (false, true) => transit::Abilities::FORCE_RELAY,
         (true, true) => unreachable!("These flags are mutually exclusive"),

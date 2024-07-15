@@ -33,6 +33,7 @@ mod cancel;
 pub mod offer;
 mod v1;
 #[cfg(feature = "experimental-transfer-v2")]
+#[allow(missing_docs)]
 mod v2;
 
 #[doc(hidden)]
@@ -63,63 +64,93 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+/// An error occurred during file transfer
 pub enum TransferError {
+    /// Transfer was not acknowledged by peer
     #[error("Transfer was not acknowledged by peer")]
     AckError,
+
+    /// Receive checksum error
     #[error("Receive checksum error")]
     Checksum,
+
+    /// The file contained a different amount of bytes than advertized
     #[error("The file contained a different amount of bytes than advertized! Sent {} bytes, but should have been {}", sent_size, file_size)]
-    FileSize { sent_size: u64, file_size: u64 },
+    FileSize {
+        /// The amount of bytes that were sent
+        sent_size: u64,
+        /// The expected amount of bytes
+        file_size: u64,
+    },
+
+    /// The file(s) to send got modified during the transfer, and thus corrupted
     #[error("The file(s) to send got modified during the transfer, and thus corrupted")]
     FilesystemSkew,
+
     // TODO be more specific
+    /// Unsupported offer type
     #[error("Unsupported offer type")]
     UnsupportedOffer,
+
+    /// Something went wrong on the other side
     #[error("Something went wrong on the other side: {}", _0)]
     PeerError(String),
 
-    /// Some deserialization went wrong, we probably got some garbage
+    /// Corrupt JSON message received. Some deserialization went wrong, we probably got some garbage
     #[error("Corrupt JSON message received")]
     ProtocolJson(
         #[from]
         #[source]
         serde_json::Error,
     ),
+
+    /// Corrupt Msgpack message received. Some deserialization went wrong, we probably got some garbage
     #[error("Corrupt Msgpack message received")]
     ProtocolMsgpack(
         #[from]
         #[source]
         rmp_serde::decode::Error,
     ),
+
     /// A generic string message for "something went wrong", i.e.
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
     Protocol(Box<str>),
+
+    /// Unexpected message (protocol error)
     #[error(
         "Unexpected message (protocol error): Expected '{}', but got: '{}'",
         _0,
         _1
     )]
     ProtocolUnexpectedMessage(Box<str>, Box<str>),
+
+    /// Wormhole connection error
     #[error("Wormhole connection error")]
     Wormhole(
         #[from]
         #[source]
         WormholeError,
     ),
+
+    /// Error while establishing transit connection
     #[error("Error while establishing transit connection")]
     TransitConnect(
         #[from]
         #[source]
         TransitConnectError,
     ),
+
+    /// Transit error
     #[error("Transit error")]
     Transit(
         #[from]
         #[source]
         TransitError,
     ),
-    #[error("IO error")]
+
+    /// I/O error
+    #[error("I/O error")]
     IO(
         #[from]
         #[source]
@@ -174,6 +205,7 @@ impl Default for AppVersion {
     }
 }
 
+/// A hint used in transfer v2 to determine the app version
 #[cfg(feature = "experimental-transfer-v2")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -211,20 +243,28 @@ impl Default for AppVersionTransferV2Hint {
 )]
 pub enum PeerMessage {
     /* V1 */
+    /// A transit message
     #[display(fmt = "transit")]
     Transit(v1::TransitV1),
+
+    /// An offer message
     #[display(fmt = "offer")]
     Offer(v1::OfferMessage),
+
+    /// An answer message
     #[display(fmt = "answer")]
     Answer(v1::AnswerMessage),
     /* V2 */
+    /// A transit v2 message
     #[cfg(feature = "experimental-transfer-v2")]
     #[display(fmt = "transit-v2")]
     TransitV2(v2::TransitV2),
 
-    /** Tell the other side you got an error */
+    /// Tell the other side you got an error
     #[display(fmt = "error")]
     Error(String),
+
+    /// An unknown message
     #[display(fmt = "unknown")]
     #[serde(other)]
     Unknown,
@@ -557,12 +597,15 @@ where
 #[must_use]
 #[cfg(feature = "experimental-transfer-v2")]
 pub enum ReceiveRequest {
+    /// A protocol version 1 receive request
     V1(ReceiveRequestV1),
+    /// A protocol version 2 receive request
     V2(ReceiveRequestV2),
 }
 
 #[cfg(feature = "experimental-transfer-v2")]
 impl ReceiveRequest {
+    /// Accept this receive request
     pub async fn accept<F, G, W>(
         self,
         transit_handler: G,
@@ -615,6 +658,7 @@ impl ReceiveRequest {
         }
     }
 
+    /// The file offer for this receive request
     pub fn offer(&self) -> Arc<offer::Offer> {
         match self {
             ReceiveRequest::V1(req) => req.offer(),

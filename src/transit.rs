@@ -46,45 +46,58 @@ pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 #[cfg(not(target_family = "wasm"))]
 const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
-#[derive(Debug)]
+/// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
 )]
+#[derive(Debug)]
 pub struct TransitKey;
+
 #[allow(deprecated)]
 impl KeyPurpose for TransitKey {}
-#[derive(Debug)]
+
+/// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
 )]
+#[derive(Debug)]
 pub struct TransitRxKey;
 #[allow(deprecated)]
 impl KeyPurpose for TransitRxKey {}
-#[derive(Debug)]
+
+/// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
 )]
+#[derive(Debug)]
 pub struct TransitTxKey;
 #[allow(deprecated)]
 impl KeyPurpose for TransitTxKey {}
 
+/// An error occurred when connecting to the peer.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TransitConnectError {
-    /** Incompatible abilities, or wrong hints */
+    /// Incompatible abilities, or wrong hints
     #[error("{}", _0)]
     Protocol(Box<str>),
+
+    /// All (relay) handshakes failed or timed out; could not establish a connection with the peer
     #[error("All (relay) handshakes failed or timed out; could not establish a connection with the peer")]
     Handshake,
-    #[error("IO error")]
+
+    /// I/O error
+    #[error("I/O error")]
     IO(
         #[from]
         #[source]
         std::io::Error,
     ),
+
+    /// WASM error
     #[cfg(target_family = "wasm")]
     #[error("WASM error")]
     WASM(
@@ -94,19 +107,27 @@ pub enum TransitConnectError {
     ),
 }
 
+/// An error occurred during transit
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TransitError {
+    /// Cryptography error. This is probably an implementation bug, but may also be caused by an attack
     #[error("Cryptography error. This is probably an implementation bug, but may also be caused by an attack.")]
     Crypto,
+
+    /// Wrong nonce received, got {:x?} but expected {:x?}. This is probably an implementation bug, but may also be caused by an attack
     #[error("Wrong nonce received, got {:x?} but expected {:x?}. This is probably an implementation bug, but may also be caused by an attack.", _0, _1)]
     Nonce(Box<[u8]>, Box<[u8]>),
-    #[error("IO error")]
+
+    /// I/O error
+    #[error("I/O error")]
     IO(
         #[from]
         #[source]
         std::io::Error,
     ),
+
+    /// WASM error
     #[cfg(target_family = "wasm")]
     #[error("WASM error")]
     WASM(
@@ -139,12 +160,17 @@ pub struct Abilities {
 }
 
 impl Abilities {
-    pub const ALL_ABILITIES: Self = Self {
+    /// The abilities preset that contains all abilities
+    pub const ALL: Self = Self {
         direct_tcp_v1: true,
         relay_v1: true,
         #[cfg(any())]
         noise_v1: false,
     };
+
+    /// The abilities preset that contains all abilities
+    #[deprecated(since = "0.7.0", note = "use Abilities::ALL")]
+    pub const ALL_ABILITIES: Self = Self::ALL;
 
     /**
      * If you absolutely don't want to use any relay servers.
@@ -174,10 +200,12 @@ impl Abilities {
         noise_v1: false,
     };
 
+    /// Whether direct transfer is allowed
     pub fn can_direct(&self) -> bool {
         self.direct_tcp_v1
     }
 
+    /// Whether relay transfer is allowed
     pub fn can_relay(&self) -> bool {
         self.relay_v1
     }
@@ -187,11 +215,13 @@ impl Abilities {
         self.noise_v1
     }
 
+    /// Whether noise cryptography is supported
+    #[deprecated(since = "0.7.0", note = "Noise cryptography is not standardized")]
     pub fn can_noise_crypto(&self) -> bool {
         false
     }
 
-    /** Keep only abilities that both sides support */
+    /// Keep only abilities that both sides support
     pub fn intersect(mut self, other: &Self) -> Self {
         self.direct_tcp_v1 &= other.direct_tcp_v1;
         self.relay_v1 &= other.relay_v1;
@@ -288,6 +318,7 @@ pub struct Hints {
 }
 
 impl Hints {
+    /// Create new hints
     pub fn new(
         direct_tcp: impl IntoIterator<Item = DirectHint>,
         relay: impl IntoIterator<Item = RelayHint>,
@@ -350,11 +381,14 @@ pub struct DirectHint {
     // DirectHint also contains a `priority` field, but it is underspecified
     // and we won't use it
     // pub priority: f32,
+    /// The hostname via which to reach this peer
     pub hostname: String,
+    /// The port to use
     pub port: u16,
 }
 
 impl DirectHint {
+    /// Create a new direct hint
     pub fn new(hostname: impl Into<String>, port: u16) -> Self {
         Self {
             hostname: hostname.into(),
@@ -389,18 +423,22 @@ enum RelayHintSerdeInner {
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+/// An error occurred while parsing a relay hint
 pub enum RelayHintParseError {
     #[error(
         "Invalid TCP hint endpoint: '{}' (Does it have hostname and port?)",
         _0
     )]
+    /// Invalid TCP hint endpoint
     InvalidTcp(url::Url),
     #[error(
         "Unknown schema: '{}'. Currently known values are 'tcp', 'ws'  and 'wss'.",
         _0
     )]
+    /// Unknown schema. Currently known values are 'tcp', 'ws'  and 'wss'.
     UnknownSchema(Box<str>),
     #[error("'{}' is not an absolute URL (must start with a '/')", _0)]
+    /// The provided URL is not absolute
     UrlNotAbsolute(url::Url),
 }
 
@@ -427,6 +465,7 @@ pub struct RelayHint {
 }
 
 impl RelayHint {
+    /// Create a new relay hint
     pub fn new(
         name: Option<String>,
         tcp: impl IntoIterator<Item = DirectHint>,
@@ -495,20 +534,42 @@ impl RelayHint {
         Ok(this)
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
+    )]
+    /// Whether the relay server is probably the same
     pub fn can_merge(&self, other: &Self) -> bool {
         !self.tcp.is_disjoint(&other.tcp) || !self.ws.is_disjoint(&other.ws)
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
+    )]
+    /// Extend this server with additional endpoints
     pub fn merge(mut self, other: Self) -> Self {
+        #[allow(deprecated)]
         self.merge_mut(other);
         self
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
+    )]
+    /// Extend this server with additional endpoints
     pub fn merge_mut(&mut self, other: Self) {
         self.tcp.extend(other.tcp);
         self.ws.extend(other.ws);
     }
 
+    #[deprecated(
+        since = "0.7.0",
+        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
+    )]
+    #[allow(deprecated)]
+    /// Deduplicate and merge the hints us into theirs
     pub fn merge_into(self, collection: &mut Vec<RelayHint>) {
         for item in collection.iter_mut() {
             if item.can_merge(&self) {
@@ -598,7 +659,10 @@ pub enum ConnectionType {
     /// We are directly connected to our peer
     Direct,
     /// We are connected to a relay server, and may even know its name
-    Relay { name: Option<String> },
+    Relay {
+        /// The name of the relay server
+        name: Option<String>,
+    },
 }
 
 /// Metadata for the established transit connection
@@ -688,6 +752,7 @@ impl std::fmt::Display for TransitInfo {
     since = "0.7.0",
     note = "use the `Display` implementation of `TransitInfo` instead"
 )]
+/// Deprecated: use the `Display` implementation of `TransitInfo` instead
 pub fn log_transit_connection(
     conn_type: ConnectionType,
     #[cfg(not(target_family = "wasm"))] peer_addr: SocketAddr,
@@ -870,6 +935,7 @@ pub struct TransitConnector {
 
 #[allow(deprecated)]
 impl TransitConnector {
+    /// The abilities that we've sent to the other side
     pub fn our_abilities(&self) -> &Abilities {
         &self.our_abilities
     }
@@ -1355,6 +1421,7 @@ impl Transit {
         self.tx.encrypt(&mut self.socket, plaintext).await
     }
 
+    /// Flush the socket
     pub async fn flush(&mut self) -> Result<(), TransitError> {
         log::debug!("Flush");
         self.socket.flush().await.map_err(Into::into)
@@ -1447,7 +1514,7 @@ mod test {
     #[test]
     pub fn test_abilities_encoding() {
         assert_eq!(
-            serde_json::to_value(Abilities::ALL_ABILITIES).unwrap(),
+            serde_json::to_value(Abilities::ALL).unwrap(),
             json!([{"type": "direct-tcp-v1"}, {"type": "relay-v1"}])
         );
         assert_eq!(
