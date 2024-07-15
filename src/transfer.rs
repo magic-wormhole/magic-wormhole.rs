@@ -415,8 +415,6 @@ pub async fn request_file(
 /// Send a file to the other side
 ///
 /// You must ensure that the Reader contains exactly as many bytes as advertized in file_size.
-///
-/// This API will be deprecated in the future.
 #[cfg_attr(
     feature = "experimental-transfer-v2",
     deprecated(
@@ -424,7 +422,6 @@ pub async fn request_file(
         note = "transfer::send_file does not support file transfer protocol version 2, use transfer::send"
     )
 )]
-#[cfg(not(target_family = "wasm"))]
 pub async fn send_file<F, N, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
@@ -438,7 +435,7 @@ pub async fn send_file<F, N, G, H>(
 ) -> Result<(), TransferError>
 where
     F: AsyncRead + Unpin + Send,
-    N: Into<PathBuf>,
+    N: Into<String>,
     G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
@@ -446,7 +443,7 @@ where
         wormhole,
         relay_hints,
         file,
-        file_name.into().to_string_lossy(),
+        file_name,
         file_size,
         transit_abilities,
         transit_handler,
@@ -478,13 +475,13 @@ pub async fn send_file_or_folder<N, M, G, H>(
 ) -> Result<(), TransferError>
 where
     N: AsRef<Path>,
-    M: AsRef<Path>,
+    M: Into<String>,
     G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
     use async_std::fs::File;
     let file_path = file_path.as_ref();
-    let file_name = file_name.as_ref();
+    let file_name = file_name.into();
 
     let mut file = File::open(file_path).await?;
     let metadata = file.metadata().await?;
@@ -541,7 +538,7 @@ pub async fn send_folder<N, M, G, H>(
 ) -> Result<(), TransferError>
 where
     N: Into<PathBuf>,
-    M: Into<PathBuf>,
+    M: Into<String>,
     G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
@@ -550,7 +547,7 @@ where
     v1::send_folder(
         wormhole,
         relay_hints,
-        folder_name.into().to_string_lossy().to_string(),
+        folder_name.into(),
         offer,
         transit_abilities,
         transit_handler,
