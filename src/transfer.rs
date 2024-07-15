@@ -8,6 +8,8 @@
 //! At its core, "peer messages" are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
+#![allow(deprecated)]
+
 use futures::{AsyncRead, AsyncSeek, AsyncWrite};
 use serde_derive::{Deserialize, Serialize};
 #[cfg(test)]
@@ -47,7 +49,7 @@ const APPID_RAW: &str = "lothar.com/wormhole/text-or-file-xfer";
 /// The App ID associated with this protocol.
 pub const APPID: AppID = AppID(Cow::Borrowed(APPID_RAW));
 
-/// An [`crate::AppConfig`] with sane defaults for this protocol.
+/// An [`crate::AppConfig`] with default parameters for the file transfer protocol.
 ///
 /// You **must not** change `id` and `rendezvous_url` to be interoperable.
 /// The `app_version` can be adjusted if you want to disable some features.
@@ -211,6 +213,10 @@ impl<T> AsyncWriteSeek for T where T: AsyncWrite + AsyncSeek {}
 #[derive(Deserialize, Serialize, derive_more::Display, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub enum PeerMessage {
     /* V1 */
     #[display(fmt = "transit")]

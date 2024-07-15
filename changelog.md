@@ -17,7 +17,8 @@
 - \[lib\]\[deprecated\] `ReceiveRequest.filename` is deprecated and replaced by `ReceiveRequest.file_name(..)`
 - \[lib\]\[deprecated\] `ReceiveRequest.filesize` is deprecated and replaced by `ReceiveRequest.file_size(..)`
 - \[lib\]\[deprecated\] `Wormhole` public struct fields. Use the provided accessor methods instead.
-- \[lib\]\[deprecated\] removed `transit::log_transit_connection` and implemented `Display` on `TransitInfo` instead.
+- \[lib\]\[deprecated\] `transit::log_transit_connection` and implemented `Display` on `TransitInfo` instead.
+- \[lib\]\[deprecated\] `transfer::PeerMessage` will be removed in the future with no planned public replacement.
 
 ## Version 0.6.1
 

@@ -169,8 +169,9 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     ///
     /// * `config`: Application configuration
     /// * `code`: The `Code` required to authorize to connect to an existing mailbox.
-    /// * `allocate`: `true`: Allocates a `Nameplate` if it does not exist.
-    ///               `false`: The call fails with a `WormholeError::UnclaimedNameplate` when the `Nameplate` does not exist.
+    /// * `allocate`:
+    ///   - `true`: Allocates a `Nameplate` if it does not exist.
+    ///   - `false`: The call fails with a `WormholeError::UnclaimedNameplate` when the `Nameplate` does not exist.
     ///
     /// # Examples
     ///
@@ -275,7 +276,7 @@ impl Wormhole {
      */
     #[deprecated(
         since = "0.7.0",
-        note = "please use 'MailboxConnection::create(...) and Wormhole::connect(mailbox_connection)' instead"
+        note = "please use 'MailboxConnection::create(..) and Wormhole::connect(mailbox_connection)' instead"
     )]
     #[allow(deprecated)]
     pub async fn connect_without_code(
@@ -303,7 +304,7 @@ impl Wormhole {
      */
     #[deprecated(
         since = "0.7.0",
-        note = "please use 'MailboxConnection::connect(...) and Wormhole::connect(mailbox_connection)' instead"
+        note = "please use 'MailboxConnection::connect(..) and Wormhole::connect(mailbox_connection)' instead"
     )]
     #[allow(deprecated)]
     pub async fn connect_with_code(
