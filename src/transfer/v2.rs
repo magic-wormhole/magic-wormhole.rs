@@ -2,6 +2,7 @@ use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Sha256};
 
+use super::offer::*;
 use super::*;
 
 /**
@@ -400,7 +401,7 @@ pub struct ReceiveRequest {
 }
 
 impl ReceiveRequest {
-    pub(crate) fn new(transit: Transit, offer: Offer, info: transit::TransitInfo) -> Self {
+    pub fn new(transit: Transit, offer: Offer, info: transit::TransitInfo) -> Self {
         Self {
             transit,
             offer: Arc::new(offer),
@@ -421,8 +422,8 @@ impl ReceiveRequest {
     pub async fn accept(
         self,
         transit_handler: impl FnOnce(transit::TransitInfo),
-        progress_handler: impl FnMut(u64, u64) + 'static,
         answer: OfferAccept,
+        progress_handler: impl FnMut(u64, u64) + 'static,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError> {
         transit_handler(self.info);

@@ -4,6 +4,7 @@ use futures::{
 };
 use sha2::{digest::FixedOutput, Digest, Sha256};
 
+use super::offer::*;
 use super::*;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]

@@ -111,11 +111,14 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
 
 /** Generate common offers for testing, together with a pre-made answer that checks the received content */
 #[cfg(feature = "experimental-transfer-v2")]
-async fn file_offers() -> eyre::Result<Vec<(transfer::OfferSend, transfer::OfferAccept)>> {
-    async fn offer(name: &str) -> eyre::Result<(transfer::OfferSend, transfer::OfferAccept)> {
+async fn file_offers(
+) -> eyre::Result<Vec<(transfer::offer::OfferSend, transfer::offer::OfferAccept)>> {
+    async fn offer(
+        name: &str,
+    ) -> eyre::Result<(transfer::offer::OfferSend, transfer::offer::OfferAccept)> {
         let path = format!("tests/{name}");
-        let offer = transfer::OfferSend::new_file_or_folder(name.into(), &path).await?;
-        let answer = transfer::OfferSend::new_file_or_folder(name.into(), &path)
+        let offer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path).await?;
+        let answer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path)
             .await?
             .set_content(|_path| {
                 use std::{
@@ -125,7 +128,7 @@ async fn file_offers() -> eyre::Result<Vec<(transfer::OfferSend, transfer::Offer
                 };
 
                 let path = path.clone();
-                let content = transfer::new_accept_content(move |_append| {
+                let content = transfer::offer::new_accept_content(move |_append| {
                     struct Writer {
                         closed: bool,
                         send_bytes: Vec<u8>,
@@ -180,7 +183,7 @@ async fn file_offers() -> eyre::Result<Vec<(transfer::OfferSend, transfer::Offer
                         })
                     }
                 });
-                transfer::AcceptInner {
+                transfer::offer::AcceptInner {
                     content,
                     offset: 0,
                     sha256: None,
@@ -365,11 +368,11 @@ pub async fn test_send_many() -> eyre::Result<()> {
     let code = mailbox.code.clone();
     log::info!("The code is {:?}", code);
 
-    async fn gen_offer() -> eyre::Result<transfer::OfferSend> {
+    async fn gen_offer() -> eyre::Result<transfer::offer::OfferSend> {
         file_offers().await.map(|mut vec| vec.remove(0).0)
     }
 
-    async fn gen_accept() -> eyre::Result<transfer::OfferAccept> {
+    async fn gen_accept() -> eyre::Result<transfer::offer::OfferAccept> {
         file_offers().await.map(|mut vec| vec.remove(0).1)
     }
 
