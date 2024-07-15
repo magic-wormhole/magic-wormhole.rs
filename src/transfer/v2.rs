@@ -400,7 +400,7 @@ pub struct ReceiveRequest {
 }
 
 impl ReceiveRequest {
-    pub fn new(transit: Transit, offer: Offer, info: transit::TransitInfo) -> Self {
+    pub(crate) fn new(transit: Transit, offer: Offer, info: transit::TransitInfo) -> Self {
         Self {
             transit,
             offer: Arc::new(offer),
