@@ -37,7 +37,7 @@ mod v2;
 pub use v1::ReceiveRequest as ReceiveRequestV1;
 
 #[cfg(not(feature = "experimental-transfer-v2"))]
-pub type ReceiveRequest = v1::ReceiveRequest;
+pub use v1::ReceiveRequest;
 
 #[cfg(feature = "experimental-transfer-v2")]
 pub use v2::ReceiveRequest as ReceiveRequestV2;

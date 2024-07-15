@@ -651,13 +651,34 @@ impl std::fmt::Display for TransitInfo {
     }
 }
 
+#[cfg(target_family = "wasm")]
+impl std::fmt::Display for TransitInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.conn_type {
+            ConnectionType::Direct => {
+                write!(f, "Established direct transit connection",)
+            },
+            ConnectionType::Relay { name: Some(name) } => {
+                write!(f, "Established transit connection via relay '{}'", name)
+            },
+            ConnectionType::Relay { name: None } => {
+                write!(f, "Established transit connection via relay",)
+            },
+        }
+    }
+}
+
 #[deprecated(
     since = "0.7.0",
     note = "use the `Display` implementation of `TransitInfo` instead"
 )]
-pub fn log_transit_connection(conn_type: ConnectionType, peer_addr: SocketAddr) {
+pub fn log_transit_connection(
+    conn_type: ConnectionType,
+    #[cfg(not(target_family = "wasm"))] peer_addr: SocketAddr,
+) {
     let info = TransitInfo {
         conn_type,
+        #[cfg(not(target_family = "wasm"))]
         peer_addr,
     };
 
