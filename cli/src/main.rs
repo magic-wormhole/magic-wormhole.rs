@@ -1081,7 +1081,7 @@ async fn receive_inner_v2(
 
     /* Accept the offer and receive it */
     let answer = offer.accept_all(&tmp_dir);
-    req.accept(&transit_handler, answer, on_progress, ctrl_c())
+    req.accept(&transit_handler, on_progress, answer, ctrl_c())
         .await
         .context("Receive process failed")?;
 
