@@ -122,6 +122,7 @@ all = ["default", "forwarding"]
 tls = ["async-tungstenite/async-tls"]
 native-tls = ["async-tungstenite/async-native-tls"]
 # Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
+# By enabling this option you are opting out of semver stability.
 experimental-transfer-v2 = []
 experimental = ["experimental-transfer-v2"]
 
