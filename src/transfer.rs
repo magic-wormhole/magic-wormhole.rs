@@ -500,7 +500,7 @@ pub type OfferContent = Box<
         > + Send,
 >;
 
-pub fn new_offer_content<F, G, H>(content: F) -> OfferContent
+pub fn new_offer_content<F, G, H>(content_provider: F) -> OfferContent
 where
     F: Fn() -> G + Send + 'static,
     G: Future<Output = std::io::Result<H>> + Send + 'static,
@@ -509,7 +509,7 @@ where
     let wrap_fun = move || {
         use futures::TryFutureExt;
 
-        let fut = content();
+        let fut = content_provider();
         let wrap_fut = fut.map_ok(|read| Box::new(read) as Box<dyn AsyncReadSeek + Unpin + Send>);
 
         Box::pin(wrap_fut) as futures::future::BoxFuture<'static, _>
@@ -763,7 +763,7 @@ impl<T> From<&OfferEntry<T>> for OfferEntry {
     }
 }
 
-/// The signature is basically just `bool -> io::Result<dyn AsyncRead + AsyncSeek>`, but in async
+/// The signature is basically just `bool -> io::Result<dyn AsyncWrite>`, but in async
 ///
 /// The boolean parameter dictates whether we start from scratch or not:
 /// true: Append to existing files
@@ -777,7 +777,7 @@ pub type AcceptContent = Box<
         > + Send,
 >;
 
-pub fn new_accept_content<F, G, H>(content: F) -> AcceptContent
+pub fn new_accept_content<F, G, H>(content_handler: F) -> AcceptContent
 where
     F: Fn(bool) -> G + Send + 'static,
     G: Future<Output = std::io::Result<H>> + Send + 'static,
@@ -786,7 +786,7 @@ where
     let wrap_fun = move |append| {
         use futures::TryFutureExt;
 
-        let fut = content(append);
+        let fut = content_handler(append);
         let wrap_fut = fut.map_ok(|write| Box::new(write) as Box<dyn AsyncWrite + Unpin + Send>);
 
         Box::pin(wrap_fut) as futures::future::BoxFuture<'static, _>
@@ -1066,7 +1066,7 @@ impl ReceiveRequest {
         self,
         transit_handler: G,
         progress_handler: F,
-        content_handler: &mut W,
+        mut answer: OfferAccept,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
     where
@@ -1076,8 +1076,26 @@ impl ReceiveRequest {
     {
         match self {
             ReceiveRequest::V1(request) => {
+                // Desynthesize the previously synthesized offer to make transfer v1 more similar to transfer v2
+                let (_name, entry) = answer.content.pop_first().expect(
+                    "must call accept(..) with an offer that contains at least one element",
+                );
+
+                let mut acceptor = match entry {
+                    OfferEntry::RegularFile { content, .. } => (content.content)(true).await?,
+                    _ => panic!(
+                        "when using transfer v1 you must call accept(..) with file offers only",
+                    ),
+                };
+
                 request
-                    .accept(transit_handler, progress_handler, content_handler, cancel)
+                    .accept(transit_handler, progress_handler, &mut acceptor, cancel)
+                    .await
+            },
+            #[cfg(feature = "experimental-transfer-v2")]
+            ReceiveRequest::V2(request) => {
+                request
+                    .accept(transit_handler, progress_handler, answer, cancel)
                     .await
             },
         }
@@ -1088,11 +1106,19 @@ impl ReceiveRequest {
      *
      * This will send an error message to the other side so that it knows the transfer failed.
      */
-    #[cfg(feature = "experimental-transfer-v2")]
     pub async fn reject(self) -> Result<(), TransferError> {
         match self {
             ReceiveRequest::V1(request) => request.reject().await,
+            #[cfg(feature = "experimental-transfer-v2")]
             ReceiveRequest::V2(request) => request.reject().await,
+        }
+    }
+
+    pub fn offer(&self) -> Arc<Offer> {
+        match self {
+            ReceiveRequest::V1(req) => req.offer(),
+            #[cfg(feature = "experimental-transfer-v2")]
+            ReceiveRequest::V2(req) => req.offer(),
         }
     }
 }

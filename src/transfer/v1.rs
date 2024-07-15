@@ -50,7 +50,7 @@ struct TransitAck {
 }
 
 impl TransitAck {
-    pub fn new(msg: impl Into<String>, sha256: impl Into<String>) -> Self {
+    pub(crate) fn new(msg: impl Into<String>, sha256: impl Into<String>) -> Self {
         TransitAck {
             ack: msg.into(),
             sha256: sha256.into(),
@@ -58,11 +58,11 @@ impl TransitAck {
     }
 
     #[cfg(test)]
-    pub fn serialize(&self) -> String {
+    pub(crate) fn serialize(&self) -> String {
         json!(self).to_string()
     }
 
-    pub fn serialize_vec(&self) -> Vec<u8> {
+    pub(crate) fn serialize_vec(&self) -> Vec<u8> {
         serde_json::to_vec(self).unwrap()
     }
 }
@@ -462,14 +462,14 @@ pub async fn request(
         .map(|inner: Option<_>| {
             inner.map(
                 |((filename, filesize, connector, their_abilities, their_hints), wormhole, _)| {
-                    ReceiveRequest {
-                        wormhole,
+                    ReceiveRequest::new(
                         filename,
                         filesize,
                         connector,
                         their_abilities,
-                        their_hints: Arc::new(their_hints),
-                    }
+                        their_hints,
+                        wormhole,
+                    )
                 },
             )
         })
@@ -487,11 +487,46 @@ pub struct ReceiveRequest {
     /// **Security warning:** this is untrusted and unverified input
     pub filename: String,
     pub filesize: u64,
+    offer: Arc<Offer>,
     their_abilities: transit::Abilities,
     their_hints: Arc<transit::Hints>,
 }
 
 impl ReceiveRequest {
+    fn new(
+        filename: String,
+        filesize: u64,
+        connector: TransitConnector,
+        their_abilities: transit::Abilities,
+        their_hints: transit::Hints,
+        wormhole: Wormhole,
+    ) -> Self {
+        let their_hints = Arc::new(their_hints);
+        let mut content = BTreeMap::new();
+
+        // Synthesize an offer to make transfer v1 more similar to transfer v2
+        content.insert(
+            filename.clone(),
+            OfferEntry::RegularFile {
+                size: filesize,
+                content: (),
+            },
+        );
+
+        let offer = Arc::new(Offer { content });
+
+        #[allow(deprecated)]
+        Self {
+            wormhole,
+            connector,
+            filename,
+            filesize,
+            offer,
+            their_abilities,
+            their_hints,
+        }
+    }
+
     /**
      * Accept the file offer
      *
@@ -556,6 +591,10 @@ impl ReceiveRequest {
         self.wormhole.close().await?;
 
         Ok(())
+    }
+
+    pub fn offer(&self) -> Arc<Offer> {
+        self.offer.clone()
     }
 }
 
