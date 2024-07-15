@@ -50,6 +50,7 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
  */
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AppVersion {
+    /// Our transit abilities
     pub transit_abilities: transit::Abilities,
     #[serde(flatten)]
     other: serde_json::Value,
@@ -57,9 +58,12 @@ pub struct AppVersion {
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+/// An error occurred when establishing a port forwarding session
 pub enum ForwardingError {
+    /// Transfer was not acknowledged by peer
     #[error("Transfer was not acknowledged by peer")]
     AckError,
+    /// Something went wrong on the other side
     #[error("Something went wrong on the other side: {}", _0)]
     PeerError(String),
     /// Some deserialization went wrong, we probably got some garbage
@@ -80,31 +84,36 @@ pub enum ForwardingError {
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
     Protocol(Box<str>),
+    /// Unexpected message (protocol error)
     #[error(
         "Unexpected message (protocol error): Expected '{}', but got: {:?}",
         _0,
         _1
     )]
     ProtocolUnexpectedMessage(Box<str>, Box<dyn std::fmt::Debug + Send + Sync>),
+    /// Wormhole connection error
     #[error("Wormhole connection error")]
     Wormhole(
         #[from]
         #[source]
         WormholeError,
     ),
+    /// Error while establishing transit connection
     #[error("Error while establishing transit connection")]
     TransitConnect(
         #[from]
         #[source]
         TransitConnectError,
     ),
+    /// Transit error
     #[error("Transit error")]
     Transit(
         #[from]
         #[source]
         TransitError,
     ),
-    #[error("IO error")]
+    /// I/O error
+    #[error("I/O error")]
     IO(
         #[from]
         #[source]
@@ -648,6 +657,7 @@ pub async fn connect(
 /// You *should* consume this object, either by calling [`accept`](ConnectOffer::accept) or [`reject`](ConnectOffer::reject).
 #[must_use]
 pub struct ConnectOffer {
+    /// The offered port mapping
     pub mapping: Vec<(u16, Rc<String>)>,
     transit: transit::Transit,
     listeners: Vec<(

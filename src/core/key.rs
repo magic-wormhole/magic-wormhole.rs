@@ -79,10 +79,12 @@ impl Key<WormholeKey> {
 }
 
 impl<P: KeyPurpose> Key<P> {
+    /// Create a new key
     pub fn new(key: Box<secretbox::Key>) -> Self {
         Self(key, std::marker::PhantomData)
     }
 
+    /// Encode a key as a hex string
     pub fn to_hex(&self) -> String {
         hex::encode(**self)
     }

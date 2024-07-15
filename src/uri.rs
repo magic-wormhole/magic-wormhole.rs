@@ -1,21 +1,28 @@
-/// Custom magic wormhole URI scheme
-///
-/// At the moment, only `wormhole-transfer:` is specified as scheme
-/// and therefore URLs can only be used for file transfer applications.
-/// This, however, might change in the future.
+//! Custom magic wormhole URI scheme
+//!
+//! At the moment, only `wormhole-transfer:` is specified as scheme
+//! and therefore URLs can only be used for file transfer applications.
+//! This, however, might change in the future.
+
 use super::*;
 
+/// An error occurred during parsing an URI
 #[derive(Debug, thiserror::Error, Clone, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ParseError {
+    /// Wrong URI scheme, must be `wormhole-transfer``
     #[error("Wrong URI scheme, must be 'wormhole-transfer' but was '{_0}'")]
     SchemeError(String),
+    /// Wormhole URIs start with `wormhole-transfer:${{code}}`, they do not have a host
     #[error("Wormhole URIs start with 'wormhole-transfer:${{code}}', they do not have a host")]
     HasHost,
+    /// Code is missing or empty
     #[error("Code is missing or empty")]
     MissingCode,
+    /// Unsupported scheme version
     #[error("Unsupported scheme version {_0}")]
     UnsupportedVersion(String),
+    /// Invalid 'role' parameter
     #[error("Invalid 'role' parameter: '{_0}'")]
     InvalidRole(String),
     /// Some deserialization went wrong, we probably got some garbage
@@ -25,6 +32,7 @@ pub enum ParseError {
         #[source]
         url::ParseError,
     ),
+    /// Invalid UTF-8 encoding
     #[error("Invalid UTF-8 encoding: {_0}")]
     Utf8Error(
         #[from]
@@ -33,8 +41,11 @@ pub enum ParseError {
     ),
 }
 
+/// The wormhole-transfer URI Scheme is used to encode a wormhole code for file transfer as a URI.
+/// This can then be used to generate QR codes, or be opened by the platform URI handler to open a supporting client.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WormholeTransferUri {
+    /// The wormhole code
     pub code: Code,
     /// If `Some`, a custom non-default rendezvous-server is being requested
     pub rendezvous_server: Option<url::Url>,
@@ -49,6 +60,7 @@ pub struct WormholeTransferUri {
 }
 
 impl WormholeTransferUri {
+    /// Create a new URI from the given code with the default settings
     pub fn new(code: Code) -> Self {
         Self {
             code,

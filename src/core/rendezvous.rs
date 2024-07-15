@@ -17,6 +17,7 @@ use crate::core::{
 /// Two applications that want to communicate with each other *must* use the same rendezvous server.
 pub const DEFAULT_RENDEZVOUS_SERVER: &str = "ws://relay.magic-wormhole.io:4000/v1";
 
+/// An error occurred when connecting to the rendezvous server
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RendezvousError {
@@ -34,18 +35,21 @@ pub enum RendezvousError {
     /// The server sent us an error message
     #[error("Received error message from server: {}", _0)]
     Server(Box<str>),
+    /// Server wants a login permission, but we don't suppport any of these
     #[error(
         "Server wants one of {:?} for permissions, but we don't suppport any of these",
         _0
     )]
     Login(Vec<String>),
     #[cfg(not(target_family = "wasm"))]
-    #[error("Websocket IO error")]
+    /// Websocket I/O error
+    #[error("Websocket I/O error")]
     IO(
         #[from]
         #[source]
         ws2::Error,
     ),
+    /// Websocket I/O error
     #[cfg(target_family = "wasm")]
     #[error("Websocket IO error")]
     IO(
@@ -313,6 +317,7 @@ impl MailboxMachine {
     }
 }
 
+/// The rendezvous server is a central server used for connection establishment
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
@@ -334,6 +339,7 @@ impl std::fmt::Debug for RendezvousServer {
 }
 
 #[allow(deprecated)]
+#[allow(missing_docs)]
 impl RendezvousServer {
     /**
      * Connect to the rendezvous server

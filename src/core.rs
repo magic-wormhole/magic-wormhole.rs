@@ -15,16 +15,18 @@ use log::*;
 
 use crypto_secretbox as secretbox;
 
+/// An error occurred in the wormhole connection
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum WormholeError {
-    /// Some deserialization went wrong, we probably got some garbage
+    /// Corrupt message received from peer. Some deserialization went wrong, we probably got some garbage
     #[error("Corrupt message received from peer")]
     ProtocolJson(
         #[from]
         #[source]
         serde_json::Error,
     ),
+    /// Error with the rendezvous server connection. Some deserialization went wrong, we probably got some garbage
     #[error("Error with the rendezvous server connection")]
     ServerError(
         #[from]
@@ -35,14 +37,19 @@ pub enum WormholeError {
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
     Protocol(Box<str>),
+    /// Key confirmation failed. If you didn't mistype the code,
+    /// this is a sign of an attacker guessing passwords. Please try
+    /// again some time later.
     #[error(
         "Key confirmation failed. If you didn't mistype the code, \
         this is a sign of an attacker guessing passwords. Please try \
         again some time later."
     )]
     PakeFailed,
+    /// Cannot decrypt a received message
     #[error("Cannot decrypt a received message")]
     Crypto,
+    /// Nameplate is unclaimed
     #[error("Nameplate is unclaimed: {}", _0)]
     UnclaimedNameplate(Nameplate),
 }
@@ -71,6 +78,7 @@ impl From<std::convert::Infallible> for WormholeError {
 pub struct WormholeWelcome {
     /** A welcome message from the server (think of "message of the day"). Should be displayed to the user if present. */
     pub welcome: Option<String>,
+    /// The wormhole code used in the exchange
     pub code: Code,
 }
 
@@ -252,6 +260,9 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     }
 }
 
+/// A wormhole is an open connection to a peer via the rendezvous server.
+///
+/// This establishes the client-client part of the connection setup.
 #[derive(Debug)]
 pub struct Wormhole {
     #[allow(deprecated)]
@@ -259,10 +270,13 @@ pub struct Wormhole {
     phase: u64,
     key: key::Key<key::WormholeKey>,
     appid: AppID,
+    /// The cryptographic verifier code for the connection
     #[deprecated(since = "0.7.0", note = "Use the verifier() method")]
     pub verifier: Box<secretbox::Key>,
+    /// Our app version
     #[deprecated(since = "0.7.0", note = "Use the our_version() method")]
     pub our_version: Box<dyn std::any::Any + Send + Sync>,
+    /// The app version of the peer
     #[deprecated(since = "0.7.0", note = "Use the peer_version() method")]
     pub peer_version: serde_json::Value,
 }
@@ -458,6 +472,7 @@ impl Wormhole {
         })
     }
 
+    /// Close the wormhole
     pub async fn close(self) -> Result<(), WormholeError> {
         log::debug!("Closing Wormhole…");
         self.server.shutdown(Mood::Happy).await.map_err(Into::into)
@@ -515,18 +530,27 @@ impl Wormhole {
     }
 }
 
-// the serialized forms of these variants are part of the wire protocol, so
-// they must be spelled exactly as shown
+/// The close command accepts an optional "mood" string: this allows clients to tell the server
+/// (in general terms) about their experiences with the wormhole interaction. The server records
+/// the mood in its "usage" record, so the server operator can get a sense of how many connections
+/// are succeeding and failing. The moods currently recognized by the Mailbox server are:
 #[derive(Debug, PartialEq, Copy, Clone, Deserialize, Serialize, derive_more::Display)]
 pub enum Mood {
+    /// The PAKE key-establishment worked, and the client saw at least one valid encrypted message from its peer
     #[serde(rename = "happy")]
     Happy,
+    /// The client gave up without hearing anything from its peer
     #[serde(rename = "lonely")]
     Lonely,
+    /// The client encountered some other error: protocol problem or internal error
     #[serde(rename = "errory")]
     Errory,
+    /// The client saw an invalid encrypted message from its peer,
+    /// indicating that either the wormhole code was typed in wrong,
+    /// or an attacker tried (and failed) to guess the code
     #[serde(rename = "scary")]
     Scared,
+    /// Clients are not welcome on the server right now
     #[serde(rename = "unwelcome")]
     Unwelcome,
 }
@@ -540,21 +564,26 @@ pub enum Mood {
  * multiple protocols), and client implementations also have a "version"
  * data to do protocol negotiation.
  *
- * See [`crate::transfer::APP_CONFIG`], which entails
+ * See [`crate::transfer::APP_CONFIG`].
  */
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct AppConfig<V> {
+    /// The ID of the used application
     pub id: AppID,
+    /// The URL of the rendezvous server
     pub rendezvous_url: Cow<'static, str>,
+    /// The client application version
     pub app_version: V,
 }
 
 impl<V> AppConfig<V> {
+    /// Set the app id
     pub fn id(mut self, id: AppID) -> Self {
         self.id = id;
         self
     }
 
+    /// Set the rendezvous URL
     pub fn rendezvous_url(mut self, rendezvous_url: Cow<'static, str>) -> Self {
         self.rendezvous_url = rendezvous_url;
         self
@@ -562,6 +591,7 @@ impl<V> AppConfig<V> {
 }
 
 impl<V: serde::Serialize> AppConfig<V> {
+    /// Set the app version
     pub fn app_version(mut self, app_version: V) -> Self {
         self.app_version = app_version;
         self
@@ -584,6 +614,7 @@ pub struct AppID(
 );
 
 impl AppID {
+    /// Create a new app ID from an ID string
     pub fn new(id: impl Into<Cow<'static, str>>) -> Self {
         AppID(id.into())
     }
@@ -712,6 +743,8 @@ impl AsRef<str> for Phase {
 )]
 pub struct Mailbox(pub String);
 
+/// Wormhole codes look like 4-purple-sausages, consisting of a number followed by some random words.
+/// This number is called a "Nameplate".
 #[derive(
     PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
 )]
@@ -724,8 +757,9 @@ pub struct Nameplate(
 
 #[allow(deprecated)]
 impl Nameplate {
-    pub fn new(n: &str) -> Self {
-        Nameplate(String::from(n))
+    /// Create a new nameplate from a string
+    pub fn new(n: impl Into<String>) -> Self {
+        Nameplate(n.into())
     }
 }
 
@@ -764,10 +798,12 @@ pub struct Code(
 
 #[allow(deprecated)]
 impl Code {
+    /// Create a new code, comprised of a [`Nameplate`] and a password
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
         Code(format!("{}-{}", nameplate, password))
     }
 
+    /// Split the code into nameplate and password
     pub fn split(&self) -> (Nameplate, String) {
         let mut iter = self.0.splitn(2, '-');
         let nameplate = Nameplate::new(iter.next().unwrap());
@@ -775,6 +811,7 @@ impl Code {
         (nameplate, password.to_string())
     }
 
+    /// Retrieve only the nameplate
     pub fn nameplate(&self) -> Nameplate {
         Nameplate::new(self.0.split('-').next().unwrap())
     }

@@ -485,13 +485,17 @@ pub async fn request(
 pub struct ReceiveRequest {
     wormhole: Wormhole,
     connector: TransitConnector,
+
     /// **Security warning:** this is untrusted and unverified input
     #[deprecated(since = "0.7.0", note = "use ReceiveRequest::file_name(..) instead")]
     #[cfg(not(target_family = "wasm"))]
     pub filename: PathBuf,
     file_name: String,
+
+    /// The expected size of the file
     #[deprecated(since = "0.7.0", note = "use ReceiveRequest::file_size(..) instead")]
     pub filesize: u64,
+
     #[allow(dead_code)]
     offer: Arc<Offer>,
     their_abilities: transit::Abilities,
@@ -603,6 +607,7 @@ impl ReceiveRequest {
     }
 
     #[cfg(feature = "experimental-transfer-v2")]
+    #[allow(missing_docs)]
     pub fn offer(&self) -> Arc<Offer> {
         self.offer.clone()
     }
