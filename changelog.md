@@ -12,6 +12,7 @@
 - \[all\] Added compilation support for WASM targets.
 - \[lib\]\[breaking\] replaced `transit::TransitInfo` with a struct containing the address and a `conn_type` field which contains the old enum as `transit::ConnectionType`
 - \[lib\]\[breaking\] changed the signature of the `transit_handler` function to take just the newly combined `transit::TransitInfo`
+- \[lib\]\[breaking\] changed the signature of the `file_name` argument to `transfer::send_*` to take `Into<String>` instead of `Into<PathBuf>`
 - \[lib\]\[breaking\] replaced `transfer::AppVersion` with a struct with private fields that implements `std::default::Default`
 - \[lib\]\[breaking\] split `Wormhole` in `MailboxConnection` and `Wormhole`
 - \[lib\]\[deprecated\] `ReceiveRequest.filename` is deprecated and replaced by `ReceiveRequest.file_name(..)`
