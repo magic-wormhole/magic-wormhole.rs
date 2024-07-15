@@ -13,6 +13,7 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
+#[allow(deprecated)]
 use crate::{util, Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
@@ -46,13 +47,28 @@ pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 #[derive(Debug)]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct TransitKey;
+#[allow(deprecated)]
 impl KeyPurpose for TransitKey {}
 #[derive(Debug)]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct TransitRxKey;
+#[allow(deprecated)]
 impl KeyPurpose for TransitRxKey {}
 #[derive(Debug)]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct TransitTxKey;
+#[allow(deprecated)]
 impl KeyPurpose for TransitTxKey {}
 
 #[derive(Debug, thiserror::Error)]
@@ -690,6 +706,11 @@ pub fn log_transit_connection(
  *
  * Bind a port and generate our [`Hints`]. This does not do any communication yet.
  */
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
+#[allow(deprecated)]
 pub async fn init(
     mut abilities: Abilities,
     peer_abilities: Option<Abilities>,
@@ -832,6 +853,10 @@ impl MaybeConnectedSocket {
  * to exchange it (as in: send yours, receive theirs) with them. This is outside of the transit protocol, because we
  * are protocol agnostic.
  */
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct TransitConnector {
     /* Only `Some` if direct-tcp-v1 ability has been enabled.
      * The first socket is the port from which we will start connection attempts.
@@ -843,6 +868,7 @@ pub struct TransitConnector {
     our_hints: Arc<Hints>,
 }
 
+#[allow(deprecated)]
 impl TransitConnector {
     pub fn our_abilities(&self) -> &Abilities {
         &self.our_abilities
@@ -854,7 +880,7 @@ impl TransitConnector {
     }
 
     /**
-     * Forwards to either [`leader_connect`] or [`follower_connect`].
+     * Forwards to either [`leader_connect`](Self::leader_connect) or [`follower_connect`](Self::follower_connect).
      *
      * It usually is better to call the respective functions directly by their name, as it makes
      * them less easy to confuse (confusion may still happen though). Nevertheless, sometimes it
@@ -1376,6 +1402,7 @@ type HandshakeResult = (
  * must write `Ok\n` into the stream that should be used (and optionally `Nevermind\n`
  * into all others).
  */
+#[allow(deprecated)]
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,

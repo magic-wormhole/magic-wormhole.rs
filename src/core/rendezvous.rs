@@ -313,12 +313,17 @@ impl MailboxMachine {
     }
 }
 
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct RendezvousServer {
     connection: WsConnection,
     state: Option<MailboxMachine>,
     side: MySide,
 }
 
+#[allow(deprecated)]
 impl std::fmt::Debug for RendezvousServer {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_struct("RendezvousServer")
@@ -328,6 +333,7 @@ impl std::fmt::Debug for RendezvousServer {
     }
 }
 
+#[allow(deprecated)]
 impl RendezvousServer {
     /**
      * Connect to the rendezvous server
@@ -410,7 +416,7 @@ impl RendezvousServer {
     }
 
     /** A random unique string for this session */
-    pub fn side(&self) -> &MySide {
+    pub(crate) fn side(&self) -> &MySide {
         &self.side
     }
 
@@ -426,7 +432,7 @@ impl RendezvousServer {
             .await
     }
 
-    pub async fn send_peer_message(
+    pub(crate) async fn send_peer_message(
         &mut self,
         phase: Phase,
         body: Vec<u8>,
@@ -435,7 +441,9 @@ impl RendezvousServer {
             .await
     }
 
-    pub async fn next_peer_message_some(&mut self) -> Result<EncryptedMessage, RendezvousError> {
+    pub(crate) async fn next_peer_message_some(
+        &mut self,
+    ) -> Result<EncryptedMessage, RendezvousError> {
         loop {
             if let Some(message) = self.next_peer_message().await? {
                 return Ok(message);
@@ -443,7 +451,9 @@ impl RendezvousServer {
         }
     }
 
-    pub async fn next_peer_message(&mut self) -> Result<Option<EncryptedMessage>, RendezvousError> {
+    pub(crate) async fn next_peer_message(
+        &mut self,
+    ) -> Result<Option<EncryptedMessage>, RendezvousError> {
         let machine = &mut self
             .state
             .as_mut()

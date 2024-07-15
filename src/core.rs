@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 pub(super) mod key;
 pub mod rendezvous;
 mod server_messages;
@@ -252,6 +254,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
 
 #[derive(Debug)]
 pub struct Wormhole {
+    #[allow(deprecated)]
     server: RendezvousServer,
     phase: u64,
     key: key::Key<key::WormholeKey>,
@@ -336,7 +339,7 @@ impl Wormhole {
         } = mailbox_connection;
 
         /* Send PAKE */
-        let (pake_state, pake_msg_ser) = key::make_pake(&code.0, &config.id);
+        let (pake_state, pake_msg_ser) = key::make_pake(code.as_ref(), &config.id);
         server.send_peer_message(Phase::PAKE, pake_msg_ser).await?;
 
         /* Receive PAKE */
@@ -380,11 +383,6 @@ impl Wormhole {
             our_version: Box::new(config.app_version),
             peer_version,
         })
-    }
-
-    /** TODO */
-    pub async fn connect_with_seed() {
-        todo!()
     }
 
     /** Send an encrypted message to peer */
@@ -499,7 +497,7 @@ impl Wormhole {
     }
 
     /**
-     * Our "app version" information that we sent. See the [`peer_version`] for more information.
+     * Our "app version" information that we sent. See the [`peer_version`](Self::peer_version()) for more information.
      */
     pub fn our_version(&self) -> &(dyn std::any::Any + Send + Sync) {
         #[allow(deprecated)]
@@ -579,7 +577,11 @@ impl<V: serde::Serialize> AppConfig<V> {
     PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
 )]
 #[deref(forward)]
-pub struct AppID(#[deref] pub Cow<'static, str>);
+pub struct AppID(
+    #[deref]
+    #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")]
+    pub Cow<'static, str>,
+);
 
 impl AppID {
     pub fn new(id: impl Into<Cow<'static, str>>) -> Self {
@@ -593,12 +595,22 @@ impl From<String> for AppID {
     }
 }
 
+impl AsRef<str> for AppID {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 // MySide is used for the String that we send in all our outbound messages
 #[derive(
     PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
 )]
 #[serde(transparent)]
 #[display(fmt = "MySide({})", "&*_0")]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct MySide(EitherSide);
 
 impl MySide {
@@ -625,6 +637,10 @@ impl MySide {
 )]
 #[serde(transparent)]
 #[display(fmt = "TheirSide({})", "&*_0")]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct TheirSide(EitherSide);
 
 impl<S: Into<String>> From<S> for TheirSide {
@@ -639,6 +655,10 @@ impl<S: Into<String>> From<S> for TheirSide {
 #[serde(transparent)]
 #[deref(forward)]
 #[display(fmt = "{}", "&*_0")]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct EitherSide(pub String);
 
 impl<S: Into<String>> From<S> for EitherSide {
@@ -649,7 +669,11 @@ impl<S: Into<String>> From<S> for EitherSide {
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
-pub struct Phase(pub Cow<'static, str>);
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
+pub struct Phase(Cow<'static, str>);
 
 impl Phase {
     pub const VERSION: Self = Phase(Cow::Borrowed("version"));
@@ -659,19 +683,33 @@ impl Phase {
         Phase(phase.to_string().into())
     }
 
+    #[allow(dead_code)]
     pub fn is_version(&self) -> bool {
         self == &Self::VERSION
     }
+
+    #[allow(dead_code)]
     pub fn is_pake(&self) -> bool {
         self == &Self::PAKE
     }
+
     pub fn to_num(&self) -> Option<u64> {
         self.0.parse().ok()
     }
 }
 
+impl AsRef<str> for Phase {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
+#[deprecated(
+    since = "0.7.0",
+    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
+)]
 pub struct Mailbox(pub String);
 
 #[derive(
@@ -680,17 +718,35 @@ pub struct Mailbox(pub String);
 #[serde(transparent)]
 #[deref(forward)]
 #[display(fmt = "{}", _0)]
-pub struct Nameplate(pub String);
+pub struct Nameplate(
+    #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")] pub String,
+);
 
+#[allow(deprecated)]
 impl Nameplate {
     pub fn new(n: &str) -> Self {
         Nameplate(String::from(n))
     }
 }
 
+#[allow(deprecated)]
 impl From<Nameplate> for String {
     fn from(value: Nameplate) -> Self {
         value.0
+    }
+}
+
+#[allow(deprecated)]
+impl From<String> for Nameplate {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[allow(deprecated)]
+impl AsRef<str> for Nameplate {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
@@ -702,8 +758,11 @@ impl From<Nameplate> for String {
  */
 #[derive(PartialEq, Eq, Clone, Debug, derive_more::Display, derive_more::Deref)]
 #[display(fmt = "{}", _0)]
-pub struct Code(pub String);
+pub struct Code(
+    #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")] pub String,
+);
 
+#[allow(deprecated)]
 impl Code {
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
         Code(format!("{}-{}", nameplate, password))
@@ -718,5 +777,25 @@ impl Code {
 
     pub fn nameplate(&self) -> Nameplate {
         Nameplate::new(self.0.split('-').next().unwrap())
+    }
+}
+
+#[allow(deprecated)]
+impl From<Code> for String {
+    fn from(value: Code) -> Self {
+        value.0
+    }
+}
+
+impl From<String> for Code {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+#[allow(deprecated)]
+impl AsRef<str> for Code {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }

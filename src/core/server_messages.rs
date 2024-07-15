@@ -113,7 +113,7 @@ pub struct HashcashPermission {
     phase,
     "crate::util::DisplayBytes(body)"
 )]
-pub struct EncryptedMessage {
+pub(crate) struct EncryptedMessage {
     pub side: TheirSide,
     pub phase: Phase,
     #[serde(deserialize_with = "hex::serde::deserialize")]

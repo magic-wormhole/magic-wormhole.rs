@@ -52,7 +52,7 @@ pub async fn cancellable<T>(
     }
 }
 
-/// Indicator that the [`Cancellable`] task was cancelled.
+/// Indicator that the cancellable task was cancelled.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Cancelled;
 

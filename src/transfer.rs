@@ -2,7 +2,7 @@
 //!
 //! This gives you the actual capability to transfer files, that feature that Magic Wormhole got known and loved for.
 //!
-//! It is bound to an [`APPID`](APPID). Only applications using that APPID (and thus this protocol) can interoperate with
+//! It is bound to an [`AppID`]. Only applications using that APPID (and thus this protocol) can interoperate with
 //! the original Python implementation (and other compliant implementations).
 //!
 //! At its core, "peer messages" are exchanged over an established wormhole connection with the other side.
@@ -10,7 +10,7 @@
 
 #![allow(deprecated)]
 
-use futures::{AsyncRead, AsyncSeek, AsyncWrite};
+use futures::{AsyncRead, AsyncWrite};
 use serde_derive::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::json;
@@ -199,14 +199,6 @@ impl Default for AppVersionTransferV2Hint {
     }
 }
 
-pub trait AsyncReadSeek: AsyncRead + AsyncSeek {}
-
-impl<T> AsyncReadSeek for T where T: AsyncRead + AsyncSeek {}
-
-pub trait AsyncWriteSeek: AsyncWrite + AsyncSeek {}
-
-impl<T> AsyncWriteSeek for T where T: AsyncWrite + AsyncSeek {}
-
 /**
  * The type of message exchanged over the wormhole for this protocol
  */
@@ -354,7 +346,7 @@ pub async fn send(
 /**
  * Wait for a file offer from the other side
  *
- * This method waits for an offer message and builds up a [`ReceiveRequest`](ReceiveRequest).
+ * This method waits for an offer message and builds up a [`ReceiveRequest`].
  * It will also start building a TCP connection to the other side using the transit protocol.
  *
  * Returns `None` if the task got cancelled.
