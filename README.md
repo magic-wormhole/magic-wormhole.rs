@@ -24,7 +24,7 @@ New features that exceed the other implementations:
 
 ## Getting started
 
-If you want to toy with the CLI, `cargo run -- --help` will get you started. The code sits in `./cli/src/bin`.
+If you want to toy with the CLI, `cargo run -- --help` will get you started. The code sits in `./cli/src`. For more instructions see [cli/README.md](cli/README.md).
 
 If you'd like to use Wormhole in your application, `cargo doc --open` will tell you how to use it. There aren't any hosted docs at the moment.
 
