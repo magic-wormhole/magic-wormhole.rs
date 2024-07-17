@@ -28,7 +28,7 @@ async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 rand = "0.8.3"
 
 # CLI specific dependencies
-magic-wormhole = { path = "..", features = ["all"] }
+magic-wormhole = { path = "..", version = "0.7", features = ["all"] }
 clap = { version = "4", features = ["cargo", "derive", "help"] }
 clap_complete = "4"
 env_logger = "0.11"
