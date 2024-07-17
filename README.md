@@ -59,7 +59,7 @@ This work is licensed under the EUPL v1.2 or later. Contact the owner(s) for use
 [build-status-image]: https://github.com/magic-wormhole/magic-wormhole.rs/workflows/Rust/badge.svg
 [deps-status-image]: https://deps.rs/repo/github/magic-wormhole/magic-wormhole.rs/status.svg
 [deps-status-url]: https://deps.rs/repo/github/magic-wormhole/magic-wormhole.rs
-[codecov-image]: https://codecov.io/gh/magic-wormhole/magic-wormhole.rs/branch/master/graph/badge.svg
+[codecov-image]: https://codecov.io/gh/magic-wormhole/magic-wormhole.rs/branch/main/graph/badge.svg
 [codecov-url]: https://codecov.io/gh/magic-wormhole/magic-wormhole.rs
 [crates-io-image]: https://img.shields.io/crates/v/magic-wormhole.svg
 [crates-io-url]: https://crates.io/crates/magic-wormhole

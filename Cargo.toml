@@ -12,10 +12,9 @@ authors = [
 description = "Get things from one computer to another, safely"
 keywords = ["magic-wormhole", "wormhole", "file-transfer", "transfer"]
 homepage = "http://magic-wormhole.io/"
-repository = "https://github.com/magic-wormhole/magic-wormhole.rs"
+repository = "https://github.com/magic-wormhole/magic-wormhole.rs/tree/main/cli"
 license = "EUPL-1.2"
 
-# MSRV (also change in CI)
 rust-version = "1.75"
 edition = "2021"
 

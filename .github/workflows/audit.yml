@@ -2,33 +2,31 @@ name: Security Audit
 
 on:
   push:
-    branches: [ master ]
+    branches: [main]
     paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
   pull_request:
-    branches: [ master ]
+    branches: [main]
     paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
+      - "**/Cargo.toml"
+      - "**/Cargo.lock"
   schedule:
-    - cron: '32 10 * * *'
+    - cron: "32 10 * * *"
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
-    - name: Cache ~/.cargo
-      uses: actions/cache@v1
-      with:
-        # we specifically want ~/.cargo/bin/cargo-audit
-        # and ~/.cargo/.crates.toml and .crates2.json
-        # which cargo-install uses to remember that it's
-        # already installed
-        path: ~/.cargo
-        key: ${{ runner.os }}-audit-dotcargo
-    - uses: actions-rs/audit-check@v1
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-
+      - uses: actions/checkout@v4
+      - name: Cache ~/.cargo
+        uses: actions/cache@v4
+        with:
+          # we specifically want ~/.cargo/bin/cargo-audit
+          # and ~/.cargo/.crates.toml and .crates2.json
+          # which cargo-install uses to remember that it's
+          # already installed
+          path: ~/.cargo
+          key: ${{ runner.os }}-audit-dotcargo
+      - uses: actions-rust-lang/audit@v1
+        name: Audit Rust Dependencies

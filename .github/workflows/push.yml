@@ -2,187 +2,205 @@ name: Rust
 
 on:
   push:
-    branches: [master, dev]
+    branches: [main, dev]
   pull_request:
-    branches: [master, dev]
+    branches: [main, dev]
 
 jobs:
-  format:
-    name: cargo fmt (nightly)
+  read_msrv:
+    name: Read MSRV
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - name: Install Rust (stable)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Read MSRV from workspace manifest
+        id: read_msrv
+        run: |
+          cargo metadata --format-version=1 \
+          | jq -r 'first(.packages[] | select(.source == null and .rust_version)) | .rust_version' \
+          | sed -E 's/^1\.([0-9]{2})$/1\.\1\.0/' \
+          | xargs -0 printf "msrv=%s" \
+          | tee /dev/stderr \
+          >> "$GITHUB_OUTPUT"
+    outputs:
+      msrv: ${{ steps.read_msrv.outputs.msrv }}
+
+  formatting:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Ensure rustfmt is installed and setup problem matcher
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: nightly
-          override: true
           components: rustfmt
-          profile: minimal
-      - name: Format
-        run: cargo fmt -- --check
+          toolchain: nightly
+      - name: Rustfmt Check
+        uses: actions-rust-lang/rustfmt@v1
 
   clippy:
     name: clippy (stable)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-clippy-dotcargo
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-clippy-cargo-build-target
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: clippy
-          override: true
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
-          name: clippy results
+      - name: cargo clippy
+        run: cargo clippy --all-features
 
   test:
-    runs-on: ${{ matrix.os }}
+    name: "test (${{ matrix.os }} ${{ matrix.channel }})"
+    needs:
+      - read_msrv
+    runs-on: ${{ matrix.image }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
-        rust:
-          - 1.75 # MSRV (also change in Cargo.toml)
+        channel:
+          - MSRV
           - stable
           - nightly
+        os:
+          - Linux
+          - Windows
+          - macOS
+        include:
+          - os: Linux
+            image: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: Windows
+            image: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macOS
+            image: macos-latest
+            target: aarch64-apple-darwin
+          - channel: msrv
+            rust: ${{ needs.read_msrv.outputs.msrv }}
+          - channel: stable
+            rust: stable
+          - channel: nightly
+            rust: nightly
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
           target: wasm32-unknown-unknown
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-test-dotcargo-${{ matrix.rust }}
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-test-build-target-${{ matrix.rust }}
       - name: build library (no default features)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -p magic-wormhole --no-default-features
+        run: cargo build -p magic-wormhole --target ${{ matrix.target }} --no-default-features
       - name: build library (features=transit)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -p magic-wormhole --no-default-features --features=transit
+        run: cargo build -p magic-wormhole --target ${{ matrix.target }} --no-default-features --features=transit
       - name: build library (features=transfer)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -p magic-wormhole --no-default-features --features=transfer
+        run: cargo build -p magic-wormhole --target ${{ matrix.target }} --no-default-features --features=transfer
       - name: build library (features=forwarding)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -p magic-wormhole --no-default-features --features=forwarding
+        run: cargo build -p magic-wormhole --target ${{ matrix.target }} --no-default-features --features=forwarding
       - name: build CLI
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all-targets
+        run: cargo build -p magic-wormhole-cli --target ${{ matrix.target }} --features=all
       - name: build WASM
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target wasm32-unknown-unknown --no-default-features --package magic-wormhole --features transit --features transfer
+        run: cargo build -p magic-wormhole --target wasm32-unknown-unknown --no-default-features --features transit --features transfer
       - name: test
-        uses: actions-rs/cargo@v1
+        uses: nick-fields/retry@v3
         with:
-          command: test
-          args: --verbose --workspace --features=all,native-tls,experimental
+          max_attempts: 3
+          polling_interval_seconds: 30
+          timeout_minutes: 30
+          retry_on_exit_code: 101
+          command: cargo test --verbose --workspace --features=all,native-tls,experimental
 
   dist:
-    runs-on: ${{ matrix.os }}
+    name: "dist (${{ matrix.os }})"
+    runs-on: ${{ matrix.image }}
     strategy:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
+          - Linux
+          - Windows
+          - macOS
+        include:
+          - os: Linux
+            image: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: Windows
+            image: windows-latest
+            target: x86_64-pc-windows-gnu
+          - os: macOS
+            image: macos-latest
+            target: aarch64-apple-darwin
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
           toolchain: stable
-          override: true
+          target: ${{ matrix.target }}
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-test-dotcargo-stable
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-test-build-target-stable
       - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bins --locked --release
+        run: cargo build -p magic-wormhole-cli --target ${{ matrix.target }} --bins --locked --release
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: wormhole-${{ matrix.os }}-${{ github.sha }}
+          name: magic-wormhole-cli-${{ matrix.target }}
           path: |
-            ./target/release/wormhole-rs
-            ./target/release/wormhole-rs.exe
+            ./target/${{ matrix.target }}/release/wormhole-rs
+            ./target/${{ matrix.target }}/release/wormhole-rs.exe
           if-no-files-found: error
 
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
-      - uses: actions-rs/install@v0.1
+      - uses: taiki-e/cache-cargo-install-action@v2
         with:
-          crate: cargo-tarpaulin
-          version: latest
+          tool: cargo-tarpaulin
       - name: Cache ~/.cargo
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: ~/.cargo
           key: ${{ runner.os }}-coverage-dotcargo
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-coverage-cargo-build-target
       - name: Run tarpaulin
-        uses: actions-rs/cargo@v1
-        with:
-          command: tarpaulin
-          args: --workspace --out Xml
+        run: cargo tarpaulin --workspace --out Xml
       - name: upload coverage
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
@@ -190,26 +208,21 @@ jobs:
     name: Cargo deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
       - name: Checkout Rust toolcnain
-        uses: actions/checkout@v2
-        with:
-          toolchain: stable
-          override: true
+        uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   semver:
     name: semver
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
