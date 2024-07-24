@@ -176,6 +176,14 @@ jobs:
             ./target/${{ matrix.target }}/release/wormhole-rs
             ./target/${{ matrix.target }}/release/wormhole-rs.exe
           if-no-files-found: error
+      - name: Release binaries
+        uses: softprops/action-gh-release@v2
+        if: startWith(github.ref, 'refs/tags/')
+        with:
+          files: "magic-wormhole-cli-*.tar.gz"
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   coverage:
     runs-on: ubuntu-latest
