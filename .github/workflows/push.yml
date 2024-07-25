@@ -273,6 +273,7 @@ jobs:
           pattern: "magic-wormhole-cli-*"
       - name: Update Release
         uses: softprops/action-gh-release@v2
+        if: ${{ startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/main') }}
         with:
           name: "Version ${{ steps.query-version.outputs.version }}"
           body: ${{ steps.query-changelog.outputs.release-notes }}
