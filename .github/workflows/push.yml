@@ -17,8 +17,8 @@ jobs:
       - name: Read MSRV from workspace manifest
         id: read_msrv
         run: |
-          cargo metadata --format-version=1 \
-          | jq -r 'first(.packages[] | select(.source == null and .rust_version)) | .rust_version' \
+          cargo metadata --no-deps --format-version=1 \
+          | jq -r 'first(.packages[]).rust_version' \
           | sed -E 's/^1\.([0-9]{2})$/1\.\1\.0/' \
           | xargs -0 printf "msrv=%s" \
           | tee /dev/stderr \
@@ -27,7 +27,7 @@ jobs:
       msrv: ${{ steps.read_msrv.outputs.msrv }}
 
   formatting:
-    name: cargo fmt
+    name: Cargo Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
         uses: actions-rust-lang/rustfmt@v1
 
   clippy:
-    name: clippy (stable)
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
         run: cargo clippy --all-features
 
   test:
-    name: "test (${{ matrix.os }} ${{ matrix.channel }})"
+    name: "Test (${{ matrix.os }} ${{ matrix.channel }})"
     needs:
       - read_msrv
     runs-on: ${{ matrix.image }}
@@ -131,7 +131,7 @@ jobs:
           command: cargo test --verbose --workspace --features=all,native-tls,experimental
 
   dist:
-    name: "dist (${{ matrix.os }})"
+    name: "Dist (${{ matrix.os }})"
     runs-on: ${{ matrix.image }}
     strategy:
       fail-fast: false
@@ -144,12 +144,15 @@ jobs:
           - os: Linux
             image: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            ext: ""
           - os: Windows
             image: windows-latest
             target: x86_64-pc-windows-gnu
+            ext: ".exe"
           - os: macOS
             image: macos-latest
             target: aarch64-apple-darwin
+            ext: ""
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -168,24 +171,20 @@ jobs:
           key: ${{ runner.os }}-test-build-target-stable
       - name: Build
         run: cargo build -p magic-wormhole-cli --target ${{ matrix.target }} --bins --locked --release
+      - name: Tar binaries
+        run: |
+          pushd "target/${{ matrix.target }}/release/"
+          tar -cvzf "magic-wormhole-cli-${{ matrix.target }}.tgz" "wormhole-rs${{ matrix.ext }}"
+          popd
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: magic-wormhole-cli-${{ matrix.target }}
-          path: |
-            ./target/${{ matrix.target }}/release/wormhole-rs
-            ./target/${{ matrix.target }}/release/wormhole-rs.exe
+          path: target/${{ matrix.target }}/release/magic-wormhole-cli-${{ matrix.target }}.tgz
           if-no-files-found: error
-      - name: Release binaries
-        uses: softprops/action-gh-release@v2
-        if: startWith(github.ref, 'refs/tags/')
-        with:
-          files: "magic-wormhole-cli-*.tar.gz"
-          draft: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   coverage:
+    name: Coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -225,7 +224,7 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v1
 
   semver:
-    name: semver
+    name: SemVer
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -234,3 +233,51 @@ jobs:
           toolchain: nightly
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
+      - name: Extract Changelog
+        uses: release-flow/keep-a-changelog-action@v3
+        with:
+          command: query
+          version: unreleased
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs:
+      - dist
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get Cargo Version
+        id: query-version
+        run: |
+          cargo metadata --no-deps --format-version=1 \
+          | jq -r 'first(.packages[]).version' \
+          | xargs -0 printf "version=%s" \
+          >> "$GITHUB_OUTPUT"
+      - name: Check Tag
+        id: check-tag
+        run: |
+          if git show-ref --tags --verify --quiet "refs/tags/${{ steps.query-version.outputs.version }}"; then
+            echo "tag=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=0" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Extract Changelog for ${{ steps.query-version.outputs.version }}
+        id: query-changelog
+        uses: release-flow/keep-a-changelog-action@v3
+        with:
+          command: query
+          version: ${{ steps.query-version.outputs.version }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: "./dist"
+          pattern: "magic-wormhole-cli-*"
+      - name: Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Version ${{ steps.query-version.outputs.version }}"
+          body: ${{ steps.query-changelog.outputs.release-notes }}
+          files: "./dist/**/magic-wormhole-cli-*"
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(steps.query-version.outputs.version, '-') }}
+          draft: ${{ steps.check-tag.outputs.tag == 0 && !startsWith(github.ref, 'refs/tags/') }}
+          make_latest: ${{ !contains(steps.query-version.outputs.version, '-') && startsWith(github.ref, 'refs/tags/') }}

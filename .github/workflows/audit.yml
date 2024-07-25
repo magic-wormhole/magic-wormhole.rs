@@ -16,6 +16,7 @@ on:
 
 jobs:
   audit:
+    name: Audit Rust Dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
