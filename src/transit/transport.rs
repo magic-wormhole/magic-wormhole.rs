@@ -72,6 +72,10 @@ impl<T> TransitTransport for T where T: AsyncRead + AsyncWrite + std::any::Any +
 #[cfg(not(target_family = "wasm"))]
 pub(super) fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
     socket.set_nonblocking(true)?;
+    /* Explicitly make the socket dual-stack, otherwise IPv4 won't work on some platforms
+     * where IPV6_V6ONLY is enabled by default (e.g. Windows) or by system configuration.
+     */
+    socket.set_only_v6(false)?;
 
     /* See https://stackoverflow.com/a/14388707/6094756.
      * On most BSD and Linux systems, we need both REUSEADDR and REUSEPORT;
