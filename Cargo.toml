@@ -52,7 +52,6 @@ rand = "0.8.0"
 log = "0.4.13"
 base64 = "0.22.0"
 time = { version = "0.3.7", features = ["formatting"] }
-instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 
 derive_more = { version = "0.99.0", default-features = false, features = [
     "display",
