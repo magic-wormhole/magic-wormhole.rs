@@ -31,6 +31,7 @@ use std::{
     collections::HashSet,
     net::{IpAddr, SocketAddr},
     sync::Arc,
+    time::Instant,
 };
 
 mod crypto;
@@ -985,7 +986,7 @@ impl TransitConnector {
         } = self;
         let transit_key = Arc::new(transit_key);
 
-        let start = instant::Instant::now();
+        let start = Instant::now();
         let mut connection_stream = Box::pin(
             Self::connect_inner(
                 true,
