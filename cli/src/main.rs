@@ -133,7 +133,7 @@ enum ForwardCommand {
     )]
     Serve {
         /// List of ports to open up. You can optionally specify a domain/address to forward remote ports
-        #[arg(value_name = "[DOMAIN:]PORT", action = clap::ArgAction::Append, value_hint = clap::ValueHint::Hostname)]
+        #[arg(value_name = "[DOMAIN:]PORT", required = true, action = clap::ArgAction::Append, value_hint = clap::ValueHint::Hostname)]
         targets: Vec<String>,
         #[command(flatten)]
         common: CommonArgs,
