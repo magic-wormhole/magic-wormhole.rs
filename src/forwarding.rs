@@ -151,6 +151,11 @@ pub async fn serve(
     targets: Vec<(Option<url::Host>, u16)>,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
+    assert!(
+        !targets.is_empty(),
+        "The list of target ports must not be empty"
+    );
+
     let our_version: &AppVersion = wormhole
         .our_version()
         .downcast_ref()
