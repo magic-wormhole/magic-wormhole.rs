@@ -516,7 +516,7 @@ impl Wormhole {
      */
     pub fn our_version(&self) -> &(dyn std::any::Any + Send + Sync) {
         #[allow(deprecated)]
-        &self.our_version
+        &*self.our_version
     }
 
     /**
