@@ -225,12 +225,19 @@ enum WormholeCommand {
     },
     #[command(hide = true)]
     Help,
+    /// Generate the manual pages for this project
+    #[cfg(feature = "generate-manpage")]
+    #[command(name = "generate-manpage", hide = true)]
+    GenerateManpage {
+        /// The path of the manpage
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Parser)]
 #[command(
     version,
-    author,
+    author = "The wormhole-rs developers",
     about,
     arg_required_else_help = true,
     disable_help_subcommand = true,
@@ -249,7 +256,7 @@ struct WormholeCli {
         display_order = 100
     )]
     log: bool,
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: WormholeCommand,
 }
 
@@ -545,6 +552,19 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Help => {
             println!("Use --help to get help");
             std::process::exit(2);
+        },
+        #[cfg(feature = "generate-manpage")]
+        WormholeCommand::GenerateManpage { path } => {
+            println!("Generating manpage as {}", path.canonicalize()?.display());
+
+            let cmd = WormholeCli::command();
+            let man = clap_mangen::Man::new(cmd)
+                .section("1")
+                .date("Jul 2024")
+                .manual("User Commands");
+
+            let mut file = std::fs::File::create(path)?;
+            man.render(&mut file)?;
         },
     }
 
