@@ -1,4 +1,4 @@
-use super::{AppID, Mailbox, Mood, MySide, Nameplate, Phase, TheirSide};
+use super::{AppID, ClientVersion, Mailbox, Mood, MySide, Nameplate, Phase, TheirSide};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -136,10 +136,16 @@ impl EncryptedMessage {
 pub enum OutboundMessage {
     #[display(fmt = "SubmitPermission({})", _0)]
     SubmitPermission(SubmitPermission),
-    #[display(fmt = "Bind {{ appid: {}, side: {} }}", appid, side)]
+    #[display(
+        fmt = "Bind {{ appid: {}, side: {}, client_version: {} }}",
+        appid,
+        side,
+        client_version
+    )]
     Bind {
         appid: AppID,
         side: MySide,
+        client_version: ClientVersion,
     },
     List,
     Allocate,
@@ -176,9 +182,15 @@ pub enum OutboundMessage {
     },
 }
 
+const CLIENT_NAME: &str = "rust";
+
 impl OutboundMessage {
     pub fn bind(appid: AppID, side: MySide) -> Self {
-        OutboundMessage::Bind { appid, side }
+        OutboundMessage::Bind {
+            appid,
+            side,
+            client_version: ClientVersion::new(CLIENT_NAME, env!("CARGO_PKG_VERSION")),
+        }
     }
 
     pub fn claim(nameplate: impl Into<String>) -> Self {
@@ -260,6 +272,7 @@ mod test {
 
     #[test]
     fn test_bind() {
+        let client_version_string: &str = env!("CARGO_PKG_VERSION");
         let m1 = OutboundMessage::bind(
             AppID::new("appid"),
             MySide::unchecked_from_string(String::from("side1")),
@@ -269,8 +282,15 @@ mod test {
         assert_eq!(
             m2,
             json!({"type": "bind", "appid": "appid",
-                   "side": "side1"})
+                   "side": "side1", "client_version": ["rust", client_version_string]})
         );
+    }
+
+    #[test]
+    fn test_client_version_string_rep() {
+        let client_version = ClientVersion::new("foo", "1.0.2");
+
+        assert_eq!(client_version.to_string(), "foo-1.0.2")
     }
 
     #[test]
