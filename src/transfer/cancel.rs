@@ -87,15 +87,15 @@ async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output 
     futures::pin_mut!(run);
     match cancellable(run, cancel).await {
         Ok(Ok(())) => {},
-        Ok(Err(_timeout)) => log::debug!("Post-transfer timed out"),
-        Err(_cancelled) => log::debug!("Post-transfer got cancelled by user"),
+        Ok(Err(_timeout)) => tracing::debug!("Post-transfer timed out"),
+        Err(_cancelled) => tracing::debug!("Post-transfer got cancelled by user"),
     };
 }
 
 /// Ignore an error but at least debug print it
 fn debug_err(result: Result<(), impl std::fmt::Display>, operation: &str) {
     if let Err(error) = result {
-        log::debug!("Failed to {} after transfer: {}", operation, error);
+        tracing::debug!("Failed to {} after transfer: {}", operation, error);
     }
 }
 
@@ -107,7 +107,7 @@ pub async fn handle_run_result(
     match handle_run_result_noclose(wormhole, result).await {
         Ok(Some(((), wormhole, cancel))) => {
             /* Happy case: everything went okay. Now close the wormholhe */
-            log::debug!("Transfer done, doing cleanup logic");
+            tracing::debug!("Transfer done, doing cleanup logic");
             wrap_timeout(
                 async {
                     debug_err(wormhole.close().await, "close Wormhole");
@@ -132,7 +132,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
         Ok((Ok(val), cancel)) => Ok(Some((val, wormhole, cancel))),
         /* Got peer error: stop everything immediately */
         Ok((Err(error @ TransferError::PeerError(_)), cancel)) => {
-            log::debug!(
+            tracing::debug!(
                 "Transfer encountered an error ({}), doing cleanup logic",
                 error
             );
@@ -147,7 +147,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
         },
         /* Got transit error: try to receive peer error for better error message */
         Ok((Err(mut error @ TransferError::Transit(_)), cancel)) => {
-            log::debug!(
+            tracing::debug!(
                 "Transfer encountered an error ({}), doing cleanup logic",
                 error
             );
@@ -160,7 +160,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
                 if let Ok(Ok(Ok(PeerMessage::Error(e)))) = util::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
                     error = TransferError::PeerError(e);
                 } else {
-                    log::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");
+                    tracing::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");
                 }
                 debug_err(wormhole.close().await, "close Wormhole");
             }, cancel).await;
@@ -168,7 +168,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
         },
         /* Other error: try to notify peer */
         Ok((Err(error), cancel)) => {
-            log::debug!(
+            tracing::debug!(
                 "Transfer encountered an error ({}), doing cleanup logic",
                 error
             );
@@ -189,7 +189,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
         },
         /* Cancelled: try to notify peer */
         Err(cancelled) => {
-            log::debug!("Transfer got cancelled, doing cleanup logic");
+            tracing::debug!("Transfer got cancelled, doing cleanup logic");
             /* Replace cancel with ever-pending future, as we have already been cancelled */
             wrap_timeout(
                 async {
@@ -224,7 +224,7 @@ pub async fn handle_run_result_transit<T>(
         Ok((Ok(val), _cancel)) => Ok(Some((val, transit))),
         /* Got peer error: stop everything immediately */
         Ok((Err(error @ TransferError::PeerError(_)), _cancel)) => {
-            log::debug!(
+            tracing::debug!(
                 "Transfer encountered an error ({}), doing cleanup logic",
                 error
             );
@@ -232,7 +232,7 @@ pub async fn handle_run_result_transit<T>(
         },
         /* Got transit error: try to receive peer error for better error message */
         Ok((Err(mut error @ TransferError::Transit(_)), cancel)) => {
-            log::debug!(
+            tracing::debug!(
                 "Transfer encountered an error ({}), doing cleanup logic",
                 error
             );
@@ -263,7 +263,7 @@ pub async fn handle_run_result_transit<T>(
         },
         /* Other error: try to notify peer */
         Ok((Err(error), cancel)) => {
-            log::debug!(
+            tracing::debug!(
                 "Transfer encountered an error ({}), doing cleanup logic",
                 error
             );
@@ -281,7 +281,7 @@ pub async fn handle_run_result_transit<T>(
         },
         /* Cancelled: try to notify peer */
         Err(cancelled) => {
-            log::debug!("Transfer got cancelled, doing cleanup logic");
+            tracing::debug!("Transfer got cancelled, doing cleanup logic");
             /* Replace cancel with ever-pending future, as we have already been cancelled */
             wrap_timeout(
                 async {

@@ -151,7 +151,7 @@ where
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // We want to do some transit
-        debug!("Sending transit message '{:?}", connector.our_hints());
+        tracing::debug!("Sending transit message '{:?}", connector.our_hints());
         wormhole
             .send_json(&PeerMessage::transit_v1(
                 *connector.our_abilities(),
@@ -160,7 +160,7 @@ where
             .await?;
 
         // Send file offer message.
-        debug!("Sending file offer");
+        tracing::debug!("Sending file offer");
         wormhole
             .send_json(&PeerMessage::offer_file_v1(file_name, file_size))
             .await?;
@@ -169,7 +169,7 @@ where
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
             match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
                 PeerMessage::Transit(transit) => {
-                    debug!("Received transit message: {:?}", transit);
+                    tracing::debug!("Received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
                 },
                 other => {
@@ -180,7 +180,7 @@ where
         {
             // Wait for file_ack
             let fileack_msg = wormhole.receive_json::<PeerMessage>().await??;
-            debug!("Received file ack message: {:?}", fileack_msg);
+            tracing::debug!("Received file ack message: {:?}", fileack_msg);
 
             match fileack_msg.check_err()? {
                 PeerMessage::Answer(AnswerMessage::FileAck(msg)) => {
@@ -204,7 +204,7 @@ where
             .await?;
         transit_handler(info);
 
-        debug!("Beginning file transfer");
+        tracing::debug!("Beginning file transfer");
 
         // 11. send the file as encrypted records.
         let file = futures::stream::once(futures::future::ready(std::io::Result::Ok(
@@ -213,14 +213,14 @@ where
         let checksum = v1::send_records(&mut transit, file, file_size, progress_handler).await?;
 
         // 13. wait for the transit ack with sha256 sum from the peer.
-        debug!("sent file. Waiting for ack");
+        tracing::debug!("sent file. Waiting for ack");
         let transit_ack = transit.receive_record().await?;
         let transit_ack_msg = serde_json::from_slice::<TransitAck>(&transit_ack)?;
         ensure!(
             transit_ack_msg.sha256 == hex::encode(checksum),
             TransferError::Checksum
         );
-        debug!("Transfer complete!");
+        tracing::debug!("Transfer complete!");
 
         Ok(())
     });
@@ -244,7 +244,7 @@ pub(crate) async fn send_folder(
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // We want to do some transit
-        debug!("Sending transit message '{:?}", connector.our_hints());
+        tracing::debug!("Sending transit message '{:?}", connector.our_hints());
         wormhole
             .send_json(&PeerMessage::transit_v1(
                 *connector.our_abilities(),
@@ -256,7 +256,7 @@ pub(crate) async fn send_folder(
          * all the headers of our file now but without the contents. We know that a file is
          * header + contents + padding
          */
-        log::debug!("Estimating the file size");
+        tracing::debug!("Estimating the file size");
 
         // TODO try again but without pinning
         use futures::{
@@ -283,7 +283,7 @@ pub(crate) async fn send_folder(
         ) -> IoResult<Vec<WrappedDataFut>> {
             match offer {
                 OfferSendEntry::Directory { content } => {
-                    log::debug!("Adding directory {path:?}");
+                    tracing::debug!("Adding directory {path:?}");
                     let header = tar_helper::create_header_directory(path)?;
                     *total_size += header.len() as u64;
                     total_content.push(wrap(header));
@@ -295,7 +295,7 @@ pub(crate) async fn send_folder(
                     }
                 },
                 OfferSendEntry::RegularFile { size, content } => {
-                    log::debug!("Adding file {path:?}; {size} bytes");
+                    tracing::debug!("Adding file {path:?}; {size} bytes");
                     let header = tar_helper::create_header_file(path, size)?;
                     let padding = tar_helper::padding(size);
                     *total_size += header.len() as u64;
@@ -332,7 +332,7 @@ pub(crate) async fn send_folder(
         /* Convert to stream */
 
         // Send file offer message.
-        log::debug!("Sending file offer ({total_size} bytes)");
+        tracing::debug!("Sending file offer ({total_size} bytes)");
         folder_name.push_str(".tar");
         wormhole
             .send_json(&PeerMessage::offer_file_v1(folder_name, total_size))
@@ -342,7 +342,7 @@ pub(crate) async fn send_folder(
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
             match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
                 PeerMessage::Transit(transit) => {
-                    debug!("received transit message: {:?}", transit);
+                    tracing::debug!("received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
                 },
                 other => {
@@ -369,21 +369,21 @@ pub(crate) async fn send_folder(
             .await?;
         transit_handler(info);
 
-        debug!("Beginning file transfer");
+        tracing::debug!("Beginning file transfer");
 
         // 11. send the file as encrypted records.
         let checksum =
             v1::send_records(&mut transit, content, total_size, progress_handler).await?;
 
         // 13. wait for the transit ack with sha256 sum from the peer.
-        debug!("sent file. Waiting for ack");
+        tracing::debug!("sent file. Waiting for ack");
         let transit_ack = transit.receive_record().await?;
         let transit_ack_msg = serde_json::from_slice::<TransitAck>(&transit_ack)?;
         ensure!(
             transit_ack_msg.sha256 == hex::encode(checksum),
             TransferError::Checksum
         );
-        debug!("Transfer complete!");
+        tracing::debug!("Transfer complete!");
 
         Ok(())
     });
@@ -412,7 +412,7 @@ pub async fn request(
         let connector = transit::init(transit_abilities, None, relay_hints).await?;
 
         // send the transit message
-        debug!("Sending transit message '{:?}", connector.our_hints());
+        tracing::debug!("Sending transit message '{:?}", connector.our_hints());
         wormhole
             .send_json(&PeerMessage::transit_v1(
                 *connector.our_abilities(),
@@ -424,7 +424,7 @@ pub async fn request(
         let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
             match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
                 PeerMessage::Transit(transit) => {
-                    debug!("received transit message: {:?}", transit);
+                    tracing::debug!("received transit message: {:?}", transit);
                     (transit.abilities_v1, transit.hints_v1)
                 },
                 other => {
@@ -558,7 +558,7 @@ impl ReceiveRequest {
     {
         let run = Box::pin(async {
             // send file ack.
-            debug!("Sending ack");
+            tracing::debug!("Sending ack");
             self.wormhole
                 .send_json(&PeerMessage::file_ack_v1("ok"))
                 .await?;
@@ -575,7 +575,7 @@ impl ReceiveRequest {
                 .await?;
             transit_handler(info);
 
-            debug!("Beginning file transfer");
+            tracing::debug!("Beginning file transfer");
             tcp_file_receive(
                 &mut transit,
                 self.filesize,
@@ -721,7 +721,7 @@ where
     }
     content_handler.close().await?;
 
-    debug!("done");
+    tracing::debug!("done");
     // TODO: 5. write the buffer into a file.
     Ok(hasher.finalize_fixed().to_vec())
 }
@@ -742,7 +742,7 @@ where
     let checksum = receive_records(filesize, transit, progress_handler, content_handler).await?;
 
     let sha256sum = hex::encode(checksum.as_slice());
-    debug!("sha256 sum: {:?}", sha256sum);
+    tracing::debug!("sha256 sum: {:?}", sha256sum);
 
     // 6. verify sha256 sum by sending an ack message to peer along with checksum.
     transit
@@ -751,7 +751,7 @@ where
 
     // 7. close socket.
     // well, no need, it gets dropped when it goes out of scope.
-    debug!("Transfer complete");
+    tracing::debug!("Transfer complete");
     Ok(())
 }
 

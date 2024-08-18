@@ -58,6 +58,9 @@ thiserror = "1.0.24"
 time = "0.3.7"
 trycmd = "0.15"
 url = "2.2.2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+test-log = "0.2"
 
 [package]
 name = "magic-wormhole"
@@ -101,6 +104,8 @@ futures = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 percent-encoding = { workspace = true }
 
+tracing = { workspace =  true, features = ["log", "log-always"]}
+
 # Transit dependencies
 
 
@@ -138,7 +143,7 @@ getrandom = { version = "0.2.5", features = ["js"] }
 
 # for some tests
 [dev-dependencies]
-env_logger = { workspace = true }
+test-log = { workspace = true}
 eyre = { workspace = true }
 
 [features]

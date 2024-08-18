@@ -104,7 +104,7 @@ pub fn hashcash(resource: String, bits: u32) -> String {
     use sha1::{Digest, Sha1};
 
     if bits > 32 {
-        log::warn!(
+        tracing::warn!(
             "Minting a hashcash token with {} bits. If the application is frozen, you'll know why",
             bits
         );

@@ -180,7 +180,7 @@ pub async fn serve(
         .map(|(host, port)| match host {
             Some(host) => {
                 if port == 80 || port == 443 || port == 8000 || port == 8080 {
-                    log::warn!("It seems like you are trying to forward a remote HTTP target ('{}'). Due to HTTP being host-aware this will very likely fail!", host);
+                    tracing::warn!("It seems like you are trying to forward a remote HTTP target ('{}'). Due to HTTP being host-aware this will very likely fail!", host);
                 }
                 (format!("{}:{}", host, port), (Some(host), port))
             },
@@ -191,7 +191,7 @@ pub async fn serve(
     /* Receive their transit hints */
     let their_hints: transit::Hints = match wormhole.receive_json().await?? {
         PeerMessage::Transit { hints } => {
-            log::debug!("Received transit message: {:?}", hints);
+            tracing::debug!("Received transit message: {:?}", hints);
             hints
         },
         PeerMessage::Error(err) => {
@@ -303,12 +303,12 @@ impl ForwardingServe {
         connection_id: u64,
         payload: &[u8],
     ) -> Result<(), ForwardingError> {
-        log::debug!("Forwarding {} bytes from #{}", payload.len(), connection_id);
+        tracing::debug!("Forwarding {} bytes from #{}", payload.len(), connection_id);
         match self.connections.get_mut(&connection_id) {
             Some((_worker, connection)) => {
                 /* On an error, log for the user and then terminate that connection */
                 if let Err(e) = connection.write_all(payload).await {
-                    log::warn!("Forwarding to #{} failed: {}", connection_id, e);
+                    tracing::warn!("Forwarding to #{} failed: {}", connection_id, e);
                     self.remove_connection(transit_tx, connection_id, true)
                         .await?;
                 }
@@ -330,7 +330,7 @@ impl ForwardingServe {
         connection_id: u64,
         tell_peer: bool,
     ) -> Result<(), ForwardingError> {
-        log::debug!("Removing connection: #{}", connection_id);
+        tracing::debug!("Removing connection: #{}", connection_id);
         if tell_peer {
             transit_tx
                 .send(
@@ -361,7 +361,7 @@ impl ForwardingServe {
         mut target: String,
         connection_id: u64,
     ) -> Result<(), ForwardingError> {
-        log::debug!("Creating new connection: #{} -> {}", connection_id, target);
+        tracing::debug!("Creating new connection: #{} -> {}", connection_id, target);
 
         use std::collections::hash_map::Entry;
         let entry = match self.connections.entry(connection_id) {
@@ -381,7 +381,7 @@ impl ForwardingServe {
         let stream = match TcpStream::connect(&target).await {
             Ok(stream) => stream,
             Err(err) => {
-                log::warn!(
+                tracing::warn!(
                     "Cannot open connection to {}: {}. The forwarded service might be down.",
                     target,
                     err
@@ -431,7 +431,7 @@ impl ForwardingServe {
     }
 
     async fn shutdown(self) {
-        log::debug!("Shutting down everything");
+        tracing::debug!("Shutting down everything");
         for (worker, _connection) in self.connections.into_values() {
             worker.cancel().await;
         }
@@ -445,7 +445,7 @@ impl ForwardingServe {
         cancel: &mut (impl futures::future::FusedFuture<Output = ()> + Unpin),
     ) -> Result<(), ForwardingError> {
         /* Event processing loop */
-        log::debug!("Entered processing loop");
+        tracing::debug!("Entered processing loop");
         let ret = loop {
             futures::select! {
                 message = transit_rx.next() => {
@@ -467,7 +467,7 @@ impl ForwardingServe {
                             self.remove_connection(transit_tx, connection_id, false).await?;
                         },
                         PeerMessage::Close => {
-                            log::info!("Peer gracefully closed connection");
+                            tracing::info!("Peer gracefully closed connection");
                             self.shutdown().await;
                             break Ok(());
                         },
@@ -501,7 +501,7 @@ impl ForwardingServe {
                 },
                 /* We are done */
                 () = &mut *cancel => {
-                    log::info!("Closing connection");
+                    tracing::info!("Closing connection");
                     transit_tx.send(
                         PeerMessage::Close.ser_msgpack()
                         .into_boxed_slice()
@@ -513,7 +513,7 @@ impl ForwardingServe {
                 },
             }
         };
-        log::debug!("Exited processing loop");
+        tracing::debug!("Exited processing loop");
         ret
     }
 }
@@ -562,7 +562,7 @@ pub async fn connect(
     /* Receive their transit hints */
     let their_hints: transit::Hints = match wormhole.receive_json().await?? {
         PeerMessage::Transit { hints } => {
-            log::debug!("Received transit message: {:?}", hints);
+            tracing::debug!("Received transit message: {:?}", hints);
             hints
         },
         PeerMessage::Error(err) => {
@@ -770,12 +770,12 @@ impl ForwardConnect {
         connection_id: u64,
         payload: &[u8],
     ) -> Result<(), ForwardingError> {
-        log::debug!("Forwarding {} bytes from #{}", payload.len(), connection_id);
+        tracing::debug!("Forwarding {} bytes from #{}", payload.len(), connection_id);
         match self.connections.get_mut(&connection_id) {
             Some((_worker, connection)) => {
                 /* On an error, log for the user and then terminate that connection */
                 if let Err(e) = connection.write_all(payload).await {
-                    log::warn!("Forwarding to #{} failed: {}", connection_id, e);
+                    tracing::warn!("Forwarding to #{} failed: {}", connection_id, e);
                     self.remove_connection(transit_tx, connection_id, true)
                         .await?;
                 }
@@ -797,7 +797,7 @@ impl ForwardConnect {
         connection_id: u64,
         tell_peer: bool,
     ) -> Result<(), ForwardingError> {
-        log::debug!("Removing connection: #{}", connection_id);
+        tracing::debug!("Removing connection: #{}", connection_id);
         if tell_peer {
             transit_tx
                 .send(
@@ -832,7 +832,7 @@ impl ForwardConnect {
         self.connection_counter += 1;
         let (mut connection_rd, connection_wr) = connection.split();
         let mut backchannel_tx = self.backchannel_tx.clone();
-        log::debug!("Creating new connection: #{} -> {}", connection_id, target);
+        tracing::debug!("Creating new connection: #{} -> {}", connection_id, target);
 
         transit_tx
             .send(
@@ -880,7 +880,7 @@ impl ForwardConnect {
     }
 
     async fn shutdown(self) {
-        log::debug!("Shutting down everything");
+        tracing::debug!("Shutting down everything");
         for (worker, _connection) in self.connections.into_values() {
             worker.cancel().await;
         }
@@ -894,7 +894,7 @@ impl ForwardConnect {
         cancel: &mut (impl futures::future::FusedFuture<Output = ()> + Unpin),
     ) -> Result<(), ForwardingError> {
         /* Event processing loop */
-        log::debug!("Entered processing loop");
+        tracing::debug!("Entered processing loop");
         let ret = loop {
             futures::select! {
                 message = transit_rx.next() => {
@@ -906,7 +906,7 @@ impl ForwardConnect {
                             self.remove_connection(transit_tx, connection_id, false).await?;
                         },
                         PeerMessage::Close => {
-                            log::info!("Peer gracefully closed connection");
+                            tracing::info!("Peer gracefully closed connection");
                             self.shutdown().await;
                             break Ok(())
                         },
@@ -946,7 +946,7 @@ impl ForwardConnect {
                 },
                 /* We are done */
                 () = &mut *cancel => {
-                    log::info!("Closing connection");
+                    tracing::info!("Closing connection");
                     transit_tx.send(
                         PeerMessage::Close.ser_msgpack()
                         .into_boxed_slice()
@@ -958,7 +958,7 @@ impl ForwardConnect {
                 },
             }
         };
-        log::debug!("Exited processing loop");
+        tracing::debug!("Exited processing loop");
         ret
     }
 }

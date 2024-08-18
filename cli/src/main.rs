@@ -10,13 +10,13 @@ use color_eyre::{eyre, eyre::Context};
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
-use std::{io::Write, path::PathBuf};
-
 use magic_wormhole::{
     forwarding, transfer,
     transit::{self, TransitInfo},
     MailboxConnection, Wormhole,
 };
+use std::{io::Write, path::PathBuf};
+use tracing_subscriber::EnvFilter;
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -31,11 +31,11 @@ fn install_ctrlc_handler(
             let mut has_notified = notifier2.0.lock().await;
             if *has_notified {
                 /* Second signal. Exit */
-                log::debug!("Exit.");
+                tracing::debug!("Exit.");
                 std::process::exit(130);
             }
             /* First signal. */
-            log::info!("Got Ctrl-C event. Press again to exit immediately");
+            tracing::info!("Got Ctrl-C event. Press again to exit immediately");
             *has_notified = true;
             notifier2.1.notify_all();
         })
@@ -263,25 +263,25 @@ async fn main() -> eyre::Result<()> {
     let mut term = Term::stdout();
 
     if app.log {
-        env_logger::builder()
-            .filter_level(log::LevelFilter::Debug)
-            .filter_module("magic_wormhole::core", log::LevelFilter::Trace)
-            .filter_module("mio", log::LevelFilter::Debug)
-            .filter_module("ws", log::LevelFilter::Error)
-            .try_init()?;
-        log::debug!("Logging enabled.");
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_env_filter(EnvFilter::new(
+                "magic_wormhole::core=trace,mio=debug,ws=error",
+            ))
+            .with_target(false)
+            .init();
+        tracing::trace!("Logging enabled.");
     } else {
-        env_logger::builder()
-            .filter_level(log::LevelFilter::Info)
-            .filter_module("ws", log::LevelFilter::Error)
-            .format_timestamp(None)
-            .format_target(false)
-            .try_init()?;
-    }
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_env_filter(EnvFilter::new("mio=debug"))
+            .with_target(false)
+            .init();
+    };
 
     let mut clipboard = Clipboard::new()
         .map_err(|err| {
-            log::warn!("Failed to initialize clipboard support: {}", err);
+            tracing::warn!("Failed to initialize clipboard support: {}", err);
         })
         .ok();
 
@@ -407,7 +407,7 @@ async fn main() -> eyre::Result<()> {
             ..
         }) => {
             // TODO make fancy
-            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
+            tracing::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             /* Map the CLI argument to Strings. Use the occasion to inspect them and fail early on malformed input. */
             let targets = targets
                 .into_iter()
@@ -481,7 +481,7 @@ async fn main() -> eyre::Result<()> {
             ..
         }) => {
             // TODO make fancy
-            log::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
+            tracing::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = parse_and_connect(
@@ -504,10 +504,10 @@ async fn main() -> eyre::Result<()> {
                 &ports,
             )
             .await?;
-            log::info!("Mapping the following open ports to targets:");
-            log::info!("  local port -> remote target (no address = localhost on remote)");
+            tracing::info!("Mapping the following open ports to targets:");
+            tracing::info!("  local port -> remote target (no address = localhost on remote)");
             for (port, target) in &offer.mapping {
-                log::info!("  {} -> {}", port, target);
+                tracing::info!("  {} -> {}", port, target);
             }
             if noconfirm || util::ask_user("Accept forwarded ports?", true).await {
                 offer.accept(ctrl_c()).await?;
@@ -625,8 +625,8 @@ async fn parse_and_connect(
             if is_send {
                 if let Some(clipboard) = clipboard {
                     match clipboard.set_text(mailbox_connection.code().to_string()) {
-                        Ok(()) => log::info!("Code copied to clipboard"),
-                        Err(err) => log::warn!("Failed to copy code to clipboard: {}", err),
+                        Ok(()) => tracing::info!("Code copied to clipboard"),
+                        Err(err) => tracing::warn!("Failed to copy code to clipboard: {}", err),
                     }
                 }
 
@@ -656,7 +656,7 @@ async fn make_send_offer(
             file.display()
         );
     }
-    log::trace!("Making send offer in {files:?}, with name {file_name:?}");
+    tracing::trace!("Making send offer in {files:?}, with name {file_name:?}");
 
     match (files.len(), file_name) {
         (0, _) => unreachable!("Already checked by CLI parser"),
@@ -826,7 +826,7 @@ async fn send_many(
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
-    log::warn!("Reminder that you are sending the file to multiple people, and this may reduce the overall security. See the help page for more information.");
+    tracing::warn!("Reminder that you are sending the file to multiple people, and this may reduce the overall security. See the help page for more information.");
 
     /* Progress bar is commented out for now. See the issues about threading/async in
      * the Indicatif repository for more information. Multiple progress bars are not usable
@@ -849,14 +849,14 @@ async fn send_many(
 
     for tries in 0.. {
         if time.elapsed() >= timeout {
-            log::info!(
+            tracing::info!(
                 "{:?} have elapsed, we won't accept any new connections now.",
                 timeout
             );
             break;
         }
         if tries > max_tries {
-            log::info!("Max number of tries reached, we won't accept any new connections now.");
+            tracing::info!("Max number of tries reached, we won't accept any new connections now.");
             break;
         }
 
@@ -907,11 +907,11 @@ async fn send_many(
             match result.await {
                 Ok(_) => {
                     pb.finish();
-                    log::info!("Successfully sent file to someone");
+                    tracing::info!("Successfully sent file to someone");
                 },
                 Err(e) => {
                     pb.abandon();
-                    log::error!("Send failed, {}", e);
+                    tracing::error!("Send failed, {}", e);
                 },
             };
         });
@@ -1144,7 +1144,7 @@ async fn receive_inner_v2(
 }
 
 fn transit_handler(info: TransitInfo) {
-    log::info!("{info}");
+    tracing::info!("{info}");
 }
 
 #[cfg(test)]

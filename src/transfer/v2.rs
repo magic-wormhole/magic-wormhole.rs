@@ -115,7 +115,7 @@ async fn make_transit(
     let their_hints: transit::Hints =
         match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
             PeerMessage::TransitV2(transit) => {
-                debug!("received transit message: {:?}", transit);
+                tracing::debug!("received transit message: {:?}", transit);
                 transit.hints_v2
             },
             other => {
