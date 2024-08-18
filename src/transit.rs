@@ -26,7 +26,6 @@ use futures::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     Sink, SinkExt, Stream, StreamExt, TryStreamExt,
 };
-use log::*;
 use std::{
     collections::HashSet,
     net::{IpAddr, SocketAddr},
@@ -764,7 +763,7 @@ pub fn log_transit_connection(
         peer_addr,
     };
 
-    log::info!("{info}");
+    tracing::info!("{info}");
 }
 
 /**
@@ -806,12 +805,12 @@ pub async fn init(
             .map_err(|_| StunError::Timeout)
             {
                 Ok(Ok((external_ip, stream))) => {
-                    log::debug!("Our external IP address is {}", external_ip);
+                    tracing::debug!("Our external IP address is {}", external_ip);
                     our_hints.direct_tcp.insert(DirectHint {
                         hostname: external_ip.ip().to_string(),
                         port: external_ip.port(),
                     });
-                    log::debug!(
+                    tracing::debug!(
                         "Our socket for connecting is bound to {} and connected to {}",
                         stream.local_addr()?,
                         stream.peer_addr()?,
@@ -821,13 +820,13 @@ pub async fn init(
                 // TODO replace with .flatten() once stable
                 // https://github.com/rust-lang/rust/issues/70142
                 Err(err) | Ok(Err(err)) => {
-                    log::warn!("Failed to get external address via STUN, {}", err);
+                    tracing::warn!("Failed to get external address via STUN, {}", err);
                     let socket =
                         socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
                     transport::set_socket_opts(&socket)?;
 
                     socket.bind(&"[::]:0".parse::<SocketAddr>().unwrap().into())?;
-                    log::debug!(
+                    tracing::debug!(
                         "Our socket for connecting is bound to {}",
                         socket.local_addr()?.as_socket().unwrap(),
                     );
@@ -865,7 +864,7 @@ pub async fn init(
                         .into_iter()
                     }),
             );
-            log::debug!("Our socket for listening is {}", listener.local_addr()?);
+            tracing::debug!("Our socket for listening is {}", listener.local_addr()?);
 
             Ok::<_, std::io::Error>((socket, listener))
         };
@@ -874,7 +873,7 @@ pub async fn init(
             .await
             // TODO replace with inspect_err once stable
             .map_err(|err| {
-                log::error!("Failed to create direct hints for our side: {}", err);
+                tracing::error!("Failed to create direct hints for our side: {}", err);
                 err
             })
             .ok();
@@ -1002,7 +1001,7 @@ impl TransitConnector {
                 match result {
                     Ok(val) => Some(val),
                     Err(err) => {
-                        log::debug!("Some leader handshake failed: {:?}", err);
+                        tracing::debug!("Some leader handshake failed: {:?}", err);
                         None
                     },
                 }
@@ -1013,13 +1012,13 @@ impl TransitConnector {
             util::timeout(std::time::Duration::from_secs(60), connection_stream.next())
                 .await
                 .map_err(|_| {
-                    log::debug!("`leader_connect` timed out");
+                    tracing::debug!("`leader_connect` timed out");
                     TransitConnectError::Handshake
                 })?
                 .ok_or(TransitConnectError::Handshake)?;
 
         if conn_info.conn_type != ConnectionType::Direct && our_abilities.can_direct() {
-            log::debug!(
+            tracing::debug!(
                 "Established transit connection over relay. Trying to find a direct connection …"
             );
             /* Measure the time it took us to get a response. Based on this, wait some more for more responses
@@ -1041,15 +1040,15 @@ impl TransitConnector {
                         transit = new_transit;
                         finalizer = new_finalizer;
                         conn_info = new_conn_info;
-                        log::debug!("Found direct connection; using that instead.");
+                        tracing::debug!("Found direct connection; using that instead.");
                         break;
                     }
                 }
             })
             .await;
-            log::debug!("Did not manage to establish a better connection in time.");
+            tracing::debug!("Did not manage to establish a better connection in time.");
         } else {
-            log::debug!("Established direct transit connection");
+            tracing::debug!("Established direct transit connection");
         }
 
         /* Cancel all remaining non-finished handshakes. We could send "nevermind" to explicitly tell
@@ -1061,7 +1060,7 @@ impl TransitConnector {
             .handshake_finalize(&mut transit)
             .await
             .map_err(|e| {
-                log::debug!("`handshake_finalize` failed: {e}");
+                tracing::debug!("`handshake_finalize` failed: {e}");
                 TransitConnectError::Handshake
             })?;
 
@@ -1107,7 +1106,7 @@ impl TransitConnector {
                 match result {
                     Ok(val) => Some(val),
                     Err(err) => {
-                        log::debug!("Some follower handshake failed: {:?}", err);
+                        tracing::debug!("Some follower handshake failed: {:?}", err);
                         None
                     },
                 }
@@ -1125,14 +1124,14 @@ impl TransitConnector {
                     .handshake_finalize(&mut socket)
                     .await
                     .map_err(|e| {
-                        log::debug!("`handshake_finalize` failed: {e}");
+                        tracing::debug!("`handshake_finalize` failed: {e}");
                         TransitConnectError::Handshake
                     })?;
 
                 Ok((Transit { socket, tx, rx }, conn_info))
             },
             Ok(None) | Err(_) => {
-                log::debug!("`follower_connect` timed out");
+                tracing::debug!("`follower_connect` timed out");
                 Err(TransitConnectError::Handshake)
             },
         };
@@ -1168,12 +1167,12 @@ impl TransitConnector {
         assert!(sockets.is_none() || our_abilities.can_direct());
 
         let cryptor = if our_abilities.can_noise_crypto() && their_abilities.can_noise_crypto() {
-            log::debug!("Using noise protocol for encryption");
+            tracing::debug!("Using noise protocol for encryption");
             Arc::new(crypto::NoiseInit {
                 key: transit_key.clone(),
             }) as Arc<dyn crypto::TransitCryptoInit>
         } else {
-            log::debug!("Using secretbox for encryption");
+            tracing::debug!("Using secretbox for encryption");
             Arc::new(crypto::SecretboxInit {
                 key: transit_key.clone(),
             }) as Arc<dyn crypto::TransitCryptoInit>
@@ -1361,7 +1360,7 @@ impl TransitConnector {
                             let (socket, peer) = listener.accept().await?;
                             let (socket, info) =
                                 transport::wrap_tcp_connection(socket, ConnectionType::Direct)?;
-                            log::debug!("Got connection from {}!", peer);
+                            tracing::debug!("Got connection from {}!", peer);
                             let (transit, finalizer) = handshake_exchange(
                                 is_leader,
                                 tside.clone(),
@@ -1377,7 +1376,7 @@ impl TransitConnector {
                             match connect().await {
                                 Ok(success) => break Ok(success),
                                 Err(err) => {
-                                    log::debug!(
+                                    tracing::debug!(
                                         "Some handshake failed on the listening port: {:?}",
                                         err
                                     );
@@ -1424,7 +1423,7 @@ impl Transit {
 
     /// Flush the socket
     pub async fn flush(&mut self) -> Result<(), TransitError> {
-        log::debug!("Flush");
+        tracing::debug!("Flush");
         self.socket.flush().await.map_err(Into::into)
     }
 
@@ -1486,7 +1485,7 @@ async fn handshake_exchange(
     TransitHandshakeError,
 > {
     if host_type != &ConnectionType::Direct {
-        log::trace!("initiating relay handshake");
+        tracing::trace!("initiating relay handshake");
 
         let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
         socket

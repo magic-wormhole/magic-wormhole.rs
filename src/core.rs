@@ -11,7 +11,6 @@ use serde_derive::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 use self::{rendezvous::*, server_messages::EncryptedMessage};
-use log::*;
 
 use crypto_secretbox as secretbox;
 
@@ -384,7 +383,7 @@ impl Wormhole {
             server.release_nameplate().await?;
         }
 
-        log::info!("Found peer on the rendezvous server.");
+        tracing::info!("Found peer on the rendezvous server.");
 
         /* We are now fully initialized! Up and running! :tada: */
         #[allow(deprecated)]
@@ -463,7 +462,7 @@ impl Wormhole {
     {
         self.receive().await.map(|data: Vec<u8>| {
             serde_json::from_slice(&data).map_err(|e| {
-                log::error!(
+                tracing::error!(
                     "Received invalid data from peer: '{}'",
                     String::from_utf8_lossy(&data)
                 );
@@ -474,7 +473,7 @@ impl Wormhole {
 
     /// Close the wormhole
     pub async fn close(self) -> Result<(), WormholeError> {
-        log::debug!("Closing Wormhole…");
+        tracing::debug!("Closing Wormhole…");
         self.server.shutdown(Mood::Happy).await.map_err(Into::into)
     }
 

@@ -18,7 +18,6 @@ use std::sync::Arc;
 
 use super::{core::WormholeError, transit, AppID, Wormhole};
 use futures::Future;
-use log::*;
 use std::{borrow::Cow, collections::BTreeMap};
 
 #[cfg(not(target_family = "wasm"))]

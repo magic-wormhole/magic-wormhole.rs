@@ -196,7 +196,7 @@ async fn tcp_connect_custom(
     local_addr: &socket2::SockAddr,
     dest_addr: &socket2::SockAddr,
 ) -> std::io::Result<async_std::net::TcpStream> {
-    log::debug!("Binding to {}", local_addr.as_socket().unwrap());
+    tracing::debug!("Binding to {}", local_addr.as_socket().unwrap());
     let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
     /* Set our custum options */
     set_socket_opts(&socket)?;
@@ -231,15 +231,15 @@ pub(super) async fn connect_tcp_direct(
     hint: DirectHint,
 ) -> Result<TransitConnection, TransitHandshakeError> {
     let dest_addr = SocketAddr::try_from(&hint)?;
-    log::debug!("Connecting directly to {}", dest_addr);
+    tracing::debug!("Connecting directly to {}", dest_addr);
     let socket;
 
     if let Some(local_addr) = local_addr {
         socket = tcp_connect_custom(&local_addr, &dest_addr.into()).await?;
-        log::debug!("Connected to {}!", dest_addr);
+        tracing::debug!("Connected to {}!", dest_addr);
     } else {
         socket = async_std::net::TcpStream::connect(&dest_addr).await?;
-        log::debug!("Connected to {}!", dest_addr);
+        tracing::debug!("Connected to {}!", dest_addr);
     }
 
     wrap_tcp_connection(socket, ConnectionType::Direct)
@@ -251,11 +251,11 @@ pub(super) async fn connect_tcp_relay(
     host: DirectHint,
     name: Option<String>,
 ) -> Result<TransitConnection, TransitHandshakeError> {
-    log::debug!("Connecting to relay {}", host);
+    tracing::debug!("Connecting to relay {}", host);
     let socket = TcpStream::connect((host.hostname.as_str(), host.port))
         .err_into::<TransitHandshakeError>()
         .await?;
-    log::debug!("Connected to {}!", host);
+    tracing::debug!("Connected to {}!", host);
 
     wrap_tcp_connection(socket, ConnectionType::Relay { name })
 }
@@ -265,11 +265,11 @@ pub(super) async fn connect_ws_relay(
     url: url::Url,
     name: Option<String>,
 ) -> Result<TransitConnection, TransitHandshakeError> {
-    log::debug!("Connecting to relay {}", url);
+    tracing::debug!("Connecting to relay {}", url);
     let (_meta, transit) = ws_stream_wasm::WsMeta::connect(&url, None)
         .err_into::<TransitHandshakeError>()
         .await?;
-    log::debug!("Connected to {}!", url);
+    tracing::debug!("Connected to {}!", url);
 
     let transit = Box::new(transit.into_io()) as Box<dyn TransitTransport>;
 

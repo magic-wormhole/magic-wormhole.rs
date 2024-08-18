@@ -62,9 +62,8 @@ impl Key<WormholeKey> {
     )]
     pub fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
         let transit_purpose = format!("{}/transit-key", appid);
-
         let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
-        trace!(
+        tracing::trace!(
             "Input key: {}, Transit key: {}, Transit purpose: '{}'",
             self.to_hex(),
             derived_key.to_hex(),

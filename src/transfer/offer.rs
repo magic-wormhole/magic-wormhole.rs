@@ -21,7 +21,7 @@ impl OfferSend {
         path: impl AsRef<Path>,
     ) -> std::io::Result<Self> {
         let path = path.as_ref();
-        log::trace!(
+        tracing::trace!(
             "OfferSend::new_file_or_folder: {offer_name}, {}",
             path.display()
         );
@@ -275,7 +275,7 @@ impl OfferSendEntry {
         //     .unwrap_or_default()
         //     .as_secs();
         if metadata.is_file() {
-            log::trace!("OfferSendEntry::new {path:?} is file");
+            tracing::trace!("OfferSendEntry::new {path:?} is file");
             let path = path.to_owned();
             Ok(Self::RegularFile {
                 size: metadata.len(),
@@ -285,7 +285,7 @@ impl OfferSendEntry {
                 }),
             })
         // } else if metadata.is_symlink() {
-        //     log::trace!("OfferSendEntry::new {path:?} is symlink");
+        //     tracing::trace!("OfferSendEntry::new {path:?} is symlink");
         //     let target = async_std::fs::read_link(path).await?;
         //     Ok(Self::Symlink {
         //         target: target
@@ -300,7 +300,7 @@ impl OfferSendEntry {
         //     })
         } else if metadata.is_dir() {
             use futures::TryStreamExt;
-            log::trace!("OfferSendEntry::new {path:?} is directory");
+            tracing::trace!("OfferSendEntry::new {path:?} is directory");
 
             let content: BTreeMap<String, Self> = async_std::fs::read_dir(path)
                 .await?

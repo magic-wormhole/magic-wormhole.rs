@@ -100,7 +100,7 @@ impl WsConnection {
         message: &OutboundMessage,
         queue: Option<&mut MessageQueue>,
     ) -> Result<(), RendezvousError> {
-        log::debug!("Sending {}", message);
+        tracing::debug!("Sending {}", message);
         self.connection
             .send(ws2::Message::Text(serde_json::to_string(message).unwrap()))
             .await?;
@@ -114,7 +114,7 @@ impl WsConnection {
         message: &OutboundMessage,
         queue: Option<&mut MessageQueue>,
     ) -> Result<(), RendezvousError> {
-        log::debug!("Sending {:?}", message);
+        tracing::debug!("Sending {:?}", message);
         self.connection
             .send(ws_stream_wasm::WsMessage::Text(
                 serde_json::to_string(message).unwrap(),
@@ -214,10 +214,10 @@ impl WsConnection {
         match message {
             ws2::Message::Text(message_plain) => {
                 let message = serde_json::from_str(&message_plain)?;
-                log::debug!("Received {}", message);
+                tracing::debug!("Received {}", message);
                 match message {
                     InboundMessage::Unknown => {
-                        log::warn!("Got unknown message, ignoring: '{}'", message_plain);
+                        tracing::warn!("Got unknown message, ignoring: '{}'", message_plain);
                         Ok(None)
                     },
                     InboundMessage::Error { error, orig: _ } => Err(RendezvousError::server(error)),
@@ -231,11 +231,11 @@ impl WsConnection {
             ws2::Message::Ping(_) => Ok(None),
             ws2::Message::Pong(_) => Ok(None),
             ws2::Message::Close(_) => {
-                log::debug!("Received connection close");
+                tracing::debug!("Received connection close");
                 Err(ws2::Error::ConnectionClosed.into())
             },
             ws2::Message::Frame(_) => {
-                log::warn!("Received a WebSocket 'Frame' message and don't know what to do with it, please open a bug report");
+                tracing::warn!("Received a WebSocket 'Frame' message and don't know what to do with it, please open a bug report");
                 Ok(None)
             },
         }
@@ -251,10 +251,10 @@ impl WsConnection {
         match message {
             ws_stream_wasm::WsMessage::Text(message_plain) => {
                 let message = serde_json::from_str(&message_plain)?;
-                log::debug!("Received {:?}", message);
+                tracing::debug!("Received {:?}", message);
                 match message {
                     InboundMessage::Unknown => {
-                        log::warn!("Got unknown message, ignoring: '{}'", message_plain);
+                        tracing::warn!("Got unknown message, ignoring: '{}'", message_plain);
                         Ok(None)
                     },
                     InboundMessage::Error { error, orig: _ } => Err(RendezvousError::server(error)),
@@ -409,7 +409,7 @@ impl RendezvousServer {
             .send_message(&OutboundMessage::bind(appid.clone(), side.clone()), None)
             .await?;
 
-        log::info!("Connected to rendezvous server.");
+        tracing::info!("Connected to rendezvous server.");
 
         Ok((
             Self {
