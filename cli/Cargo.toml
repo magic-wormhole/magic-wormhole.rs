@@ -18,33 +18,31 @@ name = "wormhole-rs"
 path = "src/main.rs"
 
 [dependencies]
-serde = { version = "1.0.120", features = ["rc"] }
-serde_json = "1.0.61"
-serde_derive = "1.0.120"
-log = "0.4.13"
-url = { version = "2.2.2", features = ["serde"] }
-futures = "0.3.12"
-async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
-rand = "0.8.3"
+serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true }
+serde_derive = { workspace = true }
+log = { workspace = true }
+url = { workspace = true, features = ["serde"] }
+futures = { workspace = true }
+async-std = { workspace = true, features = ["attributes", "unstable"] }
+rand = { workspace = true }
 
 # CLI specific dependencies
 magic-wormhole = { path = "..", version = "0.7", features = ["all"] }
-clap = { version = "4", features = ["cargo", "derive", "help"] }
-clap_complete = "4"
-env_logger = "0.11"
-console = "0.15.0"
-indicatif = "0.17.0"
-dialoguer = "0.11"
-color-eyre = "0.6.0"
-number_prefix = "0.4.0"
-ctrlc = "3.2.1"
-qr2term = "0.3.0"
-arboard = { version = "3.2.0", features = [
-    "wayland-data-control",
-] } # Wayland by default, fallback to X11.
+clap = { workspace = true, features = ["cargo", "derive", "help"] }
+clap_complete = { workspace = true }
+env_logger = { workspace = true }
+console = { workspace = true }
+indicatif = { workspace = true }
+dialoguer = { workspace = true }
+color-eyre = { workspace = true }
+number_prefix = { workspace = true }
+ctrlc = { workspace = true }
+qr2term = { workspace = true }
+arboard = { workspace = true, features = ["wayland-data-control"] } # Wayland by default, fallback to X11.
 
 [dev-dependencies]
-trycmd = "0.15"
+trycmd = { workspace = true }
 
 [features]
 # TLS implementations for websocket connections via async-tungstenite
