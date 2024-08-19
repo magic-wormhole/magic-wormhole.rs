@@ -18,6 +18,47 @@ license = "EUPL-1.2"
 rust-version = "1.75"
 edition = "2021"
 
+[workspace.dependencies]
+arboard = "3.2.0"
+async-std = "1.12.0"
+async-trait = "0.1.57"
+base64 = "0.22.0"
+bytecodec = "0.4.15"
+clap = "4"
+clap_complete = "4"
+color-eyre = "0.6.0"
+console = "0.15.0"
+crypto_secretbox = "0.1.1"
+ctrlc = "3.2.1"
+derive_more = { version = "0.99.0", default-features = false }
+dialoguer = "0.11"
+env_logger = "0.11"
+eyre = "0.6.5"
+futures = "0.3.12"
+hex = "0.4.2"
+hkdf = "0.12.2"
+indicatif = "0.17.0"
+log = "0.4.13"
+noise-protocol = "0.2"
+noise-rust-crypto = "0.6.0-rc.1"
+number_prefix = "0.4.0"
+percent-encoding = "2.1.0"
+qr2term = "0.3.0"
+rand = "0.8.3"
+rmp-serde = "1.0.0"
+serde = "1.0.120"
+serde_derive = "1.0.120"
+serde_json = "1.0.61"
+sha-1 = "0.10.0"
+sha2 = "0.10.0"
+spake2 = "0.4.0"
+stun_codec = "0.3.0"
+tar = "0.4.33"
+thiserror = "1.0.24"
+time = "0.3.7"
+trycmd = "0.15"
+url = "2.2.2"
+
 [package]
 name = "magic-wormhole"
 categories = ["network-programming", "asynchronous"]
@@ -39,43 +80,39 @@ edition.workspace = true
 features = ["all"]
 
 [dependencies]
-serde = { version = "1.0.120", features = ["rc"] }
-serde_json = "1.0.61"
-serde_derive = "1.0.120"
-crypto_secretbox = "0.1.1"
-spake2 = "0.4.0"
-sha-1 = "0.10.0"
-sha2 = "0.10.0"
-hkdf = "0.12.2"
-hex = { version = "0.4.2", features = ["serde"] }
-rand = "0.8.0"
-log = "0.4.13"
-base64 = "0.22.0"
-time = { version = "0.3.7", features = ["formatting"] }
+serde = { workspace = true, features = ["rc"] }
+serde_json = { workspace = true }
+serde_derive = { workspace = true }
+crypto_secretbox = { workspace = true }
+spake2 = { workspace = true }
+sha-1 = { workspace = true }
+sha2 = { workspace = true }
+hkdf = { workspace = true }
+hex = { workspace = true, features = ["serde"] }
+rand = { workspace = true }
+log = { workspace = true }
+base64 = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
 
-derive_more = { version = "0.99.0", default-features = false, features = [
-    "display",
-    "deref",
-    "from",
-] }
-thiserror = "1.0.24"
+derive_more = { workspace = true, features = ["display", "deref", "from"] }
+thiserror = { workspace = true }
 
-futures = "0.3.12"
-url = { version = "2.2.2", features = ["serde"] }
-percent-encoding = { version = "2.1.0" }
+futures = { workspace = true }
+url = { workspace = true, features = ["serde"] }
+percent-encoding = { workspace = true }
 
 # Transit dependencies
 
 
-stun_codec = { version = "0.3.0", optional = true }
-bytecodec = { version = "0.4.15", optional = true }
-noise-rust-crypto = { version = "0.6.0-rc.1", optional = true }
-async-trait = { version = "0.1.57", optional = true }
-noise-protocol = { version = "0.2", optional = true }
+stun_codec = { workspace = true, optional = true }
+bytecodec = { workspace = true, optional = true }
+noise-rust-crypto = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+noise-protocol = { workspace = true, optional = true }
 # Transfer dependencies
 
-rmp-serde = { version = "1.0.0", optional = true }
-tar = { version = "0.4.33", optional = true }
+rmp-serde = { workspace = true, optional = true }
+tar = { workspace = true, optional = true }
 
 # Forwarding dependencies
 
@@ -101,8 +138,8 @@ getrandom = { version = "0.2.5", features = ["js"] }
 
 # for some tests
 [dev-dependencies]
-env_logger = "0.11"
-eyre = "0.6.5"
+env_logger = { workspace = true }
+eyre = { workspace = true }
 
 [features]
 
