@@ -244,28 +244,28 @@ impl Default for AppVersionTransferV2Hint {
 pub enum PeerMessage {
     /* V1 */
     /// A transit message
-    #[display(fmt = "transit")]
+    #[display("transit")]
     Transit(v1::TransitV1),
 
     /// An offer message
-    #[display(fmt = "offer")]
+    #[display("offer")]
     Offer(v1::OfferMessage),
 
     /// An answer message
-    #[display(fmt = "answer")]
+    #[display("answer")]
     Answer(v1::AnswerMessage),
     /* V2 */
     /// A transit v2 message
     #[cfg(feature = "experimental-transfer-v2")]
-    #[display(fmt = "transit-v2")]
+    #[display("transit-v2")]
     TransitV2(v2::TransitV2),
 
     /// Tell the other side you got an error
-    #[display(fmt = "error")]
+    #[display("error")]
     Error(String),
 
     /// An unknown message
-    #[display(fmt = "unknown")]
+    #[display("unknown")]
     #[serde(other)]
     Unknown,
 }

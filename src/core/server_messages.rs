@@ -32,7 +32,7 @@ impl Nameplate_ {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "method")]
 pub enum SubmitPermission {
-    #[display(fmt = "Hashcash {{ stamp: '{}' }}", stamp)]
+    #[display("Hashcash {{ stamp: '{}' }}", stamp)]
     Hashcash { stamp: String },
 }
 
@@ -95,11 +95,7 @@ impl std::fmt::Display for PermissionRequired {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq, derive_more::Display)]
-#[display(
-    fmt = "HashcashPermission {{ bits: {}, resource: '{}' }}",
-    bits,
-    resource
-)]
+#[display("HashcashPermission {{ bits: {}, resource: '{}' }}", bits, resource)]
 #[serde(deny_unknown_fields)]
 pub struct HashcashPermission {
     pub bits: u32,
@@ -108,7 +104,7 @@ pub struct HashcashPermission {
 
 #[derive(Debug, PartialEq, Clone, Deserialize, derive_more::Display)]
 #[display(
-    fmt = "EncryptedMessage {{ side: {}, phase: {}, body: {}",
+    "EncryptedMessage {{ side: {}, phase: {}, body: {}",
     side,
     phase,
     "crate::util::DisplayBytes(body)"
@@ -134,29 +130,29 @@ impl EncryptedMessage {
 #[serde(tag = "type")]
 #[allow(dead_code)]
 pub enum OutboundMessage {
-    #[display(fmt = "SubmitPermission({})", _0)]
+    #[display("SubmitPermission({})", _0)]
     SubmitPermission(SubmitPermission),
-    #[display(fmt = "Bind {{ appid: {}, side: {} }}", appid, side)]
+    #[display("Bind {{ appid: {}, side: {} }}", appid, side)]
     Bind {
         appid: AppID,
         side: MySide,
     },
     List,
     Allocate,
-    #[display(fmt = "Claim({})", nameplate)]
+    #[display("Claim({})", nameplate)]
     Claim {
         nameplate: String,
     },
-    #[display(fmt = "Release({})", nameplate)]
+    #[display("Release({})", nameplate)]
     Release {
         nameplate: String,
     }, // TODO: nominally optional
-    #[display(fmt = "Open({})", mailbox)]
+    #[display("Open({})", mailbox)]
     Open {
         mailbox: Mailbox,
     },
     #[display(
-        fmt = "Add {{ phase: {}, body: {} }}",
+        "Add {{ phase: {}, body: {} }}",
         phase,
         "crate::util::DisplayBytes(body)"
     )]
@@ -165,12 +161,12 @@ pub enum OutboundMessage {
         #[serde(serialize_with = "hex::serde::serialize")]
         body: Vec<u8>,
     },
-    #[display(fmt = "Close {{ mailbox: {}, mood: {} }}", mailbox, mood)]
+    #[display("Close {{ mailbox: {}, mood: {} }}", mailbox, mood)]
     Close {
         mailbox: Mailbox,
         mood: Mood,
     },
-    #[display(fmt = "Ping({})", ping)]
+    #[display("Ping({})", ping)]
     Ping {
         ping: u64,
     },
@@ -212,26 +208,26 @@ impl OutboundMessage {
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type")]
 pub enum InboundMessage {
-    #[display(fmt = "Welcome({})", welcome)]
+    #[display("Welcome({})", welcome)]
     Welcome {
         welcome: WelcomeMessage,
     },
-    #[display(fmt = "Nameplates({:?})", nameplates)]
+    #[display("Nameplates({:?})", nameplates)]
     Nameplates {
         #[serde(with = "Nameplate_")]
         nameplates: Vec<Nameplate>,
     },
-    #[display(fmt = "Allocated({})", nameplate)]
+    #[display("Allocated({})", nameplate)]
     Allocated {
         nameplate: Nameplate,
     },
-    #[display(fmt = "Claimed({})", mailbox)]
+    #[display("Claimed({})", mailbox)]
     Claimed {
         mailbox: Mailbox,
     },
     Released,
     #[display(
-        fmt = "Message {{ side: {}, phase: {:?}, body: {} }}",
+        "Message {{ side: {}, phase: {:?}, body: {} }}",
         _0.side,
         _0.phase,
         "crate::util::DisplayBytes(_0.body.as_bytes())"
@@ -239,11 +235,11 @@ pub enum InboundMessage {
     Message(EncryptedMessage),
     Closed,
     Ack,
-    #[display(fmt = "Pong({})", pong)]
+    #[display("Pong({})", pong)]
     Pong {
         pong: u64,
     },
-    #[display(fmt = "Error {{ error: {:?}, .. }}", error)]
+    #[display("Error {{ error: {:?}, .. }}", error)]
     Error {
         error: String,
         /// A copy of the original message that caused the error.

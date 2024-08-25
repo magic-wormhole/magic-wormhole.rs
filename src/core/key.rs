@@ -34,7 +34,7 @@ impl KeyPurpose for GenericKey {}
  * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
  */
 #[derive(Debug, Clone, derive_more::Display, derive_more::Deref)]
-#[display(fmt = "{:?}", _0)]
+#[display("{:?}", _0)]
 #[deref(forward)]
 pub struct Key<P: KeyPurpose>(
     #[deref]
