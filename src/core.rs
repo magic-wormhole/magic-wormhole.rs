@@ -746,6 +746,11 @@ impl AsRef<str> for Phase {
 )]
 pub struct Mailbox(pub String);
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
+#[display("Nameplate is not a number. Nameplates must be a number.")]
+#[non_exhaustive]
+pub struct ParseNameplateError {}
+
 /// Wormhole codes look like 4-purple-sausages, consisting of a number followed by some random words.
 /// This number is called a "Nameplate".
 #[derive(
@@ -760,12 +765,36 @@ pub struct Nameplate(
 
 #[allow(deprecated)]
 impl Nameplate {
-    /// Create a new nameplate from a string
+    /// Create a new nameplate from a string.
+    ///
+    /// Nameplate will be [required to be numbers](https://github.com/magic-wormhole/magic-wormhole-mailbox-server/issues/45) soon.
+    #[deprecated(
+        since = "0.7.2",
+        note = "Nameplates will be required to be numbers soon. Use the [std::str::FromStr] implementation"
+    )]
     pub fn new(n: impl Into<String>) -> Self {
+        #[allow(unsafe_code)]
+        unsafe {
+            Self::new_unchecked(n)
+        }
+    }
+
+    #[allow(unsafe_code)]
+    unsafe fn new_unchecked(n: impl Into<String>) -> Self {
         Nameplate(n.into())
     }
 }
 
+impl FromStr for Nameplate {
+    type Err = ParseNameplateError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let _num: usize = s.parse().map_err(|_| ParseNameplateError {})?;
+        Ok(Self(s.to_string()))
+    }
+}
+
+/// Deprecated: Use the [`std::fmt::Display`] implementation
 #[allow(deprecated)]
 impl From<Nameplate> for String {
     fn from(value: Nameplate) -> Self {
@@ -773,6 +802,9 @@ impl From<Nameplate> for String {
     }
 }
 
+/// Deprecated: Use the [`std::str::FromStr`] implementation
+///
+/// Does not check if the nameplate is a number. This may be incompatible.
 #[allow(deprecated)]
 impl From<String> for Nameplate {
     fn from(value: String) -> Self {
@@ -780,6 +812,7 @@ impl From<String> for Nameplate {
     }
 }
 
+/// Deprecated: Use the [`std::fmt::Display`] implementation
 #[allow(deprecated)]
 impl AsRef<str> for Nameplate {
     fn as_ref(&self) -> &str {
@@ -836,9 +869,12 @@ impl FromStr for Password {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
 #[non_exhaustive]
 pub enum CodeFromStringError {
-    PasswordMissing,
+    #[display("A code must contain at least one '-' to separate nameplate from password")]
+    SeparatorMissing,
     #[display("{_0}")]
-    Password(ParsePasswordError),
+    Nameplate(#[from] ParseNameplateError),
+    #[display("{_0}")]
+    Password(#[from] ParsePasswordError),
 }
 
 /** A wormhole code à la 15-foo-bar
@@ -855,7 +891,9 @@ pub struct Code(
 
 #[allow(deprecated)]
 impl Code {
-    /// Create a new code, comprised of a [`Nameplate`] and a password
+    /// Create a new code, comprised of a [`Nameplate`] and a password.
+    ///
+    /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
     #[deprecated(since = "0.7.2", note = "Use the [std::str::FromStr] implementation")]
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
         #[allow(unsafe_code)]
@@ -883,11 +921,16 @@ impl Code {
 
     /// Retrieve only the nameplate
     pub fn nameplate(&self) -> Nameplate {
-        Nameplate::new(self.0.split('-').next().unwrap())
+        // Safety: We checked the validity of the nameplate before
+        #[allow(unsafe_code)]
+        unsafe {
+            Nameplate::new_unchecked(self.0.split('-').next().unwrap())
+        }
     }
 
     /// Retrieve only the password
     pub fn password(&self) -> Password {
+        // Safety: We checked the validity of the password before
         #[allow(unsafe_code)]
         unsafe {
             Password::new_unchecked(self.0.splitn(2, '-').last().unwrap())
@@ -904,6 +947,8 @@ impl From<Code> for String {
 }
 
 /// Deprecated: Use the [`std::str::FromStr`] implementation
+///
+/// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
 impl From<String> for Code {
     fn from(value: String) -> Self {
         Self(value)
@@ -915,8 +960,13 @@ impl FromStr for Code {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split_once('-') {
-            Some((_nameplate, _password)) => Ok(Self(s.to_string())),
-            None => Err(CodeFromStringError::PasswordMissing),
+            Some((n, p)) => {
+                let nameplate: Nameplate = n.parse()?;
+                let password: Password = p.parse()?;
+
+                Ok(Self(format!("{}-{}", nameplate, password)))
+            },
+            None => Err(CodeFromStringError::SeparatorMissing),
         }
     }
 }
