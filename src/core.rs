@@ -808,6 +808,8 @@ impl From<Nameplate> for String {
 #[allow(deprecated)]
 impl From<String> for Nameplate {
     fn from(value: String) -> Self {
+        tracing::error!("Nameplate created without checking whether it is a number. This will be a compile error in the future. Use Nameplate::FromStr.");
+
         Self(value)
     }
 }
@@ -896,6 +898,8 @@ impl Code {
     /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
     #[deprecated(since = "0.7.2", note = "Use the [std::str::FromStr] implementation")]
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
+        tracing::error!("Code created without checking the entropy of the password. This will be a compile error in the future. Use Code::FromStr.");
+
         #[allow(unsafe_code)]
         unsafe {
             Self::new_unchecked(nameplate, password)
@@ -951,6 +955,8 @@ impl From<Code> for String {
 /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
 impl From<String> for Code {
     fn from(value: String) -> Self {
+        tracing::error!("Code created without checking the entropy of the password. This will be a compile error in the future. Use Code::FromStr.");
+
         Self(value)
     }
 }
