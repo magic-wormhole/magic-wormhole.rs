@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- \[lib\]\[deprecated\] `magic_wormhole::transfer::send_*` and `request_file` methods to take an `OfferSend` and `OfferReceive` instead of using separate methods for files and folders. Use `transfer::send()` and `transfer::receive()` for the new methods.
-- \[lib\]\[breaking\] struct `transfer::ReceiveRequest` became an enum to prepare for transfer v2
+- \[all\]\[\breaking\] Code words with a secret password section shorter than 4 bytes are no longer accepted. This only breaks completely invalid uses of the code.
+- \[all\] Code words with a weak password section or a non-integer nameplate will throw an error in the long. This error can be upgraded to a hard error by enabling the "entropy" feature. This feature will become the default in the next major release.
 
 ## [0.7.1] - 2024-07-25
 

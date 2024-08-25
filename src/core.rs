@@ -54,7 +54,7 @@ pub enum WormholeError {
     UnclaimedNameplate(Nameplate),
     /// The provided code is invalid
     #[error("The provided code is invalid: {_0}")]
-    CodeInvalid(#[from] CodeFromStringError),
+    CodeInvalid(#[from] ParseCodeError),
 }
 
 impl WormholeError {
@@ -165,7 +165,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
         let (mut server, welcome) =
             RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
         let (nameplate, mailbox) = server.allocate_claim_open().await?;
-        let password = password.parse().map_err(CodeFromStringError::from)?;
+        let password = password.parse().map_err(ParseCodeError::from)?;
         let code = Code::from_components(nameplate, password);
 
         Ok(MailboxConnection {
@@ -750,8 +750,9 @@ impl AsRef<str> for Phase {
 )]
 pub struct Mailbox(pub String);
 
+/// An error occurred when parsing a nameplate: Nameplate is not a number.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
-#[display("Nameplate is not a number. Nameplates must be a number.")]
+#[display("Nameplate is not a number. Nameplates must be a number >= 1.")]
 #[non_exhaustive]
 pub struct ParseNameplateError {}
 
@@ -777,9 +778,14 @@ impl Nameplate {
         note = "Nameplates will be required to be numbers soon. Use the [std::str::FromStr] implementation"
     )]
     pub fn new(n: impl Into<String>) -> Self {
+        let nameplate = n.into();
+        if let Err(err) = Nameplate::from_str(&nameplate) {
+            tracing::error!("{err}");
+        }
+
         #[allow(unsafe_code)]
         unsafe {
-            Self::new_unchecked(n)
+            Self::new_unchecked(nameplate)
         }
     }
 
@@ -793,8 +799,11 @@ impl FromStr for Nameplate {
     type Err = ParseNameplateError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let _num: usize = s.parse().map_err(|_| ParseNameplateError {})?;
-        Ok(Self(s.to_string()))
+        if !s.chars().all(|c| c.is_ascii_digit()) || u128::from_str(s) == Ok(0) {
+            Err(ParseNameplateError {})
+        } else {
+            Ok(Self(s.to_string()))
+        }
     }
 }
 
@@ -812,7 +821,13 @@ impl From<Nameplate> for String {
 #[allow(deprecated)]
 impl From<String> for Nameplate {
     fn from(value: String) -> Self {
-        tracing::error!("Nameplate created without checking whether it is a number. This will be a compile error in the future. Use Nameplate::FromStr.");
+        tracing::debug!(
+            "Implementation of From<String> for Nameplate is deprecated. Use the FromStr implementation instead"
+        );
+
+        if let Err(err) = Nameplate::from_str(&value) {
+            tracing::error!("{err} This will be a hard error in the future.");
+        }
 
         Self(value)
     }
@@ -846,12 +861,24 @@ impl AsRef<str> for Nameplate {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
 #[non_exhaustive]
 pub enum ParsePasswordError {
+    /// Password too short
     #[display("Password too short. It is only {value} bytes, but must be at least {required}")]
-    TooShort { value: usize, required: usize },
+    TooShort {
+        /// The calculated value
+        value: usize,
+        /// The value that is required
+        required: usize,
+    },
+    /// Password does not have enough entropy
     #[display(
         "Password too weak. It can be guessed with an average of {value} tries, but must be at least {required}"
     )]
-    LittleEntropy { value: u64, required: u64 },
+    LittleEntropy {
+        /// The calculated value
+        value: u64,
+        /// The value that is required
+        required: u64,
+    },
 }
 
 /// Wormhole codes look like 4-purple-sausages, consisting of a number followed by some random words.
@@ -948,13 +975,17 @@ impl FromStr for Password {
     }
 }
 
+/// An error occurred parsing the string as a valid wormhole mailbox code
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
 #[non_exhaustive]
-pub enum CodeFromStringError {
+pub enum ParseCodeError {
+    /// A code must contain at least one '-' to separate nameplate from password
     #[display("A code must contain at least one '-' to separate nameplate from password")]
     SeparatorMissing,
+    /// An error occurred when parsing the nameplate
     #[display("{_0}")]
     Nameplate(#[from] ParseNameplateError),
+    /// An error occurred when parsing the code
     #[display("{_0}")]
     Password(#[from] ParsePasswordError),
 }
@@ -981,7 +1012,9 @@ impl Code {
         note = "Use [`from_components`] or the [std::str::FromStr] implementation"
     )]
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
-        tracing::error!("Code created without checking the entropy of the password. This will be a compile error in the future. Use Code::FromStr.");
+        if let Err(err) = Password::from_str(password) {
+            tracing::error!("{err}");
+        }
 
         #[allow(unsafe_code)]
         unsafe {
@@ -1035,14 +1068,20 @@ impl From<Code> for String {
 /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
 impl From<String> for Code {
     fn from(value: String) -> Self {
-        tracing::error!("Code created without checking the entropy of the password. This will be a compile error in the future. Use Code::FromStr.");
+        tracing::debug!(
+            "Implementation of From<String> for Code is deprecated. Use the FromStr implementation instead"
+        );
+
+        if let Err(err) = Code::from_str(&value) {
+            tracing::error!("{err} This will be a hard error in the future.");
+        }
 
         Self(value)
     }
 }
 
 impl FromStr for Code {
-    type Err = CodeFromStringError;
+    type Err = ParseCodeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split_once('-') {
@@ -1052,7 +1091,7 @@ impl FromStr for Code {
 
                 Ok(Self(format!("{}-{}", nameplate, password)))
             },
-            None => Err(CodeFromStringError::SeparatorMissing),
+            None => Err(ParseCodeError::SeparatorMissing),
         }
     }
 }
