@@ -52,6 +52,9 @@ pub enum WormholeError {
     /// Nameplate is unclaimed
     #[error("Nameplate is unclaimed: {}", _0)]
     UnclaimedNameplate(Nameplate),
+    /// The provided code is invalid
+    #[error("The provided code is invalid: {_0}")]
+    CodeInvalid(#[from] CodeFromStringError),
 }
 
 impl WormholeError {
@@ -162,7 +165,8 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
         let (mut server, welcome) =
             RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
         let (nameplate, mailbox) = server.allocate_claim_open().await?;
-        let code = Code::new(&nameplate, password);
+        let password = password.parse().map_err(CodeFromStringError::from)?;
+        let code = Code::from_components(nameplate, password);
 
         Ok(MailboxConnection {
             config,
@@ -896,22 +900,22 @@ impl Code {
     /// Create a new code, comprised of a [`Nameplate`] and a password.
     ///
     /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
-    #[deprecated(since = "0.7.2", note = "Use the [std::str::FromStr] implementation")]
+    #[deprecated(
+        since = "0.7.2",
+        note = "Use [`from_components`] or the [std::str::FromStr] implementation"
+    )]
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
         tracing::error!("Code created without checking the entropy of the password. This will be a compile error in the future. Use Code::FromStr.");
 
         #[allow(unsafe_code)]
         unsafe {
-            Self::new_unchecked(nameplate, password)
+            Self::from_components(nameplate.clone(), Password::new_unchecked(password))
         }
     }
 
-    /// Create a new code, comprised of a [`Nameplate`] and a password.
-    ///
-    /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
-    #[allow(unsafe_code)]
-    unsafe fn new_unchecked(nameplate: &Nameplate, password: &str) -> Self {
-        Code(format!("{}-{}", nameplate, password))
+    /// Create a new code, comprised of a [`Nameplate`] and a [`Password`].
+    pub fn from_components(nameplate: Nameplate, password: Password) -> Self {
+        Self(format!("{nameplate}-{password}"))
     }
 
     /// Split the code into nameplate and password
