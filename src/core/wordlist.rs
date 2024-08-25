@@ -66,6 +66,11 @@ impl Wordlist {
             .collect();
         components.join("-")
     }
+
+    #[cfg(feature = "entropy")]
+    pub(crate) fn into_words(self) -> impl Iterator<Item = String> {
+        self.words.into_iter().flatten()
+    }
 }
 
 fn load_pgpwords() -> Vec<Vec<String>> {

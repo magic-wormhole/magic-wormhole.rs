@@ -61,6 +61,7 @@ url = "2.2.2"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 test-log = "0.2"
+zxcvbn = "3.1.0"
 
 [package]
 name = "magic-wormhole"
@@ -102,6 +103,7 @@ thiserror = { workspace = true }
 futures = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 percent-encoding = { workspace = true }
+zxcvbn = { workspace = true, optional = true }
 
 tracing = { workspace = true, features = ["log", "log-always"] }
 
@@ -147,6 +149,8 @@ eyre = { workspace = true }
 
 [features]
 
+# Check the entropy of custom codes. Will fail for any weak passwords.
+entropy = ["zxcvbn"]
 transfer = ["transit", "dep:tar", "dep:rmp-serde"]
 transit = [
     "dep:noise-rust-crypto",

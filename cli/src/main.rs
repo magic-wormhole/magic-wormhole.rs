@@ -585,13 +585,26 @@ async fn parse_and_connect(
     }
 
     // TODO: Apply this change to all usages after an API break
-    // Check if an interactive terminal is connected
-    let code: Option<magic_wormhole::Code> = if std::io::stdin().is_terminal() {
-        // We accept a little breakage in non-interactive use, because this is a security issue
-        code.map(|c| c.parse()).transpose()?
-    } else {
-        // We run as a script. Only output an error
-        code.map(|c| c.into())
+    // https://github.com/magic-wormhole/magic-wormhole.rs/issues/193
+    // We accept a little breakage in non-interactive use, because this is a security issue
+    // Split the nameplate parsing from the code parsing to ensure we allow non-integer nameplates
+    // until the next breaking release
+    let res: Option<Result<magic_wormhole::Code, _>> = code.as_ref().map(|c| c.parse());
+    let code: Option<magic_wormhole::Code> = {
+        match res {
+            Some(Ok(code)) => Some(code),
+            // Check if an interactive terminal is connected
+            Some(Err(err)) if std::io::stdin().is_terminal() => {
+                // Only fail for the case where the password is < 4 characters.
+                // Anything else will just print an error for now.
+                return Err(err.into());
+            },
+            Some(Err(_)) => {
+                // The library crate already emits an error log for this.
+                code.map(|c| c.into())
+            },
+            None => None,
+        }
     };
 
     /* We need to track that information for when we generate a QR code */

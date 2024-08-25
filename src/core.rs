@@ -826,17 +826,53 @@ impl AsRef<str> for Nameplate {
     }
 }
 
+/// This is a compromise. Generally we want to be wordlist-agnostic here. But
+/// we can't ignore that the PGP wordlist is the most common wordlist in use.
+///
+/// - The shortest word in the PGP wordlist is 4 characters long. The longest
+/// word is 9 characters. This means we can't limit to more than 9 bytes here,
+/// 'solo-orca' is 9 bytes, and we want to allow 2-word codes.
+/// - A 9 character random password is very strong. If it is only comprised of
+/// uniformly distributed lowercase ASCII characters, we have an entropy of
+/// 26^9 >= 40 bits. This is much more than the default 16 bits we get from two
+/// words from the PGP wordlist.
+/// - An emoji contains at least 2 bytes of data. So two emoji are actually
+/// about the same security as two words from the PGP wordlist.
+///
+/// We ultimately can't protect people from making bad choices, as entropy is a
+/// very difficult thing. What we can do instead is offer guidance, by printing
+/// warnings in case of rather short passwords, and making people choose for
+/// themselves whether their privacy is worth it to them choosing longer codes.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
-#[display("Password too short. Must be at least 4 bytes")]
 #[non_exhaustive]
-pub struct ParsePasswordError {}
+pub enum ParsePasswordError {
+    #[display("Password too short. It is only {value} bytes, but must be at least {required}")]
+    TooShort { value: usize, required: usize },
+    #[display(
+        "Password too weak. It can be guessed with an average of {value} tries, but must be at least {required}"
+    )]
+    LittleEntropy { value: u64, required: u64 },
+}
 
 /// Wormhole codes look like 4-purple-sausages, consisting of a number followed by some random words.
 /// This number is called a "Nameplate", the rest is called the `Password`
-#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
+#[derive(Clone, Debug, Serialize, derive_more::Display)]
 #[serde(transparent)]
-#[display("{}", _0)]
-pub struct Password(String);
+#[display("{password}")]
+pub struct Password {
+    password: String,
+    #[serde(skip)]
+    #[cfg(feature = "entropy")]
+    entropy: zxcvbn::Entropy,
+}
+
+impl PartialEq for Password {
+    fn eq(&self, other: &Self) -> bool {
+        self.password == other.password
+    }
+}
+
+impl Eq for Password {}
 
 impl Password {
     /// Create a new password from a string. Does not check the entropy of the password.
@@ -844,30 +880,70 @@ impl Password {
     /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
     #[allow(unsafe_code)]
     unsafe fn new_unchecked(n: impl Into<String>) -> Self {
-        Password(n.into())
+        let password = n.into();
+        #[cfg(feature = "entropy")]
+        let entropy = Self::calculate_entropy(&password);
+
+        Password {
+            password,
+            #[cfg(feature = "entropy")]
+            entropy,
+        }
+    }
+
+    #[cfg(feature = "entropy")]
+    fn calculate_entropy(password: &str) -> zxcvbn::Entropy {
+        static PGP_WORDLIST: std::sync::OnceLock<Vec<&str>> = std::sync::OnceLock::new();
+        let words = PGP_WORDLIST.get_or_init(|| {
+            // TODO: We leak the str: https://github.com/shssoichiro/zxcvbn-rs/issues/87
+            crate::core::wordlist::default_wordlist(2)
+                .into_words()
+                .map(|s| &*s.leak())
+                .collect::<Vec<_>>()
+        });
+
+        zxcvbn::zxcvbn(password, &words[..])
     }
 }
 
 impl From<Password> for String {
     fn from(value: Password) -> Self {
-        value.0
+        value.password
     }
 }
 
 impl AsRef<str> for Password {
     fn as_ref(&self) -> &str {
-        &self.0
+        &self.password
     }
 }
 
 impl FromStr for Password {
     type Err = ParsePasswordError;
 
-    fn from_str(pass: &str) -> Result<Self, Self::Err> {
-        if pass.len() >= 4 {
-            Ok(Self(pass.to_string()))
+    fn from_str(password: &str) -> Result<Self, Self::Err> {
+        let password = password.to_string();
+
+        if password.len() < 4 {
+            Err(ParsePasswordError::TooShort {
+                value: password.len(),
+                required: 4,
+            })
         } else {
-            Err(ParsePasswordError {})
+            #[cfg(feature = "entropy")]
+            return {
+                let entropy = Self::calculate_entropy(&password);
+                if entropy.guesses() < 2_u64.pow(16) {
+                    return Err(ParsePasswordError::LittleEntropy {
+                        value: entropy.guesses(),
+                        required: 2_u64.pow(16),
+                    });
+                }
+                Ok(Self { password, entropy })
+            };
+
+            #[cfg(not(feature = "entropy"))]
+            Ok(Self { password })
         }
     }
 }
