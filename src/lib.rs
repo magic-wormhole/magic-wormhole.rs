@@ -40,6 +40,6 @@ pub mod uri;
 #[allow(deprecated)]
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
-    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole,
-    WormholeError, WormholeWelcome,
+    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, ParseCodeError,
+    ParseNameplateError, ParsePasswordError, Wormhole, WormholeError, WormholeWelcome,
 };
