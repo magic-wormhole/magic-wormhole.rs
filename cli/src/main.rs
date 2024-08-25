@@ -1,7 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 mod util;
 
-use std::time::{Duration, Instant};
+use std::{
+    io::IsTerminal,
+    time::{Duration, Instant},
+};
 
 use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
@@ -556,7 +559,7 @@ type PrintCodeFn = dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>) -
 async fn parse_and_connect(
     term: &mut Term,
     common_args: CommonArgs,
-    code: Option<String>,
+    mut code: Option<String>,
     code_length: Option<usize>,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
@@ -576,11 +579,20 @@ async fn parse_and_connect(
                 .unwrap()],
         )?)
     }
-    let code = code
-        .map(Result::Ok)
-        .or_else(|| (!is_send).then(enter_code))
-        .transpose()?
-        .map(magic_wormhole::Code);
+
+    if code.is_none() && !is_send {
+        code = Some(enter_code()?)
+    }
+
+    // TODO: Apply this change to all usages after an API break
+    // Check if an interactive terminal is connected
+    let code: Option<magic_wormhole::Code> = if std::io::stdin().is_terminal() {
+        // We accept a little breakage in non-interactive use, because this is a security issue
+        code.map(|c| c.parse()).transpose()?
+    } else {
+        // We run as a script. Only output an error
+        code.map(|c| c.into())
+    };
 
     /* We need to track that information for when we generate a QR code */
     let mut uri_rendezvous = None;
