@@ -377,7 +377,7 @@ impl serde::Serialize for Hints {
 
 /** hostname and port for direct connection */
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash, derive_more::Display)]
-#[display(fmt = "tcp://{}:{}", hostname, port)]
+#[display("tcp://{}:{}", hostname, port)]
 pub struct DirectHint {
     // DirectHint also contains a `priority` field, but it is underspecified
     // and we won't use it

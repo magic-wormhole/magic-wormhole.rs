@@ -20,21 +20,21 @@ pub struct TransitV2 {
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
 pub enum PeerMessageV2 {
-    #[display(fmt = "offer")]
+    #[display("offer")]
     Offer(Offer),
-    #[display(fmt = "answer")]
+    #[display("answer")]
     Answer(AnswerMessage),
-    #[display(fmt = "file-start")]
+    #[display("file-start")]
     FileStart(FileStart),
-    #[display(fmt = "payload")]
+    #[display("payload")]
     Payload(Payload),
-    #[display(fmt = "file-end")]
+    #[display("file-end")]
     FileEnd(FileEnd),
-    #[display(fmt = "transfer-ack")]
+    #[display("transfer-ack")]
     TransferAck(TransferAck),
-    #[display(fmt = "error")]
+    #[display("error")]
     Error(String),
-    #[display(fmt = "unknown")]
+    #[display("unknown")]
     #[serde(other)]
     Unknown,
 }

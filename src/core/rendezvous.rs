@@ -79,7 +79,7 @@ impl RendezvousError {
 type MessageQueue = VecDeque<EncryptedMessage>;
 
 #[derive(Clone, Debug, derive_more::Display)]
-#[display(fmt = "{:?}", _0)]
+#[display("{:?}", _0)]
 struct NameplateList(Vec<Nameplate>);
 
 #[cfg(not(target_family = "wasm"))]
@@ -289,7 +289,7 @@ enum RendezvousReply {
 
 #[derive(Clone, Debug, derive_more::Display)]
 #[display(
-    fmt = "MailboxMachine {{ mailbox: {}, processed: [{}] }}",
+    "MailboxMachine {{ mailbox: {}, processed: [{}] }}",
     mailbox,
     "processed.iter().map(|p| format!(\"{}\", p)).collect::<Vec<String>>().join(\", \")"
 )]

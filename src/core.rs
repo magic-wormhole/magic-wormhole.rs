@@ -637,7 +637,7 @@ impl AsRef<str> for AppID {
     PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
 )]
 #[serde(transparent)]
-#[display(fmt = "MySide({})", "&*_0")]
+#[display("MySide({})", "&*_0")]
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
@@ -667,7 +667,7 @@ impl MySide {
     PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
 )]
 #[serde(transparent)]
-#[display(fmt = "TheirSide({})", "&*_0")]
+#[display("TheirSide({})", "&*_0")]
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
@@ -685,7 +685,7 @@ impl<S: Into<String>> From<S> for TheirSide {
 )]
 #[serde(transparent)]
 #[deref(forward)]
-#[display(fmt = "{}", "&*_0")]
+#[display("{}", "&*_0")]
 #[deprecated(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
@@ -750,7 +750,7 @@ pub struct Mailbox(pub String);
 )]
 #[serde(transparent)]
 #[deref(forward)]
-#[display(fmt = "{}", _0)]
+#[display("{}", _0)]
 pub struct Nameplate(
     #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")] pub String,
 );
@@ -791,7 +791,7 @@ impl AsRef<str> for Nameplate {
  * a wordlist is a common convention.
  */
 #[derive(PartialEq, Eq, Clone, Debug, derive_more::Display, derive_more::Deref)]
-#[display(fmt = "{}", _0)]
+#[display("{}", _0)]
 pub struct Code(
     #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")] pub String,
 );
