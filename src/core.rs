@@ -135,9 +135,9 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// # Ok(()) })}
     /// ```
     pub async fn create(config: AppConfig<V>, code_length: usize) -> Result<Self, WormholeError> {
-        Self::create_with_password(
+        Self::create_with_validated_password(
             config,
-            &wordlist::default_wordlist(code_length).choose_words(),
+            wordlist::default_wordlist(code_length).choose_words(),
         )
         .await
     }
@@ -158,14 +158,40 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret").await?;
     /// # Ok(()) })}
     /// ```
+    ///
+    /// TODO: Replace this with create_with_validated_password
     pub async fn create_with_password(
         config: AppConfig<V>,
         password: &str,
     ) -> Result<Self, WormholeError> {
+        let password = password.parse().map_err(ParseCodeError::from)?;
+        Self::create_with_validated_password(config, password).await
+    }
+
+    /// Create a connection to a mailbox which is configured with a `Code` containing the nameplate and the given password.
+    ///
+    /// # Arguments
+    ///
+    /// * `config`: Application configuration
+    /// * `password`: Free text password which will be appended to the nameplate number to form the `Code`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection};
+    /// let config = APP_CONFIG;
+    /// let password: Password = "secret".parse()?;
+    /// let mailbox_connection = MailboxConnection::create_with_password(config, password).await?;
+    /// # Ok(()) })}
+    /// ```
+    async fn create_with_validated_password(
+        config: AppConfig<V>,
+        password: Password,
+    ) -> Result<Self, WormholeError> {
         let (mut server, welcome) =
             RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
         let (nameplate, mailbox) = server.allocate_claim_open().await?;
-        let password = password.parse().map_err(ParseCodeError::from)?;
         let code = Code::from_components(nameplate, password);
 
         Ok(MailboxConnection {
