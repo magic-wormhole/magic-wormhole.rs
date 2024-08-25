@@ -8,7 +8,8 @@ mod test;
 mod wordlist;
 
 use serde_derive::{Deserialize, Serialize};
-use std::borrow::Cow;
+use std::{borrow::Cow, str::FromStr};
+use thiserror::Error;
 
 use self::{rendezvous::*, server_messages::EncryptedMessage};
 
@@ -200,6 +201,9 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
         let (mut server, welcome) =
             RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
         let nameplate = code.nameplate();
+
+        // Ensure the code has enough entropy without the nameplate [#193](https://github.com/magic-wormhole/magic-wormhole.rs/issues/193)
+
         if !allocate {
             let nameplates = server.list_nameplates().await?;
             if !nameplates.contains(&nameplate) {
@@ -783,6 +787,60 @@ impl AsRef<str> for Nameplate {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
+#[display("Password too short. Must be at least 4 bytes")]
+#[non_exhaustive]
+pub struct ParsePasswordError {}
+
+/// Wormhole codes look like 4-purple-sausages, consisting of a number followed by some random words.
+/// This number is called a "Nameplate", the rest is called the `Password`
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
+#[serde(transparent)]
+#[display("{}", _0)]
+pub struct Password(String);
+
+impl Password {
+    /// Create a new password from a string. Does not check the entropy of the password.
+    ///
+    /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
+    #[allow(unsafe_code)]
+    unsafe fn new_unchecked(n: impl Into<String>) -> Self {
+        Password(n.into())
+    }
+}
+
+impl From<Password> for String {
+    fn from(value: Password) -> Self {
+        value.0
+    }
+}
+
+impl AsRef<str> for Password {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for Password {
+    type Err = ParsePasswordError;
+
+    fn from_str(pass: &str) -> Result<Self, Self::Err> {
+        if pass.len() >= 4 {
+            Ok(Self(pass.to_string()))
+        } else {
+            Err(ParsePasswordError {})
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
+#[non_exhaustive]
+pub enum CodeFromStringError {
+    PasswordMissing,
+    #[display("{_0}")]
+    Password(ParsePasswordError),
+}
+
 /** A wormhole code à la 15-foo-bar
  *
  * The part until the first dash is called the "nameplate" and is purely numeric.
@@ -792,17 +850,30 @@ impl AsRef<str> for Nameplate {
 #[derive(PartialEq, Eq, Clone, Debug, derive_more::Display, derive_more::Deref)]
 #[display("{}", _0)]
 pub struct Code(
-    #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")] pub String,
+    #[deprecated(since = "0.7.0", note = "use the std::fmt::Display implementation")] pub String,
 );
 
 #[allow(deprecated)]
 impl Code {
     /// Create a new code, comprised of a [`Nameplate`] and a password
+    #[deprecated(since = "0.7.2", note = "Use the [std::str::FromStr] implementation")]
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
+        #[allow(unsafe_code)]
+        unsafe {
+            Self::new_unchecked(nameplate, password)
+        }
+    }
+
+    /// Create a new code, comprised of a [`Nameplate`] and a password.
+    ///
+    /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
+    #[allow(unsafe_code)]
+    unsafe fn new_unchecked(nameplate: &Nameplate, password: &str) -> Self {
         Code(format!("{}-{}", nameplate, password))
     }
 
     /// Split the code into nameplate and password
+    #[deprecated(since = "0.7.2", note = "Use [Self::nameplate] and [Self::password]")]
     pub fn split(&self) -> (Nameplate, String) {
         let mut iter = self.0.splitn(2, '-');
         let nameplate = Nameplate::new(iter.next().unwrap());
@@ -814,8 +885,17 @@ impl Code {
     pub fn nameplate(&self) -> Nameplate {
         Nameplate::new(self.0.split('-').next().unwrap())
     }
+
+    /// Retrieve only the password
+    pub fn password(&self) -> Password {
+        #[allow(unsafe_code)]
+        unsafe {
+            Password::new_unchecked(self.0.splitn(2, '-').last().unwrap())
+        }
+    }
 }
 
+/// Deprecated: Use the [`std::fmt::Display`] implementation
 #[allow(deprecated)]
 impl From<Code> for String {
     fn from(value: Code) -> Self {
@@ -823,12 +903,25 @@ impl From<Code> for String {
     }
 }
 
+/// Deprecated: Use the [`std::str::FromStr`] implementation
 impl From<String> for Code {
     fn from(value: String) -> Self {
         Self(value)
     }
 }
 
+impl FromStr for Code {
+    type Err = CodeFromStringError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split_once('-') {
+            Some((_nameplate, _password)) => Ok(Self(s.to_string())),
+            None => Err(CodeFromStringError::PasswordMissing),
+        }
+    }
+}
+
+/// Deprecated: Use the [`std::fmt::Display`] implementation
 #[allow(deprecated)]
 impl AsRef<str> for Code {
     fn as_ref(&self) -> &str {
