@@ -3,7 +3,6 @@ mod util;
 
 use std::time::{Duration, Instant};
 
-use arboard::Clipboard;
 use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use color_eyre::{eyre, eyre::Context};
@@ -17,6 +16,9 @@ use magic_wormhole::{
 };
 use std::{io::Write, path::PathBuf};
 use tracing_subscriber::EnvFilter;
+
+#[cfg(feature = "clipboard")]
+use arboard::Clipboard;
 
 fn install_ctrlc_handler(
 ) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
@@ -41,7 +43,6 @@ fn install_ctrlc_handler(
         })
     })
     .context("Error setting Ctrl-C handler")?;
-
     Ok(move || {
         /* Transform the notification into a future that waits */
         let notifier = notifier.clone();
@@ -279,11 +280,6 @@ async fn main() -> eyre::Result<()> {
             .init();
     };
 
-    let mut clipboard = Clipboard::new()
-        .map_err(|err| {
-            tracing::warn!("Failed to initialize clipboard support: {}", err);
-        })
-        .ok();
 
     match app.command {
         WormholeCommand::Send {
@@ -304,7 +300,6 @@ async fn main() -> eyre::Result<()> {
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
-                    clipboard.as_mut(),
                 )),
                 ctrl_c(),
             )
@@ -342,7 +337,6 @@ async fn main() -> eyre::Result<()> {
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
-                    clipboard.as_mut(),
                 ));
                 match futures::future::select(connect_fut, ctrl_c()).await {
                     Either::Left((result, _)) => result?,
@@ -382,7 +376,6 @@ async fn main() -> eyre::Result<()> {
                     false,
                     transfer::APP_CONFIG,
                     None,
-                    clipboard.as_mut(),
                 ));
                 match futures::future::select(connect_fut, ctrl_c()).await {
                     Either::Left((result, _)) => result?,
@@ -456,7 +449,6 @@ async fn main() -> eyre::Result<()> {
                     true,
                     app_config,
                     Some(&server_print_code),
-                    clipboard.as_mut(),
                 ));
                 let (wormhole, _code, relay_hints) =
                     match futures::future::select(connect_fut, ctrl_c()).await {
@@ -492,7 +484,6 @@ async fn main() -> eyre::Result<()> {
                 false,
                 app_config,
                 None,
-                clipboard.as_mut(),
             )
             .await?;
 
@@ -578,7 +569,6 @@ async fn parse_and_connect(
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
     print_code: Option<&PrintCodeFn>,
-    clipboard: Option<&mut Clipboard>,
 ) -> eyre::Result<(Wormhole, magic_wormhole::Code, Vec<transit::RelayHint>)> {
     // TODO handle relay servers with multiple endpoints better
     let mut relay_hints: Vec<transit::RelayHint> = common_args
@@ -623,10 +613,18 @@ async fn parse_and_connect(
 
             /* Print code and also copy it to clipboard */
             if is_send {
-                if let Some(clipboard) = clipboard {
-                    match clipboard.set_text(mailbox_connection.code().to_string()) {
-                        Ok(()) => tracing::info!("Code copied to clipboard"),
-                        Err(err) => tracing::warn!("Failed to copy code to clipboard: {}", err),
+                #[cfg(feature = "clipboard")] {
+                    let clipboard = Clipboard::new()
+                        .map_err(|err| {
+                            tracing::warn!("Failed to initialize clipboard support: {}", err);
+                        })
+                        .ok();
+
+                    if let Some(mut clipboard) = clipboard {
+                        match clipboard.set_text(mailbox_connection.code().to_string()) {
+                            Ok(()) => tracing::info!("Code copied to clipboard"),
+                            Err(err) => tracing::warn!("Failed to copy code to clipboard: {}", err),
+                        }
                     }
                 }
 
@@ -747,11 +745,20 @@ fn sender_print_code(
         is_leader: false,
     }
     .to_string();
+
+    #[cfg(feature = "clipboard")]
     writeln!(
         term,
         "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
         style(&code).bold()
     )?;
+    #[cfg(not(feature = "clipboard"))]
+    writeln!(
+        term,
+        "\nThis wormhole's code is: {}",
+        style(&code).bold()
+    )?;
+    
     writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
     let qr =
         qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
