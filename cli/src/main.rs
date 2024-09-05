@@ -771,7 +771,15 @@ fn server_print_code(
     code: &magic_wormhole::Code,
     _: &Option<url::Url>,
 ) -> eyre::Result<()> {
+    #[cfg(feature = "clipboard")]
+    writeln!(
+        term,
+        "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
+        style(&code).bold()
+    )?;
+    #[cfg(not(feature = "clipboard"))]
     writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+    
     writeln!(
         term,
         "On the other side, enter that code into a Magic Wormhole client\n"
