@@ -280,7 +280,6 @@ async fn main() -> eyre::Result<()> {
             .init();
     };
 
-
     match app.command {
         WormholeCommand::Send {
             common,
@@ -476,16 +475,8 @@ async fn main() -> eyre::Result<()> {
             tracing::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_hints) = parse_and_connect(
-                &mut term,
-                common,
-                code,
-                None,
-                false,
-                app_config,
-                None,
-            )
-            .await?;
+            let (wormhole, _code, relay_hints) =
+                parse_and_connect(&mut term, common, code, None, false, app_config, None).await?;
 
             let offer = forwarding::connect(
                 wormhole,
@@ -613,7 +604,8 @@ async fn parse_and_connect(
 
             /* Print code and also copy it to clipboard */
             if is_send {
-                #[cfg(feature = "clipboard")] {
+                #[cfg(feature = "clipboard")]
+                {
                     let clipboard = Clipboard::new()
                         .map_err(|err| {
                             tracing::warn!("Failed to initialize clipboard support: {}", err);
@@ -753,12 +745,8 @@ fn sender_print_code(
         style(&code).bold()
     )?;
     #[cfg(not(feature = "clipboard"))]
-    writeln!(
-        term,
-        "\nThis wormhole's code is: {}",
-        style(&code).bold()
-    )?;
-    
+    writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+
     writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
     let qr =
         qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
