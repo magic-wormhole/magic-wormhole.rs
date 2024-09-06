@@ -779,7 +779,7 @@ fn server_print_code(
     )?;
     #[cfg(not(feature = "clipboard"))]
     writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
-    
+
     writeln!(
         term,
         "On the other side, enter that code into a Magic Wormhole client\n"
