@@ -21,7 +21,6 @@ path = "src/main.rs"
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 serde_derive = { workspace = true }
-log = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 async-std = { workspace = true, features = ["attributes", "unstable"] }
@@ -39,9 +38,11 @@ color-eyre = { workspace = true }
 number_prefix = { workspace = true }
 ctrlc = { workspace = true }
 qr2term = { workspace = true }
-arboard = { workspace = true, features = ["wayland-data-control"] } # Wayland by default, fallback to X11.
+arboard = { workspace = true, features = [
+    "wayland-data-control",
+] } # Wayland by default, fallback to X11.
 tracing = { workspace = true, features = ["log", "log-always"] }
-tracing-subscriber = { workspace=true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]
 trycmd = { workspace = true }
