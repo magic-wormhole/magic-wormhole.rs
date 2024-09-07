@@ -572,8 +572,7 @@ impl RendezvousServer {
             .and_then(|state| state.nameplate.clone())
             .expect("Can only release an allocated nameplate, and only once");
 
-        use std::ops::Deref;
-        self.send_message(&OutboundMessage::release(nameplate.deref().deref()))
+        self.send_message(&OutboundMessage::release(nameplate.as_ref()))
             .await?;
         match self.receive_reply().await? {
             RendezvousReply::Released => (),

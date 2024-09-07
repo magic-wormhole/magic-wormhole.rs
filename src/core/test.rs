@@ -1,6 +1,9 @@
 #![allow(irrefutable_let_patterns)]
 
 use super::{Mood, Phase};
+use rand::Rng;
+use std::{borrow::Cow, str::FromStr, time::Duration};
+
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
@@ -8,8 +11,6 @@ use crate::{
     core::{MailboxConnection, Nameplate},
     transit, AppConfig, AppID, Code, Wormhole, WormholeError,
 };
-use rand::Rng;
-use std::{borrow::Cow, time::Duration};
 use test_log::test;
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
@@ -576,7 +577,7 @@ pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
 fn generate_random_code() -> Code {
     let mut rng = rand::thread_rng();
     let nameplate_string = format!("{}-guitarist-revenge", rng.gen_range(1000..10000));
-    let nameplate = Nameplate::new(&nameplate_string);
+    let nameplate = Nameplate::from_str(&nameplate_string).unwrap();
     Code::from_components(nameplate, "guitarist-revenge".parse().unwrap())
 }
 
