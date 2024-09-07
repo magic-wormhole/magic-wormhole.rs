@@ -590,27 +590,37 @@ async fn parse_and_connect(
     // Split the nameplate parsing from the code parsing to ensure we allow non-integer nameplates
     // until the next breaking release
     let res: Option<Result<magic_wormhole::Code, _>> = code.as_ref().map(|c| c.parse());
-    let code: Option<magic_wormhole::Code> =
+    let code: Option<magic_wormhole::Code> = match res {
+        Some(Ok(code)) => Some(code),
+        // Check if an interactive terminal is connected
+        Some(Err(
+            err @ (ParseCodeError::SeparatorMissing
+            | ParseCodeError::Password(ParsePasswordError::TooShort { .. })),
+        )) => {
+            // Only fail for the case where the password is < 4 characters.
+            // Anything else will just print an error for now.
+            return Err(err.into());
+        },
+        // If we have an interactive terminal connected, also fail for low entropy
+        Some(Err(err @ ParseCodeError::Password(ParsePasswordError::LittleEntropy { .. })))
+            if std::io::stdin().is_terminal() =>
         {
-            match res {
-                Some(Ok(code)) => Some(code),
-                // Check if an interactive terminal is connected
-                Some(Err(err @ ParseCodeError::Password(ParsePasswordError::TooShort { .. }))) => {
-                    // Only fail for the case where the password is < 4 characters.
-                    // Anything else will just print an error for now.
-                    return Err(err.into());
-                },
-                // If we have an interactive terminal connected, also fail for low entropy
-                Some(Err(
-                    err @ ParseCodeError::Password(ParsePasswordError::LittleEntropy { .. }),
-                )) if std::io::stdin().is_terminal() => return Err(err.into()),
-                Some(Err(_)) => {
-                    // The library crate already emits an error log for this.
-                    code.map(|c| c.into())
-                },
-                None => None,
-            }
-        };
+            return Err(err.into())
+        },
+        Some(Err(err)) => {
+            tracing::error!("{} This will fail in the next release.", err);
+            code.map(|c| {
+                let (nameplate, password) = c.split_once("-").unwrap();
+                unsafe {
+                    magic_wormhole::Code::from_components(
+                        magic_wormhole::Nameplate::new_unchecked(nameplate),
+                        magic_wormhole::Password::new_unchecked(password),
+                    )
+                }
+            })
+        },
+        None => None,
+    };
 
     /* We need to track that information for when we generate a QR code */
     let mut uri_rendezvous = None;

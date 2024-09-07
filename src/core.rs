@@ -162,9 +162,12 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// TODO: Replace this with create_with_validated_password
     pub async fn create_with_password(
         config: AppConfig<V>,
-        password: &str,
+        #[cfg(not(feature = "entropy"))] password: &str,
+        #[cfg(feature = "entropy")] password: Password,
     ) -> Result<Self, WormholeError> {
+        #[cfg(not(feature = "entropy"))]
         let password = password.parse().map_err(ParseCodeError::from)?;
+
         Self::create_with_validated_password(config, password).await
     }
 
@@ -790,9 +793,18 @@ pub struct ParseNameplateError {}
 #[serde(transparent)]
 #[deref(forward)]
 #[display("{}", _0)]
+#[cfg(not(feature = "entropy"))]
 pub struct Nameplate(
     #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")] pub String,
 );
+
+/// Wormhole codes look like 4-purple-sausages, consisting of a number followed by some random words.
+/// This number is called a "Nameplate".
+#[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
+#[serde(transparent)]
+#[display("{}", _0)]
+#[cfg(feature = "entropy")]
+pub struct Nameplate(String);
 
 #[allow(deprecated)]
 impl Nameplate {
@@ -803,6 +815,7 @@ impl Nameplate {
         since = "0.7.2",
         note = "Nameplates will be required to be numbers soon. Use the [std::str::FromStr] implementation"
     )]
+    #[cfg(not(feature = "entropy"))]
     pub fn new(n: impl Into<String>) -> Self {
         let nameplate = n.into();
         if let Err(err) = Nameplate::from_str(&nameplate) {
@@ -811,12 +824,16 @@ impl Nameplate {
 
         #[allow(unsafe_code)]
         unsafe {
-            Self::new_unchecked(nameplate)
+            Self::new_unchecked(&nameplate)
         }
     }
 
+    /// Create a new nameplate from a string.
+    ///
+    /// Safety: Nameplate will be [required to be numbers](https://github.com/magic-wormhole/magic-wormhole-mailbox-server/issues/45) soon.
     #[allow(unsafe_code)]
-    unsafe fn new_unchecked(n: impl Into<String>) -> Self {
+    #[doc(hidden)]
+    pub unsafe fn new_unchecked(n: &str) -> Self {
         Nameplate(n.into())
     }
 }
@@ -845,6 +862,7 @@ impl From<Nameplate> for String {
 ///
 /// Does not check if the nameplate is a number. This may be incompatible.
 #[allow(deprecated)]
+#[cfg(not(feature = "entropy"))]
 impl From<String> for Nameplate {
     fn from(value: String) -> Self {
         tracing::debug!(
@@ -930,9 +948,12 @@ impl Eq for Password {}
 impl Password {
     /// Create a new password from a string. Does not check the entropy of the password.
     ///
+    /// You should use [`Password::from_str`] / [`String::parse`] instead.
+    ///
     /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
     #[allow(unsafe_code)]
-    unsafe fn new_unchecked(n: impl Into<String>) -> Self {
+    #[doc(hidden)]
+    pub unsafe fn new_unchecked(n: impl Into<String>) -> Self {
         let password = n.into();
         #[cfg(feature = "entropy")]
         let entropy = Self::calculate_entropy(&password);
@@ -1024,9 +1045,21 @@ pub enum ParseCodeError {
  */
 #[derive(PartialEq, Eq, Clone, Debug, derive_more::Display, derive_more::Deref)]
 #[display("{}", _0)]
+#[cfg(not(feature = "entropy"))]
 pub struct Code(
     #[deprecated(since = "0.7.0", note = "use the std::fmt::Display implementation")] pub String,
 );
+
+/** A wormhole code à la 15-foo-bar
+ *
+ * The part until the first dash is called the "nameplate" and is purely numeric.
+ * The rest is the password and may be arbitrary, although dash-joining words from
+ * a wordlist is a common convention.
+ */
+#[derive(PartialEq, Eq, Clone, Debug, derive_more::Display)]
+#[display("{}", _0)]
+#[cfg(feature = "entropy")]
+pub struct Code(String);
 
 #[allow(deprecated)]
 impl Code {
@@ -1037,6 +1070,7 @@ impl Code {
         since = "0.7.2",
         note = "Use [`from_components`] or the [std::str::FromStr] implementation"
     )]
+    #[cfg(not(feature = "entropy"))]
     pub fn new(nameplate: &Nameplate, password: &str) -> Self {
         if let Err(err) = Password::from_str(password) {
             tracing::error!("{err}");
@@ -1057,7 +1091,8 @@ impl Code {
     #[deprecated(since = "0.7.2", note = "Use [Self::nameplate] and [Self::password]")]
     pub fn split(&self) -> (Nameplate, String) {
         let mut iter = self.0.splitn(2, '-');
-        let nameplate = Nameplate::new(iter.next().unwrap());
+        #[allow(unsafe_code)]
+        let nameplate = unsafe { Nameplate::new_unchecked(iter.next().unwrap()) };
         let password = iter.next().unwrap();
         (nameplate, password.to_string())
     }
@@ -1092,6 +1127,7 @@ impl From<Code> for String {
 /// Deprecated: Use the [`std::str::FromStr`] implementation
 ///
 /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
+#[cfg(not(feature = "entropy"))]
 impl From<String> for Code {
     fn from(value: String) -> Self {
         tracing::debug!(
@@ -1112,8 +1148,8 @@ impl FromStr for Code {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split_once('-') {
             Some((n, p)) => {
-                let nameplate: Nameplate = n.parse()?;
                 let password: Password = p.parse()?;
+                let nameplate: Nameplate = n.parse()?;
 
                 Ok(Self(format!("{}-{}", nameplate, password)))
             },
