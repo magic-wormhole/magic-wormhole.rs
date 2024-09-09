@@ -151,11 +151,13 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     ///
     /// # Examples
     ///
+    /// #[cfg(feature = "entropy")]
     /// ```no_run
     /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection};
     /// let config = APP_CONFIG;
-    /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret").await?;
+    /// let mailbox_connection =
+    ///     MailboxConnection::create_with_password(config, "secret".parse()?).await?;
     /// # Ok(()) })}
     /// ```
     ///
@@ -177,17 +179,6 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     ///
     /// * `config`: Application configuration
     /// * `password`: Free text password which will be appended to the nameplate number to form the `Code`
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
-    /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection};
-    /// let config = APP_CONFIG;
-    /// let password: Password = "secret".parse()?;
-    /// let mailbox_connection = MailboxConnection::create_with_password(config, password).await?;
-    /// # Ok(()) })}
-    /// ```
     async fn create_with_validated_password(
         config: AppConfig<V>,
         password: Password,
@@ -222,7 +213,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, Code, MailboxConnection, Nameplate};
     /// let config = APP_CONFIG;
-    /// let code = Code::new(&Nameplate::new("5"), "password");
+    /// let code = "5-password".parse()?;
     /// let mailbox_connection = MailboxConnection::connect(config, code, false).await?;
     /// # Ok(()) })}
     /// ```
@@ -268,7 +259,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection, Mood};
     /// let config = APP_CONFIG;
-    /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret")
+    /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret-code-password".parse()?)
     ///     .await?;
     /// mailbox_connection.shutdown(Mood::Happy).await?;
     /// # Ok(())})}
