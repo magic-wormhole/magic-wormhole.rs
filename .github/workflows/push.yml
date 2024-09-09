@@ -234,6 +234,9 @@ jobs:
           toolchain: nightly
       - name: Check semver
         uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          feature-group: default-features
+          features: "all"
       - name: Extract Changelog
         uses: release-flow/keep-a-changelog-action@v3
         with:
