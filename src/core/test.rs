@@ -7,9 +7,8 @@ use std::{borrow::Cow, str::FromStr, time::Duration};
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
-    self as magic_wormhole,
-    core::{MailboxConnection, Nameplate},
-    transit, AppConfig, AppID, Code, Wormhole, WormholeError,
+    self as magic_wormhole, core::MailboxConnection, transit, AppConfig, AppID, Code, Wormhole,
+    WormholeError,
 };
 use test_log::test;
 
@@ -577,8 +576,7 @@ pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
 fn generate_random_code() -> Code {
     let mut rng = rand::thread_rng();
     let nameplate_string = format!("{}-guitarist-revenge", rng.gen_range(1000..10000));
-    let nameplate = Nameplate::from_str(&nameplate_string).unwrap();
-    Code::from_components(nameplate, "guitarist-revenge".parse().unwrap())
+    Code::from_str(&nameplate_string).unwrap()
 }
 
 #[test]
