@@ -1026,6 +1026,9 @@ impl FromStr for Password {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
 #[non_exhaustive]
 pub enum ParseCodeError {
+    /// The code is empty
+    #[display("The code is empty")]
+    Empty,
     /// A code must contain at least one '-' to separate nameplate from password
     #[display("A code must contain at least one '-' to separate nameplate from password")]
     SeparatorMissing,
@@ -1153,6 +1156,7 @@ impl FromStr for Code {
 
                 Ok(Self(format!("{}-{}", nameplate, password)))
             },
+            None if s.is_empty() => Err(ParseCodeError::Empty),
             None => Err(ParseCodeError::SeparatorMissing),
         }
     }

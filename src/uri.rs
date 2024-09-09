@@ -105,7 +105,15 @@ impl TryFrom<&url::Url> for WormholeTransferUri {
         };
         let code: Code = percent_encoding::percent_decode_str(url.path())
             .decode_utf8()?
-            .parse()?;
+            .parse()
+            .map_err(|e| {
+                // TODO: Remove for 0.8
+                if matches!(e, ParseCodeError::Empty) {
+                    ParseError::MissingCode
+                } else {
+                    e.into()
+                }
+            })?;
 
         Ok(WormholeTransferUri {
             code,
