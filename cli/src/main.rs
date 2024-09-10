@@ -738,14 +738,15 @@ fn sender_print_code(
     }
     .to_string();
 
-    #[cfg(feature = "clipboard")]
-    writeln!(
-        term,
-        "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
-        style(&code).bold()
-    )?;
-    #[cfg(not(feature = "clipboard"))]
-    writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+    if cfg!(feature = "clipboard") {
+        writeln!(
+            term,
+            "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
+            style(&code).bold()
+        )?;
+    } else {
+        writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+    }
 
     writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
     let qr =
@@ -771,14 +772,15 @@ fn server_print_code(
     code: &magic_wormhole::Code,
     _: &Option<url::Url>,
 ) -> eyre::Result<()> {
-    #[cfg(feature = "clipboard")]
-    writeln!(
-        term,
-        "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
-        style(&code).bold()
-    )?;
-    #[cfg(not(feature = "clipboard"))]
-    writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+    if cfg!(feature = "clipboard") {
+        writeln!(
+            term,
+            "\nThis wormhole's code is: {} (it has been copied to your clipboard)",
+            style(&code).bold()
+        )?;
+    } else {
+        writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
+    }
 
     writeln!(
         term,
