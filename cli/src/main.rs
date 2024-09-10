@@ -43,6 +43,7 @@ fn install_ctrlc_handler(
         })
     })
     .context("Error setting Ctrl-C handler")?;
+
     Ok(move || {
         /* Transform the notification into a future that waits */
         let notifier = notifier.clone();
