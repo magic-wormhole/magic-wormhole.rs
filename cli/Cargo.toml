@@ -21,7 +21,6 @@ path = "src/main.rs"
 serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 serde_derive = { workspace = true }
-log = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 async-std = { workspace = true, features = ["attributes", "unstable"] }
