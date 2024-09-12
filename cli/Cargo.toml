@@ -38,7 +38,7 @@ color-eyre = { workspace = true }
 number_prefix = { workspace = true }
 ctrlc = { workspace = true }
 qr2term = { workspace = true }
-arboard = { workspace = true, features = [
+arboard = { optional = true, workspace = true, features = [
     "wayland-data-control",
 ] } # Wayland by default, fallback to X11.
 tracing = { workspace = true, features = ["log", "log-always"] }
@@ -48,6 +48,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 trycmd = { workspace = true }
 
 [features]
+clipboard = ["dep:arboard"]
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
 tls = ["magic-wormhole/tls"]
@@ -56,5 +57,5 @@ native-tls = ["magic-wormhole/native-tls"]
 experimental-transfer-v2 = ["magic-wormhole/experimental-transfer-v2"]
 experimental = ["experimental-transfer-v2"]
 
-default = ["magic-wormhole/default", "magic-wormhole/forwarding"]
+default = ["clipboard", "magic-wormhole/default", "magic-wormhole/forwarding"]
 all = ["default", "magic-wormhole/native-tls"]
