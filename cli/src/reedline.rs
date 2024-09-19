@@ -40,6 +40,9 @@ impl Prompt for CodePrompt {
         Cow::Borrowed("")
     }
 
+    fn get_prompt_color(&self) -> reedline::Color {
+        reedline::Color::Grey
+    }
     // Optionally override provided methods
     // fn get_prompt_color(&self) -> Color { ... }
     // fn get_prompt_multiline_color(&self) -> Color { ... }
@@ -113,7 +116,7 @@ impl CodeHighliter {
 
 impl Highlighter for CodeHighliter {
     fn highlight(&self, line: &str, _cursor: usize) -> StyledText {
-        let invalid = Style::new().fg(Color::White);
+        let invalid = Style::new().fg(Color::Red);
         let valid = Style::new().fg(Color::Green);
 
         let style = match self.is_valid_code(line) {
