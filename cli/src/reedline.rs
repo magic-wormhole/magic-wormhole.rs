@@ -7,7 +7,6 @@ use reedline::{
     Highlighter, Hinter, History, Prompt, PromptEditMode, PromptHistorySearch, Reedline, Signal,
     StyledText,
 };
-use regex::Regex;
 
 struct CodePrompt {}
 
@@ -83,26 +82,26 @@ impl Hinter for CodeHinter {
 }
 
 struct CodeHighliter {
-    regex: Regex,
     wordlist: Wordlist,
 }
 
 impl CodeHighliter {
     fn default() -> Self {
         CodeHighliter {
-            regex: Regex::new(r"^\d+(-[a-z]+)+$").unwrap(),
             wordlist: default_wordlist(2),
         }
     }
 
     fn is_valid_code(&self, code: &str) -> bool {
-        if !self.regex.is_match(code) {
+        let words: Vec<&str> = code.split('-').collect();
+
+        // if the first element in code is not a valid number
+        if words.first().and_then(|w| w.parse::<u8>().ok()).is_none() {
             return false;
         }
 
-        let words: Vec<&str> = code.split('-').skip(1).collect();
-
-        words.iter().all(|&word| {
+        // check all words for validity
+        words.iter().skip(1).all(|&word| {
             self.wordlist
                 .words
                 .iter()

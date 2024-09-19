@@ -1855,7 +1855,6 @@ dependencies = [
  "qr2term",
  "rand",
  "reedline",
- "regex",
  "serde",
  "serde_derive",
  "serde_json",
