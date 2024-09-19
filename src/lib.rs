@@ -27,7 +27,7 @@
 
 #[macro_use]
 mod util;
-mod core;
+pub mod core;
 #[cfg(feature = "forwarding")]
 pub mod forwarding;
 #[cfg(feature = "transfer")]

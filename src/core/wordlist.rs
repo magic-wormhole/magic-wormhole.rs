@@ -5,7 +5,7 @@ use std::fmt;
 #[derive(PartialEq)]
 pub struct Wordlist {
     pub num_words: usize,
-    words: Vec<Vec<String>>,
+    pub words: Vec<Vec<String>>,
 }
 
 impl fmt::Debug for Wordlist {

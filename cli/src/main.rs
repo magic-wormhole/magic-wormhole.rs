@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+mod reedline;
 mod util;
 
 use std::time::{Duration, Instant};
@@ -14,6 +15,7 @@ use magic_wormhole::{
     transit::{self, TransitInfo},
     MailboxConnection, Wormhole,
 };
+use reedline::enter_code;
 use std::{io::Write, path::PathBuf};
 use tracing_subscriber::EnvFilter;
 
@@ -708,15 +710,6 @@ fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
         }
         pb.set_position(sent);
     }
-}
-
-fn enter_code() -> eyre::Result<String> {
-    use dialoguer::Input;
-
-    Input::new()
-        .with_prompt("Enter code")
-        .interact_text()
-        .map_err(From::from)
 }
 
 fn print_welcome(term: &mut Term, welcome: Option<&str>) -> eyre::Result<()> {
