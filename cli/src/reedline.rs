@@ -209,7 +209,7 @@ pub fn enter_code() -> eyre::Result<String> {
         let sig = line_editor.read_line(&prompt);
         match sig {
             Ok(Signal::Success(buffer)) => return Ok(buffer),
-            // TODO: resolve this temporary solution
+            // TODO: fix temporary work around
             Ok(Signal::CtrlC) => bail!("Ctrl-C received"),
             _ => {},
         }
