@@ -1409,6 +1409,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzzt"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a15f3d0fa42283a765e5fb609683ddab4ee4ff245d8db66a24d926c05e518c6"
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1848,7 +1854,9 @@ dependencies = [
  "dialoguer",
  "env_logger",
  "futures",
+ "fuzzt",
  "indicatif",
+ "lazy_static",
  "magic-wormhole",
  "nu-ansi-term 0.50.1",
  "number_prefix",
