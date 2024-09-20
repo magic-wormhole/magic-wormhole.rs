@@ -1,6 +1,6 @@
 use std::{borrow::Cow, process::exit};
 
-use color_eyre::eyre;
+use color_eyre::eyre::{self, bail};
 use lazy_static::lazy_static;
 use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
 use nu_ansi_term::{Color, Style};
@@ -181,7 +181,7 @@ impl Highlighter for CodeHighliter {
 }
 
 pub fn enter_code() -> eyre::Result<String> {
-    // Set up the required keybindings for completion menu
+    // Set up the required keybindings
     let mut keybindings = default_emacs_keybindings();
     keybindings.add_binding(
         KeyModifiers::NONE,
@@ -194,7 +194,7 @@ pub fn enter_code() -> eyre::Result<String> {
 
     let edit_mode = Box::new(Emacs::new(keybindings));
 
-    let completion_menu = Box::new(ColumnarMenu::default());
+    let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
 
     let mut line_editor = Reedline::create()
         .with_completer(Box::new(CodeCompleter::default()))
@@ -203,14 +203,14 @@ pub fn enter_code() -> eyre::Result<String> {
         .with_quick_completions(true)
         .with_partial_completions(true)
         .with_edit_mode(edit_mode);
-
     let prompt = CodePrompt::default();
 
     loop {
         let sig = line_editor.read_line(&prompt);
         match sig {
             Ok(Signal::Success(buffer)) => return Ok(buffer),
-            Ok(Signal::CtrlD) | Ok(Signal::CtrlC) => exit(0),
+            // TODO: resolve this temporary solution
+            Ok(Signal::CtrlC) => bail!("Ctrl-C received"),
             _ => {},
         }
     }
