@@ -1,12 +1,18 @@
 use std::{borrow::Cow, process::exit};
 
 use color_eyre::eyre;
+use lazy_static::lazy_static;
 use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    Highlighter, Hinter, History, Prompt, PromptEditMode, PromptHistorySearch, Reedline, Signal,
-    StyledText,
+    default_emacs_keybindings, ColumnarMenu, Completer, DefaultCompleter, Emacs, Highlighter,
+    Hinter, History, KeyCode, KeyModifiers, MenuBuilder, Prompt, PromptEditMode,
+    PromptHistorySearch, Reedline, ReedlineEvent, ReedlineMenu, Signal, StyledText, Suggestion,
 };
+
+lazy_static! {
+    static ref WORDLIST: Wordlist = default_wordlist(2);
+}
 
 struct CodePrompt {}
 
@@ -43,23 +49,13 @@ impl Prompt for CodePrompt {
     fn get_prompt_color(&self) -> reedline::Color {
         reedline::Color::Grey
     }
-    // Optionally override provided methods
-    // fn get_prompt_color(&self) -> Color { ... }
-    // fn get_prompt_multiline_color(&self) -> Color { ... }
-    // fn get_indicator_color(&self) -> Color { ... }
-    // fn get_prompt_right_color(&self) -> Color { ... }
-    // fn right_prompt_on_last_line(&self) -> bool { ... }
 }
 
-pub struct CodeHinter {
-    wordlist: Wordlist,
-}
+pub struct CodeHinter {}
 
 impl CodeHinter {
     fn default() -> Self {
-        CodeHinter {
-            wordlist: default_wordlist(2),
-        }
+        CodeHinter {}
     }
 }
 
@@ -72,27 +68,81 @@ impl Hinter for CodeHinter {
         _use_ansi_coloring: bool,
         _cwd: &str,
     ) -> String {
-        "".to_string()
+        _line.to_string()
     }
 
     fn complete_hint(&self) -> String {
-        "".to_string()
+        "accepted".to_string()
     }
 
     fn next_hint_token(&self) -> String {
-        "".to_string()
+        "test".to_string()
     }
 }
 
-struct CodeHighliter {
-    wordlist: Wordlist,
+struct CodeCompleter {}
+
+impl CodeCompleter {
+    fn default() -> Self {
+        CodeCompleter {}
+    }
 }
+
+impl Completer for CodeCompleter {
+    fn complete(&mut self, line: &str, pos: usize) -> Vec<Suggestion> {
+        let parts: Vec<&str> = line.split('-').collect();
+        let current_part = parts.last().unwrap_or(&"");
+        let current_part_start = line[..pos].rfind('-').map(|i| i + 1).unwrap_or(0);
+
+        let mut suggestions = Vec::new();
+
+        if parts.len() == 1 {
+            // Completing the number part
+            for i in 1..=255 {
+                if i.to_string().starts_with(current_part) {
+                    suggestions.push(Suggestion {
+                        value: i.to_string(),
+                        description: None,
+                        extra: None,
+                        span: reedline::Span {
+                            start: current_part_start,
+                            end: pos,
+                        },
+                        append_whitespace: false,
+                        style: None,
+                    });
+                }
+            }
+        } else {
+            // Completing a word
+            for word_list in WORDLIST.words.iter() {
+                for word in word_list.iter() {
+                    if word.starts_with(current_part) {
+                        suggestions.push(Suggestion {
+                            value: word.to_string(),
+                            description: None,
+                            extra: None,
+                            span: reedline::Span {
+                                start: current_part_start,
+                                end: pos,
+                            },
+                            append_whitespace: false,
+                            style: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        suggestions
+    }
+}
+
+struct CodeHighliter {}
 
 impl CodeHighliter {
     fn default() -> Self {
-        CodeHighliter {
-            wordlist: default_wordlist(2),
-        }
+        CodeHighliter {}
     }
 
     fn is_valid_code(&self, code: &str) -> bool {
@@ -105,7 +155,7 @@ impl CodeHighliter {
 
         // check all words for validity
         words.iter().skip(1).all(|&word| {
-            self.wordlist
+            WORDLIST
                 .words
                 .iter()
                 .flatten()
@@ -131,7 +181,29 @@ impl Highlighter for CodeHighliter {
 }
 
 pub fn enter_code() -> eyre::Result<String> {
-    let mut line_editor = Reedline::create().with_highlighter(Box::new(CodeHighliter::default()));
+    // Set up the required keybindings for completion menu
+    let mut keybindings = default_emacs_keybindings();
+    keybindings.add_binding(
+        KeyModifiers::NONE,
+        KeyCode::Tab,
+        ReedlineEvent::UntilFound(vec![
+            ReedlineEvent::Menu("completion_menu".to_string()),
+            ReedlineEvent::MenuNext,
+        ]),
+    );
+
+    let edit_mode = Box::new(Emacs::new(keybindings));
+
+    let completion_menu = Box::new(ColumnarMenu::default());
+
+    let mut line_editor = Reedline::create()
+        .with_completer(Box::new(CodeCompleter::default()))
+        .with_highlighter(Box::new(CodeHighliter::default()))
+        .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
+        .with_quick_completions(true)
+        .with_partial_completions(true)
+        .with_edit_mode(edit_mode);
+
     let prompt = CodePrompt::default();
 
     loop {
