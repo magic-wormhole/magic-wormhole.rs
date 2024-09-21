@@ -97,22 +97,7 @@ impl Completer for CodeCompleter {
         let mut suggestions = Vec::new();
 
         if parts.len() == 1 {
-            // Completing the number part
-            for i in 1..=255 {
-                if i.to_string().starts_with(current_part) {
-                    suggestions.push(Suggestion {
-                        value: i.to_string(),
-                        description: None,
-                        extra: None,
-                        span: reedline::Span {
-                            start: current_part_start,
-                            end: pos,
-                        },
-                        append_whitespace: false,
-                        style: None,
-                    });
-                }
-            }
+            return suggestions;
         } else {
             // Completing a word
             for word_list in WORDLIST.words.iter() {
@@ -215,6 +200,7 @@ pub fn enter_code() -> eyre::Result<String> {
             Ok(Signal::Success(buffer)) => return Ok(buffer),
             // TODO: fix temporary work around
             Ok(Signal::CtrlC) => bail!("Ctrl-C received"),
+            Ok(Signal::CtrlD) => bail!("Ctrl-D received"),
             _ => {},
         }
     }
