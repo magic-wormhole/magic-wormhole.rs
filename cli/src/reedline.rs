@@ -146,15 +146,19 @@ impl CodeHighliter {
     }
 
     fn is_valid_code(&self, code: &str) -> bool {
-        let words: Vec<&str> = code.split('-').collect();
+        let parts: Vec<&str> = code.split('-').collect();
 
         // if the first element in code is not a valid number
-        if words.first().and_then(|w| w.parse::<u8>().ok()).is_none() {
+        if !parts
+            .first()
+            .and_then(|c| c.parse::<usize>().ok())
+            .is_some_and(|c| (0..1000).contains(&c))
+        {
             return false;
         }
 
         // check all words for validity
-        words.iter().skip(1).all(|&word| {
+        parts.iter().skip(1).all(|&word| {
             WORDLIST
                 .words
                 .iter()
