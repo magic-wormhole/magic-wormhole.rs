@@ -1,4 +1,6 @@
 #![allow(deprecated)]
+// TODO: Add missing documentation
+#![allow(missing_docs)]
 
 pub(super) mod key;
 pub mod rendezvous;

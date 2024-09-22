@@ -1,4 +1,4 @@
-use std::{borrow::Cow, process::exit};
+use std::borrow::Cow;
 
 use color_eyre::eyre::{self, bail};
 use fuzzt::{algorithms::JaroWinkler, get_top_n, processors::NullStringProcessor};
@@ -6,10 +6,9 @@ use lazy_static::lazy_static;
 use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, Completer, DefaultCompleter, Emacs, Highlighter,
-    Hinter, History, KeyCode, KeyModifiers, MenuBuilder, Prompt, PromptEditMode,
-    PromptHistorySearch, Reedline, ReedlineEvent, ReedlineMenu, Signal, Span, StyledText,
-    Suggestion,
+    default_emacs_keybindings, ColumnarMenu, Completer, Emacs, Highlighter, KeyCode, KeyModifiers,
+    MenuBuilder, Prompt, PromptEditMode, PromptHistorySearch, Reedline, ReedlineEvent,
+    ReedlineMenu, Signal, Span, StyledText, Suggestion,
 };
 
 lazy_static! {
@@ -50,35 +49,6 @@ impl Prompt for CodePrompt {
 
     fn get_prompt_color(&self) -> reedline::Color {
         reedline::Color::Grey
-    }
-}
-
-pub struct CodeHinter {}
-
-impl CodeHinter {
-    fn default() -> Self {
-        CodeHinter {}
-    }
-}
-
-impl Hinter for CodeHinter {
-    fn handle(
-        &mut self,
-        _line: &str,
-        _pos: usize,
-        _history: &dyn History,
-        _use_ansi_coloring: bool,
-        _cwd: &str,
-    ) -> String {
-        _line.to_string()
-    }
-
-    fn complete_hint(&self) -> String {
-        "accepted".to_string()
-    }
-
-    fn next_hint_token(&self) -> String {
-        "test".to_string()
     }
 }
 
@@ -189,6 +159,7 @@ impl Highlighter for CodeHighliter {
 pub fn enter_code() -> eyre::Result<String> {
     // Set up the required keybindings
     let mut keybindings = default_emacs_keybindings();
+
     keybindings.add_binding(
         KeyModifiers::NONE,
         KeyCode::Tab,
@@ -209,6 +180,7 @@ pub fn enter_code() -> eyre::Result<String> {
         .with_quick_completions(true)
         .with_partial_completions(true)
         .with_edit_mode(edit_mode);
+
     let prompt = CodePrompt::default();
 
     loop {
