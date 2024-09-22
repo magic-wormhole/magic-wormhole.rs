@@ -1,13 +1,15 @@
 use std::{borrow::Cow, process::exit};
 
 use color_eyre::eyre::{self, bail};
+use fuzzt::{algorithms::JaroWinkler, get_top_n, processors::NullStringProcessor};
 use lazy_static::lazy_static;
 use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_emacs_keybindings, ColumnarMenu, Completer, DefaultCompleter, Emacs, Highlighter,
     Hinter, History, KeyCode, KeyModifiers, MenuBuilder, Prompt, PromptEditMode,
-    PromptHistorySearch, Reedline, ReedlineEvent, ReedlineMenu, Signal, StyledText, Suggestion,
+    PromptHistorySearch, Reedline, ReedlineEvent, ReedlineMenu, Signal, Span, StyledText,
+    Suggestion,
 };
 
 lazy_static! {
@@ -91,35 +93,50 @@ impl CodeCompleter {
 impl Completer for CodeCompleter {
     fn complete(&mut self, line: &str, pos: usize) -> Vec<Suggestion> {
         let parts: Vec<&str> = line.split('-').collect();
-        let current_part = parts.last().unwrap_or(&"");
-        let current_part_start = line[..pos].rfind('-').map(|i| i + 1).unwrap_or(0);
 
-        let mut suggestions = Vec::new();
-
+        // Skip autocomplete for the channel number (first part)
         if parts.len() == 1 {
-            return suggestions;
-        } else {
-            // Completing a word
-            for word_list in WORDLIST.words.iter() {
-                for word in word_list.iter() {
-                    if word.starts_with(current_part) {
-                        suggestions.push(Suggestion {
-                            value: word.to_string(),
-                            description: None,
-                            extra: None,
-                            span: reedline::Span {
-                                start: current_part_start,
-                                end: pos,
-                            },
-                            append_whitespace: false,
-                            style: None,
-                        });
-                    }
-                }
-            }
+            return Vec::new();
         }
 
-        suggestions
+        // Find the start and end of the current word
+        let current_word_start = line[..pos].rfind('-').map(|i| i + 1).unwrap_or(0);
+        let current_word_end = line[pos..].find('-').map(|i| i + pos).unwrap_or(line.len());
+
+        let current_part = &line[current_word_start..current_word_end];
+
+        // Flatten the word list
+        let all_words: Vec<&str> = WORDLIST
+            .words
+            .iter()
+            .flatten()
+            .map(|s| s.as_str())
+            .collect();
+
+        // Use fuzzy matching to find the best matches
+        let matches = get_top_n(
+            current_part,
+            &all_words,
+            Some(0.8),
+            Some(5),
+            Some(&NullStringProcessor),
+            Some(&JaroWinkler),
+        );
+
+        matches
+            .into_iter()
+            .map(|word| Suggestion {
+                value: word.to_string(),
+                description: None,
+                extra: None,
+                span: Span {
+                    start: current_word_start,
+                    end: current_word_end,
+                },
+                append_whitespace: false,
+                style: None,
+            })
+            .collect()
     }
 }
 
