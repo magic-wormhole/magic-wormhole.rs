@@ -2,9 +2,16 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
 
+/// Represents a collection of word lists used for generating and completing wormhole codes.
+///
+/// The `Wordlist` struct contains multiple lists of words and information about
+/// how many words should be in a complete wormhole code.
+/// ```
 #[derive(PartialEq)]
 pub struct Wordlist {
+    /// The number of words that should be in a complete wormhole code.
     pub num_words: usize,
+    /// A vector of word lists. Each inner vector represents a distinct list of words.
     pub words: Vec<Vec<String>>,
 }
 
@@ -20,6 +27,35 @@ impl Wordlist {
         Wordlist { num_words, words }
     }
 
+    /// Returns a list of word completions based on the given prefix.
+    ///
+    /// This method generates completions for a partial wormhole code. It takes into account
+    /// the number of dashes in the prefix to determine which word list to use for completions.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - A string slice that holds the partial wormhole code to complete.
+    ///
+    /// # Returns
+    ///
+    /// A vector of Strings containing all possible completions.
+    ///
+    /// # Behavior
+    ///
+    /// - The method cycles through word lists based on the number of dashes in the prefix.
+    /// - It completes the last partial word in the prefix.
+    /// - If the completion isn't for the last word in the code, it appends a dash.
+    /// - The returned completions are sorted alphabetically.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate_name::WordList;
+    ///
+    /// let wordlist = WordList::new();
+    /// let completions = wordlist.get_completions("7-ze");
+    /// assert!(completions.contains(&"7-zebra-".to_string()));
+    /// ```
     #[allow(dead_code)] // TODO make this API public one day
     pub fn get_completions(&self, prefix: &str) -> Vec<String> {
         let count_dashes = prefix.matches('-').count();
@@ -55,6 +91,30 @@ impl Wordlist {
         completions
     }
 
+    /// Generates a random wormhole code.
+    ///
+    /// This method creates a new wormhole code by randomly selecting words from the word lists.
+    /// It ensures that the generated code has the correct number of words as specified by `num_words`.
+    ///
+    /// # Returns
+    ///
+    /// A String containing the randomly generated wormhole code, with words separated by dashes.
+    ///
+    /// # Behavior
+    ///
+    /// - Uses the OS's random number generator for secure randomness.
+    /// - Cycles through the word lists if `num_words` is greater than the number of available lists.
+    /// - Joins the selected words with dashes to form the final code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use your_crate_name::WordList;
+    ///
+    /// let wordlist = WordList::new();
+    /// let code = wordlist.choose_words();
+    /// assert_eq!(code.split('-').count(), wordlist.num_words());
+    /// ```
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng;
         let components: Vec<String> = self
@@ -96,6 +156,35 @@ fn load_pgpwords() -> Vec<Vec<String>> {
     vec![even_words, odd_words]
 }
 
+/// Creates a default `Wordlist` with a specified number of words.
+///
+/// This function generates a `Wordlist` using the PGP word list, which is a standardized
+/// list of words often used for secure and human-readable encoding.
+///
+/// # Arguments
+///
+/// * `num_words` - The number of words that should be in a complete wormhole code.
+///
+/// # Returns
+///
+/// Returns a `Wordlist` instance initialized with the PGP word list and the specified
+/// number of words.
+///
+/// # Examples
+///
+/// ```
+/// use your_crate_name::default_wordlist;
+///
+/// let wordlist = default_wordlist(3);
+/// assert_eq!(wordlist.num_words, 3);
+/// assert_eq!(wordlist.words.len(), 2); // PGP word list has two lists (even and odd)
+/// ```
+///
+/// # Note
+///
+/// The PGP word list consists of two lists of 256 words each: one for even positions
+/// and one for odd positions in the code. This function uses these lists regardless
+/// of the `num_words` specified.
 pub fn default_wordlist(num_words: usize) -> Wordlist {
     Wordlist {
         num_words,
