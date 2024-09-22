@@ -190,7 +190,7 @@ pub fn enter_code() -> eyre::Result<String> {
             // TODO: fix temporary work around
             Ok(Signal::CtrlC) => bail!("Ctrl-C received"),
             Ok(Signal::CtrlD) => bail!("Ctrl-D received"),
-            _ => {},
+            Err(e) => bail!(e),
         }
     }
 }
