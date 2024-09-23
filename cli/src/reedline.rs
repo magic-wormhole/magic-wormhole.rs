@@ -28,14 +28,17 @@ impl Prompt for CodePrompt {
         Cow::Borrowed("Wormhole Code: ")
     }
 
+    // Not needed
     fn render_prompt_right(&self) -> Cow<'_, str> {
         Cow::Borrowed("")
     }
 
+    // Not needed
     fn render_prompt_indicator(&self, _prompt_mode: PromptEditMode) -> Cow<'_, str> {
         Cow::Borrowed("")
     }
 
+    // Not needed
     fn render_prompt_multiline_indicator(&self) -> Cow<'_, str> {
         Cow::Borrowed("... ")
     }
@@ -65,13 +68,16 @@ impl Completer for CodeCompleter {
         let parts: Vec<&str> = line.split('-').collect();
 
         // Skip autocomplete for the channel number (first part)
-        if parts.len() == 1 {
+        if parts.len() <= 1 {
             return Vec::new();
         }
 
         // Find the start and end of the current word
         let current_word_start = line[..pos].rfind('-').map(|i| i + 1).unwrap_or(0);
-        let current_word_end = line[pos..].find('-').map(|i| i + pos).unwrap_or(line.len());
+        let current_word_end = line[pos..]
+            .find('-')
+            .map(|i| i + pos)
+            .unwrap_or_else(|| line.len());
 
         let current_part = &line[current_word_start..current_word_end];
 
@@ -95,16 +101,28 @@ impl Completer for CodeCompleter {
 
         matches
             .into_iter()
-            .map(|word| Suggestion {
-                value: word.to_string(),
-                description: None,
-                extra: None,
-                span: Span {
-                    start: current_word_start,
-                    end: current_word_end,
-                },
-                append_whitespace: false,
-                style: None,
+            .map(|word| {
+                let suggestion = word.to_string();
+
+                // Incase suggestion word length is larger then the current typed part
+                // Otherwise we get index out of range error in Span
+                let span_end = if suggestion.len() >= current_part.len() {
+                    current_word_end
+                } else {
+                    current_word_start + suggestion.len()
+                };
+
+                Suggestion {
+                    value: suggestion,
+                    description: None,
+                    extra: None,
+                    span: Span {
+                        start: current_word_start,
+                        end: span_end,
+                    },
+                    append_whitespace: false,
+                    style: None,
+                }
             })
             .collect()
     }
@@ -120,7 +138,7 @@ impl CodeHighliter {
     fn is_valid_code(&self, code: &str) -> bool {
         let parts: Vec<&str> = code.split('-').collect();
 
-        // if the first element in code is not a valid number
+        // If the first element in code is not a valid number
         if !parts
             .first()
             .and_then(|c| c.parse::<usize>().ok())
@@ -129,7 +147,7 @@ impl CodeHighliter {
             return false;
         }
 
-        // check all words for validity
+        // Check all words for validity
         parts.iter().skip(1).all(|&word| {
             WORDLIST
                 .words
@@ -142,8 +160,8 @@ impl CodeHighliter {
 
 impl Highlighter for CodeHighliter {
     fn highlight(&self, line: &str, _cursor: usize) -> StyledText {
-        let invalid = Style::new().fg(Color::Red);
-        let valid = Style::new().fg(Color::Green);
+        let invalid = Style::new().fg(Color::Red).bold();
+        let valid = Style::new().fg(Color::Green).bold();
 
         let style = match self.is_valid_code(line) {
             true => valid,
@@ -192,5 +210,44 @@ pub fn enter_code() -> eyre::Result<String> {
             Ok(Signal::CtrlD) => bail!("Ctrl-D received"),
             Err(e) => bail!(e),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_tab_compeltion_complete_word() {
+        let mut completer = CodeCompleter::default();
+        let input = "22-trombonist";
+        let cursor_pos = input.len();
+
+        let suggestions = completer.complete(&input, cursor_pos);
+
+        assert_eq!(suggestions.len(), 3);
+
+        assert_eq!(suggestions.first().unwrap().value, "trombonist");
+    }
+
+    #[test]
+    fn test_tab_compeltion_partial_word() {
+        let mut completer = CodeCompleter::default();
+        let input = "22-trmbn";
+        let cursor_pos = input.len();
+
+        let suggestions = completer.complete(&input, cursor_pos);
+
+        assert_eq!(suggestions.first().unwrap().value, "trombonist");
+    }
+
+    #[test]
+    fn test_tab_compeltion_partial_in_middle() {
+        let mut completer = CodeCompleter::default();
+        let input = "22-trbis-zulu";
+        let cursor_pos = input.len() - "-zulu".len();
+
+        let suggestions = completer.complete(&input, cursor_pos);
+
+        assert_eq!(suggestions.first().unwrap().value, "trombonist");
     }
 }

@@ -6,7 +6,6 @@ use std::fmt;
 ///
 /// The `Wordlist` struct contains multiple lists of words and information about
 /// how many words should be in a complete wormhole code.
-/// ```
 #[derive(PartialEq)]
 pub struct Wordlist {
     /// The number of words that should be in a complete wormhole code.
