@@ -201,15 +201,13 @@ pub fn enter_code() -> eyre::Result<String> {
 
     let prompt = CodePrompt::default();
 
-    loop {
-        let sig = line_editor.read_line(&prompt);
-        match sig {
-            Ok(Signal::Success(buffer)) => return Ok(buffer),
-            // TODO: fix temporary work around
-            Ok(Signal::CtrlC) => bail!("Ctrl-C received"),
-            Ok(Signal::CtrlD) => bail!("Ctrl-D received"),
-            Err(e) => bail!(e),
-        }
+    let sig = line_editor.read_line(&prompt);
+    match sig {
+        Ok(Signal::Success(buffer)) => return Ok(buffer),
+        // TODO: fix temporary work around
+        Ok(Signal::CtrlC) => bail!("Ctrl-C received"),
+        Ok(Signal::CtrlD) => bail!("Ctrl-D received"),
+        Err(e) => bail!(e),
     }
 }
 
