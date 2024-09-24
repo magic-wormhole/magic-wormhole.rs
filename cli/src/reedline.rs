@@ -215,7 +215,7 @@ pub fn enter_code() -> eyre::Result<String> {
 mod test {
     use super::*;
     #[test]
-    fn test_tab_compeltion_complete_word() {
+    fn test_tab_compeletion_complete_word() {
         let mut completer = CodeCompleter::default();
         let input = "22-trombonist";
         let cursor_pos = input.len();
@@ -228,7 +228,7 @@ mod test {
     }
 
     #[test]
-    fn test_tab_compeltion_partial_word() {
+    fn test_tab_completion_partial_word() {
         let mut completer = CodeCompleter::default();
         let input = "22-trmbn";
         let cursor_pos = input.len();
@@ -239,7 +239,7 @@ mod test {
     }
 
     #[test]
-    fn test_tab_compeltion_partial_in_middle() {
+    fn test_tab_completion_partial_in_middle() {
         let mut completer = CodeCompleter::default();
         let input = "22-trbis-zulu";
         let cursor_pos = input.len() - "-zulu".len();
