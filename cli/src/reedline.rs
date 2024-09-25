@@ -147,6 +147,11 @@ impl CodeHighliter {
             return false;
         }
 
+        // Minimum code length
+        if parts.len() < 3 {
+            return false;
+        }
+
         // Check all words for validity
         parts.iter().skip(1).all(|&word| {
             WORDLIST
