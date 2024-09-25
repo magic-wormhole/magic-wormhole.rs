@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use color_eyre::eyre::{self, bail};
-use fuzzt::{algorithms::JaroWinkler, get_top_n, processors::NullStringProcessor};
+use fuzzt::{algorithms::JaroWinkler, get_top_n};
 use lazy_static::lazy_static;
 use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
 use nu_ansi_term::{Color, Style};
@@ -93,9 +93,9 @@ impl Completer for CodeCompleter {
         let matches = get_top_n(
             current_part,
             &all_words,
-            Some(0.8),
-            Some(5),
-            Some(&NullStringProcessor),
+            None,
+            None,
+            None,
             Some(&JaroWinkler),
         );
 
@@ -144,6 +144,11 @@ impl CodeHighliter {
             .and_then(|c| c.parse::<usize>().ok())
             .is_some_and(|c| (0..1000).contains(&c))
         {
+            return false;
+        }
+
+        // Minimum code length
+        if parts.len() < 3 {
             return false;
         }
 
