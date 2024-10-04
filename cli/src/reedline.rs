@@ -62,10 +62,8 @@ impl CodeCompleter {
 
 impl Completer for CodeCompleter {
     fn complete(&mut self, line: &str, pos: usize) -> Vec<Suggestion> {
-        let parts: Vec<&str> = line.split('-').collect();
-
         // Skip autocomplete for the channel number (first part)
-        if parts.len() <= 1 {
+        if !line.contains('-') {
             return Vec::new();
         }
 
@@ -87,10 +85,12 @@ impl Completer for CodeCompleter {
             .collect();
 
         // Use fuzzy matching to find the best matches
+        // Use cutoff for the menu system to be useful
+        // If cutoff is high enough and only one word is left, use Tab to complete directly
         let matches = get_top_n(
             current_part,
             &all_words,
-            None,
+            Some(0.8),
             None,
             None,
             Some(&JaroWinkler),
