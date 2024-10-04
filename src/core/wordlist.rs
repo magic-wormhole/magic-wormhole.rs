@@ -4,8 +4,8 @@ use std::fmt;
 
 #[derive(PartialEq)]
 pub struct Wordlist {
-    pub num_words: usize,
-    pub words: Vec<Vec<String>>,
+    num_words: usize,
+    words: Vec<Vec<String>>,
 }
 
 impl fmt::Debug for Wordlist {
@@ -101,6 +101,14 @@ pub fn default_wordlist(num_words: usize) -> Wordlist {
         num_words,
         words: load_pgpwords(),
     }
+}
+
+pub fn default_wordlist_flatned() -> Vec<String> {
+    load_pgpwords()
+        .iter()
+        .flatten()
+        .map(|s| s.clone())
+        .collect()
 }
 
 #[cfg(test)]

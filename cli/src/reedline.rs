@@ -2,7 +2,7 @@ use std::{borrow::Cow, sync::LazyLock};
 
 use color_eyre::eyre::{self, bail};
 use fuzzt::{algorithms::JaroWinkler, get_top_n};
-use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
+use magic_wormhole::wordlist::default_wordlist_flatned;
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_emacs_keybindings, ColumnarMenu, Completer, Emacs, Highlighter, KeyCode, KeyModifiers,
@@ -10,7 +10,7 @@ use reedline::{
     ReedlineMenu, Signal, Span, StyledText, Suggestion,
 };
 
-static WORDLIST: LazyLock<Wordlist> = LazyLock::new(|| default_wordlist(2));
+static WORDLIST: LazyLock<Vec<String>> = LazyLock::new(|| default_wordlist_flatned());
 
 struct CodePrompt {}
 
@@ -76,13 +76,7 @@ impl Completer for CodeCompleter {
 
         let current_part = &line[current_word_start..current_word_end];
 
-        // Flatten the word list
-        let all_words: Vec<&str> = WORDLIST
-            .words
-            .iter()
-            .flatten()
-            .map(|s| s.as_str())
-            .collect();
+        let list = &*WORDLIST.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
 
         // Use fuzzy matching to find the best matches
         // Use cutoff for the menu system to be useful
@@ -90,7 +84,7 @@ impl Completer for CodeCompleter {
         // We use the Jaro-Winkler algorithm because it places more emphasis on the beginning part of the code word
         let matches = get_top_n(
             current_part,
-            &all_words,
+            list,
             Some(0.8),
             None,
             None,
@@ -151,13 +145,10 @@ impl CodeHighliter {
         }
 
         // Check all words for validity
-        parts.iter().skip(1).all(|&word| {
-            WORDLIST
-                .words
-                .iter()
-                .flatten()
-                .any(|valid_word| valid_word == word)
-        })
+        parts
+            .iter()
+            .skip(1)
+            .all(|&word| WORDLIST.iter().any(|valid_word| valid_word == word))
     }
 }
 

@@ -27,7 +27,8 @@
 
 #[macro_use]
 mod util;
-pub mod core;
+mod core;
+pub use core::wordlist;
 #[cfg(feature = "forwarding")]
 pub mod forwarding;
 #[cfg(feature = "transfer")]
