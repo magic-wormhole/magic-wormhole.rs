@@ -1,8 +1,7 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::LazyLock};
 
 use color_eyre::eyre::{self, bail};
 use fuzzt::{algorithms::JaroWinkler, get_top_n};
-use lazy_static::lazy_static;
 use magic_wormhole::core::wordlist::{default_wordlist, Wordlist};
 use nu_ansi_term::{Color, Style};
 use reedline::{
@@ -11,9 +10,7 @@ use reedline::{
     ReedlineMenu, Signal, Span, StyledText, Suggestion,
 };
 
-lazy_static! {
-    static ref WORDLIST: Wordlist = default_wordlist(2);
-}
+static WORDLIST: LazyLock<Wordlist> = LazyLock::new(|| default_wordlist(2));
 
 struct CodePrompt {}
 

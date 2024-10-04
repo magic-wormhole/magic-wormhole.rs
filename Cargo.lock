@@ -1856,7 +1856,6 @@ dependencies = [
  "futures",
  "fuzzt",
  "indicatif",
- "lazy_static",
  "magic-wormhole",
  "nu-ansi-term 0.50.1",
  "number_prefix",
