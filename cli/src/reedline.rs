@@ -187,7 +187,6 @@ pub fn enter_code() -> eyre::Result<String> {
         .with_highlighter(Box::new(CodeHighliter::default()))
         .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
         .with_quick_completions(true)
-        .with_partial_completions(true)
         .with_edit_mode(edit_mode);
 
     let prompt = CodePrompt::default();
