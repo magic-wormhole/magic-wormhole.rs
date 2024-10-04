@@ -98,11 +98,8 @@ impl Completer for CodeCompleter {
 
                 // Incase suggestion word length is larger then the current typed part
                 // Otherwise we get index out of range error in Span
-                let span_end = if suggestion.len() >= current_part.len() {
-                    current_word_end
-                } else {
-                    current_word_start + suggestion.len()
-                };
+                let span_end =
+                    std::cmp::min(current_word_start + suggestion.len(), current_word_end);
 
                 Suggestion {
                     value: suggestion,
