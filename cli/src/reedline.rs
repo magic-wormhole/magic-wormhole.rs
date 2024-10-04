@@ -87,6 +87,7 @@ impl Completer for CodeCompleter {
         // Use fuzzy matching to find the best matches
         // Use cutoff for the menu system to be useful
         // If cutoff is high enough and only one word is left, use Tab to complete directly
+        // We use the Jaro-Winkler algorithm because it places more emphasis on the beginning part of the code word
         let matches = get_top_n(
             current_part,
             &all_words,
