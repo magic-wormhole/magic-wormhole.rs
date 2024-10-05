@@ -205,7 +205,7 @@ pub fn enter_code() -> eyre::Result<String> {
 mod test {
     use super::*;
     #[test]
-    fn test_tab_compeletion_complete_word() {
+    fn test_tab_completion_complete_word() {
         let mut completer = CodeCompleter::default();
         let input = "22-trombonist";
         let cursor_pos = input.len();
