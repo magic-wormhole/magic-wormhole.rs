@@ -15,7 +15,7 @@ homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/magic-wormhole/magic-wormhole.rs/tree/main/cli"
 license = "EUPL-1.2"
 
-rust-version = "1.75"
+rust-version = "1.81"
 edition = "2021"
 
 [workspace.dependencies]
