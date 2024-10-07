@@ -1857,7 +1857,6 @@ dependencies = [
  "fuzzt",
  "indicatif",
  "magic-wormhole",
- "nu-ansi-term 0.50.1",
  "number_prefix",
  "qr2term",
  "rand",

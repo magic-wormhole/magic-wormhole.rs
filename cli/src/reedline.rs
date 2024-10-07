@@ -3,11 +3,10 @@ use std::{borrow::Cow, sync::LazyLock};
 use color_eyre::eyre::{self, bail};
 use fuzzt::{algorithms::JaroWinkler, get_top_n};
 use magic_wormhole::wordlist::default_wordlist_flatned;
-use nu_ansi_term::{Color, Style};
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, Completer, Emacs, Highlighter, KeyCode, KeyModifiers,
-    MenuBuilder, Prompt, PromptEditMode, PromptHistorySearch, Reedline, ReedlineEvent,
-    ReedlineMenu, Signal, Span, StyledText, Suggestion,
+    default_emacs_keybindings, ColumnarMenu, Completer, Emacs, KeyCode, KeyModifiers, MenuBuilder,
+    Prompt, PromptEditMode, PromptHistorySearch, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    Span, Suggestion,
 };
 
 static WORDLIST: LazyLock<Vec<String>> = LazyLock::new(|| default_wordlist_flatned());
@@ -117,54 +116,6 @@ impl Completer for CodeCompleter {
     }
 }
 
-struct CodeHighliter {}
-
-impl CodeHighliter {
-    fn default() -> Self {
-        CodeHighliter {}
-    }
-
-    fn is_valid_code(&self, code: &str) -> bool {
-        let parts: Vec<&str> = code.split('-').collect();
-
-        // If the first element in code is not a valid number
-        if !parts
-            .first()
-            .and_then(|c| c.parse::<usize>().ok())
-            .is_some_and(|c| (0..1000).contains(&c))
-        {
-            return false;
-        }
-
-        // Minimum code length
-        if parts.len() < 3 {
-            return false;
-        }
-
-        // Check all words for validity
-        parts
-            .iter()
-            .skip(1)
-            .all(|&word| WORDLIST.iter().any(|valid_word| valid_word == word))
-    }
-}
-
-impl Highlighter for CodeHighliter {
-    fn highlight(&self, line: &str, _cursor: usize) -> StyledText {
-        let invalid = Style::new().fg(Color::Red).bold();
-        let valid = Style::new().fg(Color::Green).bold();
-
-        let style = match self.is_valid_code(line) {
-            true => valid,
-            false => invalid,
-        };
-
-        let mut t = StyledText::new();
-        t.push((style, line.to_string()));
-        t
-    }
-}
-
 pub fn enter_code() -> eyre::Result<String> {
     // Set up the required keybindings
     let mut keybindings = default_emacs_keybindings();
@@ -184,7 +135,6 @@ pub fn enter_code() -> eyre::Result<String> {
 
     let mut line_editor = Reedline::create()
         .with_completer(Box::new(CodeCompleter::default()))
-        .with_highlighter(Box::new(CodeHighliter::default()))
         .with_menu(ReedlineMenu::EngineCompleter(completion_menu))
         .with_quick_completions(true)
         .with_edit_mode(edit_mode);
