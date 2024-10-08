@@ -1,3 +1,4 @@
+///! Wordlist generation and wormhole code utilities
 use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
@@ -20,6 +21,7 @@ impl fmt::Debug for Wordlist {
 
 impl Wordlist {
     #[cfg(test)]
+    #[doc(hidden)]
     pub fn new(num_words: usize, words: Vec<Vec<String>>) -> Wordlist {
         Wordlist { num_words, words }
     }
