@@ -1764,7 +1764,6 @@ dependencies = [
  "dialoguer",
  "env_logger",
  "futures",
- "fuzzt",
  "indicatif",
  "magic-wormhole",
  "number_prefix",

@@ -43,7 +43,6 @@ arboard = { optional = true, workspace = true, features = [
 ] } # Wayland by default, fallback to X11.
 tracing = { workspace = true, features = ["log", "log-always"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-fuzzt = "0.3.1"
 
 [dev-dependencies]
 trycmd = { workspace = true }
