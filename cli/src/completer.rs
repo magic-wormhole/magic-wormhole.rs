@@ -16,6 +16,7 @@ impl CustomCompletion {
 
 impl Completion for CustomCompletion {
     fn get(&self, input: &str) -> Option<String> {
+        dbg!(WORDLIST.get_completions(input));
         WORDLIST.get_completions(input).first().cloned()
     }
 }

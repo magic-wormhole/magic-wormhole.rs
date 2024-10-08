@@ -5,7 +5,6 @@ pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
 mod test;
-#[doc(hidden)]
 pub mod wordlist;
 
 use serde_derive::{Deserialize, Serialize};

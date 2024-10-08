@@ -2,9 +2,13 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
 
+/// Represents a list of words used to generate and complete wormhole codes.
+/// A wormhole code is a sequence of words used for secure communication or identification.
 #[derive(PartialEq)]
 pub struct Wordlist {
+    /// Number of words in a wormhole code
     num_words: usize,
+    /// Odd and even wordlist
     words: Vec<Vec<String>>,
 }
 
@@ -20,6 +24,10 @@ impl Wordlist {
         Wordlist { num_words, words }
     }
 
+    /// Completes a wormhole code
+    ///
+    /// Completion can be done either with fuzzy search (approximate string matching)
+    /// or simple `starts_with` matching.
     pub fn get_completions(&self, prefix: &str) -> Vec<String> {
         let count_dashes = prefix.matches('-').count();
         let words = &self.words[count_dashes % self.words.len()];
@@ -51,17 +59,16 @@ impl Wordlist {
     }
 
     /// Get either even or odd wordlist
-    pub fn get_wordlist(&self, prefix: &str, cursor_pos: Option<usize>) -> &Vec<String> {
-        let limited_prefix = match cursor_pos {
-            Some(pos) if pos < prefix.len() => &prefix[..pos],
-            _ => prefix,
-        };
-        let count_dashes = limited_prefix.matches('-').count();
+    pub fn get_wordlist(&self, prefix: &str) -> &Vec<String> {
+        let count_dashes = prefix.matches('-').count();
         &self.words[count_dashes % self.words.len()]
     }
 
+    /// Fuzzy wormhole code completion
     #[cfg(feature = "fuzzy-complete")]
     fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
+        // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
+
         use fuzzt::algorithms::JaroWinkler;
 
         let words = words.iter().map(|w| w.as_str()).collect::<Vec<&str>>();
@@ -72,6 +79,7 @@ impl Wordlist {
             .collect()
     }
 
+    /// Choose wormhole code word
     pub fn choose_words(&self) -> String {
         let mut rng = OsRng;
         let components: Vec<String> = self
@@ -83,17 +91,6 @@ impl Wordlist {
             .collect();
         components.join("-")
     }
-}
-
-/// Extract partial str from prefix with cursor position
-pub fn extract_partial_from_prefix<'a>(prefix: &'a str, pos: usize) -> &'a str {
-    let current_word_start = prefix[..pos].rfind('-').map(|i| i + 1).unwrap_or(0);
-    let current_word_end = prefix[pos..]
-        .find('-')
-        .map(|i| i + pos)
-        .unwrap_or_else(|| prefix.len());
-
-    &prefix[current_word_start..current_word_end]
 }
 
 fn load_pgpwords() -> Vec<Vec<String>> {
@@ -124,6 +121,7 @@ fn load_pgpwords() -> Vec<Vec<String>> {
     vec![even_words, odd_words]
 }
 
+/// Construct Wordlist struct with given number of words in a wormhole code
 pub fn default_wordlist(num_words: usize) -> Wordlist {
     Wordlist {
         num_words,
@@ -211,10 +209,21 @@ mod test {
         let list = default_wordlist(2);
 
         assert_eq!(list.get_completions("22"), Vec::<String>::new());
+        assert_eq!(list.get_completions("22-"), Vec::<String>::new());
+
+        // Invalid wormhole code check
+        assert_eq!(list.get_completions("trj"), Vec::<String>::new());
 
         assert_eq!(
             list.get_completions("22-chisel"),
             ["22-chisel", "22-chairlift", "22-christmas"]
         );
+
+        assert_eq!(
+            list.get_completions("22-chle"),
+            ["22-chisel", "22-chatter", "22-checkup"]
+        );
+
+        assert_eq!(list.get_completions("22-chisel-tba"), ["22-chisel-tobacco"]);
     }
 }
