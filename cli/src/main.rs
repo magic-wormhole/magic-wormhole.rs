@@ -1,5 +1,5 @@
 #![allow(clippy::too_many_arguments)]
-mod reedline;
+mod completer;
 mod util;
 
 use std::time::{Duration, Instant};
@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use color_eyre::{eyre, eyre::Context};
+use completer::enter_code;
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
@@ -15,7 +16,6 @@ use magic_wormhole::{
     transit::{self, TransitInfo},
     MailboxConnection, Wormhole,
 };
-use reedline::enter_code;
 use std::{io::Write, path::PathBuf};
 use tracing_subscriber::EnvFilter;
 

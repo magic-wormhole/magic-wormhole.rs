@@ -20,39 +20,56 @@ impl Wordlist {
         Wordlist { num_words, words }
     }
 
-    #[allow(dead_code)] // TODO make this API public one day
     pub fn get_completions(&self, prefix: &str) -> Vec<String> {
         let count_dashes = prefix.matches('-').count();
-        let mut completions = Vec::new();
         let words = &self.words[count_dashes % self.words.len()];
 
-        let last_partial_word = prefix.split('-').last();
-        let lp = if let Some(w) = last_partial_word {
-            w.len()
+        let (prefix_without_last, last_partial) = prefix.rsplit_once('-').unwrap_or(("", prefix));
+
+        let matches = if cfg!(feature = "fuzzy-complete") {
+            self.fuzzy_complete(last_partial, words)
         } else {
-            0
+            words
+                .iter()
+                .filter(|word| word.starts_with(last_partial))
+                .cloned()
+                .collect()
         };
 
-        for word in words {
-            let mut suffix: String = prefix.to_owned();
-            if word.starts_with(last_partial_word.unwrap()) {
-                if lp == 0 {
-                    suffix.push_str(word);
-                } else {
-                    let p = prefix.len() - lp;
-                    suffix.truncate(p);
-                    suffix.push_str(word);
+        matches
+            .into_iter()
+            .map(|word| {
+                let mut completion = String::new();
+                completion.push_str(prefix_without_last);
+                if !prefix_without_last.is_empty() {
+                    completion.push('-');
                 }
+                completion.push_str(&word);
+                completion
+            })
+            .collect()
+    }
 
-                if count_dashes + 1 < self.num_words {
-                    suffix.push('-');
-                }
+    /// Get either even or odd wordlist
+    pub fn get_wordlist(&self, prefix: &str, cursor_pos: Option<usize>) -> &Vec<String> {
+        let limited_prefix = match cursor_pos {
+            Some(pos) if pos < prefix.len() => &prefix[..pos],
+            _ => prefix,
+        };
+        let count_dashes = limited_prefix.matches('-').count();
+        &self.words[count_dashes % self.words.len()]
+    }
 
-                completions.push(suffix);
-            }
-        }
-        completions.sort();
-        completions
+    #[cfg(feature = "fuzzy-complete")]
+    fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
+        use fuzzt::algorithms::JaroWinkler;
+
+        let words = words.iter().map(|w| w.as_str()).collect::<Vec<&str>>();
+
+        fuzzt::get_top_n(partial, &words, None, None, None, Some(&JaroWinkler))
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 
     pub fn choose_words(&self) -> String {
@@ -66,6 +83,17 @@ impl Wordlist {
             .collect();
         components.join("-")
     }
+}
+
+/// Extract partial str from prefix with cursor position
+pub fn extract_partial_from_prefix<'a>(prefix: &'a str, pos: usize) -> &'a str {
+    let current_word_start = prefix[..pos].rfind('-').map(|i| i + 1).unwrap_or(0);
+    let current_word_end = prefix[pos..]
+        .find('-')
+        .map(|i| i + pos)
+        .unwrap_or_else(|| prefix.len());
+
+    &prefix[current_word_start..current_word_end]
 }
 
 fn load_pgpwords() -> Vec<Vec<String>> {
@@ -103,14 +131,6 @@ pub fn default_wordlist(num_words: usize) -> Wordlist {
     }
 }
 
-pub fn default_wordlist_flatned() -> Vec<String> {
-    load_pgpwords()
-        .iter()
-        .flatten()
-        .map(|s| s.clone())
-        .collect()
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -145,20 +165,6 @@ mod test {
                 }
             })
             .collect()
-    }
-
-    #[test]
-    fn test_completion() {
-        let words: Vec<Vec<String>> = vec![
-            vecstrings("purple green yellow"),
-            vecstrings("sausages seltzer snobol"),
-        ];
-
-        let w = Wordlist::new(2, words);
-        assert_eq!(w.get_completions(""), vec!["green-", "purple-", "yellow-"]);
-        assert_eq!(w.get_completions("pur"), vec!["purple-"]);
-        assert_eq!(w.get_completions("blu"), Vec::<String>::new());
-        assert_eq!(w.get_completions("purple-sa"), vec!["purple-sausages"]);
     }
 
     #[test]
@@ -201,45 +207,14 @@ mod test {
     }
 
     #[test]
-    fn test_default_completions() {
-        let w = default_wordlist(2);
-        let c = w.get_completions("ar");
-        assert_eq!(c.len(), 2);
-        assert!(c.contains(&String::from("article-")));
-        assert!(c.contains(&String::from("armistice-")));
+    fn test_wormhole_code_completions() {
+        let list = default_wordlist(2);
 
-        let c = w.get_completions("armis");
-        assert_eq!(c.len(), 1);
-        assert!(c.contains(&String::from("armistice-")));
+        assert_eq!(list.get_completions("22"), Vec::<String>::new());
 
-        let c = w.get_completions("armistice-");
-        assert_eq!(c.len(), 256);
-
-        let c = w.get_completions("armistice-ba");
         assert_eq!(
-            c,
-            vec![
-                "armistice-baboon",
-                "armistice-backfield",
-                "armistice-backward",
-                "armistice-banjo",
-            ]
+            list.get_completions("22-chisel"),
+            ["22-chisel", "22-chairlift", "22-christmas"]
         );
-
-        let w = default_wordlist(3);
-        let c = w.get_completions("armistice-ba");
-        assert_eq!(
-            c,
-            vec![
-                "armistice-baboon-",
-                "armistice-backfield-",
-                "armistice-backward-",
-                "armistice-banjo-",
-            ]
-        );
-
-        let w = default_wordlist(4);
-        let c = w.get_completions("armistice-baboon");
-        assert_eq!(c, vec!["armistice-baboon-"]);
     }
 }

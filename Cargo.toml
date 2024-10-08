@@ -104,6 +104,8 @@ percent-encoding = { workspace = true }
 
 tracing = { workspace = true, features = ["log", "log-always"] }
 
+fuzzt = { version = "0.3.1", optional = true }
+
 # Transit dependencies
 
 
@@ -145,7 +147,6 @@ test-log = { workspace = true }
 eyre = { workspace = true }
 
 [features]
-
 transfer = ["transit", "dep:tar", "dep:rmp-serde"]
 transit = [
     "dep:noise-rust-crypto",
@@ -157,7 +158,7 @@ transit = [
     "dep:async-trait",
 ]
 forwarding = ["transit", "dep:rmp-serde"]
-default = ["transit", "transfer"]
+default = ["transit", "transfer", "fuzzy-complete"]
 all = ["default", "forwarding"]
 
 # TLS implementations for websocket connections via async-tungstenite
@@ -168,6 +169,7 @@ native-tls = ["async-tungstenite/async-native-tls"]
 # By enabling this option you are opting out of semver stability.
 experimental-transfer-v2 = []
 experimental = ["experimental-transfer-v2"]
+fuzzy-complete = ["fuzzt"]
 
 [profile.release]
 overflow-checks = true

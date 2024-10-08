@@ -1812,6 +1812,7 @@ dependencies = [
  "derive_more",
  "eyre",
  "futures",
+ "fuzzt",
  "getrandom",
  "hex",
  "hkdf",
