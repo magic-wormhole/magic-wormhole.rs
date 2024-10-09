@@ -36,15 +36,15 @@ impl Wordlist {
 
         let (prefix_without_last, last_partial) = prefix.rsplit_once('-').unwrap_or(("", prefix));
 
-        let matches = if cfg!(feature = "fuzzy-complete") {
-            self.fuzzy_complete(last_partial, words)
-        } else {
-            words
-                .iter()
-                .filter(|word| word.starts_with(last_partial))
-                .cloned()
-                .collect()
-        };
+        #[cfg(feature = "fuzzy-complete")]
+        let matches = self.fuzzy_complete(last_partial, words);
+
+        #[cfg(not(feature = "fuzzy-complete"))]
+        let matches = words
+            .iter()
+            .filter(|word| word.starts_with(last_partial))
+            .cloned()
+            .collect();
 
         matches
             .into_iter()
@@ -206,7 +206,8 @@ mod test {
     }
 
     #[test]
-    fn test_wormhole_code_completions() {
+    #[cfg(feature = "fuzzy-complete")]
+    fn test_wormhole_code_fuzzy_completions() {
         let list = default_wordlist(2);
 
         assert_eq!(list.get_completions("22"), Vec::<String>::new());
@@ -226,5 +227,21 @@ mod test {
         );
 
         assert_eq!(list.get_completions("22-chisel-tba"), ["22-chisel-tobacco"]);
+    }
+
+    #[test]
+    #[cfg(not(feature = "fuzzy-complete"))]
+    fn test_wormhole_code_normal_completions() {
+        let list = default_wordlist(2);
+
+        assert_eq!(list.get_completions("22"), Vec::<String>::new());
+        assert_eq!(list.get_completions("22-"), Vec::<String>::new());
+
+        // Invalid wormhole code check
+        assert_eq!(list.get_completions("tro"), Vec::<String>::new());
+
+        assert_eq!(list.get_completions("22-chisel"), ["22-chisel"]);
+
+        assert_eq!(list.get_completions("22-chisel-tob"), ["22-chisel-tobacco"]);
     }
 }
