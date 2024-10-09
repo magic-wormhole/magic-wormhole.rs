@@ -70,7 +70,6 @@ impl Wordlist {
     #[cfg(feature = "fuzzy-complete")]
     fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
         // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
-
         use fuzzt::algorithms::JaroWinkler;
 
         let words = words.iter().map(|w| w.as_str()).collect::<Vec<&str>>();
