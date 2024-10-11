@@ -880,14 +880,14 @@ impl AsRef<str> for Nameplate {
 /// we can't ignore that the PGP wordlist is the most common wordlist in use.
 ///
 /// - The shortest word in the PGP wordlist is 4 characters long. The longest
-/// word is 9 characters. This means we can't limit to more than 9 bytes here,
-/// 'solo-orca' is 9 bytes, and we want to allow 2-word codes.
+///   word is 9 characters. This means we can't limit to more than 9 bytes here,
+///   'solo-orca' is 9 bytes, and we want to allow 2-word codes.
 /// - A 9 character random password is very strong. If it is only comprised of
-/// uniformly distributed lowercase ASCII characters, we have an entropy of
-/// 26^9 >= 40 bits. This is much more than the default 16 bits we get from two
-/// words from the PGP wordlist.
+///   uniformly distributed lowercase ASCII characters, we have an entropy of
+///   26^9 >= 40 bits. This is much more than the default 16 bits we get from two
+///   words from the PGP wordlist.
 /// - An emoji contains at least 2 bytes of data. So two emoji are actually
-/// about the same security as two words from the PGP wordlist.
+///   about the same security as two words from the PGP wordlist.
 ///
 /// We ultimately can't protect people from making bad choices, as entropy is a
 /// very difficult thing. What we can do instead is offer guidance, by printing
