@@ -19,7 +19,7 @@
 //! a relay server will transparently connect them together. Transit is used by the file transfer for example, but any other AppID protocol
 //! might make use of it as well.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::too_many_arguments)]
 #![allow(unused_macros)]
@@ -41,6 +41,6 @@ pub mod uri;
 #[allow(deprecated)]
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
-    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, Wormhole,
-    WormholeError, WormholeWelcome,
+    rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, ParseCodeError,
+    ParseNameplateError, ParsePasswordError, Password, Wormhole, WormholeError, WormholeWelcome,
 };

@@ -27,7 +27,7 @@ async-std = { workspace = true, features = ["attributes", "unstable"] }
 rand = { workspace = true }
 
 # CLI specific dependencies
-magic-wormhole = { path = "..", version = "0.7", features = ["all"] }
+magic-wormhole = { path = "..", version = "0.7", features = ["all", "entropy"] }
 clap = { workspace = true, features = ["cargo", "derive", "help"] }
 clap_complete = { workspace = true }
 env_logger = { workspace = true }

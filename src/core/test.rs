@@ -1,15 +1,15 @@
 #![allow(irrefutable_let_patterns)]
 
 use super::{Mood, Phase};
+use rand::Rng;
+use std::{borrow::Cow, str::FromStr, time::Duration};
+
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
-    self as magic_wormhole,
-    core::{MailboxConnection, Nameplate},
-    transit, AppConfig, AppID, Code, Wormhole, WormholeError,
+    self as magic_wormhole, core::MailboxConnection, transit, AppConfig, AppID, Code, Wormhole,
+    WormholeError,
 };
-use rand::Rng;
-use std::{borrow::Cow, time::Duration};
 use test_log::test;
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
@@ -511,8 +511,8 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
             let result = Wormhole::connect(
                 MailboxConnection::connect(
                     APP_CONFIG,
-                    /* Making a wrong code here by appending bullshit */
-                    Code::new(&nameplate, "foo-bar"),
+                    /* Making a wrong code here by appending nonsense */
+                    Code::from_components(nameplate, "foo-bar".parse().unwrap()),
                     true,
                 )
                 .await?,
@@ -576,8 +576,7 @@ pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
 fn generate_random_code() -> Code {
     let mut rng = rand::thread_rng();
     let nameplate_string = format!("{}-guitarist-revenge", rng.gen_range(1000..10000));
-    let nameplate = Nameplate::new(&nameplate_string);
-    Code::new(&nameplate, "guitarist-revenge")
+    Code::from_str(&nameplate_string).unwrap()
 }
 
 #[test]

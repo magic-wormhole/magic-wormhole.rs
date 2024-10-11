@@ -39,6 +39,9 @@ pub enum ParseError {
         #[source]
         std::str::Utf8Error,
     ),
+    /// Error parsing the mailbox code
+    #[error("Error parsing the mailbox code")]
+    ParseCodeError(#[from] ParseCodeError),
 }
 
 /// The wormhole-transfer URI Scheme is used to encode a wormhole code for file transfer as a URI.
@@ -100,15 +103,17 @@ impl TryFrom<&url::Url> for WormholeTransferUri {
             "follower" => false,
             invalid => return Err(ParseError::InvalidRole(invalid.into())),
         };
-        let code = Code(
-            percent_encoding::percent_decode_str(url.path())
-                .decode_utf8()?
-                .into(),
-        );
-        // TODO move the code validation to somewhere else and also add more checks
-        if code.is_empty() {
-            return Err(ParseError::MissingCode);
-        }
+        let code: Code = percent_encoding::percent_decode_str(url.path())
+            .decode_utf8()?
+            .parse()
+            .map_err(|e| {
+                // TODO: Remove for 0.8
+                if matches!(e, ParseCodeError::Empty) {
+                    ParseError::MissingCode
+                } else {
+                    e.into()
+                }
+            })?;
 
         Ok(WormholeTransferUri {
             code,
@@ -137,7 +142,7 @@ impl std::str::FromStr for WormholeTransferUri {
 impl From<&WormholeTransferUri> for url::Url {
     fn from(val: &WormholeTransferUri) -> Self {
         let mut url = url::Url::parse("wormhole-transfer:").unwrap();
-        url.set_path(&val.code);
+        url.set_path(val.code.as_ref());
         /* Only do this if there are any query parameteres at all, otherwise the URL will have an ugly trailing '?'. */
         if val.rendezvous_server.is_some() || val.is_leader {
             let mut query = url.query_pairs_mut();
@@ -171,18 +176,18 @@ mod test {
     #[test]
     fn test_uri() {
         test_eq(
-            WormholeTransferUri::new(Code("4-hurricane-equipment".to_owned())),
+            WormholeTransferUri::new("4-hurricane-equipment".parse().unwrap()),
             "wormhole-transfer:4-hurricane-equipment",
         );
 
         test_eq(
-            WormholeTransferUri::new(Code("8-🙈-🙉-🙊".to_owned())),
+            WormholeTransferUri::new("8-🙈-🙉-🙊".parse().unwrap()),
             "wormhole-transfer:8-%F0%9F%99%88-%F0%9F%99%89-%F0%9F%99%8A",
         );
 
         test_eq(
             WormholeTransferUri {
-                code: Code("8-🙈-🙉-🙊".to_owned()),
+                code: "8-🙈-🙉-🙊".parse().unwrap(),
                 rendezvous_server: Some(url::Url::parse("ws://localhost:4000").unwrap()),
                 is_leader: true,
             },

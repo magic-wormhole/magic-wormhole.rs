@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2024-10-11
+
 ### Changed
 
-- \[lib\]\[deprecated\] `magic_wormhole::transfer::send_*` and `request_file` methods to take an `OfferSend` and `OfferReceive` instead of using separate methods for files and folders. Use `transfer::send()` and `transfer::receive()` for the new methods.
-- \[lib\]\[breaking\] struct `transfer::ReceiveRequest` became an enum to prepare for transfer v2
+- \[all\]\[\breaking\] Code words with a secret password section shorter than 4 bytes are no longer accepted. This only breaks completely invalid uses of the code.
+- \[all\] Code words with a weak password section or a non-integer nameplate will throw an error in the long. This error can be upgraded to a hard error by enabling the "entropy" feature. This feature will become the default in the next major release.
+- \[lib\] Implemented FromStr for `Code` and `Nameplate`
+- \[lib\] Added new checked type for the `Password` section of a wormhole code
+- \[lib\] Added new `entropy` feature. When enabled, the entropy of the passed password will be checked on creation. This will change the signature of `MailboxConnection::create_with_password` to require the password to be passed via the new `Password` wrapper type.
+- \[lib\]\[deprecated\] Deprecated the `Code` and `Nameplate` `From<impl Into<String>>` implementations and `new()` methods. They are unchecked and will print a warning for now. These will be removed in the next breaking release.
 
 ## [0.7.1] - 2024-07-25
 

@@ -3,6 +3,8 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
 
+use super::Password;
+
 /// Represents a list of words used to generate and complete wormhole codes.
 /// A wormhole code is a sequence of words used for secure communication or identification.
 #[derive(PartialEq)]
@@ -83,7 +85,7 @@ impl Wordlist {
     }
 
     /// Choose wormhole code word
-    pub fn choose_words(&self) -> String {
+    pub fn choose_words(&self) -> Password {
         let mut rng = OsRng;
         let components: Vec<String> = self
             .words
@@ -92,7 +94,15 @@ impl Wordlist {
             .take(self.num_words)
             .map(|words| words.choose(&mut rng).unwrap().to_string())
             .collect();
-        components.join("-")
+        #[allow(unsafe_code)]
+        unsafe {
+            Password::new_unchecked(components.join("-"))
+        }
+    }
+
+    #[cfg(feature = "entropy")]
+    pub(crate) fn into_words(self) -> impl Iterator<Item = String> {
+        self.words.into_iter().flatten()
     }
 }
 
@@ -156,54 +166,63 @@ mod test {
         assert_eq!(d.words[1][255], "zulu");
     }
 
-    fn vecstrings(all: &str) -> Vec<String> {
+    fn vec_strs(all: &str) -> Vec<&str> {
         all.split_whitespace()
-            .map(|s| {
-                if s == "." {
-                    String::from("")
-                } else {
-                    s.to_string()
-                }
-            })
+            .map(|s| if s == "." { "" } else { s })
             .collect()
+    }
+
+    fn vec_strings(all: &str) -> Vec<String> {
+        vec_strs(all).iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn test_completion() {
+        let words: Vec<Vec<String>> = vec![
+            vec_strings("purple green yellow"),
+            vec_strings("sausages seltzer snobol"),
+        ];
+
+        let w = Wordlist::new(2, words);
+        assert_eq!(w.get_completions(""), Vec::<String>::new());
+        assert_eq!(w.get_completions("9"), Vec::<String>::new());
+        assert_eq!(w.get_completions("pur"), vec!["purple"]);
+        assert_eq!(w.get_completions("blu"), Vec::<String>::new());
+        assert_eq!(w.get_completions("purple-sa"), vec!["purple-sausages"]);
     }
 
     #[test]
     fn test_choose_words() {
-        let few_words: Vec<Vec<String>> = vec![vecstrings("purple"), vecstrings("sausages")];
+        let few_words: Vec<Vec<String>> = vec![vec_strings("purple"), vec_strings("sausages")];
 
         let w = Wordlist::new(2, few_words.clone());
-        assert_eq!(w.choose_words(), "purple-sausages");
+        assert_eq!(w.choose_words().as_ref(), "purple-sausages");
         let w = Wordlist::new(3, few_words.clone());
-        assert_eq!(w.choose_words(), "purple-sausages-purple");
+        assert_eq!(w.choose_words().as_ref(), "purple-sausages-purple");
         let w = Wordlist::new(4, few_words);
-        assert_eq!(w.choose_words(), "purple-sausages-purple-sausages");
+        assert_eq!(w.choose_words().as_ref(), "purple-sausages-purple-sausages");
     }
 
     #[test]
     fn test_choose_more_words() {
-        let more_words: Vec<Vec<String>> =
-            vec![vecstrings("purple yellow"), vecstrings("sausages")];
+        let more_words = vec![vec_strings("purple yellow"), vec_strings("sausages")];
 
-        let expected2 = vecstrings("purple-sausages yellow-sausages");
-        let expected3: Vec<String> = vec![
+        let expected2 = vec_strs("purple-sausages yellow-sausages");
+        let expected3 = vec![
             "purple-sausages-purple",
             "yellow-sausages-purple",
             "purple-sausages-yellow",
             "yellow-sausages-yellow",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+        ];
 
         let w = Wordlist::new(2, more_words.clone());
         for _ in 0..20 {
-            assert!(expected2.contains(&w.choose_words()));
+            assert!(expected2.contains(&w.choose_words().as_ref()));
         }
 
         let w = Wordlist::new(3, more_words);
         for _ in 0..20 {
-            assert!(expected3.contains(&w.choose_words()));
+            assert!(expected3.contains(&w.choose_words().as_ref()));
         }
     }
 
