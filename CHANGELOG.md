@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2024-10-11
+
 ### Changed
 
 - \[all\]\[\breaking\] Code words with a secret password section shorter than 4 bytes are no longer accepted. This only breaks completely invalid uses of the code.
