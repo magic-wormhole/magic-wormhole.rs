@@ -5,7 +5,8 @@ pub mod rendezvous;
 mod server_messages;
 #[cfg(test)]
 mod test;
-#[doc(hidden)]
+
+/// Module for wormhole code generation and completion.
 pub mod wordlist;
 
 use serde_derive::{Deserialize, Serialize};

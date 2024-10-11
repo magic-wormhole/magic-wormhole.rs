@@ -31,16 +31,15 @@ impl Wordlist {
     /// Completion can be done either with fuzzy search (approximate string matching)
     /// or simple `starts_with` matching.
     pub fn get_completions(&self, prefix: &str) -> Vec<String> {
-        let count_dashes = prefix.matches('-').count();
-        let words = &self.words[count_dashes % self.words.len()];
+        let words = self.get_wordlist(prefix);
 
         let (prefix_without_last, last_partial) = prefix.rsplit_once('-').unwrap_or(("", prefix));
 
-        #[cfg(feature = "fuzzy-complete")]
-        let matches: Vec<String> = self.fuzzy_complete(last_partial, words);
-
-        #[cfg(not(feature = "fuzzy-complete"))]
-        let matches: Vec<String> = self.normal_complete(last_partial, words);
+        let matches = if cfg!(feature = "fuzzy-complete") {
+            self.fuzzy_complete(last_partial, words)
+        } else {
+            self.normal_complete(last_partial, words)
+        };
 
         matches
             .into_iter()
@@ -56,15 +55,13 @@ impl Wordlist {
             .collect()
     }
 
-    /// Get either even or odd wordlist
-    pub fn get_wordlist(&self, prefix: &str) -> &Vec<String> {
+    fn get_wordlist(&self, prefix: &str) -> &Vec<String> {
         let count_dashes = prefix.matches('-').count();
         &self.words[count_dashes % self.words.len()]
     }
 
-    /// Fuzzy wormhole code completion
-    #[cfg(feature = "fuzzy-complete")]
-    pub fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
+    #[allow(unused)]
+    fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
         // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
         use fuzzt::algorithms::JaroWinkler;
 
@@ -76,7 +73,8 @@ impl Wordlist {
             .collect()
     }
 
-    pub fn normal_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
+    #[allow(unused)]
+    fn normal_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
         words
             .iter()
             .filter(|word| word.starts_with(partial))
