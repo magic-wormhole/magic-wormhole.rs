@@ -37,11 +37,10 @@ impl Wordlist {
 
         let (prefix_without_last, last_partial) = prefix.rsplit_once('-').unwrap_or(("", prefix));
 
-        let matches = if cfg!(feature = "fuzzy-complete") {
-            self.fuzzy_complete(last_partial, words)
-        } else {
-            self.normal_complete(last_partial, words)
-        };
+        #[cfg(feature = "fuzzy-complete")]
+        let matches = self.fuzzy_complete(last_partial, words);
+        #[cfg(not(feature = "fuzzy-complete"))]
+        let matches = self.normal_complete(last_partial, words);
 
         matches
             .into_iter()
@@ -62,7 +61,7 @@ impl Wordlist {
         &self.words[count_dashes % self.words.len()]
     }
 
-    #[allow(unused)]
+    #[cfg(feature = "fuzzy-complete")]
     fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
         // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
         use fuzzt::algorithms::JaroWinkler;
