@@ -28,7 +28,6 @@
 #[macro_use]
 mod util;
 mod core;
-pub use core::wordlist;
 #[cfg(feature = "forwarding")]
 pub mod forwarding;
 #[cfg(feature = "transfer")]
@@ -44,3 +43,6 @@ pub use crate::core::{
     rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, ParseCodeError,
     ParseNameplateError, ParsePasswordError, Password, Wormhole, WormholeError, WormholeWelcome,
 };
+
+#[doc(hidden)]
+pub use core::wordlist::Wordlist;
