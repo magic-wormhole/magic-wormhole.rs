@@ -163,8 +163,8 @@ transit = [
     "dep:async-trait",
 ]
 forwarding = ["transit", "dep:rmp-serde"]
-default = ["transit", "transfer", "fuzzy-complete"]
-all = ["default", "forwarding"]
+default = ["transit", "transfer"]
+all = ["default", "forwarding", "fuzzy-complete"]
 
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server

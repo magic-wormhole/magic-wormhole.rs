@@ -13,6 +13,8 @@ use serde_derive::{Deserialize, Serialize};
 use std::{borrow::Cow, str::FromStr};
 use thiserror::Error;
 
+use crate::Wordlist;
+
 use self::{rendezvous::*, server_messages::EncryptedMessage};
 
 use crypto_secretbox as secretbox;
@@ -139,7 +141,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     pub async fn create(config: AppConfig<V>, code_length: usize) -> Result<Self, WormholeError> {
         Self::create_with_validated_password(
             config,
-            wordlist::default_wordlist(code_length).choose_words(),
+            Wordlist::default_wordlist(code_length).choose_words(),
         )
         .await
     }
@@ -963,7 +965,7 @@ impl Password {
         static PGP_WORDLIST: std::sync::OnceLock<Vec<&str>> = std::sync::OnceLock::new();
         let words = PGP_WORDLIST.get_or_init(|| {
             // TODO: We leak the str: https://github.com/shssoichiro/zxcvbn-rs/issues/87
-            crate::core::wordlist::default_wordlist(2)
+            Wordlist::default_wordlist(2)
                 .into_words()
                 .map(|s| &*s.leak())
                 .collect::<Vec<_>>()

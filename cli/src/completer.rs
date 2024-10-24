@@ -2,9 +2,9 @@ use std::sync::LazyLock;
 
 use color_eyre::eyre;
 use dialoguer::{Completion, Input};
-use magic_wormhole::wordlist::{default_wordlist, Wordlist};
+use magic_wormhole::Wordlist;
 
-static WORDLIST: LazyLock<Wordlist> = LazyLock::new(|| default_wordlist(2));
+static WORDLIST: LazyLock<Wordlist> = LazyLock::new(|| Wordlist::default_wordlist(2));
 
 struct CustomCompletion {}
 
