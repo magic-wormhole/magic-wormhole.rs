@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+mod completer;
 mod util;
 
 use std::{
@@ -9,6 +10,7 @@ use std::{
 use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use color_eyre::{eyre, eyre::Context};
+use completer::enter_code;
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
@@ -748,15 +750,6 @@ fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
         }
         pb.set_position(sent);
     }
-}
-
-fn enter_code() -> eyre::Result<String> {
-    use dialoguer::Input;
-
-    Input::new()
-        .with_prompt("Enter code")
-        .interact_text()
-        .map_err(From::from)
 }
 
 fn print_welcome(term: &mut Term, welcome: Option<&str>) -> eyre::Result<()> {

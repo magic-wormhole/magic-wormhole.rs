@@ -15,7 +15,7 @@ homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/magic-wormhole/magic-wormhole.rs/tree/main/cli"
 license = "EUPL-1.2"
 
-rust-version = "1.75"
+rust-version = "1.81"
 edition = "2021"
 
 [workspace.dependencies]
@@ -38,7 +38,6 @@ futures = "0.3.12"
 hex = "0.4.2"
 hkdf = "0.12.2"
 indicatif = "0.17.0"
-log = "0.4.13"
 noise-protocol = "0.2"
 noise-rust-crypto = "0.6.0-rc.1"
 number_prefix = "0.4.0"
@@ -107,6 +106,8 @@ zxcvbn = { workspace = true, optional = true }
 
 tracing = { workspace = true, features = ["log", "log-always"] }
 
+fuzzt = { version = "0.3.1", optional = true }
+
 # Transit dependencies
 
 
@@ -162,7 +163,7 @@ transit = [
     "dep:async-trait",
 ]
 forwarding = ["transit", "dep:rmp-serde"]
-default = ["transit", "transfer"]
+default = ["transit", "transfer", "fuzzy-complete"]
 all = ["default", "forwarding"]
 
 # TLS implementations for websocket connections via async-tungstenite
@@ -173,6 +174,7 @@ native-tls = ["async-tungstenite/async-native-tls"]
 # By enabling this option you are opting out of semver stability.
 experimental-transfer-v2 = []
 experimental = ["experimental-transfer-v2"]
+fuzzy-complete = ["fuzzt"]
 
 [profile.release]
 overflow-checks = true

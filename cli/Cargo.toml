@@ -33,7 +33,7 @@ clap_complete = { workspace = true }
 env_logger = { workspace = true }
 console = { workspace = true }
 indicatif = { workspace = true }
-dialoguer = { workspace = true }
+dialoguer = { workspace = true, features = ["completion"] }
 color-eyre = { workspace = true }
 number_prefix = { workspace = true }
 ctrlc = { workspace = true }
