@@ -493,12 +493,11 @@ impl Wormhole {
         T: for<'a> serde::Deserialize<'a>,
     {
         self.receive().await.map(|data: Vec<u8>| {
-            serde_json::from_slice(&data).map_err(|e| {
+            serde_json::from_slice(&data).inspect_err(|_| {
                 tracing::error!(
                     "Received invalid data from peer: '{}'",
                     String::from_utf8_lossy(&data)
                 );
-                e
             })
         })
     }

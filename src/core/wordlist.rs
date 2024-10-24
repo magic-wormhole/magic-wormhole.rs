@@ -1,4 +1,4 @@
-///! Wordlist generation and wormhole code utilities
+//! Wordlist generation and wormhole code utilities
 use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
