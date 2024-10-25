@@ -73,7 +73,6 @@ jobs:
         channel:
           - MSRV
           - stable
-          - nightly
         os:
           - Linux
           - Windows
@@ -92,8 +91,6 @@ jobs:
             rust: ${{ needs.read_msrv.outputs.msrv }}
           - channel: stable
             rust: stable
-          - channel: nightly
-            rust: nightly
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
