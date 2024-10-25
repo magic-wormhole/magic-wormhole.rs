@@ -1,4 +1,4 @@
-///! Wordlist generation and wormhole code utilities
+//! Wordlist generation and wormhole code utilities
 use rand::{rngs::OsRng, seq::SliceRandom};
 use serde_json::{self, Value};
 use std::fmt;
@@ -103,6 +103,14 @@ impl Wordlist {
     pub(crate) fn into_words(self) -> impl Iterator<Item = String> {
         self.words.into_iter().flatten()
     }
+
+    /// Construct Wordlist struct with given number of words in a wormhole code
+    pub fn default_wordlist(num_words: usize) -> Wordlist {
+        Wordlist {
+            num_words,
+            words: load_pgpwords(),
+        }
+    }
 }
 
 fn load_pgpwords() -> Vec<Vec<String>> {
@@ -133,14 +141,6 @@ fn load_pgpwords() -> Vec<Vec<String>> {
     vec![even_words, odd_words]
 }
 
-/// Construct Wordlist struct with given number of words in a wormhole code
-pub fn default_wordlist(num_words: usize) -> Wordlist {
-    Wordlist {
-        num_words,
-        words: load_pgpwords(),
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -157,7 +157,7 @@ mod test {
 
     #[test]
     fn test_default_wordlist() {
-        let d = default_wordlist(2);
+        let d = Wordlist::default_wordlist(2);
         assert_eq!(d.words.len(), 2);
         assert_eq!(d.words[0][0], "adroitness");
         assert_eq!(d.words[1][0], "aardvark");
@@ -228,7 +228,7 @@ mod test {
     #[test]
     #[cfg(feature = "fuzzy-complete")]
     fn test_wormhole_code_fuzzy_completions() {
-        let list = default_wordlist(2);
+        let list = Wordlist::default_wordlist(2);
 
         assert_eq!(list.get_completions("22"), Vec::<String>::new());
         assert_eq!(list.get_completions("22-"), Vec::<String>::new());
@@ -252,7 +252,7 @@ mod test {
     #[test]
     #[cfg(feature = "fuzzy-complete")]
     fn test_completion_fuzzy() {
-        let wl = default_wordlist(2);
+        let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
 
         assert_eq!(wl.fuzzy_complete("chck", list), ["checkup", "choking"]);
@@ -265,7 +265,7 @@ mod test {
 
     #[test]
     fn test_completion_normal() {
-        let wl = default_wordlist(2);
+        let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
 
         assert_eq!(wl.normal_complete("che", list), ["checkup"]);
@@ -273,7 +273,7 @@ mod test {
 
     #[test]
     fn test_full_wormhole_completion() {
-        let wl = default_wordlist(2);
+        let wl = Wordlist::default_wordlist(2);
 
         assert_eq!(wl.get_completions("22-chec").first().unwrap(), "22-checkup");
         assert_eq!(
