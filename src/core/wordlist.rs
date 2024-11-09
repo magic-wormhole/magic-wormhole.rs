@@ -194,8 +194,8 @@ mod test {
         let w = Wordlist::new(2, words);
         assert_eq!(w.get_completions(""), Vec::<String>::new());
         assert_eq!(w.get_completions("9"), Vec::<String>::new());
-        assert_eq!(w.get_completions("slet"), vec!["seltzer"]);
-        assert_eq!(w.get_completions("sausages-yll"), vec!["sausages-yellow"]);
+        assert_eq!(w.get_completions("seltz"), vec!["seltzer"]);
+        assert_eq!(w.get_completions("sausages-yello"), vec!["sausages-yellow"]);
     }
 
     #[test]
