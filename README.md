@@ -10,7 +10,6 @@ This is a Rust port of the Python version at <https://github.com/magic-wormhole/
 
 Features that are missing:
 
-- Tab completion
 - Text message sending
 - Folder sending (we can send folders, but it will send a tar ball which the other side will have to manually unpack)
 - Tor support
@@ -21,6 +20,7 @@ New features that exceed the other implementations:
 - Automatically copies your code to the clipboard
 - Port forwarding in addition to file transfer (experimental)
 - Send a file to multiple people (experimental)
+- Fuzzy wormhole code completion
 
 ## Getting started
 
