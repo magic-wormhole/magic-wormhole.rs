@@ -58,7 +58,8 @@ impl Wordlist {
 
     fn get_wordlist(&self, prefix: &str) -> &Vec<String> {
         let count_dashes = prefix.matches('-').count();
-        &self.words[count_dashes % self.words.len()]
+        let index = 1 - (count_dashes % 2);
+        &self.words[index]
     }
 
     #[cfg(feature = "fuzzy-complete")]
@@ -165,6 +166,14 @@ mod test {
         assert_eq!(d.words[1][255], "zulu");
     }
 
+    #[test]
+    fn test_get_wordlist() {
+        let list = Wordlist::default_wordlist(2);
+        assert_eq!(list.words.len(), 2);
+        assert_eq!(list.get_wordlist("22-"), &list.words[0]);
+        assert_eq!(list.get_wordlist("22-dictator-"), &list.words[1]);
+    }
+
     fn vec_strs(all: &str) -> Vec<&str> {
         all.split_whitespace()
             .map(|s| if s == "." { "" } else { s })
@@ -185,9 +194,8 @@ mod test {
         let w = Wordlist::new(2, words);
         assert_eq!(w.get_completions(""), Vec::<String>::new());
         assert_eq!(w.get_completions("9"), Vec::<String>::new());
-        assert_eq!(w.get_completions("pur"), vec!["purple"]);
-        assert_eq!(w.get_completions("blu"), Vec::<String>::new());
-        assert_eq!(w.get_completions("purple-sa"), vec!["purple-sausages"]);
+        assert_eq!(w.get_completions("slet"), vec!["seltzer"]);
+        assert_eq!(w.get_completions("sausages-yll"), vec!["sausages-yellow"]);
     }
 
     #[test]
@@ -200,6 +208,20 @@ mod test {
         assert_eq!(w.choose_words().as_ref(), "purple-sausages-purple");
         let w = Wordlist::new(4, few_words);
         assert_eq!(w.choose_words().as_ref(), "purple-sausages-purple-sausages");
+    }
+
+    #[test]
+    fn test_choose_words_matches_completion() {
+        let few_words: Vec<Vec<String>> = vec![vec_strings("purple"), vec_strings("sausages")];
+
+        let w = Wordlist::new(2, few_words.clone());
+        assert_eq!(w.choose_words().as_ref(), "purple-sausages");
+
+        // Check if odd and even wordlist are correctly selected
+        assert_eq!(
+            w.get_completions("1-purple-sausages").first().unwrap(),
+            &format!("1-{}", w.choose_words().as_ref())
+        );
     }
 
     #[test]
@@ -227,40 +249,22 @@ mod test {
 
     #[test]
     #[cfg(feature = "fuzzy-complete")]
-    fn test_wormhole_code_fuzzy_completions() {
-        let list = Wordlist::default_wordlist(2);
-
-        assert_eq!(list.get_completions("22"), Vec::<String>::new());
-        assert_eq!(list.get_completions("22-"), Vec::<String>::new());
-
-        // Invalid wormhole code check
-        assert_eq!(list.get_completions("trj"), Vec::<String>::new());
-
-        assert_eq!(
-            list.get_completions("22-chisel"),
-            ["22-chisel", "22-chairlift", "22-christmas"]
-        );
-
-        assert_eq!(
-            list.get_completions("22-chle"),
-            ["22-chisel", "22-chatter", "22-checkup"]
-        );
-
-        assert_eq!(list.get_completions("22-chisel-tba"), ["22-chisel-tobacco"]);
-    }
-
-    #[test]
-    #[cfg(feature = "fuzzy-complete")]
     fn test_completion_fuzzy() {
         let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
 
-        assert_eq!(wl.fuzzy_complete("chck", list), ["checkup", "choking"]);
-        assert_eq!(wl.fuzzy_complete("checkp", list), ["checkup"]);
         assert_eq!(
-            wl.fuzzy_complete("checkup", list),
-            ["checkup", "lockup", "cleanup"]
+            wl.fuzzy_complete("bzili", list).first().unwrap(),
+            "brazilian"
         );
+        assert_eq!(
+            wl.fuzzy_complete("carvan", list).first().unwrap(),
+            "caravan"
+        );
+        assert_ne!(
+            wl.fuzzy_complete("choking", list).first().unwrap(),
+            "choking"
+        )
     }
 
     #[test]
@@ -268,17 +272,53 @@ mod test {
         let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
 
-        assert_eq!(wl.normal_complete("che", list), ["checkup"]);
+        assert_eq!(
+            wl.normal_complete("braz", list).first().unwrap(),
+            "brazilian"
+        );
+        assert_ne!(
+            wl.fuzzy_complete("choking", list).first().unwrap(),
+            "choking"
+        )
     }
 
     #[test]
-    fn test_full_wormhole_completion() {
-        let wl = Wordlist::default_wordlist(2);
+    fn test_wormhole_code_normal_completions() {
+        let list = Wordlist::default_wordlist(2);
 
-        assert_eq!(wl.get_completions("22-chec").first().unwrap(), "22-checkup");
         assert_eq!(
-            wl.get_completions("22-checkup-t").first().unwrap(),
-            "22-checkup-tobacco"
+            list.get_completions("22-cmpont").first().unwrap(),
+            "22-component"
+        );
+        assert_eq!(
+            list.get_completions("22-component-chkup").first().unwrap(),
+            "22-component-checkup"
+        );
+        assert_ne!(list.get_completions("22-troj"), ["trojan"]);
+    }
+
+    #[test]
+    #[cfg(feature = "fuzzy-complete")]
+    fn test_wormhole_code_fuzzy_completions() {
+        let list = Wordlist::default_wordlist(2);
+
+        assert_eq!(list.get_completions("22"), Vec::<String>::new());
+        assert_eq!(list.get_completions("22-"), Vec::<String>::new());
+        assert_ne!(list.get_completions("22-trj"), ["trojan"]);
+
+        assert_eq!(
+            list.get_completions("22-udau").first().unwrap(),
+            "22-undaunted"
+        );
+
+        assert_eq!(
+            list.get_completions("22-undua").first().unwrap(),
+            "22-undaunted"
+        );
+
+        assert_eq!(
+            list.get_completions("22-undaunted-usht").first().unwrap(),
+            "22-undaunted-upshot"
         );
     }
 }
