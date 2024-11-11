@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2024-11-23
+
+### Fixed
+
+- cli: autocomplete would use the wrong wordlist exactly 100% of the time 🙈
+- cli: Remove unmaintained instant dependency
+
 ## [0.7.3] - 2024-10-25
 
 ### Added
