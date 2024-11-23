@@ -77,16 +77,24 @@ jobs:
           - Linux
           - Windows
           - macOS
+          - WASM
         include:
           - os: Linux
             image: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            features: all,native-tls,experimental
           - os: Windows
             image: windows-latest
             target: x86_64-pc-windows-msvc
+            features: all,native-tls,experimental
           - os: macOS
             image: macos-latest
             target: aarch64-apple-darwin
+            features: all,native-tls,experimental
+          - os: WASM
+            image: ubuntu-latest
+            target: wasm32-unknown-unknown
+            features: transit,transfer
           - channel: msrv
             rust: ${{ needs.read_msrv.outputs.msrv }}
           - channel: stable
@@ -114,11 +122,14 @@ jobs:
       - name: build library (features=transfer)
         run: cargo build -p magic-wormhole --target ${{ matrix.target }} --no-default-features --features=transfer
       - name: build library (features=forwarding)
+        if: ${{ matrix.os != 'WASM' }}
         run: cargo build -p magic-wormhole --target ${{ matrix.target }} --no-default-features --features=forwarding
       - name: build CLI
+        if: ${{ matrix.os != 'WASM' }}
         run: cargo build -p magic-wormhole-cli --target ${{ matrix.target }} --features=all
       - name: build WASM
-        run: cargo build -p magic-wormhole --target wasm32-unknown-unknown --no-default-features --features transit --features transfer
+        if: ${{ matrix.os == 'WASM' }}
+        run: cargo build -p magic-wormhole --target wasm32-unknown-unknown --no-default-features --features ${{ matrix.features }}
       - name: test
         uses: nick-fields/retry@v3
         with:
@@ -126,7 +137,7 @@ jobs:
           polling_interval_seconds: 30
           timeout_minutes: 30
           retry_on_exit_code: 101
-          command: cargo test --verbose --workspace --features=all,native-tls,experimental
+          command: cargo test --verbose --workspace --features ${{ matrix.features }}
 
   dist:
     name: "Dist (${{ matrix.os }})"
