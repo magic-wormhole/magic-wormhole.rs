@@ -41,7 +41,6 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn log_transit_connection(info: crate::transit::TransitInfo) {
     tracing::info!("{info}")
 }
@@ -96,25 +95,64 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
 }
 
 /** Generate common offers for testing, together with a pre-made answer that checks the received content */
-#[cfg(not(target_family = "wasm"))]
 async fn file_offers(
 ) -> eyre::Result<Vec<(transfer::offer::OfferSend, transfer::offer::OfferAccept)>> {
     async fn offer(
         name: &str,
     ) -> eyre::Result<(transfer::offer::OfferSend, transfer::offer::OfferAccept)> {
-        let path = format!("tests/{name}");
-        let offer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path).await?;
-        let answer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path)
-            .await?
-            .set_content(|_path| {
-                use std::{
-                    io,
-                    pin::Pin,
-                    task::{Context, Poll},
-                };
+        #[cfg(target_family = "wasm")]
+        let (data, offer) = {
+            let data = match name {
+                "example-file-4096.bin" => {
+                    include_bytes!("../../tests/example-file-4096.bin").to_vec()
+                },
+                "example-file-empty" => include_bytes!("../../tests/example-file-empty").to_vec(),
+                "example-file.bin" => include_bytes!("../../tests/example-file.bin").to_vec(),
+                _ => panic!("file {name} not included in test binary"),
+            };
+            let offer = transfer::offer::OfferSend::new_file_custom(
+                name.into(),
+                data.len() as u64,
+                Box::new({
+                    let data = data.clone();
+                    move || {
+                        let data = data.clone();
+                        Box::pin(async move {
+                            Ok(Box::new(async_std::io::Cursor::new(data))
+                                as Box<
+                                    dyn crate::transfer::offer::AsyncReadSeek
+                                        + std::marker::Send
+                                        + Unpin
+                                        + 'static,
+                                >)
+                        })
+                    }
+                }),
+            );
 
-                let path = path.clone();
-                let content = transfer::offer::new_accept_content(move |_append| {
+            (data, offer)
+        };
+        #[cfg(not(target_family = "wasm"))]
+        let (data, offer) = {
+            let path = format!("tests/{name}");
+            let data = async_std::fs::read(&path).await.unwrap();
+            let offer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path)
+                .await
+                .unwrap();
+
+            (data, offer)
+        };
+
+        let answer = offer.set_content(|_path| {
+            use std::{
+                io,
+                pin::Pin,
+                task::{Context, Poll},
+            };
+
+            let content = transfer::offer::new_accept_content({
+                let data = data.clone();
+                move |_append| {
                     struct Writer {
                         closed: bool,
                         send_bytes: Vec<u8>,
@@ -160,21 +198,22 @@ async fn file_offers(
                         }
                     }
 
-                    let path = path.clone();
+                    let send_bytes = data.clone();
                     async move {
                         Ok(Writer {
                             closed: false,
-                            send_bytes: async_std::fs::read(&path).await?,
+                            send_bytes,
                             receive_bytes: Vec::new(),
                         })
                     }
-                });
-                transfer::offer::AcceptInner {
-                    content,
-                    offset: 0,
-                    sha256: None,
                 }
             });
+            transfer::offer::AcceptInner {
+                content,
+                offset: 0,
+                sha256: None,
+            }
+        });
 
         Ok((offer, answer))
     }
@@ -190,16 +229,17 @@ async fn file_offers(
 
 /** Send a file using the Rust implementation (using deprecated API). This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
-#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
 #[allow(deprecated)]
-pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
-    for (offer, answer) in file_offers().await? {
+pub async fn test_file_rust2rust_deprecated() {
+    for (offer, answer) in file_offers().await.unwrap() {
         let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
         let sender_task = async_std::task::Builder::new()
             .name("sender".to_owned())
-            .spawn(async {
+            .local(async {
                 let (welcome, wormhole_future) = crate::Wormhole::connect_without_code(
                     transfer::APP_CONFIG.id(TEST_APPID).clone(),
                     2,
@@ -223,10 +263,11 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                     )
                     .await?,
                 )
-            })?;
+            })
+            .unwrap();
         let receiver_task = async_std::task::Builder::new()
             .name("receiver".to_owned())
-            .spawn(async {
+            .local(async {
                 let code = code_rx.await?;
                 let config = transfer::APP_CONFIG.id(TEST_APPID);
                 tracing::info!("Got code over local: {}", &code);
@@ -267,25 +308,26 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 )
                 .await?;
                 eyre::Result::<_>::Ok(())
-            })?;
+            })
+            .unwrap();
 
-        sender_task.await?;
-        receiver_task.await?;
+        sender_task.await.unwrap();
+        receiver_task.await.unwrap();
     }
-    Ok(())
 }
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
-#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
-pub async fn test_file_rust2rust() -> eyre::Result<()> {
-    for (offer, answer) in file_offers().await? {
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+pub async fn test_file_rust2rust() {
+    for (offer, answer) in file_offers().await.unwrap() {
         let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
         let sender_task = async_std::task::Builder::new()
             .name("sender".to_owned())
-            .spawn(async {
+            .local(async {
                 let mailbox_connection =
                     MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
                         .await?;
@@ -308,10 +350,11 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                     )
                     .await?,
                 )
-            })?;
+            })
+            .unwrap();
         let receiver_task = async_std::task::Builder::new()
             .name("receiver".to_owned())
-            .spawn(async {
+            .local(async {
                 let code = code_rx.await?;
                 let config = transfer::APP_CONFIG.id(TEST_APPID);
                 let mailbox = MailboxConnection::connect(config, code.clone(), false).await?;
@@ -352,21 +395,24 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 )
                 .await?;
                 eyre::Result::<_>::Ok(())
-            })?;
+            })
+            .unwrap();
 
-        sender_task.await?;
-        receiver_task.await?;
+        sender_task.await.unwrap();
+        receiver_task.await.unwrap();
     }
-    Ok(())
 }
 
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]
-#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
-pub async fn test_send_many() -> eyre::Result<()> {
-    let mailbox = MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+pub async fn test_send_many() {
+    let mailbox = MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID), 2)
+        .await
+        .unwrap();
     let code = mailbox.code.clone();
     tracing::info!("The code is {:?}", code);
 
@@ -380,7 +426,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
 
     /* Send many */
     let sender_code = code.clone();
-    let senders = async_std::task::spawn(async move {
+    let senders = async_std::task::spawn_local(async move {
         // let mut senders = Vec::<async_std::task::JoinHandle<std::result::Result<std::vec::Vec<u8>, eyre::Error>>>::new();
         let mut senders: Vec<async_std::task::JoinHandle<eyre::Result<()>>> = Vec::new();
 
@@ -388,7 +434,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         {
             tracing::info!("Sending file #{}", 0);
             let wormhole = crate::Wormhole::connect(mailbox).await?;
-            senders.push(async_std::task::spawn(async move {
+            senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
                     #[allow(deprecated)]
                     crate::transfer::send(
@@ -417,7 +463,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
             )
             .await?;
             let gen_offer = gen_offer.clone();
-            senders.push(async_std::task::spawn(async move {
+            senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
                     #[allow(deprecated)]
                     crate::transfer::send(
@@ -443,9 +489,11 @@ pub async fn test_send_many() -> eyre::Result<()> {
         tracing::info!("Receiving file #{}", i);
         let wormhole = crate::Wormhole::connect(
             MailboxConnection::connect(transfer::APP_CONFIG.id(TEST_APPID), code.clone(), true)
-                .await?,
+                .await
+                .unwrap(),
         )
-        .await?;
+        .await
+        .unwrap();
         tracing::info!("Got key: {}", &wormhole.key);
         /*let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
             wormhole,
@@ -464,18 +512,21 @@ pub async fn test_send_many() -> eyre::Result<()> {
             magic_wormhole::transit::Abilities::ALL_ABILITIES,
             futures::future::pending(),
         )
-        .await?
+        .await
+        .unwrap()
         .unwrap();
 
         // Hacky v1-compat conversion for now
         let mut answer = (gen_accept()
-            .await?
+            .await
+            .unwrap()
             .into_iter_files()
             .next()
             .unwrap()
             .1
             .content)(false)
-        .await?;
+        .await
+        .unwrap();
 
         req.accept(
             &log_transit_connection,
@@ -483,26 +534,25 @@ pub async fn test_send_many() -> eyre::Result<()> {
             &mut answer,
             futures::future::pending(),
         )
-        .await?;
+        .await
+        .unwrap();
     }
 
-    for sender in senders.await? {
-        sender.await?;
+    for sender in senders.await.unwrap() {
+        sender.await.unwrap();
     }
-
-    Ok(())
 }
 
 /// Try to send a file, but use a bad code, and see how it's handled
-#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
-pub async fn test_wrong_code() -> eyre::Result<()> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+pub async fn test_wrong_code() {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
     let sender_task = async_std::task::Builder::new()
         .name("sender".to_owned())
-        .spawn(async {
-            let mailbox = MailboxConnection::create(APP_CONFIG, 2).await?;
+        .local(async {
+            let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
             if let Some(welcome) = &mailbox.welcome {
                 tracing::info!("Got welcome: {}", welcome);
             }
@@ -514,10 +564,11 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
             eyre::Result::<_>::Ok(())
-        })?;
+        })
+        .unwrap();
     let receiver_task = async_std::task::Builder::new()
         .name("receiver".to_owned())
-        .spawn(async {
+        .local(async {
             let nameplate = code_rx.await?;
             tracing::info!("Got nameplate over local: {}", &nameplate);
             let result = crate::Wormhole::connect(
@@ -527,19 +578,25 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
                     Code::from_components(nameplate, "foo-bar".parse().unwrap()),
                     true,
                 )
-                .await?,
+                .await
+                .unwrap(),
             )
             .await;
 
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
             eyre::Result::<_>::Ok(())
-        })?;
+        })
+        .unwrap();
 
-    async_std::future::timeout(TIMEOUT, sender_task).await??;
-    async_std::future::timeout(TIMEOUT, receiver_task).await??;
-
-    Ok(())
+    async_std::future::timeout(TIMEOUT, sender_task)
+        .await
+        .unwrap()
+        .unwrap();
+    async_std::future::timeout(TIMEOUT, receiver_task)
+        .await
+        .unwrap()
+        .unwrap();
 }
 
 /** Connect three people to the party and watch it explode … gracefully */
