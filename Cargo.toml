@@ -144,7 +144,7 @@ getrandom = { version = "0.2.5", features = ["js"] }
 
 # for some tests
 [dev-dependencies]
-test-log = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
 eyre = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
