@@ -155,14 +155,16 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     ///
     /// # Examples
     ///
-    /// #[cfg(feature = "entropy")]
     /// ```no_run
+    /// # #[cfg(feature = "entropy")]
+    /// # {
     /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection};
     /// let config = APP_CONFIG;
     /// let mailbox_connection =
     ///     MailboxConnection::create_with_password(config, "secret".parse()?).await?;
     /// # Ok(()) })}
+    /// # }
     /// ```
     ///
     /// TODO: Replace this with create_with_validated_password
@@ -260,13 +262,17 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     ///
     /// ```
     /// # fn main() -> eyre::Result<()> { use magic_wormhole::WormholeError;
-    /// async_std::task::block_on(async {
+    /// # #[cfg(feature = "entropy")]
+    /// return async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection, Mood};
     /// let config = APP_CONFIG;
     /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret-code-password".parse()?)
     ///     .await?;
     /// mailbox_connection.shutdown(Mood::Happy).await?;
-    /// # Ok(())})}
+    /// # Ok(())});
+    /// # #[cfg(not(feature = "entropy"))]
+    /// # return Ok(());
+    /// # }
     /// ```
     pub async fn shutdown(self, mood: Mood) -> Result<(), WormholeError> {
         self.server

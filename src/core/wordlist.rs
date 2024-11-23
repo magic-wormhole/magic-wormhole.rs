@@ -79,7 +79,7 @@ impl Wordlist {
     fn normal_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
         words
             .iter()
-            .filter(|word| word.starts_with(partial))
+            .filter(|word| !partial.is_empty() && word.starts_with(partial))
             .cloned()
             .collect()
     }
@@ -277,7 +277,6 @@ mod test {
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-    #[cfg(feature = "fuzzy-complete")]
     fn test_completion_normal() {
         let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
@@ -286,10 +285,8 @@ mod test {
             wl.normal_complete("braz", list).first().unwrap(),
             "brazilian"
         );
-        assert_ne!(
-            wl.fuzzy_complete("choking", list).first().unwrap(),
-            "choking"
-        )
+        assert_eq!(wl.normal_complete("cara", list).first().unwrap(), "caravan");
+        assert!(wl.normal_complete("cravan", list).is_empty());
     }
 
     #[test]
@@ -298,11 +295,11 @@ mod test {
         let list = Wordlist::default_wordlist(2);
 
         assert_eq!(
-            list.get_completions("22-cmpont").first().unwrap(),
+            list.get_completions("22-compo").first().unwrap(),
             "22-component"
         );
         assert_eq!(
-            list.get_completions("22-component-chkup").first().unwrap(),
+            list.get_completions("22-component-check").first().unwrap(),
             "22-component-checkup"
         );
         assert_ne!(list.get_completions("22-troj"), ["trojan"]);
