@@ -174,6 +174,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_uri() {
         test_eq(
             WormholeTransferUri::new("4-hurricane-equipment".parse().unwrap()),
@@ -196,6 +197,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_uri_err() {
         assert_eq!(
             "wormhole-transfer:8-%F0%9F%99%88-%F0%9F%99%89-%F0%9F%99%8A?version=42&rendezvous=ws%3A%2F%2Flocalhost%3A4000%2F&role=leader".parse::<WormholeTransferUri>(),

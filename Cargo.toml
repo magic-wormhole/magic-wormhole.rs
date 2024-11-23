@@ -147,6 +147,9 @@ getrandom = { version = "0.2.5", features = ["js"] }
 test-log = { workspace = true }
 eyre = { workspace = true }
 
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
 [features]
 
 # Check the entropy of custom codes. Will fail for any weak passwords.

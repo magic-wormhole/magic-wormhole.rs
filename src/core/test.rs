@@ -54,6 +54,7 @@ fn default_relay_hints() -> Vec<transit::RelayHint> {
 }
 
 #[test(async_std::test)]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 pub async fn test_connect_with_unknown_code_and_allocate_passes() {
     let code = generate_random_code();
 
@@ -70,6 +71,7 @@ pub async fn test_connect_with_unknown_code_and_allocate_passes() {
 }
 
 #[test(async_std::test)]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
     tracing::info!("hola!");
     let code = generate_random_code();
@@ -542,6 +544,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
 
 /** Connect three people to the party and watch it explode … gracefully */
 #[test(async_std::test)]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 pub async fn test_crowded() {
     let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
     tracing::info!("This test's code is: {}", &initial_mailbox_connection.code);
@@ -564,6 +567,7 @@ pub async fn test_crowded() {
 }
 
 #[async_std::test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 pub async fn test_connect_with_code_expecting_nameplate() {
     let code = generate_random_code();
     let result = MailboxConnection::connect(APP_CONFIG, code.clone(), false).await;
@@ -586,6 +590,7 @@ fn generate_random_code() -> Code {
 }
 
 #[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 fn test_phase() {
     let p = Phase::PAKE;
     assert!(p.is_pake());
@@ -593,6 +598,7 @@ fn test_phase() {
 }
 
 #[test]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 fn test_mood() {
     // The serialized forms of these variants are part of the wire protocol,
     // so they must be spelled exactly as shown (they must match the strings

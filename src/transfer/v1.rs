@@ -888,6 +888,7 @@ mod test {
     use super::*;
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_transit_ack() {
         let f1 = TransitAck::new("ok", "deadbeaf");
         assert_eq!(f1.serialize(), "{\"ack\":\"ok\",\"sha256\":\"deadbeaf\"}");
