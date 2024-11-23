@@ -222,6 +222,7 @@ mod test {
     use crate::core::EitherSide;
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_extract_pake_msg() {
         // let _key = super::KeyMachine::new(
         //     &AppID::new("appid"),
@@ -241,6 +242,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_derive_key() {
         let main = secretbox::Key::from_exact_iter(
             hex::decode("588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1")
@@ -261,6 +263,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_derive_phase_key() {
         let main = secretbox::Key::from_exact_iter(
             hex::decode("588ba9eef353778b074413a0140205d90d7479e36e0dd4ee35bb729d26131ef1")
@@ -290,6 +293,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_derive_phase_key2() {
         // feed python's derive_phase_key with these inputs:
         // key = b"key"
@@ -317,6 +321,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_encrypt_data() {
         let k = secretbox::Key::from_exact_iter(
             hex::decode("ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679")
@@ -335,6 +340,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_decrypt_data() {
         let k = secretbox::Key::from_exact_iter(
             hex::decode("ddc543ef8e4629a603d39dd0307a51bb1e7adb9cb259f6b085c91d0842a18679")

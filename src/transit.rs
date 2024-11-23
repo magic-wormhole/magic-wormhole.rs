@@ -1512,6 +1512,7 @@ mod test {
     use serde_json::json;
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     pub fn test_abilities_encoding() {
         assert_eq!(
             serde_json::to_value(Abilities::ALL).unwrap(),
@@ -1524,6 +1525,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     pub fn test_hints_encoding() {
         assert_eq!(
             serde_json::to_value(Hints::new(

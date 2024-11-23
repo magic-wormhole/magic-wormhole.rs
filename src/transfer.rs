@@ -672,6 +672,7 @@ mod test {
     use transit::{Abilities, DirectHint, RelayHint};
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_transit() {
         let abilities = Abilities::ALL_ABILITIES;
         let hints = transit::Hints::new(
@@ -703,6 +704,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_message() {
         let m1 = PeerMessage::offer_message_v1("hello from rust");
         assert_eq!(
@@ -712,6 +714,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_offer_file() {
         let f1 = PeerMessage::offer_file_v1("somefile.txt", 34556);
         assert_eq!(
@@ -721,6 +724,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_offer_directory() {
         let d1 = PeerMessage::offer_directory_v1("somedirectory", "zipped", 45, 1234, 10);
         assert_eq!(
@@ -730,6 +734,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_message_ack() {
         let m1 = PeerMessage::message_ack_v1("ok");
         assert_eq!(
@@ -739,6 +744,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_file_ack() {
         let f1 = PeerMessage::file_ack_v1("ok");
         assert_eq!(

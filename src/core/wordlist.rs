@@ -147,6 +147,7 @@ mod test {
     use super::*;
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_load_words() {
         let w = load_pgpwords();
         assert_eq!(w.len(), 2);
@@ -157,6 +158,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_default_wordlist() {
         let d = Wordlist::default_wordlist(2);
         assert_eq!(d.words.len(), 2);
@@ -167,6 +169,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_get_wordlist() {
         let list = Wordlist::default_wordlist(2);
         assert_eq!(list.words.len(), 2);
@@ -185,6 +188,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_completion() {
         let words: Vec<Vec<String>> = vec![
             vec_strings("purple green yellow"),
@@ -199,6 +203,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_choose_words() {
         let few_words: Vec<Vec<String>> = vec![vec_strings("purple"), vec_strings("sausages")];
 
@@ -211,6 +216,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_choose_words_matches_completion() {
         let few_words: Vec<Vec<String>> = vec![vec_strings("purple"), vec_strings("sausages")];
 
@@ -225,6 +231,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_choose_more_words() {
         let more_words = vec![vec_strings("purple yellow"), vec_strings("sausages")];
 
@@ -248,6 +255,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg(feature = "fuzzy-complete")]
     fn test_completion_fuzzy() {
         let wl = Wordlist::default_wordlist(2);
@@ -268,6 +276,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg(feature = "fuzzy-complete")]
     fn test_completion_normal() {
         let wl = Wordlist::default_wordlist(2);
@@ -284,6 +293,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_wormhole_code_normal_completions() {
         let list = Wordlist::default_wordlist(2);
 
@@ -299,6 +309,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg(feature = "fuzzy-complete")]
     fn test_wormhole_code_fuzzy_completions() {
         let list = Wordlist::default_wordlist(2);

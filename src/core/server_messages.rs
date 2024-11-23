@@ -255,6 +255,7 @@ mod test {
     use serde_json::{from_str, json, Value};
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_bind() {
         let m1 = OutboundMessage::bind(
             AppID::new("appid"),
@@ -270,6 +271,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_list() {
         let m1 = OutboundMessage::List;
         let s = serde_json::to_string(&m1).unwrap();
@@ -278,6 +280,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_allocate() {
         let m1 = OutboundMessage::Allocate;
         let s = serde_json::to_string(&m1).unwrap();
@@ -286,6 +289,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_claim() {
         let m1 = OutboundMessage::claim("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
@@ -294,6 +298,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_release() {
         let m1 = OutboundMessage::release("nameplate1");
         let s = serde_json::to_string(&m1).unwrap();
@@ -302,6 +307,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_open() {
         let m1 = OutboundMessage::open(Mailbox(String::from("mailbox1")));
         let s = serde_json::to_string(&m1).unwrap();
@@ -310,6 +316,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_add() {
         let m1 = OutboundMessage::add(Phase("phase1".into()), b"body".to_vec());
         let s = serde_json::to_string(&m1).unwrap();
@@ -322,6 +329,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_close() {
         let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Happy);
         let s = serde_json::to_string(&m1).unwrap();
@@ -334,6 +342,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_close_errory() {
         let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Errory);
         let s = serde_json::to_string(&m1).unwrap();
@@ -346,6 +355,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_close_scared() {
         let m1 = OutboundMessage::close(Mailbox(String::from("mailbox1")), Mood::Scared);
         let s = serde_json::to_string(&m1).unwrap();
@@ -358,6 +368,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[allow(deprecated)]
     fn test_welcome3() {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
@@ -376,6 +387,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[allow(deprecated)]
     fn test_welcome4() {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
@@ -396,6 +408,7 @@ mod test {
     // TODO: when "error_on_line_overflow=false" lands on rustfmt(stable),
     // let's replace this cfg_attr with a change to our .rustfmt.toml
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[rustfmt::skip]
     #[allow(deprecated)]
     fn test_welcome5() {
@@ -406,6 +419,7 @@ mod test {
 
     /// Test permission_required field deserialization
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[allow(deprecated)]
     fn test_welcome6() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world", "permission-required": { "none": {}, "hashcash": { "bits": 6, "resource": "resource-string" }, "dark-ritual": { "hocrux": true } } } }"#;
@@ -433,6 +447,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_submit_permissions() {
         let m = OutboundMessage::SubmitPermission(SubmitPermission::Hashcash {
             stamp: "stamp".into(),
@@ -445,6 +460,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_ack() {
         let s = r#"{"type": "ack", "id": null, "server_tx": 1234.56}"#;
         let m = serde_json::from_str(s).unwrap();
@@ -455,6 +471,7 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_message() {
         let s = r#"{"body": "7b2270616b655f7631223a22353361346566366234363434303364376534633439343832663964373236646538396462366631336632613832313537613335646562393562366237633536353533227d", "server_rx": 1523468188.293486, "id": null, "phase": "pake", "server_tx": 1523498654.753594, "type": "message", "side": "side1"}"#;
         let m = serde_json::from_str(s).unwrap();
