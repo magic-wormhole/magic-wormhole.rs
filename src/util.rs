@@ -175,17 +175,3 @@ pub fn hashcash(resource: String, bits: u32) -> String {
         }
     }
 }
-
-pub async fn sleep(duration: std::time::Duration) {
-    async_std::task::sleep(duration).await
-}
-
-pub async fn timeout<F, T>(
-    duration: std::time::Duration,
-    future: F,
-) -> Result<T, async_std::future::TimeoutError>
-where
-    F: futures::Future<Output = T>,
-{
-    async_std::future::timeout(duration, future).await
-}

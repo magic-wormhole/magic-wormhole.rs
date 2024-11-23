@@ -1,6 +1,5 @@
 /// Various helpers to deal with closing connections and cancellation
 use super::*;
-use crate::util;
 
 /// A weird mixture of [`futures::future::Abortable`], [`async_std::sync::Condvar`] and [`futures::future::Select`] tailored to our Ctrl+C handling.
 ///
@@ -83,7 +82,7 @@ pub(super) use with_cancel_transit;
 
 /// Run a future with timeout and cancellation, ignore errors
 async fn wrap_timeout(run: impl Future<Output = ()>, cancel: impl Future<Output = ()>) {
-    let run = util::timeout(SHUTDOWN_TIME, run);
+    let run = async_std::future::timeout(SHUTDOWN_TIME, run);
     futures::pin_mut!(run);
     match cancellable(run, cancel).await {
         Ok(Ok(())) => {},
@@ -157,7 +156,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
                 // and we should not only look for the next one but all have been received
                 // and we should not interrupt a receive operation without making sure it leaves the connection
                 // in a consistent state, otherwise the shutdown may cause protocol errors
-                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = util::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = async_std::future::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
                     error = TransferError::PeerError(e);
                 } else {
                     tracing::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");
