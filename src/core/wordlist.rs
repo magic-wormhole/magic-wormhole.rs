@@ -268,6 +268,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "fuzzy-complete")]
     fn test_completion_normal() {
         let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");

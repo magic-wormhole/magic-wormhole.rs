@@ -7,8 +7,7 @@ use std::{borrow::Cow, str::FromStr, time::Duration};
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
-    self as magic_wormhole, core::MailboxConnection, transit, AppConfig, AppID, Code, Wormhole,
-    WormholeError,
+    self as magic_wormhole, core::MailboxConnection, transit, AppConfig, AppID, Code, WormholeError,
 };
 use test_log::test;
 
@@ -55,8 +54,7 @@ fn default_relay_hints() -> Vec<transit::RelayHint> {
 }
 
 #[test(async_std::test)]
-pub async fn test_connect_with_unknown_code_and_allocate_passes() -> eyre::Result<(), WormholeError>
-{
+pub async fn test_connect_with_unknown_code_and_allocate_passes() {
     let code = generate_random_code();
 
     let mailbox_connection =
@@ -64,7 +62,11 @@ pub async fn test_connect_with_unknown_code_and_allocate_passes() -> eyre::Resul
 
     assert!(mailbox_connection.is_ok());
 
-    mailbox_connection.unwrap().shutdown(Mood::Happy).await
+    mailbox_connection
+        .unwrap()
+        .shutdown(Mood::Happy)
+        .await
+        .unwrap()
 }
 
 #[test(async_std::test)]
@@ -92,6 +94,7 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
 }
 
 /** Generate common offers for testing, together with a pre-made answer that checks the received content */
+#[cfg(not(target_family = "wasm"))]
 async fn file_offers(
 ) -> eyre::Result<Vec<(transfer::offer::OfferSend, transfer::offer::OfferAccept)>> {
     async fn offer(
@@ -185,6 +188,7 @@ async fn file_offers(
 
 /** Send a file using the Rust implementation (using deprecated API). This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
+#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
 #[allow(deprecated)]
 pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
@@ -194,9 +198,11 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
         let sender_task = async_std::task::Builder::new()
             .name("sender".to_owned())
             .spawn(async {
-                let (welcome, wormhole_future) =
-                    Wormhole::connect_without_code(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
-                        .await?;
+                let (welcome, wormhole_future) = crate::Wormhole::connect_without_code(
+                    transfer::APP_CONFIG.id(TEST_APPID).clone(),
+                    2,
+                )
+                .await?;
                 if let Some(welcome) = &welcome.welcome {
                     tracing::info!("Got welcome: {}", welcome);
                 }
@@ -222,7 +228,8 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
                 let code = code_rx.await?;
                 let config = transfer::APP_CONFIG.id(TEST_APPID);
                 tracing::info!("Got code over local: {}", &code);
-                let (welcome, wormhole) = Wormhole::connect_with_code(config.clone(), code).await?;
+                let (welcome, wormhole) =
+                    crate::Wormhole::connect_with_code(config.clone(), code).await?;
                 if let Some(welcome) = &welcome.welcome {
                     tracing::info!("Got welcome: {}", welcome);
                 }
@@ -268,6 +275,7 @@ pub async fn test_file_rust2rust_deprecated() -> eyre::Result<()> {
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
+#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
 pub async fn test_file_rust2rust() -> eyre::Result<()> {
     for (offer, answer) in file_offers().await? {
@@ -284,7 +292,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 }
                 tracing::info!("This wormhole's code is: {}", &mailbox_connection.code);
                 code_tx.send(mailbox_connection.code.clone()).unwrap();
-                let wormhole = Wormhole::connect(mailbox_connection).await?;
+                let wormhole = crate::Wormhole::connect(mailbox_connection).await?;
                 eyre::Result::<_>::Ok(
                     #[allow(deprecated)]
                     transfer::send(
@@ -308,7 +316,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
                 if let Some(welcome) = mailbox.welcome.clone() {
                     tracing::info!("Got welcome: {}", welcome);
                 }
-                let wormhole = Wormhole::connect(mailbox).await?;
+                let wormhole = crate::Wormhole::connect(mailbox).await?;
 
                 // Hacky v1-compat conversion for now
                 let mut answer =
@@ -353,6 +361,7 @@ pub async fn test_file_rust2rust() -> eyre::Result<()> {
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]
+#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
 pub async fn test_send_many() -> eyre::Result<()> {
     let mailbox = MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID), 2).await?;
@@ -376,7 +385,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
         /* The first time, we reuse the current session for sending */
         {
             tracing::info!("Sending file #{}", 0);
-            let wormhole = Wormhole::connect(mailbox).await?;
+            let wormhole = crate::Wormhole::connect(mailbox).await?;
             senders.push(async_std::task::spawn(async move {
                 eyre::Result::Ok(
                     #[allow(deprecated)]
@@ -396,7 +405,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
 
         for i in 1..5usize {
             tracing::info!("Sending file #{}", i);
-            let wormhole = Wormhole::connect(
+            let wormhole = crate::Wormhole::connect(
                 MailboxConnection::connect(
                     transfer::APP_CONFIG.id(TEST_APPID),
                     sender_code.clone(),
@@ -430,7 +439,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
     /* Receive many */
     for i in 0..5usize {
         tracing::info!("Receiving file #{}", i);
-        let wormhole = Wormhole::connect(
+        let wormhole = crate::Wormhole::connect(
             MailboxConnection::connect(transfer::APP_CONFIG.id(TEST_APPID), code.clone(), true)
                 .await?,
         )
@@ -483,6 +492,7 @@ pub async fn test_send_many() -> eyre::Result<()> {
 }
 
 /// Try to send a file, but use a bad code, and see how it's handled
+#[cfg(not(target_family = "wasm"))]
 #[test(async_std::test)]
 pub async fn test_wrong_code() -> eyre::Result<()> {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
@@ -498,7 +508,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
             tracing::info!("This wormhole's code is: {}", &code);
             code_tx.send(code.nameplate()).unwrap();
 
-            let result = Wormhole::connect(mailbox).await;
+            let result = crate::Wormhole::connect(mailbox).await;
             /* This should have failed, due to the wrong code */
             assert!(result.is_err());
             eyre::Result::<_>::Ok(())
@@ -508,7 +518,7 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
         .spawn(async {
             let nameplate = code_rx.await?;
             tracing::info!("Got nameplate over local: {}", &nameplate);
-            let result = Wormhole::connect(
+            let result = crate::Wormhole::connect(
                 MailboxConnection::connect(
                     APP_CONFIG,
                     /* Making a wrong code here by appending nonsense */
@@ -532,8 +542,8 @@ pub async fn test_wrong_code() -> eyre::Result<()> {
 
 /** Connect three people to the party and watch it explode … gracefully */
 #[test(async_std::test)]
-pub async fn test_crowded() -> eyre::Result<()> {
-    let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await?;
+pub async fn test_crowded() {
+    let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
     tracing::info!("This test's code is: {}", &initial_mailbox_connection.code);
     let code = initial_mailbox_connection.code.clone();
 
@@ -551,12 +561,10 @@ pub async fn test_crowded() -> eyre::Result<()> {
         },
         other => panic!("Got wrong error message: {}, wanted 'crowded'", other),
     }
-
-    Ok(())
 }
 
 #[async_std::test]
-pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
+pub async fn test_connect_with_code_expecting_nameplate() {
     let code = generate_random_code();
     let result = MailboxConnection::connect(APP_CONFIG, code.clone(), false).await;
     let error = result.err().unwrap();
@@ -569,8 +577,6 @@ pub async fn test_connect_with_code_expecting_nameplate() -> eyre::Result<()> {
             other
         ),
     }
-
-    Ok(())
 }
 
 fn generate_random_code() -> Code {
