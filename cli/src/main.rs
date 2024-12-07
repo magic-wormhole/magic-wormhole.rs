@@ -89,9 +89,9 @@ struct CommonLeaderArgs {
     /// Length of code (in bytes/words)
     #[arg(short = 'c', long, value_name = "NUMWORDS", default_value = "2")]
     code_length: usize,
-    /// Generate QR code from send link
+    /// Suppress QR code generation from send link
     #[arg(long)]
-    qr: bool,
+    no_qr: bool,
 }
 
 // receive
@@ -292,7 +292,7 @@ async fn main() -> eyre::Result<()> {
     match app.command {
         WormholeCommand::Send {
             common,
-            common_leader: CommonLeaderArgs { code, code_length , qr },
+            common_leader: CommonLeaderArgs { code, code_length , no_qr },
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
@@ -305,7 +305,7 @@ async fn main() -> eyre::Result<()> {
                     common,
                     code,
                     Some(code_length),
-                    qr, 
+                    no_qr, 
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
@@ -332,7 +332,7 @@ async fn main() -> eyre::Result<()> {
             tries,
             timeout,
             common,
-            common_leader: CommonLeaderArgs { code, code_length, qr },
+            common_leader: CommonLeaderArgs { code, code_length, no_qr },
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
@@ -343,7 +343,7 @@ async fn main() -> eyre::Result<()> {
                     common,
                     code,
                     Some(code_length),
-                    qr,
+                    no_qr,
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
@@ -407,7 +407,7 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Forward(ForwardCommand::Serve {
             targets,
             common,
-            common_leader: CommonLeaderArgs { code, code_length, qr },
+            common_leader: CommonLeaderArgs { code, code_length, no_qr },
             ..
         }) => {
             // TODO make fancy
@@ -457,7 +457,7 @@ async fn main() -> eyre::Result<()> {
                     common.clone(),
                     code.clone(),
                     Some(code_length),
-                    qr,
+                    no_qr,
                     true,
                     app_config,
                     Some(&server_print_code),
@@ -571,7 +571,7 @@ async fn parse_and_connect(
     mut code: Option<String>,
     code_length: Option<usize>,
     //commnon_leader_args: CommonLeaderArgs,
-    qr: bool,
+    no_qr: bool,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
     print_code: Option<&PrintCodeFn>,
@@ -646,7 +646,7 @@ async fn parse_and_connect(
                     term,
                     &code,
                     &uri_rendezvous,
-                    qr,
+                    no_qr,
                 )?;
             }
             MailboxConnection::connect(app_config, code, true).await?
@@ -677,7 +677,7 @@ async fn parse_and_connect(
                     term,
                     mailbox_connection.code(),
                     &uri_rendezvous,
-                    qr,
+                    no_qr,
                 )?;
             }
             mailbox_connection
@@ -775,7 +775,7 @@ fn sender_print_code(
     term: &mut Term,
     code: &magic_wormhole::Code,
     rendezvous_server: &Option<url::Url>,
-    qr: bool,
+    no_qr: bool,
 ) -> eyre::Result<()> {
     let uri = magic_wormhole::uri::WormholeTransferUri {
         code: code.clone(),
@@ -795,11 +795,11 @@ fn sender_print_code(
     }
 
     writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
-    if qr {
+    if no_qr {
+        writeln!(term, "QR option not enabled. Skipping QR code generation.")?;
+    } else {
         let qr_code = qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
         writeln!(term, "{}", qr_code)?;
-    } else {
-        writeln!(term, "QR option not enabled. Skipping QR code generation.")?;
     }
 
     writeln!(
