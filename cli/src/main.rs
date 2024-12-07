@@ -294,9 +294,9 @@ async fn main() -> eyre::Result<()> {
             common,
             common_leader: 
                 CommonLeaderArgs { 
-                    code, 
+                    code,
                     code_length,
-                    qr, 
+                    qr,
                 },
             common_send: CommonSenderArgs { file_name, files },
             ..
@@ -341,7 +341,7 @@ async fn main() -> eyre::Result<()> {
                 CommonLeaderArgs { 
                     code,
                     code_length,
-                    qr, 
+                    qr,
                 },
             common_send: CommonSenderArgs { file_name, files },
             ..
@@ -419,9 +419,9 @@ async fn main() -> eyre::Result<()> {
             common,
             common_leader: 
                 CommonLeaderArgs { 
-                    code, 
-                    code_length, 
-                    qr, 
+                    code,
+                    code_length,
+                    qr,
                 },
             ..
         }) => {
@@ -572,7 +572,7 @@ fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {
     }
 }
 
-type PrintCodeFn = 
+type PrintCodeFn =
     dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>, bool) -> eyre::Result<()>;
 
 /**
