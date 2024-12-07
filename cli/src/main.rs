@@ -505,7 +505,7 @@ async fn main() -> eyre::Result<()> {
         },
         WormholeCommand::Completion { shell } => {
             let mut cmd = WormholeCli::command();
-            let binary_name = cmd.get_name().to_string();
+            let binary_name = env!("CARGO_BIN_NAME");
 
             match shell {
                 shell @ clap_complete::Shell::Zsh => {
@@ -513,7 +513,7 @@ async fn main() -> eyre::Result<()> {
                     // this way we can source it directly `source <(wormhole-rs completion zsh)`
 
                     let mut out = Vec::new();
-                    clap_complete::generate(shell, &mut cmd, &binary_name, &mut out);
+                    clap_complete::generate(shell, &mut cmd, binary_name, &mut out);
                     let out = String::from_utf8(out)
                         .expect("Internal error: shell completion not UTF-8 encoded");
                     let out = format!(
@@ -1196,10 +1196,10 @@ mod test {
 
         for shell in clap_complete::Shell::value_variants() {
             let mut cmd = WormholeCli::command();
-            let binary_name = cmd.get_name().to_string();
+            let binary_name = env!("CARGO_BIN_NAME");
 
             let mut out = Vec::new();
-            clap_complete::generate(*shell, &mut cmd, &binary_name, &mut out);
+            clap_complete::generate(*shell, &mut cmd, binary_name, &mut out);
             String::from_utf8(out).unwrap();
         }
     }
