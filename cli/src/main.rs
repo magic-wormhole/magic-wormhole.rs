@@ -292,8 +292,8 @@ async fn main() -> eyre::Result<()> {
     match app.command {
         WormholeCommand::Send {
             common,
-            common_leader: 
-                CommonLeaderArgs { 
+            common_leader:
+                CommonLeaderArgs {
                     code,
                     code_length,
                     qr,
@@ -310,7 +310,7 @@ async fn main() -> eyre::Result<()> {
                     common,
                     code,
                     Some(code_length),
-                    qr, 
+                    qr,
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
@@ -337,8 +337,8 @@ async fn main() -> eyre::Result<()> {
             tries,
             timeout,
             common,
-            common_leader: 
-                CommonLeaderArgs { 
+            common_leader:
+                CommonLeaderArgs {
                     code,
                     code_length,
                     qr,
@@ -417,8 +417,8 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Forward(ForwardCommand::Serve {
             targets,
             common,
-            common_leader: 
-                CommonLeaderArgs { 
+            common_leader:
+                CommonLeaderArgs {
                     code,
                     code_length,
                     qr,
@@ -503,8 +503,8 @@ async fn main() -> eyre::Result<()> {
             tracing::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_hints) =
-                parse_and_connect(&mut term, common, code, None, false, false, app_config, None,
+            let (wormhole, _code, relay_hints) = parse_and_connect(
+                &mut term, common, code, None, false, false, app_config, None,
             )
             .await?;
 
