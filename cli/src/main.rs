@@ -292,7 +292,12 @@ async fn main() -> eyre::Result<()> {
     match app.command {
         WormholeCommand::Send {
             common,
-            common_leader: CommonLeaderArgs { code, code_length , qr },
+            common_leader: 
+                CommonLeaderArgs { 
+                    code, 
+                    code_length,
+                    qr, 
+                },
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
@@ -332,7 +337,12 @@ async fn main() -> eyre::Result<()> {
             tries,
             timeout,
             common,
-            common_leader: CommonLeaderArgs { code, code_length, qr },
+            common_leader: 
+                CommonLeaderArgs { 
+                    code,
+                    code_length,
+                    qr, 
+                },
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
@@ -407,7 +417,12 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Forward(ForwardCommand::Serve {
             targets,
             common,
-            common_leader: CommonLeaderArgs { code, code_length, qr },
+            common_leader: 
+                CommonLeaderArgs { 
+                    code, 
+                    code_length, 
+                    qr, 
+                },
             ..
         }) => {
             // TODO make fancy
@@ -489,7 +504,9 @@ async fn main() -> eyre::Result<()> {
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) =
-                parse_and_connect(&mut term, common, code, None, false, false, app_config, None).await?;
+                parse_and_connect(&mut term, common, code, None, false, false, app_config, None,
+            )
+            .await?;
 
             let offer = forwarding::connect(
                 wormhole,
@@ -555,7 +572,8 @@ fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {
     }
 }
 
-type PrintCodeFn = dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>, bool) -> eyre::Result<()>;
+type PrintCodeFn = 
+    dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>, bool) -> eyre::Result<()>;
 
 /**
  * Parse the necessary command line arguments to establish an initial server connection.
