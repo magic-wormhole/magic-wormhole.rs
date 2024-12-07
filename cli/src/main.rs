@@ -89,6 +89,8 @@ struct CommonLeaderArgs {
     /// Length of code (in bytes/words)
     #[arg(short = 'c', long, value_name = "NUMWORDS", default_value = "2")]
     code_length: usize,
+    #[arg(long)]
+    qr: bool,
 }
 
 // receive
@@ -289,7 +291,7 @@ async fn main() -> eyre::Result<()> {
     match app.command {
         WormholeCommand::Send {
             common,
-            common_leader: CommonLeaderArgs { code, code_length },
+            common_leader: CommonLeaderArgs { code, code_length , qr },
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
@@ -302,6 +304,7 @@ async fn main() -> eyre::Result<()> {
                     common,
                     code,
                     Some(code_length),
+                    qr, 
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
@@ -328,7 +331,7 @@ async fn main() -> eyre::Result<()> {
             tries,
             timeout,
             common,
-            common_leader: CommonLeaderArgs { code, code_length },
+            common_leader: CommonLeaderArgs { code, code_length, qr },
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
@@ -339,6 +342,7 @@ async fn main() -> eyre::Result<()> {
                     common,
                     code,
                     Some(code_length),
+                    qr,
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
@@ -379,6 +383,7 @@ async fn main() -> eyre::Result<()> {
                     code,
                     None,
                     false,
+                    false,
                     transfer::APP_CONFIG,
                     None,
                 ));
@@ -401,7 +406,7 @@ async fn main() -> eyre::Result<()> {
         WormholeCommand::Forward(ForwardCommand::Serve {
             targets,
             common,
-            common_leader: CommonLeaderArgs { code, code_length },
+            common_leader: CommonLeaderArgs { code, code_length, qr },
             ..
         }) => {
             // TODO make fancy
@@ -451,6 +456,7 @@ async fn main() -> eyre::Result<()> {
                     common.clone(),
                     code.clone(),
                     Some(code_length),
+                    qr,
                     true,
                     app_config,
                     Some(&server_print_code),
@@ -482,7 +488,7 @@ async fn main() -> eyre::Result<()> {
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) =
-                parse_and_connect(&mut term, common, code, None, false, app_config, None).await?;
+                parse_and_connect(&mut term, common, code, None, false, false, app_config, None).await?;
 
             let offer = forwarding::connect(
                 wormhole,
@@ -548,7 +554,7 @@ fn parse_transit_args(args: &CommonArgs) -> transit::Abilities {
     }
 }
 
-type PrintCodeFn = dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>) -> eyre::Result<()>;
+type PrintCodeFn = dyn Fn(&mut Term, &magic_wormhole::Code, &Option<url::Url>, bool) -> eyre::Result<()>;
 
 /**
  * Parse the necessary command line arguments to establish an initial server connection.
@@ -563,6 +569,8 @@ async fn parse_and_connect(
     common_args: CommonArgs,
     mut code: Option<String>,
     code_length: Option<usize>,
+    //commnon_leader_args: CommonLeaderArgs,
+    qr: bool,
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
     print_code: Option<&PrintCodeFn>,
@@ -637,6 +645,7 @@ async fn parse_and_connect(
                     term,
                     &code,
                     &uri_rendezvous,
+                    qr,
                 )?;
             }
             MailboxConnection::connect(app_config, code, true).await?
@@ -667,6 +676,7 @@ async fn parse_and_connect(
                     term,
                     mailbox_connection.code(),
                     &uri_rendezvous,
+                    qr,
                 )?;
             }
             mailbox_connection
@@ -764,6 +774,7 @@ fn sender_print_code(
     term: &mut Term,
     code: &magic_wormhole::Code,
     rendezvous_server: &Option<url::Url>,
+    qr: bool,
 ) -> eyre::Result<()> {
     let uri = magic_wormhole::uri::WormholeTransferUri {
         code: code.clone(),
@@ -783,9 +794,12 @@ fn sender_print_code(
     }
 
     writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
-    let qr =
-        qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
-    writeln!(term, "{}", qr)?;
+    if qr {
+        let qr_code = qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
+        writeln!(term, "{}", qr_code)?;
+    } else {
+        writeln!(term, "QR option not enabled. Skipping QR code generation.")?;
+    }
 
     writeln!(
         term,
@@ -805,6 +819,7 @@ fn server_print_code(
     term: &mut Term,
     code: &magic_wormhole::Code,
     _: &Option<url::Url>,
+    _qr: bool,
 ) -> eyre::Result<()> {
     if cfg!(feature = "clipboard") {
         writeln!(
