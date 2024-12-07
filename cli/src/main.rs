@@ -89,6 +89,7 @@ struct CommonLeaderArgs {
     /// Length of code (in bytes/words)
     #[arg(short = 'c', long, value_name = "NUMWORDS", default_value = "2")]
     code_length: usize,
+    /// Generate QR code from send link
     #[arg(long)]
     qr: bool,
 }
