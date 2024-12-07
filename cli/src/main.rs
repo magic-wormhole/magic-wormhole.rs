@@ -796,7 +796,8 @@ fn sender_print_code(
 
     writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
     if qr {
-        let qr_code = qr2term::generate_qr_string(&uri).context("Failed to generate QR code for send link")?;
+        let qr_code = qr2term::generate_qr_string(&uri)
+            .context("Failed to generate QR code for send link")?;
         writeln!(term, "{}", qr_code)?;
     } else {
         writeln!(term, "QR option not enabled. Skipping QR code generation.")?;
