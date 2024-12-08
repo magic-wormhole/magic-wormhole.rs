@@ -9,7 +9,10 @@ use std::{
 
 use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use color_eyre::{eyre, eyre::Context};
+use color_eyre::{
+    eyre::{self, Context},
+    owo_colors::OwoColorize,
+};
 use completer::enter_code;
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
@@ -762,7 +765,7 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     pb.set_style(
         ProgressStyle::default_bar()
             // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .template("[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({eta})")
+            .template("[{elapsed_precise:.yellow}] [{wide_bar}] {bytes:.blue}/{total_bytes:.blue} {decimal_bytes_per_sec:.cyan} ({eta:.yellow})")
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -776,6 +779,7 @@ fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
             pb.set_length(total);
             pb.enable_steady_tick(std::time::Duration::from_millis(250));
         }
+
         pb.set_position(sent);
     }
 }
@@ -1054,12 +1058,12 @@ async fn receive_inner_v1(
         || util::ask_user(
             format!(
                 "Receive file '{}' ({})?",
-                req.file_name(),
+                req.file_name().green(),
                 match NumberPrefix::binary(req.file_size() as f64) {
                     NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
-                    NumberPrefix::Prefixed(prefix, n) =>
-                        format!("{:.1} {}B in size", n, prefix.symbol()),
-                },
+                    NumberPrefix::Prefixed(prefix, n) => format!("{:.1} {}B", n, prefix.symbol()),
+                }
+                .blue(),
             ),
             true,
         )
@@ -1094,7 +1098,7 @@ async fn receive_inner_v1(
 
     /* If there is a collision, ask whether to overwrite */
     if !util::ask_user(
-        format!("Override existing file {}?", file_path.display()),
+        format!("Override existing file {}?", file_path.display()).red(),
         false,
     )
     .await
@@ -1218,6 +1222,14 @@ async fn receive_inner_v2(
 
 fn transit_handler(info: TransitInfo) {
     tracing::info!("{info}");
+    let mut term = Term::stdout();
+
+    let _ = writeln!(
+        term,
+        "Connecting {} to {}",
+        info.conn_type.bright_magenta(),
+        info.peer_addr.cyan()
+    );
 }
 
 #[cfg(test)]
