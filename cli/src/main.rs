@@ -310,7 +310,7 @@ async fn main() -> eyre::Result<()> {
                     common,
                     code,
                     Some(code_length),
-                    no_qr, 
+                    no_qr,
                     true,
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
