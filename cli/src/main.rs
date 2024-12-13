@@ -777,14 +777,13 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     use indicatif::ProgressStyle;
 
     let template = match should_use_color() {
-        true => "[{elapsed_precise:.yellow.dim}] [{wide_bar}] {bytes:.blue}/{total_bytes:.blue} | {decimal_bytes_per_sec:.green} | ETA: {eta:.yellow.dim}",
+        true => "[{elapsed_precise:.yellow.dim.bold}] [{wide_bar}] {bytes:.blue.bold}/{total_bytes:.blue.bold} | {decimal_bytes_per_sec:.green.bold} | ETA: {eta:.yellow.dim.bold}",
         false => "[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} | {decimal_bytes_per_sec} | ETA: {eta}",
     };
 
     let pb = ProgressBar::new(file_size);
     pb.set_style(
         ProgressStyle::default_bar()
-            // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .template(template)
             .unwrap()
             .progress_chars("#>-"),
@@ -1079,13 +1078,14 @@ async fn receive_inner_v1(
             match should_use_color() {
                 true => format!(
                     "Receive file '{}' ({})?",
-                    req.file_name().green(),
+                    req.file_name().green().bold(),
                     match NumberPrefix::binary(req.file_size() as f64) {
                         NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
                         NumberPrefix::Prefixed(prefix, n) =>
                             format!("{:.1} {}B", n, prefix.symbol()),
                     }
-                    .blue(),
+                    .blue()
+                    .bold(),
                 ),
                 false => format!(
                     "Receive file '{}' ({})?",
@@ -1131,7 +1131,10 @@ async fn receive_inner_v1(
     /* If there is a collision, ask whether to overwrite */
     if !util::ask_user(
         match should_use_color() {
-            true => format!("Override existing file {}?", file_path.display().red()),
+            true => format!(
+                "Override existing file {}?",
+                file_path.display().red().bold()
+            ),
             false => format!("Override existing file {}?", file_path.display()),
         },
         false,
@@ -1261,13 +1264,13 @@ fn transit_handler(info: TransitInfo) {
     let use_color = should_use_color();
 
     let conn_type = if use_color {
-        info.conn_type.bright_magenta().to_string()
+        info.conn_type.bright_magenta().bold().to_string()
     } else {
         info.conn_type.to_string()
     };
 
     let peer_addr = if use_color {
-        info.peer_addr.cyan().to_string()
+        info.peer_addr.cyan().bold().to_string()
     } else {
         info.peer_addr.to_string()
     };
