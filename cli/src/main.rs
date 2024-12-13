@@ -785,7 +785,7 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     pb.set_style(
         ProgressStyle::default_bar()
             // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .template(&template)
+            .template(template)
             .unwrap()
             .progress_chars("#>-"),
     );
