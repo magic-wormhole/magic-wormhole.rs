@@ -262,8 +262,18 @@ struct WormholeCli {
         display_order = 100
     )]
     log: bool,
+
     #[clap(subcommand)]
     command: WormholeCommand,
+
+    /// Disable colored output
+    #[arg(
+        long = "no-color",
+        global = true,
+        help = "Disable colored output",
+        display_order = 101
+    )]
+    no_color: bool,
 }
 
 #[async_std::main]
@@ -274,6 +284,11 @@ async fn main() -> eyre::Result<()> {
     let app = WormholeCli::parse();
 
     let mut term = Term::stdout();
+
+    // Set NO_COLOR environment variable if --no-color flag is used
+    if app.no_color {
+        std::env::set_var("NO_COLOR", "1");
+    }
 
     if app.log {
         tracing_subscriber::fmt()
@@ -761,11 +776,16 @@ async fn make_send_offer(
 fn create_progress_bar(file_size: u64) -> ProgressBar {
     use indicatif::ProgressStyle;
 
+    let template = match should_use_color() {
+        true => "[{elapsed_precise:.yellow.dim}] [{wide_bar}] {bytes:.blue}/{total_bytes:.blue} | {decimal_bytes_per_sec:.green} | ETA: {eta:.yellow.dim}",
+        false => "[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} | {decimal_bytes_per_sec} | ETA: {eta}",
+    };
+
     let pb = ProgressBar::new(file_size);
     pb.set_style(
         ProgressStyle::default_bar()
             // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .template("[{elapsed_precise:.yellow}] [{wide_bar}] {bytes:.blue}/{total_bytes:.blue} {decimal_bytes_per_sec:.cyan} ({eta:.yellow})")
+            .template(&template)
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -1056,15 +1076,27 @@ async fn receive_inner_v1(
     use number_prefix::NumberPrefix;
     if !(noconfirm
         || util::ask_user(
-            format!(
-                "Receive file '{}' ({})?",
-                req.file_name().green(),
-                match NumberPrefix::binary(req.file_size() as f64) {
-                    NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
-                    NumberPrefix::Prefixed(prefix, n) => format!("{:.1} {}B", n, prefix.symbol()),
-                }
-                .blue(),
-            ),
+            match should_use_color() {
+                true => format!(
+                    "Receive file '{}' ({})?",
+                    req.file_name().green(),
+                    match NumberPrefix::binary(req.file_size() as f64) {
+                        NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                        NumberPrefix::Prefixed(prefix, n) =>
+                            format!("{:.1} {}B", n, prefix.symbol()),
+                    }
+                    .blue(),
+                ),
+                false => format!(
+                    "Receive file '{}' ({})?",
+                    req.file_name(),
+                    match NumberPrefix::binary(req.file_size() as f64) {
+                        NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                        NumberPrefix::Prefixed(prefix, n) =>
+                            format!("{:.1} {}B", n, prefix.symbol()),
+                    },
+                ),
+            },
             true,
         )
         .await)
@@ -1098,7 +1130,10 @@ async fn receive_inner_v1(
 
     /* If there is a collision, ask whether to overwrite */
     if !util::ask_user(
-        format!("Override existing file {}?", file_path.display()).red(),
+        match should_use_color() {
+            true => format!("Override existing file {}?", file_path.display().red()),
+            false => format!("Override existing file {}?", file_path.display()),
+        },
         false,
     )
     .await
@@ -1222,14 +1257,31 @@ async fn receive_inner_v2(
 
 fn transit_handler(info: TransitInfo) {
     tracing::info!("{info}");
-    let mut term = Term::stdout();
+    let mut term = Term::stderr();
+    let use_color = should_use_color();
 
-    let _ = writeln!(
-        term,
-        "Connecting {} to {}",
-        info.conn_type.bright_magenta(),
-        info.peer_addr.cyan()
-    );
+    let conn_type = if use_color {
+        info.conn_type.bright_magenta().to_string()
+    } else {
+        info.conn_type.to_string()
+    };
+
+    let peer_addr = if use_color {
+        info.peer_addr.cyan().to_string()
+    } else {
+        info.peer_addr.to_string()
+    };
+
+    let _ = writeln!(term, "Connecting {} to {}", conn_type, peer_addr);
+}
+
+fn should_use_color() -> bool {
+    // Don't use colors if NO_COLOR is set (regardless of value)
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    // Don't use colors when stdout is not a terminal
+    std::io::stdout().is_terminal()
 }
 
 #[cfg(test)]
