@@ -266,11 +266,11 @@ struct WormholeCli {
     #[clap(subcommand)]
     command: WormholeCommand,
 
-    /// Disable colored output
+    /// Disable color output
     #[arg(
         long = "no-color",
         global = true,
-        help = "Disable colored output",
+        help = "Disable color output",
         display_order = 101
     )]
     no_color: bool,
