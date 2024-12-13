@@ -776,9 +776,10 @@ async fn make_send_offer(
 fn create_progress_bar(file_size: u64) -> ProgressBar {
     use indicatif::ProgressStyle;
 
-    let template = match should_use_color() {
-        true => "[{elapsed_precise:.yellow.dim.bold}] [{wide_bar}] {bytes:.blue.bold}/{total_bytes:.blue.bold} | {decimal_bytes_per_sec:.green.bold} | ETA: {eta:.yellow.dim.bold}",
-        false => "[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} | {decimal_bytes_per_sec} | ETA: {eta}",
+    let template = if should_use_color() {
+        "[{elapsed_precise:.yellow.dim.bold}] [{wide_bar}] {bytes:.blue.bold}/{total_bytes:.blue.bold} | {decimal_bytes_per_sec:.green.bold} | ETA: {eta:.yellow.dim.bold}"
+    } else {
+        "[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} | {decimal_bytes_per_sec} | ETA: {eta}"
     };
 
     let pb = ProgressBar::new(file_size);
@@ -1130,12 +1131,13 @@ async fn receive_inner_v1(
 
     /* If there is a collision, ask whether to overwrite */
     if !util::ask_user(
-        match should_use_color() {
-            true => format!(
+        if should_use_color() {
+            format!(
                 "Override existing file {}?",
                 file_path.display().red().bold()
-            ),
-            false => format!("Override existing file {}?", file_path.display()),
+            )
+        } else {
+            format!("Override existing file {}?", file_path.display())
         },
         false,
     )
