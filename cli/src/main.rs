@@ -777,7 +777,7 @@ fn create_progress_bar(file_size: u64) -> ProgressBar {
     use indicatif::ProgressStyle;
 
     let template = if should_use_color() {
-        "[{elapsed_precise:.yellow.dim.bold}] [{wide_bar}] {bytes:.blue.bold}/{total_bytes:.blue.bold} | {decimal_bytes_per_sec:.green.bold} | ETA: {eta:.yellow.dim.bold}"
+        "[{elapsed_precise:.yellow.bold}] [{wide_bar}] {bytes:.blue.bold}/{total_bytes:.blue.bold} | {decimal_bytes_per_sec:.green.bold} | ETA: {eta:.yellow.bold}"
     } else {
         "[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} | {decimal_bytes_per_sec} | ETA: {eta}"
     };
