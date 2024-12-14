@@ -1281,11 +1281,22 @@ fn transit_handler(info: TransitInfo) {
 }
 
 fn should_use_color() -> bool {
-    // Don't use colors if NO_COLOR is set (regardless of value)
+    // Check NO_COLOR first - if it exists with any value, disable colors
     if std::env::var_os("NO_COLOR").is_some() {
         return false;
     }
-    // Don't use colors when stdout is not a terminal
+
+    // Then check CLICOLOR_FORCE - if set, enable colors regardless of terminal
+    if std::env::var_os("CLICOLOR_FORCE").is_some() {
+        return true;
+    }
+
+    // Check CLICOLOR - if set, use colors only when writing to a terminal
+    if std::env::var_os("CLICOLOR").is_some() {
+        return std::io::stdout().is_terminal();
+    }
+
+    // Modern default (acting as if CLICOLOR is set):
     std::io::stdout().is_terminal()
 }
 
