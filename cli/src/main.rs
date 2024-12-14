@@ -1286,17 +1286,17 @@ fn should_use_color() -> bool {
         return false;
     }
 
-    // Then check CLICOLOR_FORCE - if set, enable colors regardless of terminal
-    if std::env::var_os("CLICOLOR_FORCE").is_some() {
+    // Then check CLICOLOR_FORCE - if set and not empty/"0", enable colors regardless of terminal
+    if std::env::var_os("CLICOLOR_FORCE").is_some_and(|e| !e.is_empty() && e != "0") {
         return true;
     }
 
-    // Check CLICOLOR - if set, use colors only when writing to a terminal
-    if std::env::var_os("CLICOLOR").is_some() {
+    // Check CLICOLOR - if set and not empty/"0", use colors only when writing to a terminal
+    if std::env::var_os("CLICOLOR").is_some_and(|e| !e.is_empty() && e != "0") {
         return std::io::stdout().is_terminal();
     }
 
-    // Modern default (acting as if CLICOLOR is set):
+    // Modern default (acting as if CLICOLOR is set)
     std::io::stdout().is_terminal()
 }
 
