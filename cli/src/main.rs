@@ -19,7 +19,7 @@ use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use magic_wormhole::{
     forwarding, transfer,
-    transit::{self, TransitInfo},
+    transit::{self, ConnectionType, TransitInfo},
     MailboxConnection, ParseCodeError, ParsePasswordError, Wormhole,
 };
 use std::{io::Write, path::PathBuf};
@@ -1277,7 +1277,11 @@ fn transit_handler(info: TransitInfo) {
         info.peer_addr.to_string()
     };
 
-    let _ = writeln!(term, "Connecting {} to {}", conn_type, peer_addr);
+    if info.conn_type == ConnectionType::Direct {
+        let _ = writeln!(term, "Connecting {} to {}", conn_type, peer_addr);
+    } else {
+        let _ = writeln!(term, "Connecting {}", conn_type);
+    };
 }
 
 fn should_use_color() -> bool {
