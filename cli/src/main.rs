@@ -120,6 +120,7 @@ struct CommonArgs {
         action = clap::ArgAction::Append,
         value_name = "tcp://HOSTNAME:PORT",
         value_hint = clap::ValueHint::Url,
+        env = "WORMHOLE_RELAY_SERVER",
     )]
     relay_server: Vec<url::Url>,
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
