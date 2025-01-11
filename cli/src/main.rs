@@ -243,6 +243,7 @@ enum WormholeCommand {
     version,
     author,
     about,
+    name = "wormhole-rs",
     arg_required_else_help = true,
     disable_help_subcommand = true,
     propagate_version = true,
