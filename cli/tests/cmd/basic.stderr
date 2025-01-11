@@ -10,8 +10,9 @@ Commands:
 
 Options:
   -v, --verbose[..]
-  -h, --help[..]
-  -V, --version[..]
+      --no-color  Disable color output
+  -h, --help      Print help
+  -V, --version   Print version
 
 Run a subcommand with `--help` to know how it's used.
 To send files, use `wormhole send <PATH>`.

@@ -10,6 +10,7 @@ Commands:
 
 Options:
   -v, --verbose[..]
+      --no-color  Disable color output
   -h, --help[..]
   -V, --version[..]
 

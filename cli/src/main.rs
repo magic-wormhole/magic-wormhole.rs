@@ -9,14 +9,17 @@ use std::{
 
 use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use color_eyre::{eyre, eyre::Context};
+use color_eyre::{
+    eyre::{self, Context},
+    owo_colors::OwoColorize,
+};
 use completer::enter_code;
 use console::{style, Term};
 use futures::{future::Either, Future, FutureExt};
 use indicatif::{MultiProgress, ProgressBar};
 use magic_wormhole::{
     forwarding, transfer,
-    transit::{self, TransitInfo},
+    transit::{self, ConnectionType, TransitInfo},
     MailboxConnection, ParseCodeError, ParsePasswordError, Wormhole,
 };
 use std::{io::Write, path::PathBuf};
@@ -261,8 +264,18 @@ struct WormholeCli {
         display_order = 100
     )]
     log: bool,
+
     #[clap(subcommand)]
     command: WormholeCommand,
+
+    /// Disable color output
+    #[arg(
+        long = "no-color",
+        global = true,
+        help = "Disable color output",
+        display_order = 101
+    )]
+    no_color: bool,
 }
 
 #[async_std::main]
@@ -273,6 +286,11 @@ async fn main() -> eyre::Result<()> {
     let app = WormholeCli::parse();
 
     let mut term = Term::stdout();
+
+    // Set NO_COLOR environment variable if --no-color flag is used
+    if app.no_color {
+        std::env::set_var("NO_COLOR", "1");
+    }
 
     if app.log {
         tracing_subscriber::fmt()
@@ -760,11 +778,16 @@ async fn make_send_offer(
 fn create_progress_bar(file_size: u64) -> ProgressBar {
     use indicatif::ProgressStyle;
 
+    let template = if should_use_color() {
+        "[{elapsed_precise:.yellow.bold}] [{wide_bar}] {bytes:.blue.bold}/{total_bytes:.blue.bold} | {decimal_bytes_per_sec:.green.bold} | ETA: {eta:.yellow.bold}"
+    } else {
+        "[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} | {decimal_bytes_per_sec} | ETA: {eta}"
+    };
+
     let pb = ProgressBar::new(file_size);
     pb.set_style(
         ProgressStyle::default_bar()
-            // .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .template("[{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({eta})")
+            .template(template)
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -778,6 +801,7 @@ fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
             pb.set_length(total);
             pb.enable_steady_tick(std::time::Duration::from_millis(250));
         }
+
         pb.set_position(sent);
     }
 }
@@ -1054,15 +1078,28 @@ async fn receive_inner_v1(
     use number_prefix::NumberPrefix;
     if !(noconfirm
         || util::ask_user(
-            format!(
-                "Receive file '{}' ({})?",
-                req.file_name(),
-                match NumberPrefix::binary(req.file_size() as f64) {
-                    NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
-                    NumberPrefix::Prefixed(prefix, n) =>
-                        format!("{:.1} {}B in size", n, prefix.symbol()),
-                },
-            ),
+            match should_use_color() {
+                true => format!(
+                    "Receive file '{}' ({})?",
+                    req.file_name().green().bold(),
+                    match NumberPrefix::binary(req.file_size() as f64) {
+                        NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                        NumberPrefix::Prefixed(prefix, n) =>
+                            format!("{:.1} {}B", n, prefix.symbol()),
+                    }
+                    .blue()
+                    .bold(),
+                ),
+                false => format!(
+                    "Receive file '{}' ({})?",
+                    req.file_name(),
+                    match NumberPrefix::binary(req.file_size() as f64) {
+                        NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                        NumberPrefix::Prefixed(prefix, n) =>
+                            format!("{:.1} {}B", n, prefix.symbol()),
+                    },
+                ),
+            },
             true,
         )
         .await)
@@ -1096,7 +1133,14 @@ async fn receive_inner_v1(
 
     /* If there is a collision, ask whether to overwrite */
     if !util::ask_user(
-        format!("Override existing file {}?", file_path.display()),
+        if should_use_color() {
+            format!(
+                "Override existing file {}?",
+                file_path.display().red().bold()
+            )
+        } else {
+            format!("Override existing file {}?", file_path.display())
+        },
         false,
     )
     .await
@@ -1220,6 +1264,46 @@ async fn receive_inner_v2(
 
 fn transit_handler(info: TransitInfo) {
     tracing::info!("{info}");
+    let mut term = Term::stderr();
+    let use_color = should_use_color();
+
+    let conn_type = if use_color {
+        info.conn_type.bright_magenta().bold().to_string()
+    } else {
+        info.conn_type.to_string()
+    };
+
+    let peer_addr = if use_color {
+        info.peer_addr.cyan().bold().to_string()
+    } else {
+        info.peer_addr.to_string()
+    };
+
+    if info.conn_type == ConnectionType::Direct {
+        let _ = writeln!(term, "Connecting {} to {}", conn_type, peer_addr);
+    } else {
+        let _ = writeln!(term, "Connecting {}", conn_type);
+    };
+}
+
+fn should_use_color() -> bool {
+    // Check NO_COLOR first - if it exists with any value, disable colors
+    if std::env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+
+    // Then check CLICOLOR_FORCE - if set and not empty/"0", enable colors regardless of terminal
+    if std::env::var_os("CLICOLOR_FORCE").is_some_and(|e| !e.is_empty() && e != "0") {
+        return true;
+    }
+
+    // Check CLICOLOR - if set and not empty/"0", use colors only when writing to a terminal
+    if std::env::var_os("CLICOLOR").is_some_and(|e| !e.is_empty() && e != "0") {
+        return std::io::stdout().is_terminal();
+    }
+
+    // Modern default (acting as if CLICOLOR is set)
+    std::io::stdout().is_terminal()
 }
 
 #[cfg(test)]
