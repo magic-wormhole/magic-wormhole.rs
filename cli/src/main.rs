@@ -123,10 +123,11 @@ struct CommonArgs {
         action = clap::ArgAction::Append,
         value_name = "tcp://HOSTNAME:PORT",
         value_hint = clap::ValueHint::Url,
+        env = "WORMHOLE_RELAY_URL",
     )]
     relay_server: Vec<url::Url>,
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
-    #[arg(long, value_name = "ws://example.org", value_hint = clap::ValueHint::Url)]
+    #[arg(long, value_name = "ws://example.org", value_hint = clap::ValueHint::Url, env = "WORMHOLE_MAILBOX_URL")]
     rendezvous_server: Option<url::Url>,
     /// Disable the relay server support and force a direct connection.
     #[arg(long)]
@@ -245,6 +246,7 @@ enum WormholeCommand {
     version,
     author,
     about,
+    name = "wormhole-rs",
     arg_required_else_help = true,
     disable_help_subcommand = true,
     propagate_version = true,
