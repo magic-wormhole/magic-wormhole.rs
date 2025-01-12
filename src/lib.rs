@@ -37,11 +37,10 @@ pub mod transit;
 #[cfg(feature = "transfer")]
 pub mod uri;
 
-#[expect(deprecated)]
 pub use crate::core::{
     key::{Key, KeyPurpose, WormholeKey},
     rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, ParseCodeError,
-    ParseNameplateError, ParsePasswordError, Password, Wormhole, WormholeError, WormholeWelcome,
+    ParseNameplateError, ParsePasswordError, Password, Wormhole, WormholeError,
 };
 
 #[doc(hidden)]
