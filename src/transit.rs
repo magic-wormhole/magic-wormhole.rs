@@ -46,34 +46,21 @@ pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 /// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
 #[derive(Debug)]
 pub(crate) struct TransitKey;
 
-#[expect(deprecated)]
 impl KeyPurpose for TransitKey {}
 
 /// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
 #[derive(Debug)]
-pub struct TransitRxKey;
-#[expect(deprecated)]
+pub(crate) struct TransitRxKey;
+
 impl KeyPurpose for TransitRxKey {}
 
 /// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
 #[derive(Debug)]
-pub struct TransitTxKey;
-#[expect(deprecated)]
+pub(crate) struct TransitTxKey;
+
 impl KeyPurpose for TransitTxKey {}
 
 /// An error occurred when connecting to the peer.
@@ -1458,7 +1445,6 @@ type HandshakeResult = (
  * must write `Ok\n` into the stream that should be used (and optionally `Nevermind\n`
  * into all others).
  */
-#[expect(deprecated)]
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,
