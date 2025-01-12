@@ -302,14 +302,11 @@ pub struct Wormhole {
     key: key::Key<key::WormholeKey>,
     appid: AppID,
     /// The cryptographic verifier code for the connection
-    #[deprecated(since = "0.7.0", note = "Use the verifier() method")]
-    pub verifier: Box<secretbox::Key>,
+    verifier: Box<secretbox::Key>,
     /// Our app version
-    #[deprecated(since = "0.7.0", note = "Use the our_version() method")]
-    pub our_version: Box<dyn std::any::Any + Send + Sync>,
+    our_version: Box<dyn std::any::Any + Send + Sync>,
     /// The app version of the peer
-    #[deprecated(since = "0.7.0", note = "Use the peer_version() method")]
-    pub peer_version: serde_json::Value,
+    peer_version: serde_json::Value,
 }
 
 impl Wormhole {
@@ -418,7 +415,6 @@ impl Wormhole {
         tracing::info!("Found peer on the rendezvous server.");
 
         /* We are now fully initialized! Up and running! :tada: */
-        #[expect(deprecated)]
         Ok(Self {
             server,
             appid: config.id,
@@ -537,7 +533,6 @@ impl Wormhole {
      * attack vector.
      */
     pub fn verifier(&self) -> &secretbox::Key {
-        #[expect(deprecated)]
         &self.verifier
     }
 
@@ -545,7 +540,6 @@ impl Wormhole {
      * Our "app version" information that we sent. See the [`peer_version`](Self::peer_version()) for more information.
      */
     pub fn our_version(&self) -> &(dyn std::any::Any + Send + Sync) {
-        #[expect(deprecated)]
         &*self.our_version
     }
 
@@ -555,7 +549,6 @@ impl Wormhole {
      * (e.g. by the file transfer API).
      */
     pub fn peer_version(&self) -> &serde_json::Value {
-        #[expect(deprecated)]
         &self.peer_version
     }
 }
