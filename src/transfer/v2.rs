@@ -128,15 +128,25 @@ async fn make_transit(
         };
 
     /* Get a transit connection */
-    let (transit, info) = match connector
-        .connect(
-            is_leader,
-            wormhole.key().derive_transit_key(wormhole.appid()),
-            peer_abilities,
-            Arc::new(their_hints),
-        )
-        .await
-    {
+    let connect_result = if is_leader {
+        connector
+            .leader_connect(
+                wormhole.key().derive_transit_key(wormhole.appid()),
+                peer_abilities,
+                Arc::new(their_hints),
+            )
+            .await
+    } else {
+        connector
+            .follower_connect(
+                wormhole.key().derive_transit_key(wormhole.appid()),
+                peer_abilities,
+                Arc::new(their_hints),
+            )
+            .await
+    };
+
+    let (transit, info) = match connect_result {
         Ok(transit) => transit,
         Err(error) => {
             let error = TransferError::TransitConnect(error);
