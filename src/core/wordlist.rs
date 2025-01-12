@@ -100,7 +100,6 @@ impl Wordlist {
         }
     }
 
-    #[cfg(feature = "entropy")]
     pub(crate) fn into_words(self) -> impl Iterator<Item = String> {
         self.words.into_iter().flatten()
     }

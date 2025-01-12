@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- lib: Remove explicit entropy feature and make it the default
+
 ### Added
 
 - cli: Add colors support

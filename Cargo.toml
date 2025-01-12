@@ -102,7 +102,7 @@ thiserror = { workspace = true }
 futures = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 percent-encoding = { workspace = true }
-zxcvbn = { workspace = true, optional = true }
+zxcvbn = { workspace = true }
 
 tracing = { workspace = true, features = ["log", "log-always"] }
 
@@ -151,9 +151,6 @@ eyre = { workspace = true }
 wasm-bindgen-test = "0.3"
 
 [features]
-
-# Check the entropy of custom codes. Will fail for any weak passwords.
-entropy = ["zxcvbn"]
 transfer = ["transit", "dep:tar", "dep:rmp-serde"]
 transit = [
     "dep:noise-rust-crypto",
