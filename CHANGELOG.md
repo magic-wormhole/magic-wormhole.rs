@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] - 2025-01-12
+
+### Fixed
+
+- cli: Command line arguments completion would generate completions for magic-wormhole-cli, not wormhole-rs
+
 ## [0.7.4] - 2024-11-23
 
 ### Fixed

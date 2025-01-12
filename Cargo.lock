@@ -1912,7 +1912,7 @@ dependencies = [
 
 [[package]]
 name = "magic-wormhole"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "async-io",
  "async-std",
@@ -1956,7 +1956,7 @@ dependencies = [
 
 [[package]]
 name = "magic-wormhole-cli"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "arboard",
  "async-std",
