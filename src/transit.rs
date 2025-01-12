@@ -13,7 +13,7 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{Key, KeyPurpose};
+use crate::{core::key::GenericKey, Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
@@ -1499,7 +1499,7 @@ async fn handshake_exchange(
     if host_type != &ConnectionType::Direct {
         tracing::trace!("initiating relay handshake");
 
-        let sub_key = key.derive_subkey_from_purpose::<crate::GenericKey>("transit_relay_token");
+        let sub_key = key.derive_subkey_from_purpose::<GenericKey>("transit_relay_token");
         socket
             .write_all(format!("please relay {} for side {}\n", sub_key.to_hex(), tside).as_bytes())
             .await?;

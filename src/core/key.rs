@@ -21,11 +21,7 @@ impl KeyPurpose for WormholeKey {}
 
 /// A generic key purpose for ad-hoc subkeys or if you don't care.
 #[derive(Debug)]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct GenericKey;
+pub(crate) struct GenericKey;
 impl KeyPurpose for GenericKey {}
 
 /**
