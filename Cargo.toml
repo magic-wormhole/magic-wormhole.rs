@@ -3,7 +3,7 @@ members = [".", "cli"]
 default-members = ["cli"]
 
 [workspace.package]
-version = "0.7.4"
+version = "0.8.0-alpha.1"
 authors = [
     "Fina Wilke <code@felinira.net>",
     "piegames <info@piegames.de>",

@@ -273,12 +273,20 @@ jobs:
           else
             echo "tag=0" >> "$GITHUB_OUTPUT"
           fi
-      - name: Extract Changelog for ${{ steps.query-version.outputs.version }}
+      - name: Extract changelog for ${{ steps.query-version.outputs.version }}
         id: query-changelog
+        continue-on-error: true
         uses: release-flow/keep-a-changelog-action@v3
         with:
           command: query
           version: ${{ steps.query-version.outputs.version }}
+      - name: "Fallback: Extract changelog for unreleased"
+        if: ${{ steps.query-changelog.outcome != 'success' }}
+        id: query-changelog-unreleased
+        uses: release-flow/keep-a-changelog-action@v3
+        with:
+          command: query
+          version: unreleased
       - uses: actions/download-artifact@v4
         with:
           path: "./dist"
@@ -288,9 +296,9 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/main') }}
         with:
           name: "Version ${{ steps.query-version.outputs.version }}"
-          body: ${{ steps.query-changelog.outputs.release-notes }}
+          body: ${{ steps.query-changelog.outputs.release-notes || steps.query-changelog-unreleased.outputs.release-notes }}
           files: "./dist/**/magic-wormhole-cli-*"
           fail_on_unmatched_files: true
           prerelease: ${{ contains(steps.query-version.outputs.version, '-') }}
-          draft: ${{ steps.check-tag.outputs.tag == 0 && !startsWith(github.ref, 'refs/tags/') }}
+          draft: ${{ (steps.check-tag.outputs.tag == 0 && !startsWith(github.ref, 'refs/tags/')) || steps.query-changelog.outcome != 'success' }}
           make_latest: ${{ !contains(steps.query-version.outputs.version, '-') && startsWith(github.ref, 'refs/tags/') }}
