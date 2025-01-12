@@ -318,17 +318,12 @@ impl MailboxMachine {
 }
 
 /// The rendezvous server is a central server used for connection establishment
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct RendezvousServer {
+pub(crate) struct RendezvousServer {
     connection: WsConnection,
     state: Option<MailboxMachine>,
     side: MySide,
 }
 
-#[expect(deprecated)]
 impl std::fmt::Debug for RendezvousServer {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_struct("RendezvousServer")
@@ -339,7 +334,6 @@ impl std::fmt::Debug for RendezvousServer {
 }
 
 #[expect(deprecated)]
-#[expect(missing_docs)]
 impl RendezvousServer {
     /**
      * Connect to the rendezvous server
@@ -587,6 +581,7 @@ impl RendezvousServer {
      *
      * This is the base functionality for seeds.
      */
+    #[expect(dead_code)]
     pub async fn open_directly(&mut self, mailbox: Mailbox) -> Result<(), RendezvousError> {
         assert!(
             self.state.is_none(),
