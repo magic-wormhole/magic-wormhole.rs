@@ -154,10 +154,6 @@ impl Abilities {
         noise_v1: false,
     };
 
-    /// The abilities preset that contains all abilities
-    #[deprecated(since = "0.7.0", note = "use Abilities::ALL")]
-    pub const ALL_ABILITIES: Self = Self::ALL;
-
     /**
      * If you absolutely don't want to use any relay servers.
      *

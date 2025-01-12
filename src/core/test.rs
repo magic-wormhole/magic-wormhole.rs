@@ -249,11 +249,10 @@ pub async fn test_file_rust2rust() {
                 code_tx.send(mailbox_connection.code.clone()).unwrap();
                 let wormhole = crate::Wormhole::connect(mailbox_connection).await?;
                 eyre::Result::<_>::Ok(
-                    #[expect(deprecated)]
                     transfer::send(
                         wormhole,
                         default_relay_hints(),
-                        magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                        magic_wormhole::transit::Abilities::ALL,
                         offer,
                         &log_transit_connection,
                         |_sent, _total| {},
@@ -281,7 +280,7 @@ pub async fn test_file_rust2rust() {
                 /*let transfer::ReceiveRequest::V1(req) = transfer::request(
                     wormhole,
                     default_relay_hints(),
-                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    magic_wormhole::transit::Abilities::ALL,
                     futures::future::pending(),
                 )
                 .await?
@@ -292,7 +291,7 @@ pub async fn test_file_rust2rust() {
                 let req = transfer::request_file(
                     wormhole,
                     default_relay_hints(),
-                    magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                    magic_wormhole::transit::Abilities::ALL,
                     futures::future::pending(),
                 )
                 .await?
@@ -347,11 +346,10 @@ pub async fn test_send_many() {
             let wormhole = crate::Wormhole::connect(mailbox).await?;
             senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
-                    #[expect(deprecated)]
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
-                        magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                        magic_wormhole::transit::Abilities::ALL,
                         gen_offer().await?,
                         &log_transit_connection,
                         |_, _| {},
@@ -376,11 +374,10 @@ pub async fn test_send_many() {
             let gen_offer = gen_offer.clone();
             senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
-                    #[expect(deprecated)]
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
-                        magic_wormhole::transit::Abilities::ALL_ABILITIES,
+                        magic_wormhole::transit::Abilities::ALL,
                         gen_offer().await?,
                         &log_transit_connection,
                         |_, _| {},
@@ -409,7 +406,7 @@ pub async fn test_send_many() {
         /*let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
             wormhole,
             default_relay_hints(),
-            magic_wormhole::transit::Abilities::ALL_ABILITIES,
+            magic_wormhole::transit::Abilities::ALL,
             futures::future::pending(),
         )
         .await?
@@ -420,7 +417,7 @@ pub async fn test_send_many() {
         let req = transfer::request_file(
             wormhole,
             default_relay_hints(),
-            magic_wormhole::transit::Abilities::ALL_ABILITIES,
+            magic_wormhole::transit::Abilities::ALL,
             futures::future::pending(),
         )
         .await

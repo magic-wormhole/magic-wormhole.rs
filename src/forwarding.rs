@@ -40,7 +40,7 @@ pub const APP_CONFIG: crate::AppConfig<AppVersion> = crate::AppConfig::<AppVersi
     id: AppID(Cow::Borrowed(APPID_RAW)),
     rendezvous_url: Cow::Borrowed(crate::rendezvous::DEFAULT_RENDEZVOUS_SERVER),
     app_version: AppVersion {
-        transit_abilities: transit::Abilities::ALL_ABILITIES,
+        transit_abilities: transit::Abilities::ALL,
         other: serde_json::Value::Null,
     },
 };

@@ -218,7 +218,7 @@ impl AppVersionTransferV2Hint {
     const fn new() -> Self {
         Self {
             supported_formats: Cow::Borrowed(&[Cow::Borrowed("plain"), Cow::Borrowed("tar")]),
-            transit_abilities: transit::Abilities::ALL_ABILITIES,
+            transit_abilities: transit::Abilities::ALL,
         }
     }
 }
@@ -673,7 +673,7 @@ mod test {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn test_transit() {
-        let abilities = Abilities::ALL_ABILITIES;
+        let abilities = Abilities::ALL;
         let hints = transit::Hints::new(
             [DirectHint::new("192.168.1.8", 46295)],
             [RelayHint::new(
