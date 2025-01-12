@@ -75,21 +75,6 @@ impl From<std::convert::Infallible> for WormholeError {
 }
 
 /**
- * The result of the client-server handshake
- */
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[deprecated(
-    since = "0.7.0",
-    note = "part of the response of `Wormhole::connect_without_code(...)` and `Wormhole::connect_with_code(...) please use 'MailboxConnection::create(...)`/`MailboxConnection::connect(..)` and `Wormhole::connect(mailbox_connection)' instead"
-)]
-pub struct WormholeWelcome {
-    /** A welcome message from the server (think of "message of the day"). Should be displayed to the user if present. */
-    pub welcome: Option<String>,
-    /// The wormhole code used in the exchange
-    pub code: Code,
-}
-
-/**
  * Establishing Wormhole connection
  *
  * You can send and receive arbitrary messages in form of byte slices over it, using [`Wormhole::send`] and [`Wormhole::receive`].
@@ -310,62 +295,6 @@ pub struct Wormhole {
 }
 
 impl Wormhole {
-    /**
-     * Generate a code and connect to the rendezvous server.
-     *
-     * # Returns
-     *
-     * A tuple with a [`WormholeWelcome`] and a [`std::future::Future`] that will
-     * do the rest of the client-client handshake and yield the [`Wormhole`] object
-     * on success.
-     */
-    #[deprecated(
-        since = "0.7.0",
-        note = "please use 'MailboxConnection::create(..) and Wormhole::connect(mailbox_connection)' instead"
-    )]
-    #[expect(deprecated)]
-    pub async fn connect_without_code(
-        config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
-        code_length: usize,
-    ) -> Result<
-        (
-            WormholeWelcome,
-            impl std::future::Future<Output = Result<Self, WormholeError>>,
-        ),
-        WormholeError,
-    > {
-        let mailbox_connection = MailboxConnection::create(config, code_length).await?;
-        Ok((
-            WormholeWelcome {
-                welcome: mailbox_connection.welcome.clone(),
-                code: mailbox_connection.code.clone(),
-            },
-            Self::connect(mailbox_connection),
-        ))
-    }
-
-    /**
-     * Connect to a peer with a code.
-     */
-    #[deprecated(
-        since = "0.7.0",
-        note = "please use 'MailboxConnection::connect(..) and Wormhole::connect(mailbox_connection)' instead"
-    )]
-    #[expect(deprecated)]
-    pub async fn connect_with_code(
-        config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
-        code: Code,
-    ) -> Result<(WormholeWelcome, Self), WormholeError> {
-        let mailbox_connection = MailboxConnection::connect(config, code.clone(), true).await?;
-        Ok((
-            WormholeWelcome {
-                welcome: mailbox_connection.welcome.clone(),
-                code,
-            },
-            Self::connect(mailbox_connection).await?,
-        ))
-    }
-
     /// Set up a Wormhole which is the client-client part of the connection setup
     ///
     /// The MailboxConnection already contains a rendezvous server with an opened mailbox.
