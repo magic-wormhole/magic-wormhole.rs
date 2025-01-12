@@ -13,7 +13,6 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-#[allow(deprecated)]
 use crate::{Key, KeyPurpose};
 use serde_derive::{Deserialize, Serialize};
 
@@ -54,7 +53,7 @@ const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 #[derive(Debug)]
 pub struct TransitKey;
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 impl KeyPurpose for TransitKey {}
 
 /// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
@@ -64,7 +63,7 @@ impl KeyPurpose for TransitKey {}
 )]
 #[derive(Debug)]
 pub struct TransitRxKey;
-#[allow(deprecated)]
+#[expect(deprecated)]
 impl KeyPurpose for TransitRxKey {}
 
 /// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
@@ -74,7 +73,7 @@ impl KeyPurpose for TransitRxKey {}
 )]
 #[derive(Debug)]
 pub struct TransitTxKey;
-#[allow(deprecated)]
+#[expect(deprecated)]
 impl KeyPurpose for TransitTxKey {}
 
 /// An error occurred when connecting to the peer.
@@ -549,7 +548,7 @@ impl RelayHint {
     )]
     /// Extend this server with additional endpoints
     pub fn merge(mut self, other: Self) -> Self {
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         self.merge_mut(other);
         self
     }
@@ -568,7 +567,7 @@ impl RelayHint {
         since = "0.7.0",
         note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
     )]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     /// Deduplicate and merge the hints us into theirs
     pub fn merge_into(self, collection: &mut Vec<RelayHint>) {
         for item in collection.iter_mut() {
@@ -785,7 +784,7 @@ pub fn log_transit_connection(
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
 )]
-#[allow(deprecated)]
+#[expect(deprecated)]
 pub async fn init(
     mut abilities: Abilities,
     peer_abilities: Option<Abilities>,
@@ -943,7 +942,7 @@ pub struct TransitConnector {
     our_hints: Arc<Hints>,
 }
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 impl TransitConnector {
     /// The abilities that we've sent to the other side
     pub fn our_abilities(&self) -> &Abilities {
@@ -1482,7 +1481,7 @@ type HandshakeResult = (
  * must write `Ok\n` into the stream that should be used (and optionally `Nevermind\n`
  * into all others).
  */
-#[allow(deprecated)]
+#[expect(deprecated)]
 async fn handshake_exchange(
     is_leader: bool,
     tside: Arc<String>,

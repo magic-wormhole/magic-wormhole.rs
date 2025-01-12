@@ -232,7 +232,7 @@ async fn file_offers(
 #[test(async_std::test)]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
-#[allow(deprecated)]
+#[expect(deprecated)]
 pub async fn test_file_rust2rust_deprecated() {
     for (offer, answer) in file_offers().await.unwrap() {
         let (code_tx, code_rx) = futures::channel::oneshot::channel();
@@ -338,7 +338,7 @@ pub async fn test_file_rust2rust() {
                 code_tx.send(mailbox_connection.code.clone()).unwrap();
                 let wormhole = crate::Wormhole::connect(mailbox_connection).await?;
                 eyre::Result::<_>::Ok(
-                    #[allow(deprecated)]
+                    #[expect(deprecated)]
                     transfer::send(
                         wormhole,
                         default_relay_hints(),
@@ -436,7 +436,7 @@ pub async fn test_send_many() {
             let wormhole = crate::Wormhole::connect(mailbox).await?;
             senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
-                    #[allow(deprecated)]
+                    #[expect(deprecated)]
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
@@ -465,7 +465,7 @@ pub async fn test_send_many() {
             let gen_offer = gen_offer.clone();
             senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
-                    #[allow(deprecated)]
+                    #[expect(deprecated)]
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),

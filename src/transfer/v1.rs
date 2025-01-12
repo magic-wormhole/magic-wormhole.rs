@@ -501,7 +501,7 @@ pub struct ReceiveRequest {
     their_hints: Arc<transit::Hints>,
 }
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 impl ReceiveRequest {
     fn new(
         file_name: String,
@@ -525,7 +525,7 @@ impl ReceiveRequest {
 
         let offer = Arc::new(Offer { content });
 
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         Self {
             wormhole,
             connector,

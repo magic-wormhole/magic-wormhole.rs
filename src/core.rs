@@ -1,4 +1,4 @@
-#![allow(deprecated)]
+#![expect(deprecated)]
 
 pub(super) mod key;
 pub mod rendezvous;
@@ -297,7 +297,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
 /// This establishes the client-client part of the connection setup.
 #[derive(Debug)]
 pub struct Wormhole {
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     server: RendezvousServer,
     phase: u64,
     key: key::Key<key::WormholeKey>,
@@ -327,7 +327,7 @@ impl Wormhole {
         since = "0.7.0",
         note = "please use 'MailboxConnection::create(..) and Wormhole::connect(mailbox_connection)' instead"
     )]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     pub async fn connect_without_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code_length: usize,
@@ -355,7 +355,7 @@ impl Wormhole {
         since = "0.7.0",
         note = "please use 'MailboxConnection::connect(..) and Wormhole::connect(mailbox_connection)' instead"
     )]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     pub async fn connect_with_code(
         config: AppConfig<impl serde::Serialize + Send + Sync + 'static>,
         code: Code,
@@ -419,7 +419,7 @@ impl Wormhole {
         tracing::info!("Found peer on the rendezvous server.");
 
         /* We are now fully initialized! Up and running! :tada: */
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         Ok(Self {
             server,
             appid: config.id,
@@ -538,7 +538,7 @@ impl Wormhole {
      * attack vector.
      */
     pub fn verifier(&self) -> &secretbox::Key {
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         &self.verifier
     }
 
@@ -546,7 +546,7 @@ impl Wormhole {
      * Our "app version" information that we sent. See the [`peer_version`](Self::peer_version()) for more information.
      */
     pub fn our_version(&self) -> &(dyn std::any::Any + Send + Sync) {
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         &*self.our_version
     }
 
@@ -556,7 +556,7 @@ impl Wormhole {
      * (e.g. by the file transfer API).
      */
     pub fn peer_version(&self) -> &serde_json::Value {
-        #[allow(deprecated)]
+        #[expect(deprecated)]
         &self.peer_version
     }
 }
@@ -787,7 +787,6 @@ pub struct ParseNameplateError {}
 #[display("{}", _0)]
 pub struct Nameplate(String);
 
-#[allow(deprecated)]
 impl Nameplate {
     /// Create a new nameplate from a string.
     ///
@@ -812,7 +811,6 @@ impl FromStr for Nameplate {
 }
 
 /// Deprecated: Use the [`std::fmt::Display`] implementation
-#[allow(deprecated)]
 impl From<Nameplate> for String {
     fn from(value: Nameplate) -> Self {
         value.0
@@ -820,7 +818,6 @@ impl From<Nameplate> for String {
 }
 
 /// Deprecated: Use the [`std::fmt::Display`] implementation
-#[allow(deprecated)]
 impl AsRef<str> for Nameplate {
     fn as_ref(&self) -> &str {
         &self.0
@@ -979,7 +976,6 @@ pub enum ParseCodeError {
 #[display("{}", _0)]
 pub struct Code(String);
 
-#[allow(deprecated)]
 impl Code {
     /// Create a new code, comprised of a [`Nameplate`] and a [`Password`].
     pub fn from_components(nameplate: Nameplate, password: Password) -> Self {
@@ -1016,7 +1012,6 @@ impl Code {
 }
 
 /// Deprecated: Use the [`std::fmt::Display`] implementation
-#[allow(deprecated)]
 impl From<Code> for String {
     fn from(value: Code) -> Self {
         value.0
@@ -1041,7 +1036,6 @@ impl FromStr for Code {
 }
 
 /// Deprecated: Use the [`std::fmt::Display`] implementation
-#[allow(deprecated)]
 impl AsRef<str> for Code {
     fn as_ref(&self) -> &str {
         &self.0

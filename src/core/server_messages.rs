@@ -369,7 +369,7 @@ mod test {
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     fn test_welcome3() {
         let s = r#"{"type": "welcome", "welcome": {}, "server_tx": 1234.56}"#;
         let m = serde_json::from_str(s).unwrap();
@@ -388,7 +388,7 @@ mod test {
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     fn test_welcome4() {
         let s = r#"{"type": "welcome", "welcome": {} }"#;
         let m = serde_json::from_str(s).unwrap();
@@ -410,7 +410,7 @@ mod test {
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[rustfmt::skip]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     fn test_welcome5() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world" }, "server_tx": 1234.56 }"#;
         let m = serde_json::from_str(s).unwrap();
@@ -420,7 +420,7 @@ mod test {
     /// Test permission_required field deserialization
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-    #[allow(deprecated)]
+    #[expect(deprecated)]
     fn test_welcome6() {
         let s = r#"{"type": "welcome", "welcome": { "motd": "hello world", "permission-required": { "none": {}, "hashcash": { "bits": 6, "resource": "resource-string" }, "dark-ritual": { "hocrux": true } } } }"#;
         let m: InboundMessage = serde_json::from_str(s).unwrap();

@@ -8,7 +8,7 @@
 //! At its core, "peer messages" are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
-#![allow(deprecated)]
+#![expect(deprecated)]
 
 use futures::{AsyncRead, AsyncWrite};
 use serde_derive::{Deserialize, Serialize};
@@ -492,7 +492,6 @@ where
         note = "transfer::send_file_or_folder does not support file transfer protocol version 2, use transfer::send"
     )
 )]
-#[allow(deprecated)]
 #[cfg(not(target_family = "wasm"))]
 pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,

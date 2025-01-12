@@ -13,7 +13,7 @@
 //! and received as they come in, no additional buffering is applied. (Under the assumption that those applications
 //! that need buffering already do it on their side, and those who don't, don't.)
 
-#![allow(deprecated)]
+#![expect(deprecated)]
 
 use super::*;
 use async_std::net::{TcpListener, TcpStream};

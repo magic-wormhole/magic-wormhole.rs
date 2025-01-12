@@ -328,7 +328,7 @@ pub struct RendezvousServer {
     side: MySide,
 }
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 impl std::fmt::Debug for RendezvousServer {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.debug_struct("RendezvousServer")
@@ -338,7 +338,7 @@ impl std::fmt::Debug for RendezvousServer {
     }
 }
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 #[allow(missing_docs)]
 impl RendezvousServer {
     /**
