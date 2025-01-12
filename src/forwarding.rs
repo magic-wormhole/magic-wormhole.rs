@@ -997,7 +997,6 @@ enum PeerMessage {
 }
 
 impl PeerMessage {
-    #[allow(dead_code)]
     pub fn ser_msgpack(&self) -> Vec<u8> {
         let mut writer = Vec::with_capacity(128);
         let mut ser = rmp_serde::encode::Serializer::new(&mut writer)
@@ -1007,7 +1006,6 @@ impl PeerMessage {
         writer
     }
 
-    #[allow(dead_code)]
     pub fn de_msgpack(data: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
         rmp_serde::from_read(&mut &*data)
     }

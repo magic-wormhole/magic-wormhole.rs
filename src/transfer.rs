@@ -331,7 +331,7 @@ impl PeerMessage {
         }
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn ser_json(&self) -> Vec<u8> {
         serde_json::to_vec(self).unwrap()
     }
