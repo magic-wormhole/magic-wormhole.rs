@@ -193,7 +193,7 @@ impl OutboundMessage {
         OutboundMessage::Open { mailbox }
     }
 
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub fn add(phase: Phase, body: Vec<u8>) -> Self {
         OutboundMessage::Add { body, phase }
     }

@@ -75,7 +75,7 @@ impl Wordlist {
             .collect()
     }
 
-    #[allow(unused)]
+    #[allow(dead_code)]
     fn normal_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
         words
             .iter()

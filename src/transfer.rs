@@ -270,7 +270,7 @@ pub enum PeerMessage {
 }
 
 impl PeerMessage {
-    #[allow(unused)]
+    #[allow(dead_code)]
     fn offer_message_v1(msg: impl Into<String>) -> Self {
         PeerMessage::Offer(v1::OfferMessage::Message(msg.into()))
     }

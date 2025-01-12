@@ -758,11 +758,9 @@ where
 /// Custom functions from the `tar` crate to access internals
 mod tar_helper {
     /* Imports may depend on target platform */
-    #[allow(unused_imports)]
     use std::{
         borrow::Cow,
         io::{self, Read, Write},
-        path::Path,
         str,
     };
 
