@@ -791,7 +791,7 @@ impl Nameplate {
     /// Create a new nameplate from a string.
     ///
     /// Safety: Nameplate will be [required to be numbers](https://github.com/magic-wormhole/magic-wormhole-mailbox-server/issues/45) soon.
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code)]
     #[doc(hidden)]
     pub unsafe fn new_unchecked(n: &str) -> Self {
         Nameplate(n.into())
@@ -889,7 +889,7 @@ impl Password {
     /// You should use [`Password::from_str`] / [`String::parse`] instead.
     ///
     /// Safety: Does not check the entropy of the password, or if one exists at all. This can be a security risk.
-    #[allow(unsafe_code)]
+    #[expect(unsafe_code)]
     #[doc(hidden)]
     pub unsafe fn new_unchecked(n: impl Into<String>) -> Self {
         let password = n.into();
@@ -986,7 +986,7 @@ impl Code {
     #[deprecated(since = "0.7.2", note = "Use [Self::nameplate] and [Self::password]")]
     pub fn split(&self) -> (Nameplate, String) {
         let mut iter = self.0.splitn(2, '-');
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code)]
         let nameplate = unsafe { Nameplate::new_unchecked(iter.next().unwrap()) };
         let password = iter.next().unwrap();
         (nameplate, password.to_string())
@@ -995,7 +995,7 @@ impl Code {
     /// Retrieve only the nameplate
     pub fn nameplate(&self) -> Nameplate {
         // Safety: We checked the validity of the nameplate before
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code)]
         unsafe {
             Nameplate::new_unchecked(self.0.split('-').next().unwrap())
         }
@@ -1004,7 +1004,7 @@ impl Code {
     /// Retrieve only the password
     pub fn password(&self) -> Password {
         // Safety: We checked the validity of the password before
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code)]
         unsafe {
             Password::new_unchecked(self.0.splitn(2, '-').last().unwrap())
         }
