@@ -17,7 +17,7 @@ impl Nameplate_ {
         Ok(value.into_iter().map(|value| Nameplate(value.id)).collect())
     }
 
-    #[allow(clippy::all, dead_code)]
+    #[expect(clippy::all, dead_code)]
     fn serialize<S>(value: &Vec<Nameplate>, ser: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,

@@ -1440,7 +1440,7 @@ impl Transit {
 
     /** Convert the transit connection to a [`Stream`]/[`Sink`] pair */
     #[cfg(not(target_family = "wasm"))]
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub fn split(
         self,
     ) -> (

@@ -1,4 +1,4 @@
-#![allow(clippy::too_many_arguments)]
+#![expect(clippy::too_many_arguments)]
 mod completer;
 mod util;
 
