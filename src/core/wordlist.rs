@@ -94,7 +94,7 @@ impl Wordlist {
             .take(self.num_words)
             .map(|words| words.choose(&mut rng).unwrap().to_string())
             .collect();
-        #[allow(unsafe_code)]
+        #[expect(unsafe_code)]
         unsafe {
             Password::new_unchecked(components.join("-"))
         }
