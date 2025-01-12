@@ -29,18 +29,9 @@ impl KeyPurpose for GenericKey {}
  *
  * You don't need to do any crypto, but you might need it to derive subkeys for sub-protocols.
  */
-#[derive(Debug, Clone, derive_more::Display, derive_more::Deref)]
+#[derive(Debug, Clone, derive_more::Display)]
 #[display("{:?}", _0)]
-#[deref(forward)]
-pub struct Key<P: KeyPurpose>(
-    #[deref]
-    #[deprecated(
-        since = "0.7.0",
-        note = "Use the AsRef<Key> implementation to get access to the secretbox key"
-    )]
-    pub Box<secretbox::Key>,
-    #[deref(ignore)] std::marker::PhantomData<P>,
-);
+pub struct Key<P: KeyPurpose>(Box<secretbox::Key>, std::marker::PhantomData<P>);
 
 impl Key<WormholeKey> {
     /**
@@ -52,11 +43,7 @@ impl Key<WormholeKey> {
      * The new key is derived with the `"{appid}/transit-key"` purpose.
      */
     #[cfg(feature = "transit")]
-    #[deprecated(
-        since = "0.7.0",
-        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
-    )]
-    pub fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
+    pub(crate) fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
         let transit_purpose = format!("{}/transit-key", appid);
         let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
         tracing::trace!(
@@ -77,7 +64,7 @@ impl<P: KeyPurpose> Key<P> {
 
     /// Encode a key as a hex string
     pub fn to_hex(&self) -> String {
-        hex::encode(**self)
+        hex::encode(*self.0)
     }
 
     /**
@@ -85,9 +72,21 @@ impl<P: KeyPurpose> Key<P> {
      */
     pub fn derive_subkey_from_purpose<NewP: KeyPurpose>(&self, purpose: &str) -> Key<NewP> {
         Key(
-            Box::new(derive_key(self, purpose.as_bytes())),
+            Box::new(derive_key(&self.0, purpose.as_bytes())),
             std::marker::PhantomData,
         )
+    }
+}
+
+impl<P: KeyPurpose> AsRef<secretbox::Key> for Key<P> {
+    fn as_ref(&self) -> &secretbox::Key {
+        &self.0
+    }
+}
+
+impl<P: KeyPurpose> AsRef<[u8]> for Key<P> {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_slice()
     }
 }
 

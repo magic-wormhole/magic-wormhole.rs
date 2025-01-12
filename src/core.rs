@@ -435,7 +435,7 @@ impl Wormhole {
     pub async fn send(&mut self, plaintext: Vec<u8>) -> Result<(), WormholeError> {
         let phase_string = Phase::numeric(self.phase);
         self.phase += 1;
-        let data_key = key::derive_phase_key(self.server.side(), &self.key, &phase_string);
+        let data_key = key::derive_phase_key(self.server.side(), self.key.as_ref(), &phase_string);
         let (_nonce, encrypted) = key::encrypt_data(&data_key, &plaintext);
         self.server
             .send_peer_message(phase_string, encrypted)
@@ -474,7 +474,7 @@ impl Wormhole {
 
             // TODO maybe reorder incoming messages by phase numeral?
             let decrypted_message = peer_message
-                .decrypt(&self.key)
+                .decrypt(self.key.as_ref())
                 .ok_or(WormholeError::Crypto)?;
 
             // Send to client

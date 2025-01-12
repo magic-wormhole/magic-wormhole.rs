@@ -265,7 +265,7 @@ impl TransitCryptoInit for NoiseInit {
             builder.set_is_initiator(true);
             builder.build_handshake_state()
         };
-        handshake.push_psk(&self.key);
+        handshake.push_psk((*self.key).as_ref());
 
         // → psk, e
         socket
@@ -332,7 +332,7 @@ impl TransitCryptoInit for NoiseInit {
             builder.set_is_initiator(false);
             builder.build_handshake_state()
         };
-        handshake.push_psk(&self.key);
+        handshake.push_psk((*self.key).as_ref());
 
         // ← psk, e
         handshake.read_message(&socket.read_transit_message().await?, &mut [])?;
@@ -408,7 +408,7 @@ impl TransitCryptoEncrypt for SecretboxCryptoEncrypt {
         plaintext: &[u8],
     ) -> Result<(), TransitError> {
         let nonce = &mut self.snonce;
-        let sodium_key = secretbox::Key::from_slice(&self.skey);
+        let sodium_key = secretbox::Key::from_slice(self.skey.as_ref());
 
         let ciphertext = {
             let nonce_le = secretbox::Nonce::from_slice(nonce);
@@ -466,7 +466,8 @@ impl TransitCryptoDecrypt for SecretboxCryptoDecrypt {
                 crate::util::sodium_increment_be(nonce);
             }
 
-            let cipher = secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(&self.rkey));
+            let cipher =
+                secretbox::XSalsa20Poly1305::new(secretbox::Key::from_slice(self.rkey.as_ref()));
             cipher
                 .decrypt(secretbox::Nonce::from_slice(received_nonce), ciphertext)
                 /* TODO replace with (TransitError::Crypto) after the next xsalsa20poly1305 update */
