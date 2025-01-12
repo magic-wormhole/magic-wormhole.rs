@@ -339,7 +339,7 @@ impl std::fmt::Debug for RendezvousServer {
 }
 
 #[expect(deprecated)]
-#[allow(missing_docs)]
+#[expect(missing_docs)]
 impl RendezvousServer {
     /**
      * Connect to the rendezvous server

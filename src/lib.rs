@@ -19,6 +19,7 @@
 //! a relay server will transparently connect them together. Transit is used by the file transfer for example, but any other AppID protocol
 //! might make use of it as well.
 
+#![forbid(unfulfilled_lint_expectations)]
 #![deny(unsafe_code)]
 #![expect(clippy::too_many_arguments)]
 #![allow(unused_macros)]

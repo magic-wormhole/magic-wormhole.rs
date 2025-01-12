@@ -352,7 +352,6 @@ async fn main() -> eyre::Result<()> {
             ))
             .await?;
         },
-        #[allow(unused_variables)]
         WormholeCommand::SendMany {
             tries,
             timeout,

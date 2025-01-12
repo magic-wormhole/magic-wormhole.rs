@@ -79,7 +79,7 @@ impl std::fmt::Display for DisplayBytes<'_> {
  * TODO remove after https://github.com/quininer/memsec/issues/11 is resolved.
  * Original implementation: https://github.com/jedisct1/libsodium/blob/6d566070b48efd2fa099bbe9822914455150aba9/src/libsodium/sodium/utils.c#L262-L307
  */
-#[allow(unused)]
+#[expect(unused)]
 pub fn sodium_increment_le(n: &mut [u8]) {
     let mut c = 1u16;
     for b in n {
