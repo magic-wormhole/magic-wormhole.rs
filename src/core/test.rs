@@ -12,7 +12,7 @@ use crate::{
 use test_log::test;
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
-    "piegames.de/wormhole/rusty-wormhole-test",
+    "magic-wormhole.github.io/magic-wormhole.rs/test",
 ));
 
 pub const APP_CONFIG: AppConfig<()> = AppConfig::<()> {
