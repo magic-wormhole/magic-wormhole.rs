@@ -2,10 +2,10 @@ name: Rust
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, "v*"]
     tags: ["[0-9]+.[0-9]+.[0-9]+"]
   pull_request:
-    branches: [main, dev]
+    branches: [main, "v*"]
 
 jobs:
   read_msrv:
