@@ -602,7 +602,6 @@ type PrintCodeFn =
  * If this `is_send` and the code is not specified via the CLI, then a code will be allocated.
  * Otherwise, the user will be prompted interactively to enter it.
  */
-#[allow(deprecated)]
 async fn parse_and_connect(
     term: &mut Term,
     common_args: CommonArgs,

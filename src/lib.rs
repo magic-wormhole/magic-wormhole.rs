@@ -37,7 +37,7 @@ pub mod transit;
 #[cfg(feature = "transfer")]
 pub mod uri;
 
-#[allow(deprecated)]
+#[expect(deprecated)]
 pub use crate::core::{
     key::{GenericKey, Key, KeyPurpose, WormholeKey},
     rendezvous, AppConfig, AppID, Code, MailboxConnection, Mood, Nameplate, ParseCodeError,

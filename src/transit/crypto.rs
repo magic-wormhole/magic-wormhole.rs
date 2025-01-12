@@ -3,7 +3,7 @@
 //! This handles the encrypted handshakes during connection setup, then provides
 //! a simple "encrypt/decrypt" abstraction that will be used for all messages.
 
-#![allow(deprecated)]
+#![expect(deprecated)]
 
 use super::{
     TransitError, TransitKey, TransitRxKey, TransitTransport, TransitTransportRx,
