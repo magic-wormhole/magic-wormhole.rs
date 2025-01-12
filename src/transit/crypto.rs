@@ -9,7 +9,7 @@ use super::{
     TransitError, TransitKey, TransitRxKey, TransitTransport, TransitTransportRx,
     TransitTransportTx, TransitTxKey,
 };
-use crate::Key;
+use crate::core::key::{GenericKey, Key};
 use async_trait::async_trait;
 use crypto_secretbox as secretbox;
 use crypto_secretbox::{aead::Aead, KeyInit};
@@ -127,7 +127,7 @@ impl TransitCryptoInit for SecretboxInit {
                 format!(
                     "transit sender {} ready\n\n",
                     self.key
-                        .derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
+                        .derive_subkey_from_purpose::<GenericKey>("transit_sender")
                         .to_hex()
                 )
                 .as_bytes(),
@@ -137,7 +137,7 @@ impl TransitCryptoInit for SecretboxInit {
         let expected_rx_handshake = format!(
             "transit receiver {} ready\n\n",
             self.key
-                .derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
+                .derive_subkey_from_purpose::<GenericKey>("transit_receiver")
                 .to_hex()
         );
         assert_eq!(expected_rx_handshake.len(), 89);
@@ -196,7 +196,7 @@ impl TransitCryptoInit for SecretboxInit {
                 format!(
                     "transit receiver {} ready\n\n",
                     self.key
-                        .derive_subkey_from_purpose::<crate::GenericKey>("transit_receiver")
+                        .derive_subkey_from_purpose::<GenericKey>("transit_receiver")
                         .to_hex(),
                 )
                 .as_bytes(),
@@ -206,7 +206,7 @@ impl TransitCryptoInit for SecretboxInit {
         let expected_tx_handshake = format!(
             "transit sender {} ready\n\ngo\n",
             self.key
-                .derive_subkey_from_purpose::<crate::GenericKey>("transit_sender")
+                .derive_subkey_from_purpose::<GenericKey>("transit_sender")
                 .to_hex(),
         );
         assert_eq!(expected_tx_handshake.len(), 90);
