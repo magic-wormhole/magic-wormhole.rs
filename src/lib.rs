@@ -20,8 +20,7 @@
 //! might make use of it as well.
 
 #![deny(unsafe_code)]
-#![allow(clippy::upper_case_acronyms)]
-#![allow(clippy::too_many_arguments)]
+#![expect(clippy::too_many_arguments)]
 #![allow(unused_macros)]
 #![warn(missing_docs)]
 

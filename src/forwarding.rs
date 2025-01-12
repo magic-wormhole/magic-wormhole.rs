@@ -409,7 +409,7 @@ impl ForwardingServe {
                     }
                 };
             }
-            #[allow(clippy::while_let_loop)]
+            #[expect(clippy::while_let_loop)]
             loop {
                 let read = break_on_err!(connection_rd.read(&mut buffer).await);
                 if read == 0 {
@@ -739,7 +739,7 @@ impl ConnectOffer {
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 struct ForwardConnect {
     //transit: &'a mut transit::Transit,
     /* when can I finally store an `impl Trait` in a struct? */
@@ -856,7 +856,7 @@ impl ForwardConnect {
                     }
                 };
             }
-            #[allow(clippy::while_let_loop)]
+            #[expect(clippy::while_let_loop)]
             loop {
                 let read = break_on_err!(connection_rd.read(&mut buffer).await);
                 if read == 0 {
