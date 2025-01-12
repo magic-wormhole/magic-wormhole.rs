@@ -297,7 +297,6 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
 /// This establishes the client-client part of the connection setup.
 #[derive(Debug)]
 pub struct Wormhole {
-    #[expect(deprecated)]
     server: RendezvousServer,
     phase: u64,
     key: key::Key<key::WormholeKey>,
