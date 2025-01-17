@@ -27,5 +27,6 @@ pub fn enter_code() -> eyre::Result<String> {
         .with_prompt("Wormhole Code")
         .completion_with(&custom_completion)
         .interact_text()
+        .map(|code: String| code.chars().filter(|c| !c.is_whitespace()).collect())
         .map_err(From::from)
 }
