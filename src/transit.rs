@@ -357,7 +357,7 @@ impl<'de> serde::Deserialize<'de> for Hints {
         if !relay_v2.is_empty() {
             relay.clear();
         }
-        relay.extend(relay_v2.into_iter().map(Into::into));
+        relay.extend(relay_v2);
 
         Ok(Hints { direct_tcp, relay })
     }
@@ -1441,6 +1441,7 @@ impl Transit {
 
     /** Convert the transit connection to a [`Stream`]/[`Sink`] pair */
     #[cfg(not(target_family = "wasm"))]
+    #[allow(clippy::type_complexity)]
     pub fn split(
         self,
     ) -> (

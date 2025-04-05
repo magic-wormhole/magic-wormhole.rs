@@ -106,7 +106,6 @@ pub struct WormholeWelcome {
  * Maybe a better way to handle application level protocols is to create a trait for them and then
  * to paramterize over them.
  */
-
 /// A `MailboxConnection` contains a `RendezvousServer` which is connected to the mailbox
 pub struct MailboxConnection<V: serde::Serialize + Send + Sync + 'static> {
     /// A copy of `AppConfig`,
