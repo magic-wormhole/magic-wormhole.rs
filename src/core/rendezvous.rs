@@ -116,7 +116,7 @@ impl WsConnection {
     ) -> Result<(), RendezvousError> {
         tracing::debug!("Sending {:?}", message);
         self.connection
-            .send(ws_stream_wasm::WsMessage::text(
+            .send(ws_stream_wasm::WsMessage::Text(
                 serde_json::to_string(message).unwrap(),
             ))
             .await?;
