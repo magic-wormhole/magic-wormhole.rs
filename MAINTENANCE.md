@@ -4,8 +4,8 @@
 
 To create a new release, follow these steps:
 
-- Update version number in Cargo.toml for library and CLI
-- Update CHANGELOG.md with release date
+- Update version number in the workspace Cargo.toml
+- Update CHANGELOG.md with release version and date
 - Update Cargo.lock
 - Commit & push the changes
 - Tag the commit: `git tag -as a.b.c`

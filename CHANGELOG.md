@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.6] - 2025-04-05
+
+### Security
+
+- Fixed [RUSTSEC-2025-0004](https://rustsec.org/advisories/RUSTSEC-2025-0004.html)
+- Fixed [RUSTSEC-2025-0009](https://rustsec.org/advisories/RUSTSEC-2025-0009.html)
+- Fixed [RUSTSEC-2025-0022](https://rustsec.org/advisories/RUSTSEC-2025-0022.html)
+
 ## [0.7.5] - 2025-01-12
 
 ### Fixed
