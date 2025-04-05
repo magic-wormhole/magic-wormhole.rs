@@ -128,7 +128,7 @@ tar = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2.101"
-async-tungstenite = { version = "0.28", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.29", features = ["async-std-runtime"] }
 async-io = "2.2.0"
 
 # Transit

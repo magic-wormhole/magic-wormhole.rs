@@ -102,7 +102,7 @@ impl WsConnection {
     ) -> Result<(), RendezvousError> {
         tracing::debug!("Sending {}", message);
         self.connection
-            .send(ws2::Message::Text(serde_json::to_string(message).unwrap()))
+            .send(ws2::Message::text(serde_json::to_string(message).unwrap()))
             .await?;
         self.receive_ack(queue).await?;
         Ok(())
