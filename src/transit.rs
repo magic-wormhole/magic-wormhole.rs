@@ -47,7 +47,7 @@ const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 /// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
 #[derive(Debug)]
-pub(crate) struct TransitKey;
+pub struct TransitKey;
 
 impl KeyPurpose for TransitKey {}
 
@@ -768,7 +768,7 @@ pub fn log_transit_connection(
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
 )]
 #[expect(deprecated)]
-pub(crate) async fn init(
+pub async fn init(
     mut abilities: Abilities,
     peer_abilities: Option<Abilities>,
     relay_hints: Vec<RelayHint>,
@@ -914,7 +914,7 @@ impl MaybeConnectedSocket {
     since = "0.7.0",
     note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
 )]
-pub(crate) struct TransitConnector {
+pub struct TransitConnector {
     /* Only `Some` if direct-tcp-v1 ability has been enabled.
      * The first socket is the port from which we will start connection attempts.
      * For in case the user is behind no firewalls, we must also listen to the second socket.
@@ -935,6 +935,29 @@ impl TransitConnector {
     /** Send this one to the other side */
     pub fn our_hints(&self) -> &Arc<Hints> {
         &self.our_hints
+    }
+
+    /**
+     * Forwards to either [`leader_connect`](Self::leader_connect) or [`follower_connect`](Self::follower_connect).
+     *
+     * It usually is better to call the respective functions directly by their name, as it makes
+     * them less easy to confuse (confusion may still happen though). Nevertheless, sometimes it
+     * is desirable to use the same code for both sides and only track the side with a boolean.
+     */
+    pub async fn connect(
+        self,
+        is_leader: bool,
+        transit_key: Key<TransitKey>,
+        their_abilities: Abilities,
+        their_hints: Arc<Hints>,
+    ) -> Result<(Transit, TransitInfo), TransitConnectError> {
+        if is_leader {
+            self.leader_connect(transit_key, their_abilities, their_hints)
+                .await
+        } else {
+            self.follower_connect(transit_key, their_abilities, their_hints)
+                .await
+        }
     }
 
     /**
