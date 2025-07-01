@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - lib: Remove explicit entropy feature and make it the default
+- lib: Undeprecate direct access to Transit connections
 
 ### Added
 
