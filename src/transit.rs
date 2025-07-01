@@ -45,7 +45,7 @@ pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
 #[cfg(not(target_family = "wasm"))]
 const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
 
-/// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
+/// Marker type for base key used in the Transit protocol.
 #[derive(Debug)]
 pub struct TransitKey;
 
@@ -763,11 +763,6 @@ pub fn log_transit_connection(
  *
  * Bind a port and generate our [`Hints`]. This does not do any communication yet.
  */
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-#[expect(deprecated)]
 pub async fn init(
     mut abilities: Abilities,
     peer_abilities: Option<Abilities>,
@@ -910,10 +905,6 @@ impl MaybeConnectedSocket {
  * to exchange it (as in: send yours, receive theirs) with them. This is outside of the transit protocol, because we
  * are protocol agnostic.
  */
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
 pub struct TransitConnector {
     /* Only `Some` if direct-tcp-v1 ability has been enabled.
      * The first socket is the port from which we will start connection attempts.
