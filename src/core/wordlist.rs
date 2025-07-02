@@ -38,7 +38,7 @@ impl Wordlist {
         let (prefix_without_last, last_partial) = prefix.rsplit_once('-').unwrap_or(("", prefix));
 
         #[cfg(feature = "fuzzy-complete")]
-        let matches = self.fuzzy_complete(last_partial, words);
+        let matches = self.fuzzy_complete(last_partial, &words);
         #[cfg(not(feature = "fuzzy-complete"))]
         let matches = self.normal_complete(last_partial, words);
 
@@ -56,31 +56,26 @@ impl Wordlist {
             .collect()
     }
 
-    fn get_wordlist(&self, prefix: &str) -> &Vec<String> {
+    fn get_wordlist<'a>(&'a self, prefix: &str) -> Vec<&'a str> {
         let count_dashes = prefix.matches('-').count();
         let index = 1 - (count_dashes % 2);
-        &self.words[index]
+        self.words[index].iter().map(|w| w.as_str()).collect()
     }
 
     #[cfg(feature = "fuzzy-complete")]
-    fn fuzzy_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
+    fn fuzzy_complete<'a>(&self, partial: &str, words: &'a [&str]) -> Vec<&'a str> {
         // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
         use fuzzt::algorithms::JaroWinkler;
 
-        let words = words.iter().map(|w| w.as_str()).collect::<Vec<&str>>();
-
         fuzzt::get_top_n(partial, &words, None, None, None, Some(&JaroWinkler))
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect()
     }
 
     #[allow(dead_code)]
-    fn normal_complete(&self, partial: &str, words: &[String]) -> Vec<String> {
+    fn normal_complete<'a>(&self, partial: &str, words: &'a [&str]) -> Vec<&'a str> {
         words
             .iter()
             .filter(|word| !partial.is_empty() && word.starts_with(partial))
-            .cloned()
+            .copied()
             .collect()
     }
 
@@ -172,8 +167,8 @@ mod test {
     fn test_get_wordlist() {
         let list = Wordlist::default_wordlist(2);
         assert_eq!(list.words.len(), 2);
-        assert_eq!(list.get_wordlist("22-"), &list.words[0]);
-        assert_eq!(list.get_wordlist("22-dictator-"), &list.words[1]);
+        assert_eq!(list.get_wordlist("22-"), &*list.words[0]);
+        assert_eq!(list.get_wordlist("22-dictator-"), &*list.words[1]);
     }
 
     fn vec_strs(all: &str) -> Vec<&str> {
@@ -261,16 +256,16 @@ mod test {
         let list = wl.get_wordlist("22-");
 
         assert_eq!(
-            wl.fuzzy_complete("bzili", list).first().unwrap(),
-            "brazilian"
+            wl.fuzzy_complete("bzili", &list).first().unwrap(),
+            &"brazilian"
         );
         assert_eq!(
-            wl.fuzzy_complete("carvan", list).first().unwrap(),
-            "caravan"
+            wl.fuzzy_complete("carvan", &list).first().unwrap(),
+            &"caravan"
         );
         assert_ne!(
-            wl.fuzzy_complete("choking", list).first().unwrap(),
-            "choking"
+            wl.fuzzy_complete("choking", &list).first().unwrap(),
+            &"choking"
         )
     }
 
@@ -281,11 +276,14 @@ mod test {
         let list = wl.get_wordlist("22-");
 
         assert_eq!(
-            wl.normal_complete("braz", list).first().unwrap(),
-            "brazilian"
+            wl.normal_complete("braz", &list).first().unwrap(),
+            &"brazilian"
         );
-        assert_eq!(wl.normal_complete("cara", list).first().unwrap(), "caravan");
-        assert!(wl.normal_complete("cravan", list).is_empty());
+        assert_eq!(
+            wl.normal_complete("cara", &list).first().unwrap(),
+            &"caravan"
+        );
+        assert!(wl.normal_complete("cravan", &list).is_empty());
     }
 
     #[test]
