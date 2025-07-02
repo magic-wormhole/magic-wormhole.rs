@@ -13,6 +13,8 @@
 //! and received as they come in, no additional buffering is applied. (Under the assumption that those applications
 //! that need buffering already do it on their side, and those who don't, don't.)
 
+use crate::transit::TransitRole;
+
 use super::*;
 use async_std::net::{TcpListener, TcpStream};
 use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
@@ -205,7 +207,8 @@ pub async fn serve(
     };
 
     let (mut transit, info) = match connector
-        .leader_connect(
+        .connect(
+            TransitRole::Leader,
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
             Arc::new(their_hints),
@@ -576,7 +579,8 @@ pub async fn connect(
     };
 
     let (mut transit, info) = match connector
-        .follower_connect(
+        .connect(
+            TransitRole::Follower,
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_version.transit_abilities,
             Arc::new(their_hints),
