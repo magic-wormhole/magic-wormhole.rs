@@ -898,6 +898,17 @@ impl MaybeConnectedSocket {
     }
 }
 
+/// The role a party takes in a transit connection handshake.
+///
+/// (Despite the handshake being asymmetric, the resulting connection is symmetric.)
+#[derive(Clone, Debug)]
+pub enum TransitRole {
+    /// The leader role in the handshake, formerly called "sender".
+    Leader,
+    /// The follower role in the handshake, formerly called "receiver".
+    Follower,
+}
+
 /**
  * A partially set up [`Transit`] connection.
  *
@@ -928,33 +939,33 @@ impl TransitConnector {
         &self.our_hints
     }
 
-    /**
-     * Forwards to either [`leader_connect`](Self::leader_connect) or [`follower_connect`](Self::follower_connect).
-     *
-     * It usually is better to call the respective functions directly by their name, as it makes
-     * them less easy to confuse (confusion may still happen though). Nevertheless, sometimes it
-     * is desirable to use the same code for both sides and only track the side with a boolean.
-     */
+    /// Connect to the other side.
+    ///
+    /// One side must call with `role` set to [`TransitRole::Leader`]
+    /// and the other with [`TransitRole::Follower`].
     pub async fn connect(
         self,
-        is_leader: bool,
+        role: TransitRole,
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
         their_hints: Arc<Hints>,
     ) -> Result<(Transit, TransitInfo), TransitConnectError> {
-        if is_leader {
-            self.leader_connect(transit_key, their_abilities, their_hints)
-                .await
-        } else {
-            self.follower_connect(transit_key, their_abilities, their_hints)
-                .await
+        match role {
+            TransitRole::Leader => {
+                self.leader_connect(transit_key, their_abilities, their_hints)
+                    .await
+            },
+            TransitRole::Follower => {
+                self.follower_connect(transit_key, their_abilities, their_hints)
+                    .await
+            },
         }
     }
 
     /**
      * Connect to the other side, as sender.
      */
-    pub async fn leader_connect(
+    async fn leader_connect(
         self,
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,
@@ -1062,7 +1073,7 @@ impl TransitConnector {
     /**
      * Connect to the other side, as receiver
      */
-    pub async fn follower_connect(
+    async fn follower_connect(
         self,
         transit_key: Key<TransitKey>,
         their_abilities: Abilities,

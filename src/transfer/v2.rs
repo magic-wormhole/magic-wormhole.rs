@@ -2,6 +2,8 @@ use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use serde_derive::{Deserialize, Serialize};
 use sha2::{digest::FixedOutput, Sha256};
 
+use crate::transit::TransitRole;
+
 use super::{offer::*, *};
 
 /**
@@ -99,7 +101,7 @@ pub struct TransferAck {}
 /** The code to establish a transit connection is essentially the same on both sides. */
 async fn make_transit(
     wormhole: &mut Wormhole,
-    is_leader: bool,
+    role: TransitRole,
     relay_hints: Vec<transit::RelayHint>,
     transit_abilities: transit::Abilities,
     peer_abilities: transit::Abilities,
@@ -130,7 +132,7 @@ async fn make_transit(
     /* Get a transit connection */
     let (transit, info) = match connector
         .connect(
-            is_leader,
+            role,
             wormhole.key().derive_transit_key(wormhole.appid()),
             peer_abilities,
             Arc::new(their_hints),
@@ -168,7 +170,7 @@ pub async fn send(
         run = async {
             Ok(make_transit(
                 &mut wormhole,
-                true,
+                TransitRole::Leader,
                 relay_hints,
                 transit_abilities,
                 peer_abilities.transit_abilities,
@@ -346,7 +348,7 @@ pub async fn request(
         run = async {
             make_transit(
                 &mut wormhole,
-                false,
+                TransitRole::Follower,
                 relay_hints,
                 transit_abilities,
                 peer_abilities.transit_abilities,

@@ -4,6 +4,8 @@ use futures::{
 };
 use sha2::{digest::FixedOutput, Digest, Sha256};
 
+use crate::transit::TransitRole;
+
 use super::{offer::*, *};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -196,7 +198,8 @@ where
         }
 
         let (mut transit, info) = connector
-            .leader_connect(
+            .connect(
+                TransitRole::Leader,
                 wormhole.key().derive_transit_key(wormhole.appid()),
                 their_abilities,
                 Arc::new(their_hints),
@@ -361,7 +364,8 @@ pub(crate) async fn send_folder(
         }
 
         let (mut transit, info) = connector
-            .leader_connect(
+            .connect(
+                TransitRole::Leader,
                 wormhole.key().derive_transit_key(wormhole.appid()),
                 their_abilities,
                 Arc::new(their_hints),
@@ -565,7 +569,8 @@ impl ReceiveRequest {
 
             let (mut transit, info) = self
                 .connector
-                .follower_connect(
+                .connect(
+                    TransitRole::Follower,
                     self.wormhole
                         .key()
                         .derive_transit_key(self.wormhole.appid()),
