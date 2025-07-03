@@ -18,8 +18,7 @@ impl Completion for CustomCompletion {
     fn get(&self, input: &str) -> Option<String> {
         WORDLIST
             .get_completions(input)
-            .map(|list| list.first().cloned())
-            .flatten()
+            .and_then(|list| list.first().cloned())
     }
 }
 
