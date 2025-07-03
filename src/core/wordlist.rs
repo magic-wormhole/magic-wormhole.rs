@@ -30,17 +30,15 @@ impl Wordlist {
 
     /// Completes a wormhole code
     ///
-    /// Completion can be done either with fuzzy search (approximate string matching)
-    /// or simple `starts_with` matching.
+    /// Completion can be done either with fuzzy search (approximate string matching) via the `fuzzy-complete` feature
+    /// or simple [`String::starts_with`] matching when disabling `fuzzy-complete` feature.
     pub fn get_completions(&self, prefix: &str) -> Option<Vec<String>> {
         let words = self.get_wordlist(prefix);
 
-        let (prefix, partial) = match prefix.rsplit_once("-") {
-            // No code word
-            Some((_, partial)) if partial.is_empty() => return None,
-            // Completable wormhole code
+        let (prefix, partial) = match prefix.rsplit_once('-') {
+            // At least one `-` in wormhole code
             Some((prefix, partial)) => (prefix, partial),
-            // Only channel number supplied, not completable or invalid wormhole code
+            // Only channel number supplied
             None => return None,
         };
 
@@ -57,12 +55,14 @@ impl Wordlist {
         )
     }
 
+    /// Counts `-` and returns correct wormhole code word list for completion
     fn get_wordlist<'a>(&'a self, prefix: &str) -> Vec<&'a str> {
         let count_dashes = prefix.matches('-').count();
         let index = 1 - (count_dashes % 2);
         self.words[index].iter().map(|w| w.as_str()).collect()
     }
 
+    /// Fuzzy completes single wormhole code word
     #[cfg(feature = "fuzzy-complete")]
     fn fuzzy_complete<'a>(&self, partial: &str, words: &'a [&str]) -> Vec<&'a str> {
         // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
@@ -71,6 +71,7 @@ impl Wordlist {
         fuzzt::get_top_n(partial, &words, None, None, None, Some(&JaroWinkler))
     }
 
+    /// Completes single wormhole code word using [`String::starts_with`]
     #[allow(dead_code)]
     fn normal_complete<'a>(&self, partial: &str, words: &'a [&str]) -> Vec<&'a str> {
         words
@@ -264,14 +265,18 @@ mod test {
         let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
 
+        assert!(wl.fuzzy_complete("", &list).is_empty());
+
         assert_eq!(
             wl.fuzzy_complete("bzili", &list).first().unwrap(),
             &"brazilian"
         );
+
         assert_eq!(
             wl.fuzzy_complete("carvan", &list).first().unwrap(),
             &"caravan"
         );
+
         assert_ne!(
             wl.fuzzy_complete("choking", &list).first().unwrap(),
             &"choking"
@@ -284,14 +289,18 @@ mod test {
         let wl = Wordlist::default_wordlist(2);
         let list = wl.get_wordlist("22-");
 
+        assert!(wl.normal_complete("", &list).is_empty());
+
         assert_eq!(
             wl.normal_complete("braz", &list).first().unwrap(),
             &"brazilian"
         );
+
         assert_eq!(
             wl.normal_complete("cara", &list).first().unwrap(),
             &"caravan"
         );
+
         assert!(wl.normal_complete("cravan", &list).is_empty());
     }
 
@@ -301,7 +310,7 @@ mod test {
         let list = Wordlist::default_wordlist(2);
 
         assert_eq!(list.get_completions("22"), None);
-        assert_eq!(list.get_completions("22-"), None);
+        assert_eq!(list.get_completions("22-"), Some(Vec::<String>::new()));
 
         assert_eq!(
             list.get_completions("22-compo").unwrap().first().unwrap(),
