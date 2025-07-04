@@ -651,7 +651,7 @@ impl std::fmt::Display for ConnectionType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConnectionType::Direct => write!(f, "directly"),
-            ConnectionType::Relay { name: Some(name) } => write!(f, "via relay ({})", name),
+            ConnectionType::Relay { name: Some(name) } => write!(f, "via relay ({name})"),
             ConnectionType::Relay { name: None } => write!(f, "via relay"),
         }
     }

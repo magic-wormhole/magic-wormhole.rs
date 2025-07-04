@@ -806,7 +806,7 @@ fn create_progress_handler(pb: ProgressBar) -> impl FnMut(u64, u64) {
 
 fn print_welcome(term: &mut Term, welcome: Option<&str>) -> eyre::Result<()> {
     if let Some(welcome) = &welcome {
-        writeln!(term, "Got welcome from server: {}", welcome)?;
+        writeln!(term, "Got welcome from server: {welcome}")?;
     }
     Ok(())
 }
@@ -841,7 +841,7 @@ fn sender_print_code(
     } else {
         let qr_code = qr2term::generate_qr_string(&uri)
             .context("Failed to generate QR code for send link")?;
-        writeln!(term, "{}", qr_code)?;
+        writeln!(term, "{qr_code}")?;
     }
 
     writeln!(
@@ -1081,7 +1081,7 @@ async fn receive_inner_v1(
                     "Receive file '{}' ({})?",
                     req.file_name().green().bold(),
                     match NumberPrefix::binary(req.file_size() as f64) {
-                        NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                        NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
                         NumberPrefix::Prefixed(prefix, n) =>
                             format!("{:.1} {}B", n, prefix.symbol()),
                     }
@@ -1092,7 +1092,7 @@ async fn receive_inner_v1(
                     "Receive file '{}' ({})?",
                     req.file_name(),
                     match NumberPrefix::binary(req.file_size() as f64) {
-                        NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                        NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
                         NumberPrefix::Prefixed(prefix, n) =>
                             format!("{:.1} {}B", n, prefix.symbol()),
                     },
@@ -1180,7 +1180,7 @@ async fn receive_inner_v2(
                 "Receive {} ({})?",
                 offer_name,
                 match NumberPrefix::binary(file_size as f64) {
-                    NumberPrefix::Standalone(bytes) => format!("{} bytes", bytes),
+                    NumberPrefix::Standalone(bytes) => format!("{bytes} bytes"),
                     NumberPrefix::Prefixed(prefix, n) =>
                         format!("{:.1} {}B in size", n, prefix.symbol()),
                 },
@@ -1278,9 +1278,9 @@ fn transit_handler(info: TransitInfo) {
     };
 
     if info.conn_type == ConnectionType::Direct {
-        let _ = writeln!(term, "Connecting {} to {}", conn_type, peer_addr);
+        let _ = writeln!(term, "Connecting {conn_type} to {peer_addr}");
     } else {
-        let _ = writeln!(term, "Connecting {}", conn_type);
+        let _ = writeln!(term, "Connecting {conn_type}");
     };
 }
 

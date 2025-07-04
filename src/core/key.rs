@@ -44,7 +44,7 @@ impl Key<WormholeKey> {
      */
     #[cfg(feature = "transit")]
     pub(crate) fn derive_transit_key(&self, appid: &AppID) -> Key<crate::transit::TransitKey> {
-        let transit_purpose = format!("{}/transit-key", appid);
+        let transit_purpose = format!("{appid}/transit-key");
         let derived_key = self.derive_subkey_from_purpose(&transit_purpose);
         tracing::trace!(
             "Input key: {}, Transit key: {}, Transit purpose: '{}'",

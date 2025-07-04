@@ -123,7 +123,7 @@ async fn make_transit(
             other => {
                 let error = TransferError::unexpected_message("transit-v2", other);
                 let _ = wormhole
-                    .send_json(&PeerMessage::Error(format!("{}", error)))
+                    .send_json(&PeerMessage::Error(format!("{error}")))
                     .await;
                 bail!(error)
             },
@@ -143,7 +143,7 @@ async fn make_transit(
         Err(error) => {
             let error = TransferError::TransitConnect(error);
             let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
+                .send_json(&PeerMessage::Error(format!("{error}")))
                 .await;
             return Err(error);
         },

@@ -948,7 +948,7 @@ impl FromStr for Code {
                 let password: Password = p.parse()?;
                 let nameplate: Nameplate = n.parse()?;
 
-                Ok(Self(format!("{}-{}", nameplate, password)))
+                Ok(Self(format!("{nameplate}-{password}")))
             },
             None if s.is_empty() => Err(ParseCodeError::Empty),
             None => Err(ParseCodeError::SeparatorMissing),
