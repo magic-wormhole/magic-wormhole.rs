@@ -35,12 +35,7 @@ impl Wordlist {
     pub fn get_completions(&self, prefix: &str) -> Option<Vec<String>> {
         let words = self.get_wordlist(prefix);
 
-        let (prefix, partial) = match prefix.rsplit_once('-') {
-            // At least one `-` in wormhole code
-            Some((prefix, partial)) => (prefix, partial),
-            // Only channel number supplied
-            None => return None,
-        };
+        let (prefix, partial) = prefix.rsplit_once('-')?;
 
         #[cfg(feature = "fuzzy-complete")]
         let matches = self.fuzzy_complete(partial, &words);
