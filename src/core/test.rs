@@ -88,9 +88,7 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
         WormholeError::UnclaimedNameplate(nameplate) => {
             assert_eq!(nameplate, code.nameplate());
         },
-        _ => {
-            assert!(false);
-        },
+        _ => panic!("Wrong error type: {error}"),
     }
 }
 
@@ -370,7 +368,6 @@ pub async fn test_send_many() {
                 .await?,
             )
             .await?;
-            let gen_offer = gen_offer.clone();
             senders.push(async_std::task::spawn_local(async move {
                 eyre::Result::Ok(
                     crate::transfer::send(
