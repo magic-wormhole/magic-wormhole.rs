@@ -453,21 +453,22 @@ async fn main() -> eyre::Result<()> {
                 .map(|(index, target)| {
                     let result = (|| {
                         /* Either HOST:PORT or PORT */
-                        if target.contains(':') {
-                            /* Extract the :PORT at the end */
-                            let port = target.split(':').last().unwrap();
-                            let host = url::Host::parse(&target[..target.len() - port.len() - 1])
-                                .map_err(eyre::Error::from)
-                                .context("Invalid host")?;
-                            let port: u16 = port.parse().context("Invalid port")?;
-                            Ok((Some(host), port))
-                        } else {
-                            /* It's just a port */
-                            target
-                                .parse::<u16>()
-                                .map(|port| (None, port))
-                                .map_err(eyre::Error::from)
-                                .context("Invalid port")
+                        match target.rsplit_once(':') {
+                            Some((host, port)) => {
+                                let host = url::Host::parse(host)
+                                    .map_err(eyre::Error::from)
+                                    .context("Invalid host")?;
+                                let port: u16 = port.parse().context("Invalid port")?;
+                                Ok((Some(host), port))
+                            },
+                            None => {
+                                /* It's just a port */
+                                target
+                                    .parse::<u16>()
+                                    .map(|port| (None, port))
+                                    .map_err(eyre::Error::from)
+                                    .context("Invalid port")
+                            },
                         }
                     })();
                     result.context(format!(
@@ -559,6 +560,7 @@ async fn main() -> eyre::Result<()> {
                     clap_complete::generate(shell, &mut cmd, binary_name, &mut out);
                     let out = String::from_utf8(out)
                         .expect("Internal error: shell completion not UTF-8 encoded");
+                    #[allow(clippy::uninlined_format_args)]
                     let out = format!(
                         "compdef _{0} {0}\n _{0}() {{ {1} }}\n\nif [ \"$funcstack[1]\" = \"{0}\" ]; then\n   {0} \"$@\"\nfi",
                         binary_name,
