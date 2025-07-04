@@ -175,7 +175,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
                 async {
                     debug_err(
                         wormhole
-                            .send_json(&PeerMessage::Error(format!("{}", error)))
+                            .send_json(&PeerMessage::Error(format!("{error}")))
                             .await,
                         "notify peer about the error",
                     );
@@ -194,7 +194,7 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
                 async {
                     debug_err(
                         wormhole
-                            .send_json(&PeerMessage::Error(format!("{}", cancelled)))
+                            .send_json(&PeerMessage::Error(format!("{cancelled}")))
                             .await,
                         "notify peer about our cancellation",
                     );

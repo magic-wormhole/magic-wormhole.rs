@@ -66,8 +66,7 @@ impl RendezvousError {
 
     pub(self) fn invalid_message(expected: &str, got: impl std::fmt::Debug) -> Self {
         Self::protocol(format!(
-            "Unexpected message (protocol error): Expected '{}', but got: {:?}",
-            expected, got
+            "Unexpected message (protocol error): Expected '{expected}', but got: {got:?}"
         ))
     }
 
@@ -144,8 +143,7 @@ impl WsConnection {
                 },
                 Some(other) => {
                     return Err(RendezvousError::protocol(format!(
-                        "Got unexpected message type from server '{}'",
-                        other
+                        "Got unexpected message type from server '{other}'"
                     )))
                 },
                 None => continue,
@@ -187,8 +185,7 @@ impl WsConnection {
                 },
                 Some(other) => {
                     break Err(RendezvousError::protocol(format!(
-                        "Got unexpected message type from server '{}'",
-                        other
+                        "Got unexpected message type from server '{other}'"
                     )))
                 },
                 None => (/*continue*/),
@@ -367,8 +364,7 @@ impl RendezvousServer {
             InboundMessage::Welcome { welcome } => welcome,
             other => {
                 return Err(RendezvousError::protocol(format!(
-                    "First message server sends must be 'welcome', but was '{}'",
-                    other
+                    "First message server sends must be 'welcome', but was '{other}'"
                 )))
             },
         };
@@ -474,8 +470,7 @@ impl RendezvousServer {
                 }
             },
             Some(other) => Err(RendezvousError::protocol(format!(
-                "Expected message from peer, got '{}' instead",
-                other
+                "Expected message from peer, got '{other}' instead"
             ))),
             None => Ok(None),
         }

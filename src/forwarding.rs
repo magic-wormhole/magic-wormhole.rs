@@ -182,7 +182,7 @@ pub async fn serve(
                 if port == 80 || port == 443 || port == 8000 || port == 8080 {
                     tracing::warn!("It seems like you are trying to forward a remote HTTP target ('{}'). Due to HTTP being host-aware this will very likely fail!", host);
                 }
-                (format!("{}:{}", host, port), (Some(host), port))
+                (format!("{host}:{port}"), (Some(host), port))
             },
             None => (port.to_string(), (host, port)),
         })
@@ -200,7 +200,7 @@ pub async fn serve(
         other => {
             let error = ForwardingError::unexpected_message("transit", other);
             let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
+                .send_json(&PeerMessage::Error(format!("{error}")))
                 .await;
             bail!(error)
         },
@@ -219,7 +219,7 @@ pub async fn serve(
         Err(error) => {
             let error = ForwardingError::TransitConnect(error);
             let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
+                .send_json(&PeerMessage::Error(format!("{error}")))
                 .await;
             return Err(error);
         },
@@ -266,7 +266,7 @@ pub async fn serve(
         Err(error) => {
             let _ = transit_tx
                 .send(
-                    PeerMessage::Error(format!("{}", error))
+                    PeerMessage::Error(format!("{error}"))
                         .ser_msgpack()
                         .into_boxed_slice(),
                 )
@@ -316,8 +316,7 @@ impl ForwardingServe {
             },
             None if !self.historic_connections.contains(&connection_id) => {
                 bail!(ForwardingError::protocol(format!(
-                    "Connection '{}' not found",
-                    connection_id
+                    "Connection '{connection_id}' not found"
                 )));
             },
             None => { /* Race hazard. Do nothing. */ },
@@ -347,8 +346,7 @@ impl ForwardingServe {
             },
             None if !self.historic_connections.contains(&connection_id) => {
                 bail!(ForwardingError::protocol(format!(
-                    "Connection '{}' not found",
-                    connection_id
+                    "Connection '{connection_id}' not found"
                 )));
             },
             None => { /* Race hazard. Do nothing. */ },
@@ -369,15 +367,14 @@ impl ForwardingServe {
             Entry::Vacant(entry) => entry,
             Entry::Occupied(_) => {
                 bail!(ForwardingError::protocol(format!(
-                    "Connection '{}' already exists",
-                    connection_id
+                    "Connection '{connection_id}' already exists"
                 )));
             },
         };
 
         let (host, port) = self.targets.get(&target).unwrap();
         if host.is_none() {
-            target = format!("[::1]:{}", port);
+            target = format!("[::1]:{port}");
         }
         let stream = match TcpStream::connect(&target).await {
             Ok(stream) => stream,
@@ -459,7 +456,7 @@ impl ForwardingServe {
                             self.historic_connections.insert(connection_id);
                             ensure!(
                                 self.targets.contains_key(&target),
-                                ForwardingError::protocol(format!("We don't know forwarding target '{}'", target)),
+                                ForwardingError::protocol(format!("We don't know forwarding target '{target}'")),
                             );
 
                             self.spawn_connection(transit_tx, target, connection_id).await?;
@@ -572,7 +569,7 @@ pub async fn connect(
         other => {
             let error = ForwardingError::unexpected_message("transit", other);
             let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
+                .send_json(&PeerMessage::Error(format!("{error}")))
                 .await;
             bail!(error)
         },
@@ -591,7 +588,7 @@ pub async fn connect(
         Err(error) => {
             let error = ForwardingError::TransitConnect(error);
             let _ = wormhole
-                .send_json(&PeerMessage::Error(format!("{}", error)))
+                .send_json(&PeerMessage::Error(format!("{error}")))
                 .await;
             return Err(error);
         },
@@ -652,7 +649,7 @@ pub async fn connect(
         Err(error @ ForwardingError::PeerError(_)) => Err(error),
         Err(error) => {
             let _ = transit
-                .send_record(&PeerMessage::Error(format!("{}", error)).ser_msgpack())
+                .send_record(&PeerMessage::Error(format!("{error}")).ser_msgpack())
                 .await;
             Err(error)
         },
@@ -719,7 +716,7 @@ impl ConnectOffer {
             Err(error) => {
                 let _ = transit_tx
                     .send(
-                        PeerMessage::Error(format!("{}", error))
+                        PeerMessage::Error(format!("{error}"))
                             .ser_msgpack()
                             .into_boxed_slice(),
                     )
@@ -784,8 +781,7 @@ impl ForwardConnect {
             },
             None if self.connection_counter <= connection_id => {
                 bail!(ForwardingError::protocol(format!(
-                    "Connection '{}' not found",
-                    connection_id
+                    "Connection '{connection_id}' not found"
                 )));
             },
             None => { /* Race hazard. Do nothing. */ },
@@ -815,8 +811,7 @@ impl ForwardConnect {
             },
             None if connection_id >= self.connection_counter => {
                 bail!(ForwardingError::protocol(format!(
-                    "Connection '{}' not found",
-                    connection_id
+                    "Connection '{connection_id}' not found"
                 )));
             },
             None => { /* Race hazard. Do nothing. */ },

@@ -51,10 +51,10 @@ impl std::fmt::Display for WelcomeMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "WelcomeMessage {{ ")?;
         if let Some(motd) = &self.motd {
-            write!(f, "motd: '{}', ", motd)?;
+            write!(f, "motd: '{motd}', ")?;
         }
         if let Some(permission_required) = &self.permission_required {
-            write!(f, "permission_required: '{}', ", permission_required)?;
+            write!(f, "permission_required: '{permission_required}', ")?;
         }
         write!(f, ".. }}")?;
         Ok(())

@@ -527,7 +527,7 @@ pub async fn test_crowded() {
         ) => {
             assert_eq!(&*error, "crowded")
         },
-        other => panic!("Got wrong error message: {}, wanted 'crowded'", other),
+        other => panic!("Got wrong error message: {other}, wanted 'crowded'"),
     }
 }
 
@@ -541,10 +541,7 @@ pub async fn test_connect_with_code_expecting_nameplate() {
         magic_wormhole::WormholeError::UnclaimedNameplate(x) => {
             assert_eq!(x, code.nameplate());
         },
-        other => panic!(
-            "Got wrong error type {:?}. Expected `NameplateNotFound`",
-            other
-        ),
+        other => panic!("Got wrong error type {other:?}. Expected `NameplateNotFound`"),
     }
 }
 
