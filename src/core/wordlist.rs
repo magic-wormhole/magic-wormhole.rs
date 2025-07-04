@@ -333,8 +333,8 @@ mod test {
         let list = Wordlist::default_wordlist(2);
 
         assert_eq!(
-            list.get_completions("22-trj").unwrap().first().unwrap(),
-            "22-trojan"
+            list.get_completions("22-decd").unwrap().first().unwrap(),
+            "22-decadence"
         );
 
         assert_eq!(
