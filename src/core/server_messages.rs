@@ -465,7 +465,7 @@ mod test {
         let s = r#"{"type": "ack", "id": null, "server_tx": 1234.56}"#;
         let m = serde_json::from_str(s).unwrap();
         match m {
-            InboundMessage::Ack {} => (),
+            InboundMessage::Ack => (),
             _ => panic!(),
         }
     }

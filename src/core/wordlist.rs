@@ -235,7 +235,7 @@ mod test {
         let more_words = vec![vec_strings("purple yellow"), vec_strings("sausages")];
 
         let expected2 = vec_strs("purple-sausages yellow-sausages");
-        let expected3 = vec![
+        let expected3 = [
             "purple-sausages-purple",
             "yellow-sausages-purple",
             "purple-sausages-yellow",

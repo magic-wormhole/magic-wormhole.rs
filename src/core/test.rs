@@ -177,8 +177,7 @@ async fn file_offers(
                             if self.send_bytes == self.receive_bytes {
                                 Poll::Ready(Ok(()))
                             } else {
-                                Poll::Ready(Err(io::Error::new(
-                                    io::ErrorKind::Other,
+                                Poll::Ready(Err(io::Error::other(
                                     "Send and receive are not the same",
                                 )))
                             }

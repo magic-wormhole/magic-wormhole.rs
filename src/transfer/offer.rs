@@ -41,13 +41,10 @@ impl OfferSend {
             let offer_name = offer_name
                 .to_str()
                 .ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "{} is not UTF-8 encoded",
-                            (offer_name.as_ref() as &Path).display()
-                        ),
-                    )
+                    std::io::Error::other(format!(
+                        "{} is not UTF-8 encoded",
+                        (offer_name.as_ref() as &Path).display()
+                    ))
                 })?
                 .to_owned();
             let old = content.insert(offer_name, OfferSendEntry::new(path).await?);
@@ -291,8 +288,7 @@ impl OfferSendEntry {
         //         target: target
         //             .to_str()
         //             .ok_or_else(|| {
-        //                 std::io::Error::new(
-        //                     std::io::ErrorKind::Other,
+        //                 std::io::Error::other(
         //                     format!("{} is not UTF-8 encoded", target.display()),
         //                 )
         //             })?
@@ -311,10 +307,10 @@ impl OfferSendEntry {
                         .expect("Internal error: non-root paths should always have a name")
                         .to_str()
                         .ok_or_else(|| {
-                            std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("{} is not UTF-8 encoded", path.display()),
-                            )
+                            std::io::Error::other(format!(
+                                "{} is not UTF-8 encoded",
+                                path.display()
+                            ))
                         })?
                         .to_owned();
                     let offer = new_recurse(path).await?;
