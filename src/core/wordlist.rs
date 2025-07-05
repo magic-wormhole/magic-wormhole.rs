@@ -28,10 +28,15 @@ impl Wordlist {
         Wordlist { num_words, words }
     }
 
-    /// Completes a wormhole code
+    /// This function provides completion suggestions for a given `prefix` based on a word list.
+    /// The completion method depends on the `fuzzy-complete` feature:
+    /// - **With `fuzzy-complete` enabled**: Uses fuzzy search (approximate string matching) to find matches.
+    /// - **Without `fuzzy-complete`**: Uses simple [`String::starts_with`] matching.
     ///
-    /// Completion can be done either with fuzzy search (approximate string matching) via the `fuzzy-complete` feature
-    /// or simple [`String::starts_with`] matching when disabling `fuzzy-complete` feature.
+    /// ### Returns:
+    /// - `Some<Vec<String>>`: A vector of completed strings (e.g., `"22-apollo"`) if matches are found.
+    /// - `None`: If the input `prefix` is invalid (e.g., `"22"` without a hyphen).
+    /// - `Some(Vec::new())`: If the input is too ambiguous (e.g., `"22-"` with no clear match).
     pub fn get_completions(&self, prefix: &str) -> Option<Vec<String>> {
         let words = self.get_wordlist(prefix);
 
