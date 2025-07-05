@@ -311,6 +311,10 @@ mod test {
 
         assert_eq!(list.get_completions("22"), None);
         assert_eq!(list.get_completions("22-"), Some(Vec::<String>::new()));
+        assert_ne!(
+            list.get_completions("22-troj"),
+            Some(vec!["22-trojan".to_string()])
+        );
 
         assert_eq!(
             list.get_completions("22-compo").unwrap().first().unwrap(),
@@ -336,6 +340,13 @@ mod test {
     #[cfg(feature = "fuzzy-complete")]
     fn test_wormhole_code_fuzzy_completions() {
         let list = Wordlist::default_wordlist(2);
+
+        assert_eq!(list.get_completions("22"), None);
+        assert_eq!(list.get_completions("22-"), Some(Vec::<String>::new()));
+        assert_ne!(
+            list.get_completions("22-troj"),
+            Some(vec!["22-trojan".to_string()])
+        );
 
         assert_eq!(
             list.get_completions("22-decd").unwrap().first().unwrap(),
