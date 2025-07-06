@@ -312,8 +312,8 @@ mod test {
         assert_eq!(list.get_completions("22"), None);
         assert_eq!(list.get_completions("22-"), Some(Vec::<String>::new()));
         assert_ne!(
-            list.get_completions("22-troj"),
-            Some(vec!["22-trojan".to_string()])
+            list.get_completions("22-troj").unwrap().first().unwrap(),
+            &"22-trojan".to_string()
         );
 
         assert_eq!(
@@ -344,8 +344,8 @@ mod test {
         assert_eq!(list.get_completions("22"), None);
         assert_eq!(list.get_completions("22-"), Some(Vec::<String>::new()));
         assert_ne!(
-            list.get_completions("22-troj"),
-            Some(vec!["22-trojan".to_string()])
+            list.get_completions("22-troj").unwrap().first().unwrap(),
+            &"22-trojan".to_string()
         );
 
         assert_eq!(
