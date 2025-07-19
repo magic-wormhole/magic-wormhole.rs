@@ -44,19 +44,11 @@ pub enum RendezvousError {
     #[cfg(not(target_family = "wasm"))]
     /// Websocket I/O error
     #[error("Websocket I/O error")]
-    IO(
-        #[from]
-        #[source]
-        ws2::Error,
-    ),
+    IO(#[source] Box<ws2::Error>),
     /// Websocket I/O error
     #[cfg(target_family = "wasm")]
     #[error("Websocket IO error")]
-    IO(
-        #[from]
-        #[source]
-        ws_stream_wasm::WsErr,
-    ),
+    IO(#[source] Box<ws_stream_wasm::WsErr>),
 }
 
 impl RendezvousError {
@@ -72,6 +64,20 @@ impl RendezvousError {
 
     pub(self) fn server(error: impl Into<Box<str>>) -> Self {
         Self::Server(error.into())
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl From<ws2::Error> for RendezvousError {
+    fn from(value: ws2::Error) -> Self {
+        Self::IO(Box::new(value))
+    }
+}
+
+#[cfg(target_family = "wasm")]
+impl From<ws_stream_wasm::WsErr> for RendezvousError {
+    fn from(value: ws_stream_wasm::WsErr) -> Self {
+        Self::IO(Box::new(value))
     }
 }
 

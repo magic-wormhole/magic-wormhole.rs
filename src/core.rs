@@ -25,18 +25,10 @@ use crypto_secretbox as secretbox;
 pub enum WormholeError {
     /// Corrupt message received from peer. Some deserialization went wrong, we probably got some garbage
     #[error("Corrupt message received from peer")]
-    ProtocolJson(
-        #[from]
-        #[source]
-        serde_json::Error,
-    ),
+    ProtocolJson(#[from] serde_json::Error),
     /// Error with the rendezvous server connection. Some deserialization went wrong, we probably got some garbage
     #[error("Error with the rendezvous server connection")]
-    ServerError(
-        #[from]
-        #[source]
-        rendezvous::RendezvousError,
-    ),
+    ServerError(#[from] rendezvous::RendezvousError),
     /// A generic string message for "something went wrong", i.e.
     /// the server sent some bullshit message order
     #[error("Protocol error: {}", _0)]
