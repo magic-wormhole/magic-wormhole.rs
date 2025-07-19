@@ -65,7 +65,7 @@ impl Wordlist {
         // We use Jaro-Winkler algorithm because it emphasizes the beginning of a word
         use fuzzt::algorithms::JaroWinkler;
 
-        fuzzt::get_top_n(partial, &words, None, None, None, Some(&JaroWinkler))
+        fuzzt::get_top_n(partial, words, None, None, None, Some(&JaroWinkler))
     }
 
     /// Completes single wormhole code word using [`String::starts_with`]
