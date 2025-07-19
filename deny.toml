@@ -1,7 +1,11 @@
+[graph]
+all-features = true
+
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "warn"
 ignore = []
+unmaintained = "workspace"
 
 [licenses]
 allow = [
@@ -11,19 +15,14 @@ allow = [
     "ISC",
     "MIT",
     "MPL-2.0",
-    "OpenSSL",
     "Unicode-3.0",
     "Unlicense",
+    "EUPL-1.2",
 ]
 
 [licenses.private]
 ignore = false
 registries = []
-
-[[licenses.exceptions]]
-allow = ["EUPL-1.2"]
-name = "magic-wormhole"
-version = "*"
 
 [[licenses.clarify]]
 name = "ring"
