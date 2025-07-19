@@ -1,12 +1,12 @@
 use crate::core::*;
 use crypto_secretbox as secretbox;
 use crypto_secretbox::{
-    aead::{generic_array::GenericArray, Aead, AeadCore},
     KeyInit, XSalsa20Poly1305,
+    aead::{Aead, AeadCore, generic_array::GenericArray},
 };
 use hkdf::Hkdf;
 use serde_derive::{Deserialize, Serialize};
-use sha2::{digest::FixedOutput, Digest, Sha256};
+use sha2::{Digest, Sha256, digest::FixedOutput};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 
 /// Marker trait to give encryption keys a "purpose", to not confuse them
@@ -331,7 +331,10 @@ mod test {
         .unwrap();
         assert_eq!(nonce.len(), 24);
         let msg = encrypt_data_with_nonce(&k, &plaintext, &nonce);
-        assert_eq!(hex::encode(msg), "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a");
+        assert_eq!(
+            hex::encode(msg),
+            "2d5e43eb465aa42e750f991e425bee485f06abad7e04af80fe318e39d0e4ce932d2b54b300c56d2cda55ee5f0488d63eb1d5f76f7919a49a"
+        );
     }
 
     #[test]

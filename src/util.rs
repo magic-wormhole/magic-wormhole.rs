@@ -100,7 +100,7 @@ pub fn sodium_increment_be(n: &mut [u8]) {
 
 /** Mint a new hashcash token with a given difficulty and resource string. */
 pub fn hashcash(resource: String, bits: u32) -> String {
-    use rand::{distributions::Standard, Rng};
+    use rand::{Rng, distributions::Standard};
     use sha1::{Digest, Sha1};
 
     if bits > 32 {

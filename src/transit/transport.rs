@@ -121,12 +121,11 @@ pub(super) async fn tcp_get_external_ip() -> Result<(SocketAddr, TcpStream), Stu
 
     use bytecodec::{DecodeExt, EncodeExt};
     use stun_codec::{
-        rfc5389::{
-            self,
-            attributes::{MappedAddress, Software, XorMappedAddress},
-            Attribute,
-        },
         Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
+        rfc5389::{
+            self, Attribute,
+            attributes::{MappedAddress, Software, XorMappedAddress},
+        },
     };
 
     fn get_binding_request() -> Result<Vec<u8>, bytecodec::Error> {

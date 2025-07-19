@@ -438,8 +438,9 @@ impl ForwardingServe {
     async fn run(
         mut self,
         transit_tx: &mut (impl futures::sink::Sink<Box<[u8]>, Error = TransitError> + Unpin),
-        transit_rx: &mut (impl futures::stream::FusedStream<Item = Result<Box<[u8]>, TransitError>>
-                  + Unpin),
+        transit_rx: &mut (
+                 impl futures::stream::FusedStream<Item = Result<Box<[u8]>, TransitError>> + Unpin
+             ),
         cancel: &mut (impl futures::future::FusedFuture<Output = ()> + Unpin),
     ) -> Result<(), ForwardingError> {
         /* Event processing loop */
@@ -886,8 +887,9 @@ impl ForwardConnect {
     async fn run(
         mut self,
         transit_tx: &mut (impl futures::sink::Sink<Box<[u8]>, Error = TransitError> + Unpin),
-        transit_rx: &mut (impl futures::stream::FusedStream<Item = Result<Box<[u8]>, TransitError>>
-                  + Unpin),
+        transit_rx: &mut (
+                 impl futures::stream::FusedStream<Item = Result<Box<[u8]>, TransitError>> + Unpin
+             ),
         cancel: &mut (impl futures::future::FusedFuture<Output = ()> + Unpin),
     ) -> Result<(), ForwardingError> {
         /* Event processing loop */

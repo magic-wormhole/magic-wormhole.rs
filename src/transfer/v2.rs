@@ -1,6 +1,6 @@
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use serde_derive::{Deserialize, Serialize};
-use sha2::{digest::FixedOutput, Sha256};
+use sha2::{Sha256, digest::FixedOutput};
 
 use crate::transit::TransitRole;
 

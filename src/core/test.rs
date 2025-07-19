@@ -7,7 +7,7 @@ use std::{borrow::Cow, str::FromStr, time::Duration};
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
-    self as magic_wormhole, core::MailboxConnection, transit, AppConfig, AppID, Code, WormholeError,
+    self as magic_wormhole, AppConfig, AppID, Code, WormholeError, core::MailboxConnection, transit,
 };
 use test_log::test;
 
@@ -93,8 +93,8 @@ pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
 }
 
 /** Generate common offers for testing, together with a pre-made answer that checks the received content */
-async fn file_offers(
-) -> eyre::Result<Vec<(transfer::offer::OfferSend, transfer::offer::OfferAccept)>> {
+async fn file_offers()
+-> eyre::Result<Vec<(transfer::offer::OfferSend, transfer::offer::OfferAccept)>> {
     async fn offer(
         name: &str,
     ) -> eyre::Result<(transfer::offer::OfferSend, transfer::offer::OfferAccept)> {
