@@ -230,7 +230,9 @@ jobs:
           toolchain: nightly
       - name: Checkout Rust toolcnain
         uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v1
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          rust-version: ${{ needs.read_msrv.outputs.msrv }}
 
   semver:
     name: SemVer
