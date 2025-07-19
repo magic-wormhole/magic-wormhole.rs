@@ -14,13 +14,12 @@ use color_eyre::{
     owo_colors::OwoColorize,
 };
 use completer::enter_code;
-use console::{style, Term};
-use futures::{future::Either, Future, FutureExt};
+use console::{Term, style};
+use futures::{Future, FutureExt, future::Either};
 use indicatif::{MultiProgress, ProgressBar};
 use magic_wormhole::{
-    forwarding, transfer,
+    MailboxConnection, ParseCodeError, ParsePasswordError, Wormhole, forwarding, transfer,
     transit::{self, ConnectionType, TransitInfo},
-    MailboxConnection, ParseCodeError, ParsePasswordError, Wormhole,
 };
 use std::{io::Write, path::PathBuf};
 use tracing_subscriber::EnvFilter;
@@ -28,8 +27,8 @@ use tracing_subscriber::EnvFilter;
 #[cfg(feature = "clipboard")]
 use arboard::Clipboard;
 
-fn install_ctrlc_handler(
-) -> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
+fn install_ctrlc_handler()
+-> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
     use async_std::sync::{Condvar, Mutex};
 
     let notifier = Arc::new((Mutex::new(false), Condvar::new()));
@@ -289,7 +288,7 @@ async fn main() -> eyre::Result<()> {
 
     // Set NO_COLOR environment variable if --no-color flag is used
     if app.no_color {
-        std::env::set_var("NO_COLOR", "1");
+        unsafe { std::env::set_var("NO_COLOR", "1") };
     }
 
     if app.log {
@@ -445,7 +444,9 @@ async fn main() -> eyre::Result<()> {
             ..
         }) => {
             // TODO make fancy
-            tracing::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
+            tracing::warn!(
+                "This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes."
+            );
             /* Map the CLI argument to Strings. Use the occasion to inspect them and fail early on malformed input. */
             let targets = targets
                 .into_iter()
@@ -520,7 +521,9 @@ async fn main() -> eyre::Result<()> {
             ..
         }) => {
             // TODO make fancy
-            tracing::warn!("This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes.");
+            tracing::warn!(
+                "This is an unstable feature. Make sure that your peer is running the exact same version of the program as you. Also, please report all bugs and crashes."
+            );
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = parse_and_connect(
@@ -651,7 +654,7 @@ async fn parse_and_connect(
         Some(Err(err @ ParseCodeError::Password(ParsePasswordError::LittleEntropy { .. })))
             if std::io::stdin().is_terminal() =>
         {
-            return Err(err.into())
+            return Err(err.into());
         },
         Some(Err(err)) => {
             tracing::error!("{} This will fail in the next release.", err);
@@ -761,10 +764,16 @@ async fn make_send_offer(
         (_, None) => {
             let mut names = std::collections::BTreeMap::new();
             for path in &files {
-                eyre::ensure!(path.file_name().is_some(), "'{}' has no name. You need to send it separately and use the --rename flag, or rename it on the file system", path.display());
+                eyre::ensure!(
+                    path.file_name().is_some(),
+                    "'{}' has no name. You need to send it separately and use the --rename flag, or rename it on the file system",
+                    path.display()
+                );
                 if let Some(old) = names.insert(path.file_name(), path) {
                     eyre::bail!(
-                        "'{}' and '{}' have the same file name. Rename one of them on disk, or send them in separate transfers", old.display(), path.display(),
+                        "'{}' and '{}' have the same file name. Rename one of them on disk, or send them in separate transfers",
+                        old.display(),
+                        path.display(),
                     );
                 }
             }
@@ -835,7 +844,11 @@ fn sender_print_code(
         writeln!(term, "\nThis wormhole's code is: {}", style(&code).bold())?;
     }
 
-    writeln!(term, "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\", &uri, &uri)?;
+    writeln!(
+        term,
+        "This is equivalent to the following link: \u{001B}]8;;{}\u{001B}\\{}\u{001B}]8;;\u{001B}\\",
+        &uri, &uri
+    )?;
     if no_qr {
         tracing::debug!("QR option not enabled. Skipping QR code generation.");
     } else {
@@ -923,7 +936,9 @@ async fn send_many(
     transit_abilities: transit::Abilities,
     ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
-    tracing::warn!("Reminder that you are sending the file to multiple people, and this may reduce the overall security. See the help page for more information.");
+    tracing::warn!(
+        "Reminder that you are sending the file to multiple people, and this may reduce the overall security. See the help page for more information."
+    );
 
     /* Progress bar is commented out for now. See the issues about threading/async in
      * the Indicatif repository for more information. Multiple progress bars are not usable

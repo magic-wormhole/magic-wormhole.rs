@@ -44,7 +44,7 @@ const SHUTDOWN_TIME: std::time::Duration = std::time::Duration::from_secs(5);
 
 // TODO make function once possible (Rust language limitations etc.)
 macro_rules! with_cancel_wormhole {
-    ($wormhole:ident, run = $run:expr, $cancel:expr, ret_cancel = $ret_cancel:expr $(,)?) => {{
+    ($wormhole:ident, run = $run:expr_2021, $cancel:expr_2021, ret_cancel = $ret_cancel:expr_2021 $(,)?) => {{
         let run = Box::pin($run);
         let result = cancel::cancellable_2(run, $cancel).await;
         let Some((transit, wormhole, cancel)) =
@@ -63,7 +63,7 @@ pub(super) use with_cancel_wormhole;
 // Rustfmt has a bug where it will indent a few lines again and again and again and again and again anda
 #[rustfmt::skip]
 macro_rules! with_cancel_transit {
-    ($transit:ident, run = $run:expr, $cancel:expr, $make_error_message:expr, $parse_message:expr, ret_cancel = $ret_cancel:expr $(,)?) => {{
+    ($transit:ident, run = $run:expr_2021, $cancel:expr_2021, $make_error_message:expr_2021, $parse_message:expr_2021, ret_cancel = $ret_cancel:expr_2021 $(,)?) => {{
         let run = Box::pin($run);
         let result = cancel::cancellable_2(run, $cancel).await;
         let Some((value, transit)) = cancel::handle_run_result_transit(
@@ -156,11 +156,11 @@ pub async fn handle_run_result_noclose<T, C: Future<Output = ()>>(
                 // and we should not only look for the next one but all have been received
                 // and we should not interrupt a receive operation without making sure it leaves the connection
                 // in a consistent state, otherwise the shutdown may cause protocol errors
-                if let Ok(Ok(Ok(PeerMessage::Error(e)))) = async_std::future::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await {
+                match async_std::future::timeout(SHUTDOWN_TIME / 3, wormhole.receive_json()).await { Ok(Ok(Ok(PeerMessage::Error(e)))) => {
                     error = TransferError::PeerError(e);
-                } else {
+                } _ => {
                     tracing::debug!("Failed to retrieve more specific error message from peer. Maybe it crashed?");
-                }
+                }}
                 debug_err(wormhole.close().await, "close Wormhole");
             }, cancel).await;
             Err(error)

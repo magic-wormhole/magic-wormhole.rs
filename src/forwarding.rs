@@ -400,7 +400,7 @@ impl ForwardingServe {
             let mut buffer = vec![0; 4096];
             /* Ignore errors */
             macro_rules! break_on_err {
-                ($expr:expr) => {
+                ($expr:expr_2021) => {
                     match $expr {
                         Ok(val) => val,
                         Err(_) => break,
@@ -846,7 +846,7 @@ impl ForwardConnect {
             let mut buffer = vec![0; 4096];
             /* Ignore errors */
             macro_rules! break_on_err {
-                ($expr:expr) => {
+                ($expr:expr_2021) => {
                     match $expr {
                         Ok(val) => val,
                         Err(_) => break,
