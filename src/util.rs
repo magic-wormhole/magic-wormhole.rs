@@ -1,7 +1,7 @@
 use base64::Engine;
 
 macro_rules! ensure {
-    ($cond:expr, $err:expr $(,)?) => {
+    ($cond:expr_2021, $err:expr_2021 $(,)?) => {
         if !$cond {
             return std::result::Result::Err($err.into());
         }
@@ -9,7 +9,7 @@ macro_rules! ensure {
 }
 
 macro_rules! bail {
-    ($err:expr $(,)?) => {{
+    ($err:expr_2021 $(,)?) => {{
         return std::result::Result::Err($err.into());
     }};
 }

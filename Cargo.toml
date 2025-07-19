@@ -16,7 +16,7 @@ repository = "https://github.com/magic-wormhole/magic-wormhole.rs/tree/main/cli"
 license = "EUPL-1.2"
 
 rust-version = "1.85"
-edition = "2021"
+edition = "2024"
 
 [workspace.dependencies]
 arboard = "3.2.0"

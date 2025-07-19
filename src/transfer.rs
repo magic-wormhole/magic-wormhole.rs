@@ -16,7 +16,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
 
-use super::{core::WormholeError, transit, AppID, Wormhole};
+use super::{AppID, Wormhole, core::WormholeError, transit};
 use futures::Future;
 use std::{borrow::Cow, collections::BTreeMap};
 
@@ -74,7 +74,11 @@ pub enum TransferError {
     Checksum,
 
     /// The file contained a different amount of bytes than advertized
-    #[error("The file contained a different amount of bytes than advertized! Sent {} bytes, but should have been {}", sent_size, file_size)]
+    #[error(
+        "The file contained a different amount of bytes than advertized! Sent {} bytes, but should have been {}",
+        sent_size,
+        file_size
+    )]
     FileSize {
         /// The amount of bytes that were sent
         sent_size: u64,
