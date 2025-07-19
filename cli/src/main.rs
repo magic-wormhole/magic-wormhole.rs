@@ -562,9 +562,7 @@ async fn main() -> eyre::Result<()> {
                         .expect("Internal error: shell completion not UTF-8 encoded");
                     #[allow(clippy::uninlined_format_args)]
                     let out = format!(
-                        "compdef _{0} {0}\n _{0}() {{ {1} }}\n\nif [ \"$funcstack[1]\" = \"{0}\" ]; then\n   {0} \"$@\"\nfi",
-                        binary_name,
-                        out,
+                        "compdef _{binary_name} {binary_name}\n _{binary_name}() {{ {out} }}\n\nif [ \"$funcstack[1]\" = \"{binary_name}\" ]; then\n   {binary_name} \"$@\"\nfi",
                     );
 
                     std::io::stdout().write_all(out.as_bytes())?;
