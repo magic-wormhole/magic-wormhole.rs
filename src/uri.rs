@@ -192,7 +192,7 @@ mod test {
                 rendezvous_server: Some(url::Url::parse("ws://localhost:4000").unwrap()),
                 is_leader: true,
             },
-            "wormhole-transfer:8-%F0%9F%99%88-%F0%9F%99%89-%F0%9F%99%8A?rendezvous=ws%3A%2F%2Flocalhost%3A4000%2F&role=leader"
+            "wormhole-transfer:8-%F0%9F%99%88-%F0%9F%99%89-%F0%9F%99%8A?rendezvous=ws%3A%2F%2Flocalhost%3A4000%2F&role=leader",
         );
     }
 

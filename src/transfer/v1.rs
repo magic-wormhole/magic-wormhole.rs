@@ -1,8 +1,8 @@
 use futures::{
-    io::{AsyncReadExt, AsyncWriteExt},
     StreamExt, TryFutureExt,
+    io::{AsyncReadExt, AsyncWriteExt},
 };
-use sha2::{digest::FixedOutput, Digest, Sha256};
+use sha2::{Digest, Sha256, digest::FixedOutput};
 
 use crate::transit::TransitRole;
 
@@ -263,7 +263,7 @@ pub(crate) async fn send_folder(
 
         // TODO try again but without pinning
         use futures::{
-            future::{ready, BoxFuture},
+            future::{BoxFuture, ready},
             io::Cursor,
         };
         use std::io::Result as IoResult;

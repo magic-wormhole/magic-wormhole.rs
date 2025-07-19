@@ -8,8 +8,8 @@ use futures::prelude::*;
 use std::collections::VecDeque;
 
 use crate::core::{
-    server_messages::{InboundMessage, OutboundMessage, PermissionRequired, SubmitPermission},
     AppID, EncryptedMessage, Mailbox, Mood, MySide, Nameplate, Phase,
+    server_messages::{InboundMessage, OutboundMessage, PermissionRequired, SubmitPermission},
 };
 
 /// Some rendezvous server you might use.
@@ -150,7 +150,7 @@ impl WsConnection {
                 Some(other) => {
                     return Err(RendezvousError::protocol(format!(
                         "Got unexpected message type from server '{other}'"
-                    )))
+                    )));
                 },
                 None => continue,
             }
@@ -166,11 +166,11 @@ impl WsConnection {
             let message = self.receive_message().await?;
             match message {
                 Some(InboundMessage::Allocated { nameplate }) => {
-                    break Ok(RendezvousReply::Allocated(nameplate))
+                    break Ok(RendezvousReply::Allocated(nameplate));
                 },
                 Some(InboundMessage::Released) => break Ok(RendezvousReply::Released),
                 Some(InboundMessage::Claimed { mailbox }) => {
-                    break Ok(RendezvousReply::Claimed(mailbox))
+                    break Ok(RendezvousReply::Claimed(mailbox));
                 },
                 Some(InboundMessage::Closed) => break Ok(RendezvousReply::Closed),
                 Some(InboundMessage::Message(message)) => match &mut queue {
@@ -180,19 +180,19 @@ impl WsConnection {
                     None => {
                         break Err(RendezvousError::protocol(
                             "Received peer message, but haven't opened the mailbox yet",
-                        ))
+                        ));
                     },
                 },
                 Some(InboundMessage::Error { error, orig: _ }) => {
                     break Err(RendezvousError::Server(error.into()));
                 },
                 Some(InboundMessage::Nameplates { nameplates }) => {
-                    break Ok(RendezvousReply::Nameplates(NameplateList(nameplates)))
+                    break Ok(RendezvousReply::Nameplates(NameplateList(nameplates)));
                 },
                 Some(other) => {
                     break Err(RendezvousError::protocol(format!(
                         "Got unexpected message type from server '{other}'"
-                    )))
+                    )));
                 },
                 None => (/*continue*/),
             }
@@ -238,7 +238,9 @@ impl WsConnection {
                 Err(ws2::Error::ConnectionClosed.into())
             },
             ws2::Message::Frame(_) => {
-                tracing::warn!("Received a WebSocket 'Frame' message and don't know what to do with it, please open a bug report");
+                tracing::warn!(
+                    "Received a WebSocket 'Frame' message and don't know what to do with it, please open a bug report"
+                );
                 Ok(None)
             },
         }
@@ -371,7 +373,7 @@ impl RendezvousServer {
             other => {
                 return Err(RendezvousError::protocol(format!(
                     "First message server sends must be 'welcome', but was '{other}'"
-                )))
+                )));
             },
         };
 

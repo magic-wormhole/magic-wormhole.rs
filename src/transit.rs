@@ -13,17 +13,17 @@
 //! **Notice:** while the resulting TCP connection is naturally bi-directional, the handshake is not symmetric. There *must* be one
 //! "leader" side and one "follower" side (formerly called "sender" and "receiver").
 
-use crate::{core::key::GenericKey, Key, KeyPurpose};
+use crate::{Key, KeyPurpose, core::key::GenericKey};
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
 use async_std::net::{TcpListener, TcpStream};
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{
+    Sink, SinkExt, Stream, StreamExt, TryStreamExt,
     future::FutureExt,
     future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    Sink, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use std::{
     collections::HashSet,
@@ -72,7 +72,9 @@ pub enum TransitConnectError {
     Protocol(Box<str>),
 
     /// All (relay) handshakes failed or timed out; could not establish a connection with the peer
-    #[error("All (relay) handshakes failed or timed out; could not establish a connection with the peer")]
+    #[error(
+        "All (relay) handshakes failed or timed out; could not establish a connection with the peer"
+    )]
     Handshake,
 
     /// I/O error
@@ -98,11 +100,17 @@ pub enum TransitConnectError {
 #[non_exhaustive]
 pub enum TransitError {
     /// Cryptography error. This is probably an implementation bug, but may also be caused by an attack
-    #[error("Cryptography error. This is probably an implementation bug, but may also be caused by an attack.")]
+    #[error(
+        "Cryptography error. This is probably an implementation bug, but may also be caused by an attack."
+    )]
     Crypto,
 
     /// Wrong nonce received, got {:x?} but expected {:x?}. This is probably an implementation bug, but may also be caused by an attack
-    #[error("Wrong nonce received, got {:x?} but expected {:x?}. This is probably an implementation bug, but may also be caused by an attack.", _0, _1)]
+    #[error(
+        "Wrong nonce received, got {:x?} but expected {:x?}. This is probably an implementation bug, but may also be caused by an attack.",
+        _0,
+        _1
+    )]
     Nonce(Box<[u8]>, Box<[u8]>),
 
     /// I/O error

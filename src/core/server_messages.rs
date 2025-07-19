@@ -252,7 +252,7 @@ pub enum InboundMessage {
 #[cfg(test)]
 mod test {
     use super::*;
-    use serde_json::{from_str, json, Value};
+    use serde_json::{Value, from_str, json};
 
     #[test]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]

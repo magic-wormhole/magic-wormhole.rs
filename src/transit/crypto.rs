@@ -10,7 +10,7 @@ use super::{
 use crate::core::key::{GenericKey, Key};
 use async_trait::async_trait;
 use crypto_secretbox as secretbox;
-use crypto_secretbox::{aead::Aead, KeyInit};
+use crypto_secretbox::{KeyInit, aead::Aead};
 use futures::{future::BoxFuture, io::AsyncWriteExt};
 use std::sync::Arc;
 
