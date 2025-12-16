@@ -2,7 +2,7 @@
 
 Get things from one computer to another, safely.
 
-<http://magic-wormhole.io/>
+<https://magic-wormhole.io/>
 
 This is a Rust port of the Python version at <https://github.com/magic-wormhole/magic-wormhole>.
 
