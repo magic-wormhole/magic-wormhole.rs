@@ -39,7 +39,7 @@ fn ctrlc_handler() -> Pin<Box<impl Future<Output = ()> + 'static>> {
         let (s, ctrl_c) = async_channel::unbounded();
 
         let handler = move || {
-            async_std::task::block_on(async {
+            smol::block_on(async {
                 if HAS_NOTIFIED.swap(true, std::sync::atomic::Ordering::Relaxed) {
                     /* Second signal. Exit */
                     tracing::debug!("Exiting immediately due to Ctrl+C double press");
@@ -278,8 +278,11 @@ struct WormholeCli {
     no_color: bool,
 }
 
-#[async_std::main]
-async fn main() -> eyre::Result<()> {
+fn main() -> eyre::Result<()> {
+    smol::block_on(async_main())
+}
+
+async fn async_main() -> eyre::Result<()> {
     color_eyre::install()?;
 
     let app = WormholeCli::parse();
@@ -494,13 +497,14 @@ async fn main() -> eyre::Result<()> {
                         Either::Left((result, _)) => result?,
                         Either::Right(((), _)) => break,
                     };
-                async_std::task::spawn(forwarding::serve(
+                smol::spawn(forwarding::serve(
                     wormhole,
                     &transit_handler,
                     relay_hints,
                     targets.clone(),
                     ctrlc_handler(),
-                ));
+                ))
+                .detach();
             }
         },
         WormholeCommand::Forward(ForwardCommand::Connect {
@@ -723,8 +727,9 @@ async fn make_send_offer(
     file_name: Option<String>,
 ) -> eyre::Result<transfer::offer::OfferSend> {
     for file in &files {
+        let path = std::path::PathBuf::from(file);
         eyre::ensure!(
-            async_std::path::Path::new(&file).exists().await,
+            smol::unblock(move || path.exists()).await,
             "{} does not exist",
             file.display()
         );
@@ -990,7 +995,7 @@ async fn send_many(
         writeln!(&mut term, "Sending file to peer").unwrap();
         let pb = create_progress_bar(0);
         let pb = mp.add(pb);
-        async_std::task::spawn(async move {
+        smol::spawn(async move {
             let pb2 = pb.clone();
             let result = async move {
                 transfer::send(
@@ -1015,7 +1020,8 @@ async fn send_many(
                     tracing::error!("Send failed, {}", e);
                 },
             };
-        });
+        })
+        .detach();
         Ok(())
     }
 
@@ -1065,7 +1071,7 @@ async fn receive_inner_v1(
     target_dir: &std::path::Path,
     noconfirm: bool,
 ) -> eyre::Result<()> {
-    use async_std::fs::OpenOptions;
+    use smol::fs::OpenOptions;
 
     /*
      * Control flow is a bit tricky here:
@@ -1205,7 +1211,7 @@ async fn receive_inner_v2(
         "wormhole-tmp-{:06}",
         rand::thread_rng().gen_range(0..1_000_000)
     ));
-    async_std::fs::create_dir_all(&tmp_dir)
+    smol::fs::create_dir_all(&tmp_dir)
         .await
         .context("Failed to create temporary directory for receiving")?;
 
@@ -1225,7 +1231,7 @@ async fn receive_inner_v2(
 
     /* Move the received files to their target location */
     use futures::TryStreamExt;
-    async_std::fs::read_dir(&tmp_dir)
+    smol::fs::read_dir(&tmp_dir)
     .await?
     .map_err(Into::into)
     .and_then(|file| {
@@ -1236,14 +1242,16 @@ async fn receive_inner_v2(
             let target_path = target_dir.join(name);
 
             /* This suffers some TOCTTOU, sorry about that: https://internals.rust-lang.org/t/rename-file-without-overriding-existing-target/17637 */
-            if async_std::path::Path::new(&target_path).exists().await {
+            let path = std::path::PathBuf::from(&target_path);
+            let dest = path.clone();
+            if smol::unblock(move || dest.exists()).await {
                 eyre::bail!(
                     "Target destination {} exists, you can manually extract the file from {}",
                     target_path.display(),
                     tmp_dir.display(),
                 );
             } else {
-                async_std::fs::rename(&path, &target_path).await?;
+                smol::fs::rename(&path, &target_path).await?;
             }
             Ok(())
         }})
@@ -1251,12 +1259,10 @@ async fn receive_inner_v2(
     .await?;
 
     /* Delete the temporary directory */
-    async_std::fs::remove_dir_all(&tmp_dir)
-        .await
-        .context(format!(
-            "Failed to delete {}, please do it manually",
-            tmp_dir.display()
-        ))?;
+    smol::fs::remove_dir_all(&tmp_dir).await.context(format!(
+        "Failed to delete {}, please do it manually",
+        tmp_dir.display()
+    ))?;
 
     Ok(())
 }
