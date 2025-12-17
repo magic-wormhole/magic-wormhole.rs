@@ -228,6 +228,18 @@ enum WormholeCommand {
         #[command(flatten)]
         common_send: CommonSenderArgs,
     },
+    /// Send some text from the command line
+    SendMessage {
+        #[arg()]
+        text: String,
+        /// Suggest a filename to the receiver
+        #[arg(long = "name", value_name = "FILE_NAME", default_value = "message.txt")]
+        file_name: String,
+        #[clap(flatten)]
+        common: CommonArgs,
+        #[clap(flatten)]
+        common_leader: CommonLeaderArgs,
+    },
     /// Forward ports from one machine to another
     #[command(subcommand)]
     Forward(ForwardCommand),
@@ -320,7 +332,7 @@ async fn main() -> eyre::Result<()> {
             common_send: CommonSenderArgs { file_name, files },
             ..
         } => {
-            let offer = make_send_offer(files, file_name).await?;
+            let offer = make_send_offer(files, file_name, None).await?;
 
             let transit_abilities = parse_transit_args(&common);
             let (wormhole, _code, relay_hints) = match util::cancellable(
@@ -386,6 +398,44 @@ async fn main() -> eyre::Result<()> {
                 wormhole,
                 &mut term,
                 transit_abilities,
+            ))
+            .await?;
+        },
+        WormholeCommand::SendMessage {
+            text,
+            file_name,
+            common,
+            common_leader:
+                CommonLeaderArgs {
+                    code,
+                    code_length,
+                    no_qr,
+                },
+        } => {
+            let offer = make_send_offer(vec![], Some(file_name), Some(text)).await?;
+            let transit_abilities = parse_transit_args(&common);
+            let (wormhole, _, relay_hints) = {
+                let connect_fut = Box::pin(parse_and_connect(
+                    &mut term,
+                    common,
+                    code,
+                    Some(code_length),
+                    no_qr,
+                    true,
+                    transfer::APP_CONFIG,
+                    Some(&sender_print_code),
+                ));
+                match futures::future::select(connect_fut, ctrl_c()).await {
+                    Either::Left((result, _)) => result?,
+                    Either::Right(((), _)) => return Ok(()),
+                }
+            };
+            Box::pin(send(
+                wormhole,
+                relay_hints,
+                offer,
+                transit_abilities,
+                ctrl_c,
             ))
             .await?;
         },
@@ -721,6 +771,7 @@ async fn parse_and_connect(
 async fn make_send_offer(
     mut files: Vec<PathBuf>,
     file_name: Option<String>,
+    message: Option<String>,
 ) -> eyre::Result<transfer::offer::OfferSend> {
     for file in &files {
         eyre::ensure!(
@@ -732,7 +783,17 @@ async fn make_send_offer(
     tracing::trace!("Making send offer in {files:?}, with name {file_name:?}");
 
     match (files.len(), file_name) {
-        (0, _) => unreachable!("Already checked by CLI parser"),
+        (0, file_name) => match message {
+            Some(text) => Ok(transfer::offer::OfferSend::new_file_custom(
+                file_name.expect("Already checked by CLI parser"),
+                text.len() as u64,
+                transfer::offer::new_offer_content(move || {
+                    let text = text.clone();
+                    async move { Ok(futures_lite::io::Cursor::new(text)) }
+                }),
+            )),
+            None => unreachable!("Already checked by CLI parser"),
+        },
         (1, Some(file_name)) => {
             let file = files.remove(0);
             Ok(transfer::offer::OfferSend::new_file_or_folder(file_name, file).await?)
@@ -939,7 +1000,7 @@ async fn send_many(
     /* Special-case the first send with reusing the existing connection */
     send_in_background(
         relay_hints.clone(),
-        make_send_offer(files.clone(), file_name.clone()).await?,
+        make_send_offer(files.clone(), file_name.clone(), None).await?,
         wormhole,
         term.clone(),
         &mp,
@@ -968,7 +1029,7 @@ async fn send_many(
 
         send_in_background(
             relay_hints.clone(),
-            make_send_offer(files.clone(), file_name.clone()).await?,
+            make_send_offer(files.clone(), file_name.clone(), None).await?,
             wormhole,
             term.clone(),
             &mp,
