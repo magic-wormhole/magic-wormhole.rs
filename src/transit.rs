@@ -1438,7 +1438,7 @@ impl Transit {
         self,
     ) -> (
         impl futures::sink::Sink<Box<[u8]>, Error = TransitError>,
-        impl futures::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
+        impl smol::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
     ) {
         let (reader, writer) = self.socket.split();
         (
