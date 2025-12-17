@@ -115,3 +115,24 @@ pub fn hashcash(resource: String, bits: u32) -> String {
         }
     }
 }
+
+/// The error type returned by [`timeout`]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+#[error("Timed out")]
+pub(crate) struct TimeoutError;
+
+/// Utility function to add a timeout to a future
+///
+/// This behaves the same as async std timeout, but with smol.
+#[allow(dead_code)]
+pub(crate) fn timeout<'a, R, F: std::future::Future<Output = R> + 'a>(
+    timeout: std::time::Duration,
+    future: F,
+) -> impl Future<Output = Result<R, TimeoutError>> + 'a {
+    let timeout_future = async move {
+        smol::Timer::after(timeout).await;
+        Err(TimeoutError)
+    };
+
+    smol::future::or(async { Ok(future.await) }, timeout_future)
+}
