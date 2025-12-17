@@ -1,5 +1,7 @@
-use smol::Unblock;
-use smol::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use smol::{
+    Unblock,
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+};
 
 pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> bool {
     let message = format!(
