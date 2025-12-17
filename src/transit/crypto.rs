@@ -64,7 +64,7 @@ pub(super) trait TransitCryptoInitFinalizer: Send {
     fn handshake_finalize(
         self: Box<Self>,
         socket: &mut dyn TransitTransport,
-    ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>>;
+    ) -> BoxFuture<'_, Result<DynTransitCrypto, TransitHandshakeError>>;
 }
 
 /// Due to poorly chosen abstractions elsewhere, the [`TransitCryptoInitFinalizer`] trait is also
@@ -73,7 +73,7 @@ impl TransitCryptoInitFinalizer for DynTransitCrypto {
     fn handshake_finalize(
         self: Box<Self>,
         _socket: &mut dyn TransitTransport,
-    ) -> BoxFuture<Result<DynTransitCrypto, TransitHandshakeError>> {
+    ) -> BoxFuture<'_, Result<DynTransitCrypto, TransitHandshakeError>> {
         Box::pin(futures::future::ready(Ok(*self)))
     }
 }
