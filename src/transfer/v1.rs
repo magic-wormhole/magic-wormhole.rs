@@ -881,7 +881,7 @@ mod tar_helper {
     }
 
     #[cfg(unix)]
-    pub(crate) fn path2bytes(p: &str) -> Cow<[u8]> {
+    pub(crate) fn path2bytes(p: &str) -> Cow<'_, [u8]> {
         Cow::Borrowed(p.as_bytes())
     }
 }
