@@ -108,7 +108,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// # fn main() -> eyre::Result<()> { smol::block_on(async {
     /// use magic_wormhole::{AppConfig, MailboxConnection, transfer::APP_CONFIG};
     /// let config = APP_CONFIG;
     /// let mailbox_connection = MailboxConnection::create(config, 2).await?;
@@ -134,7 +134,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// ```no_run
     /// # #[cfg(feature = "entropy")]
     /// # {
-    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// # fn main() -> eyre::Result<()> { smol::block_on(async {
     /// use magic_wormhole::{MailboxConnection, transfer::APP_CONFIG};
     /// let config = APP_CONFIG;
     /// let mailbox_connection =
@@ -188,7 +188,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// # Examples
     ///
     /// ```no_run
-    /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
+    /// # fn main() -> eyre::Result<()> { smol::block_on(async {
     /// use magic_wormhole::{Code, MailboxConnection, Nameplate, transfer::APP_CONFIG};
     /// let config = APP_CONFIG;
     /// let code = "5-password".parse()?;
@@ -235,7 +235,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// ```
     /// # fn main() -> eyre::Result<()> { use magic_wormhole::WormholeError;
     /// # #[cfg(feature = "entropy")]
-    /// return async_std::task::block_on(async {
+    /// return smol::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection, Mood};
     /// let config = APP_CONFIG;
     /// let mailbox_connection = MailboxConnection::create_with_password(config, "secret-code-password".parse()?)

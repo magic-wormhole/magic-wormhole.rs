@@ -39,6 +39,7 @@ futures = "0.3.12"
 hex = "0.4.2"
 hkdf = "0.12.2"
 indicatif = "0.18"
+macro_rules_attribute = "0.2"
 noise-protocol = "0.2"
 noise-rust-crypto = "0.6.0-rc.1"
 number_prefix = "0.4.0"
@@ -54,6 +55,7 @@ serde_json = "1.0.61"
 sha-1 = "0.10.0"
 sha2 = "0.10.0"
 smol = "2.0"
+smol-macros = "0.1"
 spake2 = "0.4.0"
 stun_codec = "0.4.0"
 tar = "0.4.33"
@@ -99,6 +101,9 @@ hex = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 base64 = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
+smol = { workspace = true }
+smol-macros = { workspace = true }
+macro_rules_attribute = { workspace = true }
 
 derive_more = { workspace = true, features = ["display", "deref", "from"] }
 thiserror = { workspace = true }
