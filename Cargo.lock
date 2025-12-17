@@ -1942,6 +1942,7 @@ name = "magic-wormhole-cli"
 version = "0.8.0-alpha.1"
 dependencies = [
  "arboard",
+ "async-channel 2.5.0",
  "async-std",
  "clap",
  "clap_complete",

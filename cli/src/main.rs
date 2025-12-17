@@ -4,10 +4,11 @@ mod util;
 
 use std::{
     io::IsTerminal,
+    pin::Pin,
+    sync::{LazyLock, atomic::AtomicBool},
     time::{Duration, Instant},
 };
 
-use async_std::sync::Arc;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use color_eyre::{
     eyre::{self, Context},
@@ -15,7 +16,7 @@ use color_eyre::{
 };
 use completer::enter_code;
 use console::{Term, style};
-use futures::{Future, FutureExt, future::Either};
+use futures::{Future, future::Either};
 use indicatif::{MultiProgress, ProgressBar};
 use magic_wormhole::{
     MailboxConnection, ParseCodeError, ParsePasswordError, Wormhole, forwarding, transfer,
@@ -27,41 +28,41 @@ use tracing_subscriber::EnvFilter;
 #[cfg(feature = "clipboard")]
 use arboard::Clipboard;
 
-fn install_ctrlc_handler()
--> eyre::Result<impl Fn() -> futures::future::BoxFuture<'static, ()> + Clone> {
-    use async_std::sync::{Condvar, Mutex};
+/// This returns a future which will fire once Ctrl+C is pressed.
+///
+/// The first Ctrl+C press handles the event gracefully. Pressing it a second time will abort the process immediately.
+fn ctrlc_handler() -> Pin<Box<impl Future<Output = ()> + 'static>> {
+    static HAS_NOTIFIED: AtomicBool = AtomicBool::new(false);
 
-    let notifier = Arc::new((Mutex::new(false), Condvar::new()));
+    /* Register the handler lazily when requested for the first time */
+    static RECEIVER: LazyLock<async_channel::Receiver<()>> = LazyLock::new(|| {
+        let (s, ctrl_c) = async_channel::unbounded();
 
-    /* Register the handler */
-    let notifier2 = notifier.clone();
-    ctrlc::set_handler(move || {
-        futures::executor::block_on(async {
-            let mut has_notified = notifier2.0.lock().await;
-            if *has_notified {
-                /* Second signal. Exit */
-                tracing::debug!("Exit.");
-                std::process::exit(130);
-            }
-            /* First signal. */
-            tracing::info!("Got Ctrl-C event. Press again to exit immediately");
-            *has_notified = true;
-            notifier2.1.notify_all();
-        })
-    })
-    .context("Error setting Ctrl-C handler")?;
+        let handler = move || {
+            async_std::task::block_on(async {
+                if HAS_NOTIFIED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    /* Second signal. Exit */
+                    tracing::debug!("Exiting immediately due to Ctrl+C double press");
+                    std::process::exit(130);
+                } else {
+                    /* First signal. */
+                    tracing::info!("Got Ctrl-C event. Press again to exit immediately");
+                    s.try_send(()).ok();
+                }
+            })
+        };
 
-    Ok(move || {
-        /* Transform the notification into a future that waits */
-        let notifier = notifier.clone();
-        async move {
-            let (lock, cvar) = &*notifier;
-            let mut started = lock.lock().await;
-            while !*started {
-                started = cvar.wait(started).await;
-            }
-        }
-        .boxed()
+        ctrlc::set_handler(handler).expect("Error setting Ctrl-C handler");
+        ctrl_c
+    });
+
+    Box::pin(async {
+        RECEIVER
+            .clone()
+            .recv()
+            .await
+            .expect("Ctrl+C channel is closed");
+        tracing::debug!("Ctrl+C pressed!");
     })
 }
 
@@ -280,7 +281,6 @@ struct WormholeCli {
 #[async_std::main]
 async fn main() -> eyre::Result<()> {
     color_eyre::install()?;
-    let ctrl_c = install_ctrlc_handler()?;
 
     let app = WormholeCli::parse();
 
@@ -295,7 +295,7 @@ async fn main() -> eyre::Result<()> {
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::TRACE)
             .with_env_filter(EnvFilter::new(
-                "magic_wormhole::core=trace,mio=debug,ws=error",
+                "wormhole_rs=debug,magic_wormhole::core=trace,mio=debug,ws=error",
             ))
             .with_target(false)
             .init();
@@ -334,7 +334,7 @@ async fn main() -> eyre::Result<()> {
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
                 )),
-                ctrl_c(),
+                ctrlc_handler(),
             )
             .await
             {
@@ -342,14 +342,7 @@ async fn main() -> eyre::Result<()> {
                 Err(_) => return Ok(()),
             };
 
-            Box::pin(send(
-                wormhole,
-                relay_hints,
-                offer,
-                transit_abilities,
-                ctrl_c.clone(),
-            ))
-            .await?;
+            Box::pin(send(wormhole, relay_hints, offer, transit_abilities)).await?;
         },
         WormholeCommand::SendMany {
             tries,
@@ -376,7 +369,7 @@ async fn main() -> eyre::Result<()> {
                     transfer::APP_CONFIG,
                     Some(&sender_print_code),
                 ));
-                match futures::future::select(connect_fut, ctrl_c()).await {
+                match futures::future::select(connect_fut, ctrlc_handler()).await {
                     Either::Left((result, _)) => result?,
                     Either::Right(((), _)) => return Ok(()),
                 }
@@ -393,7 +386,6 @@ async fn main() -> eyre::Result<()> {
                 wormhole,
                 &mut term,
                 transit_abilities,
-                ctrl_c,
             ))
             .await?;
         },
@@ -416,7 +408,7 @@ async fn main() -> eyre::Result<()> {
                     transfer::APP_CONFIG,
                     None,
                 ));
-                match futures::future::select(connect_fut, ctrl_c()).await {
+                match futures::future::select(connect_fut, ctrlc_handler()).await {
                     Either::Left((result, _)) => result?,
                     Either::Right(((), _)) => return Ok(()),
                 }
@@ -428,7 +420,6 @@ async fn main() -> eyre::Result<()> {
                 &file_path,
                 noconfirm,
                 transit_abilities,
-                ctrl_c,
             ))
             .await?;
         },
@@ -499,7 +490,7 @@ async fn main() -> eyre::Result<()> {
                     Some(&server_print_code),
                 ));
                 let (wormhole, _code, relay_hints) =
-                    match futures::future::select(connect_fut, ctrl_c()).await {
+                    match futures::future::select(connect_fut, ctrlc_handler()).await {
                         Either::Left((result, _)) => result?,
                         Either::Right(((), _)) => break,
                     };
@@ -508,7 +499,7 @@ async fn main() -> eyre::Result<()> {
                     &transit_handler,
                     relay_hints,
                     targets.clone(),
-                    ctrl_c(),
+                    ctrlc_handler(),
                 ));
             }
         },
@@ -545,7 +536,7 @@ async fn main() -> eyre::Result<()> {
                 tracing::info!("  {} -> {}", port, target);
             }
             if noconfirm || util::ask_user("Accept forwarded ports?", true).await {
-                offer.accept(ctrl_c()).await?;
+                offer.accept(ctrlc_handler()).await?;
             } else {
                 offer.reject().await?;
             }
@@ -905,7 +896,6 @@ async fn send(
     relay_hints: Vec<transit::RelayHint>,
     offer: transfer::offer::OfferSend,
     transit_abilities: transit::Abilities,
-    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     let pb = create_progress_bar(0);
     let pb2 = pb.clone();
@@ -916,7 +906,7 @@ async fn send(
         offer,
         &transit_handler,
         create_progress_handler(pb),
-        ctrl_c(),
+        ctrlc_handler(),
     )
     .await
     .context("Send process failed")?;
@@ -934,7 +924,6 @@ async fn send_many(
     wormhole: Wormhole,
     term: &mut Term,
     transit_abilities: transit::Abilities,
-    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     tracing::warn!(
         "Reminder that you are sending the file to multiple people, and this may reduce the overall security. See the help page for more information."
@@ -955,7 +944,7 @@ async fn send_many(
         term.clone(),
         &mp,
         transit_abilities,
-        ctrl_c(),
+        ctrlc_handler(),
     )
     .await?;
 
@@ -984,7 +973,7 @@ async fn send_many(
             term.clone(),
             &mp,
             transit_abilities,
-            ctrl_c(),
+            ctrlc_handler(),
         )
         .await?;
     }
@@ -1039,33 +1028,32 @@ async fn receive(
     target_dir: &std::path::Path,
     noconfirm: bool,
     transit_abilities: transit::Abilities,
-    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     #[cfg(not(feature = "experimental-transfer-v2"))]
     {
-        let req = transfer::request_file(wormhole, relay_hints, transit_abilities, ctrl_c())
+        let req = transfer::request_file(wormhole, relay_hints, transit_abilities, ctrlc_handler())
             .await
             .context("Could not get an offer")?;
         /* If None, the task got cancelled */
         if let Some(req) = req {
-            receive_inner_v1(req, target_dir, noconfirm, ctrl_c).await
+            receive_inner_v1(req, target_dir, noconfirm).await
         } else {
             Ok(())
         }
     }
     #[cfg(feature = "experimental-transfer-v2")]
     {
-        let req = transfer::request(wormhole, relay_hints, transit_abilities, ctrl_c())
+        let req = transfer::request(wormhole, relay_hints, transit_abilities, ctrlc_handler())
             .await
             .context("Could not get an offer")?;
 
         match req {
             Some(transfer::ReceiveRequest::V1(req)) => {
-                receive_inner_v1(req, target_dir, noconfirm, ctrl_c).await
+                receive_inner_v1(req, target_dir, noconfirm).await
             },
             #[cfg(feature = "experimental-transfer-v2")]
             Some(transfer::ReceiveRequest::V2(req)) => {
-                receive_inner_v2(req, target_dir, noconfirm, ctrl_c).await
+                receive_inner_v2(req, target_dir, noconfirm).await
             },
             None => Ok(()),
         }
@@ -1076,7 +1064,6 @@ async fn receive_inner_v1(
     req: transfer::ReceiveRequestV1,
     target_dir: &std::path::Path,
     noconfirm: bool,
-    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     use async_std::fs::OpenOptions;
 
@@ -1138,7 +1125,7 @@ async fn receive_inner_v1(
                 &transit_handler,
                 create_progress_handler(pb),
                 &mut file,
-                ctrl_c(),
+                ctrlc_handler(),
             )
             .await
             .context("Receive process failed");
@@ -1171,7 +1158,7 @@ async fn receive_inner_v1(
         &transit_handler,
         create_progress_handler(pb),
         &mut file,
-        ctrl_c(),
+        ctrlc_handler(),
     )
     .await
     .context("Receive process failed")
@@ -1182,7 +1169,6 @@ async fn receive_inner_v2(
     req: transfer::ReceiveRequestV2,
     target_dir: &std::path::Path,
     noconfirm: bool,
-    ctrl_c: impl Fn() -> futures::future::BoxFuture<'static, ()>,
 ) -> eyre::Result<()> {
     let offer = req.offer();
     let file_size = offer.total_size();
@@ -1228,7 +1214,7 @@ async fn receive_inner_v2(
 
     /* Accept the offer and receive it */
     let answer = offer.accept_all(&tmp_dir);
-    req.accept(&transit_handler, answer, on_progress, ctrl_c())
+    req.accept(&transit_handler, answer, on_progress, ctrlc_handler())
         .await
         .context("Receive process failed")?;
 
