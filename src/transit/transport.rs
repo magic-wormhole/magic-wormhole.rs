@@ -4,13 +4,13 @@ use super::{ConnectionType, TransitConnection, TransitHandshakeError, TransitInf
 #[cfg(not(target_family = "wasm"))]
 use super::{DirectHint, StunError};
 
-#[cfg(not(target_family = "wasm"))]
-use async_std::net::TcpStream;
 use async_trait::async_trait;
 use futures::{
     future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
 };
+#[cfg(not(target_family = "wasm"))]
+use smol::net::TcpStream;
 #[cfg(not(target_family = "wasm"))]
 use std::{
     net::{IpAddr, SocketAddr, ToSocketAddrs},
@@ -183,9 +183,9 @@ pub(super) async fn tcp_get_external_ip() -> Result<(SocketAddr, TcpStream), Stu
 }
 
 /**
- * Bind to a port with SO_REUSEADDR, connect to the destination and then hide the blood behind a pretty [`async_std::net::TcpStream`]
+ * Bind to a port with SO_REUSEADDR, connect to the destination and then hide the blood behind a pretty [`smol::net::TcpStream`]
  *
- * We want an `async_std::net::TcpStream`, but with SO_REUSEADDR set.
+ * We want an `smol::net::TcpStream`, but with SO_REUSEADDR set.
  * The former is just a wrapper around `async_io::Async<std::net::TcpStream>`, of which we
  * copy the `connect` method to add a statement that will set the socket flag.
  * See https://github.com/smol-rs/async-net/issues/20.
@@ -194,7 +194,7 @@ pub(super) async fn tcp_get_external_ip() -> Result<(SocketAddr, TcpStream), Stu
 async fn tcp_connect_custom(
     local_addr: &socket2::SockAddr,
     dest_addr: &socket2::SockAddr,
-) -> std::io::Result<async_std::net::TcpStream> {
+) -> std::io::Result<smol::net::TcpStream> {
     tracing::debug!("Binding to {}", local_addr.as_socket().unwrap());
     let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::STREAM, None)?;
     /* Set our custum options */
@@ -220,8 +220,8 @@ async fn tcp_connect_custom(
         .get_ref()
         .take_error()
         .and_then(|maybe_err| maybe_err.map_or(Ok(()), Result::Err))?;
-    /* Convert our mess to `async_std::net::TcpStream */
-    Ok(stream.into_inner()?.into())
+    /* Convert our mess to `smol::net::TcpStream */
+    Ok(stream.into_inner()?.try_into()?)
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -237,7 +237,7 @@ pub(super) async fn connect_tcp_direct(
         socket = tcp_connect_custom(&local_addr, &dest_addr.into()).await?;
         tracing::debug!("Connected to {}!", dest_addr);
     } else {
-        socket = async_std::net::TcpStream::connect(&dest_addr).await?;
+        socket = smol::net::TcpStream::connect(&dest_addr).await?;
         tracing::debug!("Connected to {}!", dest_addr);
     }
 
@@ -288,11 +288,13 @@ pub(super) fn wrap_tcp_connection(
 ) -> Result<TransitConnection, TransitHandshakeError> {
     /* Set proper read and write timeouts. This will temporarily set the socket into blocking mode :/ */
     // https://github.com/async-rs/async-std/issues/499
-    let socket = std::net::TcpStream::try_from(socket)
-        .expect("Internal error: this should not fail because we never cloned the socket");
-    socket.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
-    socket.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
-    let socket: TcpStream = socket.into();
+    let async_stream: Arc<smol::Async<std::net::TcpStream>> = socket.into();
+    let stream = Arc::into_inner(async_stream)
+        .expect("Internal error: this should not fail because we never cloned the socket")
+        .into_inner()?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(120)))?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(120)))?;
+    let socket: TcpStream = stream.try_into()?;
 
     let info = TransitInfo {
         conn_type,
