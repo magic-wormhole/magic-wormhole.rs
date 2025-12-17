@@ -3,8 +3,6 @@ use crate::util::timeout;
 /// Various helpers to deal with closing connections and cancellation
 use super::*;
 
-/// A weird mixture of [`futures::future::Abortable`], [`async_std::sync::Condvar`] and [`futures::future::Select`] tailored to our Ctrl+C handling.
-///
 /// At it's core, it is an `Abortable` but instead of having an `AbortHandle`, we use a future that resolves as trigger.
 /// Under the hood, it is implementing the same functionality as a `select`, but mapping one of the outcomes to an error type.
 pub async fn cancellable<T>(

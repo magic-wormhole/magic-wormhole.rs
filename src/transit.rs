@@ -16,8 +16,6 @@
 use crate::{Key, KeyPurpose, core::key::GenericKey};
 use serde_derive::{Deserialize, Serialize};
 
-#[cfg(not(target_family = "wasm"))]
-use async_std::net::{TcpListener, TcpStream};
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{
     Sink, SinkExt, Stream, StreamExt, TryStreamExt,
@@ -25,6 +23,8 @@ use futures::{
     future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
 };
+#[cfg(not(target_family = "wasm"))]
+use smol::net::{TcpListener, TcpStream};
 use std::{
     collections::HashSet,
     net::{IpAddr, SocketAddr},
