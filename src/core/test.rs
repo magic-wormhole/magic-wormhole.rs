@@ -7,7 +7,8 @@ use std::{borrow::Cow, str::FromStr, time::Duration};
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
-    self as magic_wormhole, AppConfig, AppID, Code, WormholeError, core::MailboxConnection, transit,
+    self as magic_wormhole, AppConfig, AppID, Code, WormholeError, core::MailboxConnection,
+    transit, util::timeout,
 };
 use test_log::test;
 
@@ -453,54 +454,43 @@ async fn test_send_many() {
 async fn test_wrong_code() {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
-    let sender_task = async_std::task::Builder::new()
-        .name("sender".to_owned())
-        .local(async {
-            let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
-            if let Some(welcome) = &mailbox.welcome {
-                tracing::info!("Got welcome: {}", welcome);
-            }
-            let code = mailbox.code.clone();
-            tracing::info!("This wormhole's code is: {}", &code);
-            code_tx.send(code.nameplate()).unwrap();
+    let sender_task = async {
+        let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
+        if let Some(welcome) = &mailbox.welcome {
+            tracing::info!("Got welcome: {}", welcome);
+        }
+        let code = mailbox.code.clone();
+        tracing::info!("This wormhole's code is: {}", &code);
+        code_tx.send(code.nameplate()).unwrap();
 
-            let result = crate::Wormhole::connect(mailbox).await;
-            /* This should have failed, due to the wrong code */
-            assert!(result.is_err());
-            eyre::Result::<_>::Ok(())
-        })
-        .unwrap();
-    let receiver_task = async_std::task::Builder::new()
-        .name("receiver".to_owned())
-        .local(async {
-            let nameplate = code_rx.await?;
-            tracing::info!("Got nameplate over local: {}", &nameplate);
-            let result = crate::Wormhole::connect(
-                MailboxConnection::connect(
-                    APP_CONFIG,
-                    /* Making a wrong code here by appending nonsense */
-                    Code::from_components(nameplate, "foo-bar".parse().unwrap()),
-                    true,
-                )
-                .await
-                .unwrap(),
+        let result = crate::Wormhole::connect(mailbox).await;
+        /* This should have failed, due to the wrong code */
+        assert!(result.is_err());
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let nameplate = code_rx.await?;
+        tracing::info!("Got nameplate over local: {}", &nameplate);
+        let result = crate::Wormhole::connect(
+            MailboxConnection::connect(
+                APP_CONFIG,
+                /* Making a wrong code here by appending nonsense */
+                Code::from_components(nameplate, "foo-bar".parse().unwrap()),
+                true,
             )
-            .await;
+            .await
+            .unwrap(),
+        )
+        .await;
 
-            /* This should have failed, due to the wrong code */
-            assert!(result.is_err());
-            eyre::Result::<_>::Ok(())
-        })
-        .unwrap();
+        /* This should have failed, due to the wrong code */
+        assert!(result.is_err());
+        eyre::Result::<_>::Ok(())
+    };
 
-    async_std::future::timeout(TIMEOUT, sender_task)
-        .await
-        .unwrap()
-        .unwrap();
-    async_std::future::timeout(TIMEOUT, receiver_task)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(TIMEOUT, sender_task).await.unwrap().unwrap();
+    timeout(TIMEOUT, receiver_task).await.unwrap().unwrap();
 }
 
 /** Connect three people to the party and watch it explode … gracefully */
