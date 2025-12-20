@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use base64::Engine;
 
 macro_rules! ensure {
@@ -123,16 +125,26 @@ pub(crate) struct TimeoutError;
 
 /// Utility function to add a timeout to a future
 ///
-/// This behaves the same as async std timeout, but with smol.
-#[allow(dead_code)]
+/// This behaves the same as async std timeout, but with async-io
+#[cfg(not(target_family = "wasm"))]
 pub(crate) fn timeout<'a, R, F: std::future::Future<Output = R> + 'a>(
     timeout: std::time::Duration,
     future: F,
 ) -> impl Future<Output = Result<R, TimeoutError>> + 'a {
     let timeout_future = async move {
-        smol::Timer::after(timeout).await;
+        async_io::Timer::after(timeout).await;
         Err(TimeoutError)
     };
 
-    smol::future::or(async { Ok(future.await) }, timeout_future)
+    futures_lite::future::or(async { Ok(future.await) }, timeout_future)
+}
+
+/// Utility function to spawn a future. We don't use crate::util::spawn, because not the entirety of smol compiles on WASM
+pub(crate) fn spawn<T: Send + 'static>(
+    future: impl Future<Output = T> + Send + 'static,
+) -> async_task::Task<T> {
+    static EXECUTOR: LazyLock<async_executor::Executor> =
+        LazyLock::new(async_executor::Executor::new);
+
+    EXECUTOR.spawn(future)
 }

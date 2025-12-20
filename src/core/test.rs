@@ -12,6 +12,21 @@ use crate::{
 };
 use test_log::test;
 
+macro_rules! test {
+    (
+        $(#[$attr:meta])*
+        async fn $name:ident () $(-> $ret:ty)? $body:block
+    ) => {
+        $(#[$attr])*
+        #[test]
+        fn $name() $(-> $ret)? {
+            async_io::block_on(async {
+                $body
+            })
+        }
+    }
+}
+
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
     "magic-wormhole.github.io/magic-wormhole.rs/test",
 ));
@@ -30,7 +45,7 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// ```no_run
 /// use magic_wormhole as mw;
-/// # smol::block_on(async {
+/// # async_io::block_on(async {
 /// # let derived_key = unimplemented!();
 /// # let their_abilities = unimplemented!();
 /// # let their_hints = unimplemented!();
@@ -53,7 +68,7 @@ fn default_relay_hints() -> Vec<transit::RelayHint> {
     ]
 }
 
-#[test(macro_rules_attribute::apply(smol_macros::test!))]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_connect_with_unknown_code_and_allocate_passes() {
     let code = generate_random_code();
@@ -70,7 +85,7 @@ async fn test_connect_with_unknown_code_and_allocate_passes() {
         .unwrap()
 }
 
-#[test(macro_rules_attribute::apply(smol_macros::test!))]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_connect_with_unknown_code_and_no_allocate_fails() {
     tracing::info!("hola!");
@@ -117,7 +132,7 @@ async fn file_offers()
                     move || {
                         let data = data.clone();
                         Box::pin(async move {
-                            Ok(Box::new(smol::io::Cursor::new(data))
+                            Ok(Box::new(async_io::Cursor::new(data))
                                 as Box<
                                     dyn crate::transfer::offer::AsyncReadSeek
                                         + std::marker::Send
@@ -134,7 +149,7 @@ async fn file_offers()
         #[cfg(not(target_family = "wasm"))]
         let (data, offer) = {
             let path = format!("tests/{name}");
-            let data = smol::fs::read(&path).await.unwrap();
+            let data = async_fs::read(&path).await.unwrap();
             let offer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path)
                 .await
                 .unwrap();
@@ -227,7 +242,7 @@ async fn file_offers()
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
-#[test(macro_rules_attribute::apply(smol_macros::test!))]
+#[test(macro_rules_attribute::apply(test!))]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
 async fn test_file_rust2rust() {
@@ -307,7 +322,7 @@ async fn test_file_rust2rust() {
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]
-#[test(macro_rules_attribute::apply(smol_macros::test!))]
+#[test(macro_rules_attribute::apply(test!))]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
 async fn test_send_many() {
@@ -327,15 +342,15 @@ async fn test_send_many() {
 
     /* Send many */
     let sender_code = code.clone();
-    let senders = smol::spawn(async move {
-        // let mut senders = Vec::<smol::Task<std::result::Result<std::vec::Vec<u8>, eyre::Error>>>::new();
-        let mut senders: Vec<smol::Task<eyre::Result<()>>> = Vec::new();
+    let senders = crate::util::spawn(async move {
+        // let mut senders = Vec::<async_task::Task<std::result::Result<std::vec::Vec<u8>, eyre::Error>>>::new();
+        let mut senders: Vec<async_task::Task<eyre::Result<()>>> = Vec::new();
 
         /* The first time, we reuse the current session for sending */
         {
             tracing::info!("Sending file #{}", 0);
             let wormhole = crate::Wormhole::connect(mailbox).await?;
-            senders.push(smol::spawn(async move {
+            senders.push(crate::util::spawn(async move {
                 eyre::Result::Ok(
                     crate::transfer::send(
                         wormhole,
@@ -362,7 +377,7 @@ async fn test_send_many() {
                 .await?,
             )
             .await?;
-            senders.push(smol::spawn(async move {
+            senders.push(crate::util::spawn(async move {
                 eyre::Result::Ok(
                     crate::transfer::send(
                         wormhole,
@@ -381,7 +396,7 @@ async fn test_send_many() {
     });
 
     // Sleep one second
-    smol::Timer::after(std::time::Duration::from_secs(1)).await;
+    async_io::Timer::after(std::time::Duration::from_secs(1)).await;
 
     /* Receive many */
     for i in 0..5usize {
@@ -443,12 +458,12 @@ async fn test_send_many() {
 }
 
 /// Try to send a file, but use a bad code, and see how it's handled
-#[test(macro_rules_attribute::apply(smol_macros::test!))]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_wrong_code() {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
-    let sender_task = smol::spawn(async {
+    let sender_task = crate::util::spawn(async {
         let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
         if let Some(welcome) = &mailbox.welcome {
             tracing::info!("Got welcome: {}", welcome);
@@ -463,7 +478,7 @@ async fn test_wrong_code() {
         eyre::Result::<_>::Ok(())
     });
 
-    let receiver_task = smol::spawn(async {
+    let receiver_task = crate::util::spawn(async {
         let nameplate = code_rx.await?;
         tracing::info!("Got nameplate over local: {}", &nameplate);
         let result = crate::Wormhole::connect(
@@ -488,7 +503,7 @@ async fn test_wrong_code() {
 }
 
 /** Connect three people to the party and watch it explode … gracefully */
-#[test(macro_rules_attribute::apply(smol_macros::test!))]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_crowded() {
     let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
@@ -511,7 +526,7 @@ async fn test_crowded() {
     }
 }
 
-#[macro_rules_attribute::apply(smol_macros::test!)]
+#[macro_rules_attribute::apply(test!)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_connect_with_code_expecting_nameplate() {
     let code = generate_random_code();

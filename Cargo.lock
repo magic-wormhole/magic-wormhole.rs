@@ -1935,8 +1935,12 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 name = "magic-wormhole"
 version = "0.8.0-alpha.1"
 dependencies = [
+ "async-executor",
+ "async-fs",
  "async-io",
+ "async-net",
  "async-std",
+ "async-task",
  "async-trait",
  "async-tungstenite",
  "base64 0.22.1",
@@ -1945,6 +1949,7 @@ dependencies = [
  "derive_more",
  "eyre",
  "futures",
+ "futures-lite",
  "fuzzt",
  "getrandom 0.2.16",
  "hex",
@@ -1962,8 +1967,6 @@ dependencies = [
  "serde_json",
  "sha-1",
  "sha2",
- "smol",
- "smol-macros",
  "socket2",
  "spake2",
  "stun_codec",
@@ -3044,19 +3047,6 @@ dependencies = [
  "async-net",
  "async-process",
  "blocking",
- "futures-lite",
-]
-
-[[package]]
-name = "smol-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfcaedb62e0475a6898988138995ec7b1e5d116167a72bb12c7b59d0649fbbc2"
-dependencies = [
- "async-executor",
- "async-io",
- "async-lock",
- "event-listener 5.4.1",
  "futures-lite",
 ]
 

@@ -516,7 +516,7 @@ where
     let file_path = file_path.as_ref();
     let file_name = file_name.into();
 
-    let mut file = smol::fs::File::open(file_path).await?;
+    let mut file = async_fs::File::open(file_path).await?;
     let metadata = file.metadata().await?;
     if metadata.is_dir() {
         send_folder(

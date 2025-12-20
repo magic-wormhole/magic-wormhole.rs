@@ -112,7 +112,7 @@ impl<T> Offer<T> {
             let full_path: PathBuf = target_dir.join(path.join("/"));
             let content = new_accept_content(move |append| {
                 let full_path = full_path.clone();
-                smol::fs::OpenOptions::new()
+                async_fs::OpenOptions::new()
                     .write(true)
                     .create(true)
                     .append(append)
@@ -265,8 +265,8 @@ impl OfferSendEntry {
         }
 
         let path = path.as_ref();
-        // let metadata = smol::fs::symlink_metadata(path).await?;
-        let metadata = smol::fs::metadata(path).await?;
+        // let metadata = async_fs::symlink_metadata(path).await?;
+        let metadata = async_fs::metadata(path).await?;
         // let mtime = metadata.modified()?
         //     .duration_since(std::time::SystemTime::UNIX_EPOCH)
         //     .unwrap_or_default()
@@ -278,12 +278,12 @@ impl OfferSendEntry {
                 size: metadata.len(),
                 content: new_offer_content(move || {
                     let path = path.clone();
-                    smol::fs::File::open(path)
+                    async_fs::File::open(path)
                 }),
             })
         // } else if metadata.is_symlink() {
         //     tracing::trace!("OfferSendEntry::new {path:?} is symlink");
-        //     let target = smol::fs::read_link(path).await?;
+        //     let target = async_fs::read_link(path).await?;
         //     Ok(Self::Symlink {
         //         target: target
         //             .to_str()
@@ -298,7 +298,7 @@ impl OfferSendEntry {
             use futures::TryStreamExt;
             tracing::trace!("OfferSendEntry::new {path:?} is directory");
 
-            let content: BTreeMap<String, Self> = smol::fs::read_dir(path)
+            let content: BTreeMap<String, Self> = async_fs::read_dir(path)
                 .await?
                 .and_then(|file| async move {
                     let path = file.path();
@@ -385,7 +385,7 @@ impl<T> OfferEntry<T> {
         }
         match self {
             Self::Directory { content, .. } => {
-                smol::fs::create_dir(target_path).await?;
+                async_fs::create_dir(target_path).await?;
                 for (name, file) in content {
                     recurse(file, &target_path.join(name)).await?;
                 }
