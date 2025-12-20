@@ -20,9 +20,9 @@ edition = "2024"
 
 [workspace.dependencies]
 arboard = "3.6"
+async-channel = "2.5"
 async-std = "1.13"
 async-trait = "0.1"
-async-channel = "2.5"
 base64 = "0.22.1"
 bytecodec = "0.5"
 clap = "4"
@@ -36,9 +36,11 @@ dialoguer = "0.12"
 env_logger = "0.11"
 eyre = "0.6.5"
 futures = "0.3.12"
+futures-lite = "2.6"
 hex = "0.4.2"
 hkdf = "0.12.2"
 indicatif = "0.18"
+macro_rules_attribute = "0.2"
 noise-protocol = "0.2"
 noise-rust-crypto = "0.6.0-rc.1"
 number_prefix = "0.4.0"
@@ -53,6 +55,13 @@ serde_derive = "1.0.120"
 serde_json = "1.0.61"
 sha-1 = "0.10.0"
 sha2 = "0.10.0"
+smol = "2.0"
+smol-macros = "0.1"
+async-executor = "1.13"
+async-fs = "2.0"
+async-io = "2.2.0"
+async-net = "2.0"
+async-task = "4.7"
 spake2 = "0.4.0"
 stun_codec = "0.4.0"
 tar = "0.4.33"
@@ -64,6 +73,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 test-log = "0.2"
 zxcvbn = "3.1.0"
+wasmtimer = "0.4"
 
 [package]
 name = "magic-wormhole"
@@ -98,6 +108,9 @@ hex = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 base64 = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
+async-executor = { workspace = true }
+macro_rules_attribute = { workspace = true }
+futures-lite = { workspace = true }
 
 derive_more = { workspace = true, features = ["display", "deref", "from"] }
 thiserror = { workspace = true }
@@ -120,6 +133,7 @@ noise-rust-crypto = { workspace = true, optional = true }
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 async-trait = { workspace = true, optional = true }
 noise-protocol = { workspace = true, optional = true }
+async-task = { workspace = true }
 # Transfer dependencies
 
 rmp-serde = { workspace = true, optional = true }
@@ -132,7 +146,9 @@ tar = { workspace = true, optional = true }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2.101"
 async-tungstenite = { version = "0.30", features = ["async-std-runtime"] }
-async-io = "2.2.0"
+async-io = { workspace = true }
+async-net = { workspace = true }
+async-fs = { workspace = true }
 
 # Transit
 
@@ -144,6 +160,7 @@ if-addrs = { version = "0.14", optional = true }
 [target.'cfg(target_family = "wasm")'.dependencies]
 ws_stream_wasm = "0.7.3"
 getrandom = { version = "0.2.5", features = ["js"] }
+wasmtimer = { workspace = true }
 
 # for some tests
 [dev-dependencies]

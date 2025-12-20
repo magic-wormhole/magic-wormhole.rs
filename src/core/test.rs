@@ -7,9 +7,25 @@ use std::{borrow::Cow, str::FromStr, time::Duration};
 #[cfg(feature = "transfer")]
 use crate::transfer;
 use crate::{
-    self as magic_wormhole, AppConfig, AppID, Code, WormholeError, core::MailboxConnection, transit,
+    self as magic_wormhole, AppConfig, AppID, Code, WormholeError, core::MailboxConnection,
+    transit, util::timeout,
 };
 use test_log::test;
+
+macro_rules! test {
+    (
+        $(#[$attr:meta])*
+        async fn $name:ident () $(-> $ret:ty)? $body:block
+    ) => {
+        $(#[$attr])*
+        #[test]
+        fn $name() $(-> $ret)? {
+            async_io::block_on(async {
+                $body
+            })
+        }
+    }
+}
 
 pub const TEST_APPID: AppID = AppID(std::borrow::Cow::Borrowed(
     "magic-wormhole.github.io/magic-wormhole.rs/test",
@@ -29,7 +45,7 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// ```no_run
 /// use magic_wormhole as mw;
-/// # #[async_std::main] async fn main() -> Result<(), mw::transit::TransitConnectError> {
+/// # async_io::block_on(async {
 /// # let derived_key = unimplemented!();
 /// # let their_abilities = unimplemented!();
 /// # let their_hints = unimplemented!();
@@ -52,9 +68,9 @@ fn default_relay_hints() -> Vec<transit::RelayHint> {
     ]
 }
 
-#[test(async_std::test)]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-pub async fn test_connect_with_unknown_code_and_allocate_passes() {
+async fn test_connect_with_unknown_code_and_allocate_passes() {
     let code = generate_random_code();
 
     let mailbox_connection =
@@ -69,9 +85,9 @@ pub async fn test_connect_with_unknown_code_and_allocate_passes() {
         .unwrap()
 }
 
-#[test(async_std::test)]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-pub async fn test_connect_with_unknown_code_and_no_allocate_fails() {
+async fn test_connect_with_unknown_code_and_no_allocate_fails() {
     tracing::info!("hola!");
     let code = generate_random_code();
 
@@ -116,7 +132,7 @@ async fn file_offers()
                     move || {
                         let data = data.clone();
                         Box::pin(async move {
-                            Ok(Box::new(async_std::io::Cursor::new(data))
+                            Ok(Box::new(async_io::Cursor::new(data))
                                 as Box<
                                     dyn crate::transfer::offer::AsyncReadSeek
                                         + std::marker::Send
@@ -133,7 +149,7 @@ async fn file_offers()
         #[cfg(not(target_family = "wasm"))]
         let (data, offer) = {
             let path = format!("tests/{name}");
-            let data = async_std::fs::read(&path).await.unwrap();
+            let data = async_fs::read(&path).await.unwrap();
             let offer = transfer::offer::OfferSend::new_file_or_folder(name.into(), &path)
                 .await
                 .unwrap();
@@ -226,84 +242,77 @@ async fn file_offers()
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
-#[test(async_std::test)]
+#[test(macro_rules_attribute::apply(test!))]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
-pub async fn test_file_rust2rust() {
+async fn test_file_rust2rust() {
     for (offer, answer) in file_offers().await.unwrap() {
         let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
-        let sender_task = async_std::task::Builder::new()
-            .name("sender".to_owned())
-            .local(async {
-                let mailbox_connection =
-                    MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2)
-                        .await?;
-                if let Some(welcome) = &mailbox_connection.welcome {
-                    tracing::info!("Got welcome: {}", welcome);
-                }
-                tracing::info!("This wormhole's code is: {}", &mailbox_connection.code);
-                code_tx.send(mailbox_connection.code.clone()).unwrap();
-                let wormhole = crate::Wormhole::connect(mailbox_connection).await?;
-                eyre::Result::<_>::Ok(
-                    transfer::send(
-                        wormhole,
-                        default_relay_hints(),
-                        magic_wormhole::transit::Abilities::ALL,
-                        offer,
-                        &log_transit_connection,
-                        |_sent, _total| {},
-                        futures::future::pending(),
-                    )
-                    .await?,
-                )
-            })
-            .unwrap();
-        let receiver_task = async_std::task::Builder::new()
-            .name("receiver".to_owned())
-            .local(async {
-                let code = code_rx.await?;
-                let config = transfer::APP_CONFIG.id(TEST_APPID);
-                let mailbox = MailboxConnection::connect(config, code.clone(), false).await?;
-                if let Some(welcome) = mailbox.welcome.clone() {
-                    tracing::info!("Got welcome: {}", welcome);
-                }
-                let wormhole = crate::Wormhole::connect(mailbox).await?;
-
-                // Hacky v1-compat conversion for now
-                let mut answer =
-                    (answer.into_iter_files().next().unwrap().1.content)(false).await?;
-
-                /*let transfer::ReceiveRequest::V1(req) = transfer::request(
+        let sender_task = async {
+            let mailbox_connection =
+                MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+            if let Some(welcome) = &mailbox_connection.welcome {
+                tracing::info!("Got welcome: {}", welcome);
+            }
+            tracing::info!("This wormhole's code is: {}", &mailbox_connection.code);
+            code_tx.send(mailbox_connection.code.clone()).unwrap();
+            let wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+            eyre::Result::<_>::Ok(
+                transfer::send(
                     wormhole,
                     default_relay_hints(),
                     magic_wormhole::transit::Abilities::ALL,
-                    futures::future::pending(),
-                )
-                .await?
-                .unwrap() else {
-                    panic!("v2 should be disabled for now")
-                };*/
-
-                let req = transfer::request_file(
-                    wormhole,
-                    default_relay_hints(),
-                    magic_wormhole::transit::Abilities::ALL,
-                    futures::future::pending(),
-                )
-                .await?
-                .unwrap();
-
-                req.accept(
+                    offer,
                     &log_transit_connection,
-                    |_received, _total| {},
-                    &mut answer,
+                    |_sent, _total| {},
                     futures::future::pending(),
                 )
-                .await?;
-                eyre::Result::<_>::Ok(())
-            })
+                .await?,
+            )
+        };
+
+        let receiver_task = async {
+            let code = code_rx.await?;
+            let config = transfer::APP_CONFIG.id(TEST_APPID);
+            let mailbox = MailboxConnection::connect(config, code.clone(), false).await?;
+            if let Some(welcome) = mailbox.welcome.clone() {
+                tracing::info!("Got welcome: {}", welcome);
+            }
+            let wormhole = crate::Wormhole::connect(mailbox).await?;
+
+            // Hacky v1-compat conversion for now
+            let mut answer = (answer.into_iter_files().next().unwrap().1.content)(false).await?;
+
+            /*let transfer::ReceiveRequest::V1(req) = transfer::request(
+                wormhole,
+                default_relay_hints(),
+                magic_wormhole::transit::Abilities::ALL,
+                futures::future::pending(),
+            )
+            .await?
+            .unwrap() else {
+                panic!("v2 should be disabled for now")
+            };*/
+
+            let req = transfer::request_file(
+                wormhole,
+                default_relay_hints(),
+                magic_wormhole::transit::Abilities::ALL,
+                futures::future::pending(),
+            )
+            .await?
             .unwrap();
+
+            req.accept(
+                &log_transit_connection,
+                |_received, _total| {},
+                &mut answer,
+                futures::future::pending(),
+            )
+            .await?;
+            eyre::Result::<_>::Ok(())
+        };
 
         sender_task.await.unwrap();
         receiver_task.await.unwrap();
@@ -313,10 +322,10 @@ pub async fn test_file_rust2rust() {
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]
-#[test(async_std::test)]
+#[test(macro_rules_attribute::apply(test!))]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
-pub async fn test_send_many() {
+async fn test_send_many() {
     let mailbox = MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID), 2)
         .await
         .unwrap();
@@ -333,15 +342,15 @@ pub async fn test_send_many() {
 
     /* Send many */
     let sender_code = code.clone();
-    let senders = async_std::task::spawn_local(async move {
-        // let mut senders = Vec::<async_std::task::JoinHandle<std::result::Result<std::vec::Vec<u8>, eyre::Error>>>::new();
-        let mut senders: Vec<async_std::task::JoinHandle<eyre::Result<()>>> = Vec::new();
+    let senders = crate::util::spawn(async move {
+        // let mut senders = Vec::<async_task::Task<std::result::Result<std::vec::Vec<u8>, eyre::Error>>>::new();
+        let mut senders: Vec<async_task::Task<eyre::Result<()>>> = Vec::new();
 
         /* The first time, we reuse the current session for sending */
         {
             tracing::info!("Sending file #{}", 0);
             let wormhole = crate::Wormhole::connect(mailbox).await?;
-            senders.push(async_std::task::spawn_local(async move {
+            senders.push(crate::util::spawn(async move {
                 eyre::Result::Ok(
                     crate::transfer::send(
                         wormhole,
@@ -368,7 +377,7 @@ pub async fn test_send_many() {
                 .await?,
             )
             .await?;
-            senders.push(async_std::task::spawn_local(async move {
+            senders.push(crate::util::spawn(async move {
                 eyre::Result::Ok(
                     crate::transfer::send(
                         wormhole,
@@ -386,7 +395,8 @@ pub async fn test_send_many() {
         eyre::Result::<_>::Ok(senders)
     });
 
-    async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+    // Sleep one second
+    async_io::Timer::after(std::time::Duration::from_secs(1)).await;
 
     /* Receive many */
     for i in 0..5usize {
@@ -448,65 +458,54 @@ pub async fn test_send_many() {
 }
 
 /// Try to send a file, but use a bad code, and see how it's handled
-#[test(async_std::test)]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-pub async fn test_wrong_code() {
+async fn test_wrong_code() {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
-    let sender_task = async_std::task::Builder::new()
-        .name("sender".to_owned())
-        .local(async {
-            let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
-            if let Some(welcome) = &mailbox.welcome {
-                tracing::info!("Got welcome: {}", welcome);
-            }
-            let code = mailbox.code.clone();
-            tracing::info!("This wormhole's code is: {}", &code);
-            code_tx.send(code.nameplate()).unwrap();
+    let sender_task = crate::util::spawn(async {
+        let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
+        if let Some(welcome) = &mailbox.welcome {
+            tracing::info!("Got welcome: {}", welcome);
+        }
+        let code = mailbox.code.clone();
+        tracing::info!("This wormhole's code is: {}", &code);
+        code_tx.send(code.nameplate()).unwrap();
 
-            let result = crate::Wormhole::connect(mailbox).await;
-            /* This should have failed, due to the wrong code */
-            assert!(result.is_err());
-            eyre::Result::<_>::Ok(())
-        })
-        .unwrap();
-    let receiver_task = async_std::task::Builder::new()
-        .name("receiver".to_owned())
-        .local(async {
-            let nameplate = code_rx.await?;
-            tracing::info!("Got nameplate over local: {}", &nameplate);
-            let result = crate::Wormhole::connect(
-                MailboxConnection::connect(
-                    APP_CONFIG,
-                    /* Making a wrong code here by appending nonsense */
-                    Code::from_components(nameplate, "foo-bar".parse().unwrap()),
-                    true,
-                )
-                .await
-                .unwrap(),
+        let result = crate::Wormhole::connect(mailbox).await;
+        /* This should have failed, due to the wrong code */
+        assert!(result.is_err());
+        eyre::Result::<_>::Ok(())
+    });
+
+    let receiver_task = crate::util::spawn(async {
+        let nameplate = code_rx.await?;
+        tracing::info!("Got nameplate over local: {}", &nameplate);
+        let result = crate::Wormhole::connect(
+            MailboxConnection::connect(
+                APP_CONFIG,
+                /* Making a wrong code here by appending nonsense */
+                Code::from_components(nameplate, "foo-bar".parse().unwrap()),
+                true,
             )
-            .await;
+            .await
+            .unwrap(),
+        )
+        .await;
 
-            /* This should have failed, due to the wrong code */
-            assert!(result.is_err());
-            eyre::Result::<_>::Ok(())
-        })
-        .unwrap();
+        /* This should have failed, due to the wrong code */
+        assert!(result.is_err());
+        eyre::Result::<_>::Ok(())
+    });
 
-    async_std::future::timeout(TIMEOUT, sender_task)
-        .await
-        .unwrap()
-        .unwrap();
-    async_std::future::timeout(TIMEOUT, receiver_task)
-        .await
-        .unwrap()
-        .unwrap();
+    timeout(TIMEOUT, sender_task).await.unwrap().unwrap();
+    timeout(TIMEOUT, receiver_task).await.unwrap().unwrap();
 }
 
 /** Connect three people to the party and watch it explode … gracefully */
-#[test(async_std::test)]
+#[test(macro_rules_attribute::apply(test!))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-pub async fn test_crowded() {
+async fn test_crowded() {
     let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
     tracing::info!("This test's code is: {}", &initial_mailbox_connection.code);
     let code = initial_mailbox_connection.code.clone();
@@ -527,9 +526,9 @@ pub async fn test_crowded() {
     }
 }
 
-#[async_std::test]
+#[macro_rules_attribute::apply(test!)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
-pub async fn test_connect_with_code_expecting_nameplate() {
+async fn test_connect_with_code_expecting_nameplate() {
     let code = generate_random_code();
     let result = MailboxConnection::connect(APP_CONFIG, code.clone(), false).await;
     let error = result.err().unwrap();

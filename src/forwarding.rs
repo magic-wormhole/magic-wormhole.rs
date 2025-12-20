@@ -16,7 +16,7 @@
 use crate::transit::TransitRole;
 
 use super::*;
-use async_std::net::{TcpListener, TcpStream};
+use async_net::TcpListener;
 use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -282,8 +282,8 @@ struct ForwardingServe {
     connections: HashMap<
         u64,
         (
-            async_std::task::JoinHandle<()>,
-            futures::io::WriteHalf<TcpStream>,
+            async_task::Task<()>,
+            futures_lite::io::WriteHalf<async_net::TcpStream>,
         ),
     >,
     /* Track old connection IDs that won't be reused again. This is to distinguish race hazards where
@@ -376,7 +376,7 @@ impl ForwardingServe {
         if host.is_none() {
             target = format!("[::1]:{port}");
         }
-        let stream = match TcpStream::connect(&target).await {
+        let stream = match async_net::TcpStream::connect(&target).await {
             Ok(stream) => stream,
             Err(err) => {
                 tracing::warn!(
@@ -394,9 +394,9 @@ impl ForwardingServe {
                 return Ok(());
             },
         };
-        let (mut connection_rd, connection_wr) = stream.split();
+        let (mut connection_rd, connection_wr) = futures_lite::io::split(stream);
         let mut backchannel_tx = self.backchannel_tx.clone();
-        let worker = async_std::task::spawn_local(async move {
+        let worker = crate::util::spawn(async move {
             let mut buffer = vec![0; 4096];
             /* Ignore errors */
             macro_rules! break_on_err {
@@ -622,7 +622,7 @@ pub async fn connect(
          * Vec<Stream<Item = (String, TcpStream)>>
          */
         let listeners: Vec<(
-            async_std::net::TcpListener,
+            async_net::TcpListener,
             u16,
             std::rc::Rc<std::string::String>,
         )> = futures::stream::iter(
@@ -666,7 +666,7 @@ pub struct ConnectOffer {
     pub mapping: Vec<(u16, Rc<String>)>,
     transit: transit::Transit,
     listeners: Vec<(
-        async_std::net::TcpListener,
+        async_net::TcpListener,
         u16,
         std::rc::Rc<std::string::String>,
     )>,
@@ -693,15 +693,18 @@ impl ConnectOffer {
             let (backchannel_tx, backchannel_rx) =
                 futures::channel::mpsc::channel::<(u64, Option<Vec<u8>>)>(20);
 
+            let incoming_listeners = self.listeners.into_iter().map(|(connection, _, address)| {
+                Box::pin(
+                    futures_lite::stream::unfold(connection, |listener| async move {
+                        let res = listener.accept().await.map(|(stream, _)| stream);
+                        Some((res, listener))
+                    })
+                    .map_ok(move |stream| (address.clone(), stream)),
+                )
+            });
+
             ForwardConnect {
-                incoming: futures::stream::select_all(self.listeners.into_iter().map(
-                    |(connection, _, address)| {
-                        connection
-                            .into_incoming()
-                            .map_ok(move |stream| (address.clone(), stream))
-                            .boxed_local()
-                    },
-                )),
+                incoming: futures::stream::select_all(incoming_listeners),
                 connection_counter: 0,
                 connections: HashMap::new(),
                 backchannel_tx,
@@ -739,23 +742,17 @@ impl ConnectOffer {
     }
 }
 
-#[expect(clippy::type_complexity)]
-struct ForwardConnect {
+struct ForwardConnect<I> {
     //transit: &'a mut transit::Transit,
     /* when can I finally store an `impl Trait` in a struct? */
-    incoming: futures::stream::SelectAll<
-        futures::stream::LocalBoxStream<
-            'static,
-            Result<(Rc<String>, async_std::net::TcpStream), std::io::Error>,
-        >,
-    >,
+    incoming: I,
     /* Our next unique connection_id */
     connection_counter: u64,
     connections: HashMap<
         u64,
         (
-            async_std::task::JoinHandle<()>,
-            futures::io::WriteHalf<TcpStream>,
+            async_task::Task<()>,
+            futures_lite::io::WriteHalf<async_net::TcpStream>,
         ),
     >,
     /* application => self. (connection_id, Some=payload or None=close) */
@@ -763,7 +760,13 @@ struct ForwardConnect {
     backchannel_rx: futures::channel::mpsc::Receiver<(u64, Option<Vec<u8>>)>,
 }
 
-impl ForwardConnect {
+impl<I> ForwardConnect<I>
+where
+    I: Unpin
+        + futures::stream::FusedStream<
+            Item = Result<(Rc<String>, async_net::TcpStream), std::io::Error>,
+        >,
+{
     async fn forward(
         &mut self,
         transit_tx: &mut (impl futures::sink::Sink<Box<[u8]>, Error = TransitError> + Unpin),
@@ -824,11 +827,11 @@ impl ForwardConnect {
         &mut self,
         transit_tx: &mut (impl futures::sink::Sink<Box<[u8]>, Error = TransitError> + Unpin),
         target: Rc<String>,
-        connection: TcpStream,
+        connection: async_net::TcpStream,
     ) -> Result<(), ForwardingError> {
         let connection_id = self.connection_counter;
         self.connection_counter += 1;
-        let (mut connection_rd, connection_wr) = connection.split();
+        let (mut connection_rd, connection_wr) = futures_lite::io::split(connection);
         let mut backchannel_tx = self.backchannel_tx.clone();
         tracing::debug!("Creating new connection: #{} -> {}", connection_id, target);
 
@@ -843,7 +846,7 @@ impl ForwardConnect {
             )
             .await?;
 
-        let worker = async_std::task::spawn_local(async move {
+        let worker = crate::util::spawn(async move {
             let mut buffer = vec![0; 4096];
             /* Ignore errors */
             macro_rules! break_on_err {
@@ -940,7 +943,7 @@ impl ForwardConnect {
                     }
                 },
                 connection = self.incoming.next() => {
-                    let (target, connection): (Rc<String>, TcpStream) = connection.unwrap()?;
+                    let (target, connection): (Rc<String>, async_net::TcpStream) = connection.unwrap()?;
                     self.spawn_connection(transit_tx, target, connection).await?;
                 },
                 /* We are done */

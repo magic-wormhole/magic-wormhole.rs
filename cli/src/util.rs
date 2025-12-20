@@ -1,5 +1,7 @@
-use async_std::{io, io::prelude::*};
-use futures::Future;
+use smol::{
+    Unblock,
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+};
 
 pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> bool {
     let message = format!(
@@ -9,12 +11,11 @@ pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> 
         if default_answer { "n" } else { "N" }
     );
 
-    let mut stdout = io::stdout();
-    let stdin = io::stdin();
+    let mut stdout = Unblock::new(std::io::stdout());
+    let mut stdin = BufReader::new(Unblock::new(std::io::stdin()));
 
     loop {
         stdout.write(message.as_bytes()).await.unwrap();
-
         stdout.flush().await.unwrap();
 
         let mut answer = String::new();
@@ -36,8 +37,6 @@ pub async fn ask_user(message: impl std::fmt::Display, default_answer: bool) -> 
     }
 }
 
-/// A weird mixture of [`futures::future::Abortable`], [`async_std::sync::Condvar`] and [`futures::future::Select`] tailored to our Ctrl+C handling.
-///
 /// At it's core, it is an `Abortable` but instead of having an `AbortHandle`, we use a future that resolves as trigger.
 /// Under the hood, it is implementing the same functionality as a `select`, but mapping one of the outcomes to an error type.
 pub async fn cancellable<T>(

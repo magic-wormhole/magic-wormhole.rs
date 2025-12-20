@@ -17,7 +17,7 @@ use crate::{Key, KeyPurpose, core::key::GenericKey};
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
-use async_std::net::{TcpListener, TcpStream};
+use async_net::{TcpListener, TcpStream};
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{
     Sink, SinkExt, Stream, StreamExt, TryStreamExt,
@@ -792,7 +792,8 @@ pub async fn init(
              * so that we will be NATted to the same port again. If it doesn't, simply bind a new socket
              * and use that instead.
              */
-            let socket: MaybeConnectedSocket = match async_std::future::timeout(
+
+            let socket: MaybeConnectedSocket = match crate::util::timeout(
                 std::time::Duration::from_secs(4),
                 transport::tcp_get_external_ip(),
             )
@@ -1010,16 +1011,14 @@ impl TransitConnector {
             }),
         );
 
-        let (mut transit, mut finalizer, mut conn_info) = async_std::future::timeout(
-            std::time::Duration::from_secs(60),
-            connection_stream.next(),
-        )
-        .await
-        .map_err(|_| {
-            tracing::debug!("`leader_connect` timed out");
-            TransitConnectError::Handshake
-        })?
-        .ok_or(TransitConnectError::Handshake)?;
+        let (mut transit, mut finalizer, mut conn_info) =
+            crate::util::timeout(std::time::Duration::from_secs(60), connection_stream.next())
+                .await
+                .map_err(|_| {
+                    tracing::debug!("`leader_connect` timed out");
+                    TransitConnectError::Handshake
+                })?
+                .ok_or(TransitConnectError::Handshake)?;
 
         if conn_info.conn_type != ConnectionType::Direct && our_abilities.can_direct() {
             tracing::debug!(
@@ -1035,7 +1034,7 @@ impl TransitConnector {
             } else {
                 elapsed.mul_f32(0.3)
             };
-            let _ = async_std::future::timeout(to_wait, async {
+            let _ = crate::util::timeout(to_wait, async {
                 while let Some((new_transit, new_finalizer, new_conn_info)) =
                     connection_stream.next().await
                 {
@@ -1117,7 +1116,7 @@ impl TransitConnector {
             }),
         );
 
-        let transit = match async_std::future::timeout(
+        let transit = match crate::util::timeout(
             std::time::Duration::from_secs(60),
             &mut connection_stream.next(),
         )
@@ -1264,7 +1263,7 @@ impl TransitConnector {
                                 .map(move |(i, h)| (i, h, name.clone()))
                             })
                             .map(|(index, host, name)| async move {
-                                async_std::task::sleep(std::time::Duration::from_secs(
+                                async_io::Timer::after(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;
@@ -1308,7 +1307,7 @@ impl TransitConnector {
                                     .map(move |(i, u)| (i, u, name.clone()))
                             })
                             .map(|(index, url, name)| async move {
-                                async_std::task::sleep(std::time::Duration::from_secs(
+                                crate::util::sleep(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;
@@ -1438,7 +1437,7 @@ impl Transit {
         self,
     ) -> (
         impl futures::sink::Sink<Box<[u8]>, Error = TransitError>,
-        impl futures::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
+        impl futures_lite::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
     ) {
         let (reader, writer) = self.socket.split();
         (

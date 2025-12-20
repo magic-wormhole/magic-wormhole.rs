@@ -24,8 +24,8 @@ serde_json = { workspace = true }
 serde_derive = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
-async-std = { workspace = true, features = ["attributes", "unstable"] }
 rand = { workspace = true }
+smol = { workspace = true }
 
 # CLI specific dependencies
 magic-wormhole = { path = "..", version = "0.8.0-alpha.1", features = ["all"] }
