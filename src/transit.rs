@@ -1307,7 +1307,7 @@ impl TransitConnector {
                                     .map(move |(i, u)| (i, u, name.clone()))
                             })
                             .map(|(index, url, name)| async move {
-                                async_io::Timer::after(std::time::Duration::from_secs(
+                                crate::util::sleep(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;

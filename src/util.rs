@@ -123,16 +123,23 @@ pub fn hashcash(resource: String, bits: u32) -> String {
 #[error("Timed out")]
 pub(crate) struct TimeoutError;
 
+/// Utility function to call async timer implementations for WASM and others
+pub(crate) async fn sleep(timeout: std::time::Duration) {
+    #[cfg(target_family = "wasm")]
+    wasmtimer::tokio::sleep(timeout).await;
+    #[cfg(not(target_family = "wasm"))]
+    async_io::Timer::after(timeout).await;
+}
+
 /// Utility function to add a timeout to a future
 ///
 /// This behaves the same as async std timeout, but with async-io
-#[cfg(not(target_family = "wasm"))]
 pub(crate) fn timeout<'a, R, F: std::future::Future<Output = R> + 'a>(
     timeout: std::time::Duration,
     future: F,
 ) -> impl Future<Output = Result<R, TimeoutError>> + 'a {
     let timeout_future = async move {
-        async_io::Timer::after(timeout).await;
+        sleep(timeout).await;
         Err(TimeoutError)
     };
 
@@ -140,6 +147,7 @@ pub(crate) fn timeout<'a, R, F: std::future::Future<Output = R> + 'a>(
 }
 
 /// Utility function to spawn a future. We don't use crate::util::spawn, because not the entirety of smol compiles on WASM
+#[allow(dead_code)]
 pub(crate) fn spawn<T: Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
 ) -> async_task::Task<T> {
