@@ -736,7 +736,6 @@ impl ConnectOffer {
     }
 }
 
-#[expect(clippy::type_complexity)]
 struct ForwardConnect<I> {
     //transit: &'a mut transit::Transit,
     /* when can I finally store an `impl Trait` in a struct? */
