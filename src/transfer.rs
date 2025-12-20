@@ -513,11 +513,10 @@ where
     G: FnOnce(transit::TransitInfo),
     H: FnMut(u64, u64) + 'static,
 {
-    use async_std::fs::File;
     let file_path = file_path.as_ref();
     let file_name = file_name.into();
 
-    let mut file = File::open(file_path).await?;
+    let mut file = smol::fs::File::open(file_path).await?;
     let metadata = file.metadata().await?;
     if metadata.is_dir() {
         send_folder(
