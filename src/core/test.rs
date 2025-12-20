@@ -448,7 +448,7 @@ async fn test_send_many() {
 async fn test_wrong_code() {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
 
-    let sender_task = async {
+    let sender_task = smol::spawn(async {
         let mailbox = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
         if let Some(welcome) = &mailbox.welcome {
             tracing::info!("Got welcome: {}", welcome);
@@ -461,9 +461,9 @@ async fn test_wrong_code() {
         /* This should have failed, due to the wrong code */
         assert!(result.is_err());
         eyre::Result::<_>::Ok(())
-    };
+    });
 
-    let receiver_task = async {
+    let receiver_task = smol::spawn(async {
         let nameplate = code_rx.await?;
         tracing::info!("Got nameplate over local: {}", &nameplate);
         let result = crate::Wormhole::connect(
@@ -481,7 +481,7 @@ async fn test_wrong_code() {
         /* This should have failed, due to the wrong code */
         assert!(result.is_err());
         eyre::Result::<_>::Ok(())
-    };
+    });
 
     timeout(TIMEOUT, sender_task).await.unwrap().unwrap();
     timeout(TIMEOUT, receiver_task).await.unwrap().unwrap();
