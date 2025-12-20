@@ -16,6 +16,8 @@
 use crate::{Key, KeyPurpose, core::key::GenericKey};
 use serde_derive::{Deserialize, Serialize};
 
+#[cfg(not(target_family = "wasm"))]
+use async_net::{TcpListener, TcpStream};
 #[allow(unused_imports)] /* We need them for the docs */
 use futures::{
     Sink, SinkExt, Stream, StreamExt, TryStreamExt,
@@ -23,8 +25,6 @@ use futures::{
     future::TryFutureExt,
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
 };
-#[cfg(not(target_family = "wasm"))]
-use smol::net::{TcpListener, TcpStream};
 use std::{
     collections::HashSet,
     net::{IpAddr, SocketAddr},
@@ -1263,7 +1263,7 @@ impl TransitConnector {
                                 .map(move |(i, h)| (i, h, name.clone()))
                             })
                             .map(|(index, host, name)| async move {
-                                smol::Timer::after(std::time::Duration::from_secs(
+                                async_io::Timer::after(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;
@@ -1307,7 +1307,7 @@ impl TransitConnector {
                                     .map(move |(i, u)| (i, u, name.clone()))
                             })
                             .map(|(index, url, name)| async move {
-                                smol::Timer::after(std::time::Duration::from_secs(
+                                async_io::Timer::after(std::time::Duration::from_secs(
                                     index as u64 * 5,
                                 ))
                                 .await;
@@ -1437,7 +1437,7 @@ impl Transit {
         self,
     ) -> (
         impl futures::sink::Sink<Box<[u8]>, Error = TransitError>,
-        impl smol::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
+        impl futures_lite::stream::Stream<Item = Result<Box<[u8]>, TransitError>>,
     ) {
         let (reader, writer) = self.socket.split();
         (
