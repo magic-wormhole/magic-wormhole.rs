@@ -2009,6 +2009,7 @@ dependencies = [
  "tracing",
  "url",
  "wasm-bindgen-test",
+ "wasmtimer",
  "ws_stream_wasm",
  "zxcvbn",
 ]
@@ -3813,6 +3814,20 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
+]
+
+[[package]]
+name = "wasmtimer"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c598d6b99ea013e35844697fc4670d08339d5cda15588f193c6beedd12f644b"
+dependencies = [
+ "futures",
+ "js-sys",
+ "parking_lot",
+ "pin-utils",
+ "slab",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -864,7 +864,7 @@ mod tar_helper {
     }
 
     #[cfg(any(windows, target_arch = "wasm32"))]
-    pub(crate) fn path2bytes(p: &str) -> Cow<[u8]> {
+    pub(crate) fn path2bytes(p: &str) -> Cow<'_, [u8]> {
         let bytes = p.as_bytes();
         if bytes.contains(&b'\\') {
             // Normalize to Unix-style path separators
