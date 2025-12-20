@@ -221,7 +221,7 @@ async fn tcp_connect_custom(
         .take_error()
         .and_then(|maybe_err| maybe_err.map_or(Ok(()), Result::Err))?;
     /* Convert our mess to `smol::net::TcpStream */
-    Ok(stream.into_inner()?.try_into()?)
+    stream.into_inner()?.try_into()
 }
 
 #[cfg(not(target_family = "wasm"))]
