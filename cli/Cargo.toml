@@ -42,7 +42,7 @@ qr2term = { workspace = true }
 arboard = { optional = true, workspace = true, features = [
     "wayland-data-control",
 ] } # Wayland by default, fallback to X11.
-tracing = { workspace = true, features = ["log", "log-always"] }
+tracing = { workspace = true, features = ["log"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]

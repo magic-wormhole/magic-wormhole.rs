@@ -124,7 +124,7 @@ url = { workspace = true, features = ["serde"] }
 percent-encoding = { workspace = true }
 zxcvbn = { workspace = true }
 
-tracing = { workspace = true, features = ["log", "log-always"] }
+tracing = { workspace = true, features = ["log"] }
 
 fuzzt = { version = "0.3.1", optional = true }
 
