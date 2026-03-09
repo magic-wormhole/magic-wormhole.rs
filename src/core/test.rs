@@ -1,8 +1,9 @@
 #![allow(irrefutable_let_patterns)]
 
 use super::{Mood, Phase};
+use futures_concurrency::prelude::*;
 use rand::Rng;
-use std::{borrow::Cow, str::FromStr, time::Duration};
+use std::{borrow::Cow, pin::Pin, str::FromStr, time::Duration};
 
 #[cfg(feature = "transfer")]
 use crate::transfer;
@@ -314,8 +315,10 @@ async fn test_file_rust2rust() {
             eyre::Result::<_>::Ok(())
         };
 
-        sender_task.await.unwrap();
-        receiver_task.await.unwrap();
+        let outputs = (sender_task, receiver_task).join().await;
+
+        assert!(outputs.0.is_ok());
+        assert!(outputs.1.is_ok());
     }
 }
 
@@ -409,16 +412,6 @@ async fn test_send_many() {
         .await
         .unwrap();
         tracing::info!("Got key: {}", &wormhole.key);
-        /*let transfer::ReceiveRequest::V1(req) = crate::transfer::request(
-            wormhole,
-            default_relay_hints(),
-            magic_wormhole::transit::Abilities::ALL,
-            futures::future::pending(),
-        )
-        .await?
-        .unwrap() else {
-            panic!("v2 should be disabled for now")
-        };*/
 
         let req = transfer::request_file(
             wormhole,
