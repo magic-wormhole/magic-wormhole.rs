@@ -18,7 +18,7 @@ use crate::transit::TransitRole;
 use super::*;
 use async_std::net::{TcpListener, TcpStream};
 use futures::{AsyncReadExt, AsyncWriteExt, Future, SinkExt, StreamExt, TryStreamExt};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
