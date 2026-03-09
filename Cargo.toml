@@ -19,6 +19,7 @@ rust-version = "1.85"
 edition = "2024"
 
 [workspace.dependencies]
+async-process = "2.5.0"
 arboard = "3.6"
 async-channel = "2.5"
 async-std = "1.13"
@@ -37,6 +38,7 @@ env_logger = "0.11"
 eyre = "0.6.5"
 futures = "0.3.12"
 futures-lite = "2.6"
+futures-concurrency = "7.7.1"
 hex = "0.4.2"
 hkdf = "0.12.2"
 indicatif = "0.18"
@@ -109,8 +111,10 @@ rand = { workspace = true }
 base64 = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
 async-executor = { workspace = true }
+async-process = { workspace = true, optional = true }
 macro_rules_attribute = { workspace = true }
 futures-lite = { workspace = true }
+futures-concurrency = { workspace = true }
 
 derive_more = { workspace = true, features = ["display", "deref", "from"] }
 thiserror = { workspace = true }
@@ -166,6 +170,7 @@ wasmtimer = { workspace = true }
 [dev-dependencies]
 test-log = { workspace = true, features = ["trace"] }
 eyre = { workspace = true }
+async-process = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
@@ -181,7 +186,7 @@ transit = [
     "dep:bytecodec",
     "dep:async-trait",
 ]
-forwarding = ["transit", "dep:rmp-serde"]
+forwarding = ["transit", "dep:rmp-serde", "dep:async-process"]
 default = ["transit", "transfer"]
 all = ["default", "forwarding", "fuzzy-complete"]
 

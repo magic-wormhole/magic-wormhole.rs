@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use base64::Engine;
 
 macro_rules! ensure {
@@ -146,13 +144,39 @@ pub(crate) fn timeout<'a, R, F: std::future::Future<Output = R> + 'a>(
     futures_lite::future::or(async { Ok(future.await) }, timeout_future)
 }
 
+#[cfg(any(test, feature = "forwarding"))]
+fn executor() -> &'static async_executor::Executor<'static> {
+    const NUM_THREADS: usize = 3;
+    static EXECUTOR: std::sync::LazyLock<async_executor::Executor> =
+        std::sync::LazyLock::new(|| {
+            let ex = async_executor::Executor::new();
+
+            for n in 1..=NUM_THREADS {
+                std::thread::Builder::new()
+                    .name(format!("magic-wormhole-{}", n))
+                    .spawn(|| {
+                        loop {
+                            std::panic::catch_unwind(|| {
+                                async_io::block_on(
+                                    executor().run(futures_lite::future::pending::<()>()),
+                                )
+                            })
+                            .ok();
+                        }
+                    })
+                    .expect("cannot spawn executor thread");
+            }
+
+            ex.spawn(async_process::driver()).detach();
+            ex
+        });
+    &EXECUTOR
+}
+
 /// Utility function to spawn a future. We don't use crate::util::spawn, because not the entirety of smol compiles on WASM
-#[allow(dead_code)]
+#[cfg(any(test, feature = "forwarding"))]
 pub(crate) fn spawn<T: Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
 ) -> async_task::Task<T> {
-    static EXECUTOR: LazyLock<async_executor::Executor> =
-        LazyLock::new(async_executor::Executor::new);
-
-    EXECUTOR.spawn(future)
+    executor().spawn(future)
 }
