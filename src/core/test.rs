@@ -475,11 +475,10 @@ async fn test_wrong_code() {
         let result = crate::Wormhole::connect(mailbox).await;
         /* This should have failed, due to the wrong code */
         assert!(result.is_err());
-        eyre::Result::<_>::Ok(())
     });
 
     let receiver_task = crate::util::spawn(async {
-        let nameplate = code_rx.await?;
+        let nameplate = code_rx.await.unwrap();
         tracing::info!("Got nameplate over local: {}", &nameplate);
         let result = crate::Wormhole::connect(
             MailboxConnection::connect(
@@ -495,11 +494,11 @@ async fn test_wrong_code() {
 
         /* This should have failed, due to the wrong code */
         assert!(result.is_err());
-        eyre::Result::<_>::Ok(())
     });
 
-    timeout(TIMEOUT, sender_task).await.unwrap().unwrap();
-    timeout(TIMEOUT, receiver_task).await.unwrap().unwrap();
+    timeout(TIMEOUT, (sender_task, receiver_task).join())
+        .await
+        .unwrap();
 }
 
 /** Connect three people to the party and watch it explode … gracefully */
