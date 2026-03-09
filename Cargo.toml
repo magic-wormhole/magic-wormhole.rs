@@ -1,6 +1,7 @@
 [workspace]
 members = [".", "cli"]
 default-members = ["cli"]
+resolver = "3"
 
 [workspace.package]
 version = "0.7.6"
@@ -15,7 +16,7 @@ homepage = "http://magic-wormhole.io/"
 repository = "https://github.com/magic-wormhole/magic-wormhole.rs/tree/main/cli"
 license = "EUPL-1.2"
 
-rust-version = "1.81"
+rust-version = "1.85"
 edition = "2021"
 
 [workspace.dependencies]
