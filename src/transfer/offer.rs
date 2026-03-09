@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use futures::{AsyncRead, AsyncSeek, AsyncWrite, Future};
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 
 pub type OfferSend = Offer<OfferContent>;
 
