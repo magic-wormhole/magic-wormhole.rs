@@ -35,6 +35,7 @@ If you don't fear touching code and want to contribute, `./src/lib.rs`, `./src/t
 - [Warp](https://gitlab.gnome.org/World/warp), a GUI client using Gtk
 - [Wormhole File Transfer](https://github.com/wormhole-app/wormhole), a Android client using Flutter
 - [Wyrmhole](https://github.com/ClaytonWas/wyrmhole), a cross-platform GUI using Tauri
+- [rvIRC](https://github.com/KaraZajac/rvIRC), a vim-based IRC client with filesharing
 
 (feel free to add yours)
 
