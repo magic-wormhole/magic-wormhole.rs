@@ -489,15 +489,10 @@ pub struct ReceiveRequest {
     wormhole: Wormhole,
     connector: TransitConnector,
 
-    /// **Security warning:** this is untrusted and unverified input
-    #[deprecated(since = "0.7.0", note = "use ReceiveRequest::file_name(..) instead")]
-    #[cfg(not(target_family = "wasm"))]
-    pub filename: PathBuf,
     file_name: String,
 
     /// The expected size of the file
-    #[deprecated(since = "0.7.0", note = "use ReceiveRequest::file_size(..) instead")]
-    pub filesize: u64,
+    filesize: u64,
 
     #[allow(dead_code)]
     offer: Arc<Offer>,
@@ -505,7 +500,6 @@ pub struct ReceiveRequest {
     their_hints: Arc<transit::Hints>,
 }
 
-#[expect(deprecated)]
 impl ReceiveRequest {
     fn new(
         file_name: String,
@@ -529,12 +523,9 @@ impl ReceiveRequest {
 
         let offer = Arc::new(Offer { content });
 
-        #[expect(deprecated)]
         Self {
             wormhole,
             connector,
-            #[cfg(not(target_family = "wasm"))]
-            filename: PathBuf::from(file_name.clone()),
             file_name,
             filesize,
             offer,

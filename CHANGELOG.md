@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - lib: `transit::log_transit_connection`, use the Display implementation of TransitInfo instead
 - lib: `AppID` public field access: Use `AppID::new()` and `AsRef<str>::as_ref()` instead
 - lib: `MailboxConnection::mailbox()`, the `Mailbox` type was always private and therefore not useful
+- lib: `transit::RelayHint`: `can_merge`, `merge`, `merge_mut`, `merge_into` with no replacement
+- lib: `transit::TransitConnector::can_noise_crypto` with no replacement (noise cryptography is not a stable protocol)
+- lib: `transfer::PeerMessage`, this enum type had lots of fields with private types and was therefore not very useful
+- lib: `transfer::v1::ReceiveRequest`: `filename` and `filesize` fields: Use the public getter methods
 
 ## [0.7.7] - 2026-03-10
 
