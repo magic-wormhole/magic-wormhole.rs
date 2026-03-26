@@ -44,7 +44,7 @@ indicatif = "0.18"
 macro_rules_attribute = "0.2"
 noise-protocol = "0.2"
 noise-rust-crypto = "0.6.0-rc.1"
-number_prefix = "0.4.0"
+unit-prefix = "0.5"
 percent-encoding = "2.1.0"
 qr2term = "0.3.0"
 

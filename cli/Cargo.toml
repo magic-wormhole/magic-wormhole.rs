@@ -36,7 +36,7 @@ console = { workspace = true }
 indicatif = { workspace = true }
 dialoguer = { workspace = true, features = ["completion"] }
 color-eyre = { workspace = true }
-number_prefix = { workspace = true }
+unit-prefix = { workspace = true }
 ctrlc = { workspace = true }
 qr2term = { workspace = true }
 arboard = { optional = true, workspace = true, features = [
