@@ -109,7 +109,6 @@ hex = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 base64 = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
-macro_rules_attribute = { workspace = true }
 futures-lite = { workspace = true }
 futures-concurrency = { workspace = true }
 
@@ -169,6 +168,7 @@ wasmtimer = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
 eyre = { workspace = true }
 async-process = { workspace = true }
+macro_rules_attribute = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
