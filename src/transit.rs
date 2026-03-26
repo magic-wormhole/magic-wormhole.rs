@@ -205,7 +205,7 @@ impl Abilities {
 
     /// Whether noise cryptography is supported
     #[deprecated(since = "0.7.0", note = "Noise cryptography is not standardized")]
-    pub fn can_noise_crypto(&self) -> bool {
+    pub(crate) fn can_noise_crypto(&self) -> bool {
         false
     }
 

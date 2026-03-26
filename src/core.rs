@@ -1,5 +1,3 @@
-#![expect(deprecated)]
-
 pub(super) mod key;
 pub mod rendezvous;
 mod server_messages;
@@ -256,11 +254,6 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// The welcome message received from the mailbox server
     pub fn welcome(&self) -> Option<&str> {
         self.welcome.as_deref()
-    }
-
-    /// The mailbox id of the created mailbox
-    pub fn mailbox(&self) -> &Mailbox {
-        &self.mailbox
     }
 
     /// The Code that was used to connect to the mailbox.
@@ -551,11 +544,7 @@ impl<V: serde::Serialize> AppConfig<V> {
     PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display, derive_more::Deref,
 )]
 #[deref(forward)]
-pub struct AppID(
-    #[deref]
-    #[deprecated(since = "0.7.0", note = "use the AsRef<str> implementation")]
-    pub Cow<'static, str>,
-);
+pub struct AppID(#[deref] pub(crate) Cow<'static, str>);
 
 impl AppID {
     /// Create a new app ID from an ID string
@@ -582,11 +571,7 @@ impl AsRef<str> for AppID {
 )]
 #[serde(transparent)]
 #[display("MySide({})", "&*_0")]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct MySide(EitherSide);
+pub(crate) struct MySide(EitherSide);
 
 impl MySide {
     pub fn generate() -> MySide {
@@ -612,11 +597,7 @@ impl MySide {
 )]
 #[serde(transparent)]
 #[display("TheirSide({})", "&*_0")]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct TheirSide(EitherSide);
+pub(crate) struct TheirSide(EitherSide);
 
 impl<S: Into<String>> From<S> for TheirSide {
     fn from(s: S) -> TheirSide {
@@ -630,11 +611,7 @@ impl<S: Into<String>> From<S> for TheirSide {
 #[serde(transparent)]
 #[deref(forward)]
 #[display("{}", "&*_0")]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct EitherSide(pub String);
+pub(crate) struct EitherSide(pub String);
 
 impl<S: Into<String>> From<S> for EitherSide {
     fn from(s: S) -> EitherSide {
@@ -644,11 +621,7 @@ impl<S: Into<String>> From<S> for EitherSide {
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct Phase(Cow<'static, str>);
+pub(crate) struct Phase(Cow<'static, str>);
 
 impl Phase {
     pub const VERSION: Self = Phase(Cow::Borrowed("version"));
@@ -681,11 +654,7 @@ impl AsRef<str> for Phase {
 
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub struct Mailbox(pub String);
+pub(crate) struct Mailbox(pub String);
 
 /// An error occurred when parsing a nameplate: Nameplate is not a number.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy, derive_more::Display, Error)]
