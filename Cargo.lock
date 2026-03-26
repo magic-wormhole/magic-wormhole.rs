@@ -1883,7 +1883,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "magic-wormhole"
-version = "0.8.0-alpha.1"
+version = "0.8.0"
 dependencies = [
  "async-executor",
  "async-fs",
@@ -1935,7 +1935,7 @@ dependencies = [
 
 [[package]]
 name = "magic-wormhole-cli"
-version = "0.8.0-alpha.1"
+version = "0.8.0"
 dependencies = [
  "arboard",
  "async-channel",
