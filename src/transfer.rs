@@ -513,6 +513,7 @@ where
     let mut file = async_fs::File::open(file_path).await?;
     let metadata = file.metadata().await?;
     if metadata.is_dir() {
+        #[allow(deprecated)]
         send_folder(
             wormhole,
             relay_hints,
@@ -526,6 +527,7 @@ where
         .await?;
     } else {
         let file_size = metadata.len();
+        #[allow(deprecated)]
         send_file(
             wormhole,
             relay_hints,
