@@ -199,12 +199,11 @@ impl Abilities {
     }
 
     #[cfg(any())]
-    pub fn can_noise_crypto(&self) -> bool {
+    pub(crate) fn can_noise_crypto(&self) -> bool {
         self.noise_v1
     }
 
     /// Whether noise cryptography is supported
-    #[deprecated(since = "0.7.0", note = "Noise cryptography is not standardized")]
     pub(crate) fn can_noise_crypto(&self) -> bool {
         false
     }
@@ -522,43 +521,19 @@ impl RelayHint {
         Ok(this)
     }
 
-    #[deprecated(
-        since = "0.7.0",
-        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
-    )]
     /// Whether the relay server is probably the same
-    pub fn can_merge(&self, other: &Self) -> bool {
+    pub(crate) fn can_merge(&self, other: &Self) -> bool {
         !self.tcp.is_disjoint(&other.tcp) || !self.ws.is_disjoint(&other.ws)
     }
 
-    #[deprecated(
-        since = "0.7.0",
-        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
-    )]
     /// Extend this server with additional endpoints
-    pub fn merge(mut self, other: Self) -> Self {
-        #[expect(deprecated)]
-        self.merge_mut(other);
-        self
-    }
-
-    #[deprecated(
-        since = "0.7.0",
-        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
-    )]
-    /// Extend this server with additional endpoints
-    pub fn merge_mut(&mut self, other: Self) {
+    pub(crate) fn merge_mut(&mut self, other: Self) {
         self.tcp.extend(other.tcp);
         self.ws.extend(other.ws);
     }
 
-    #[deprecated(
-        since = "0.7.0",
-        note = "This will be a private method in the future. Open an issue if you require access to protocol intrinsics in the future"
-    )]
-    #[expect(deprecated)]
     /// Deduplicate and merge the hints us into theirs
-    pub fn merge_into(self, collection: &mut Vec<RelayHint>) {
+    pub(crate) fn merge_into(self, collection: &mut Vec<RelayHint>) {
         for item in collection.iter_mut() {
             if item.can_merge(&self) {
                 item.merge_mut(self);
@@ -916,7 +891,6 @@ pub struct TransitConnector {
     our_hints: Arc<Hints>,
 }
 
-#[expect(deprecated)]
 impl TransitConnector {
     /// The abilities that we've sent to the other side
     pub fn our_abilities(&self) -> &Abilities {

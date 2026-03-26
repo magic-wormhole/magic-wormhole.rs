@@ -8,8 +8,6 @@
 //! At its core, "peer messages" are exchanged over an established wormhole connection with the other side.
 //! They are used to set up a [transit] portal and to exchange a file offer/accept. Then, the file is transmitted over the transit relay.
 
-#![expect(deprecated)]
-
 use futures::{AsyncRead, AsyncWrite};
 use serde_derive::{Deserialize, Serialize};
 #[cfg(test)]
@@ -240,11 +238,7 @@ impl Default for AppVersionTransferV2Hint {
 #[derive(Deserialize, Serialize, derive_more::Display, Debug, Clone)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
-pub enum PeerMessage {
+pub(crate) enum PeerMessage {
     /* V1 */
     /// A transit message
     #[display("transit")]
