@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - lib: `transit::TransitConnector::can_noise_crypto` with no replacement (noise cryptography is not a stable protocol)
 - lib: `transfer::PeerMessage`, this enum type had lots of fields with private types and was therefore not very useful
 - lib: `transfer::v1::ReceiveRequest`: `filename` and `filesize` fields: Use the public getter methods
+- lib: `From<Nameplate>` for `String` and `AsRef<str>` for `Nameplate`: Use the `std::fmt::Display` implementation
+- lib: `From<Code>` for `String` and `AsRef<str>` for `Code`: Use the `std::fmt::Display` implementation
+- lib: `Code::split`: Use `Code::nameplate` and `Code::password`
 
 ## [0.7.7] - 2026-03-10
 

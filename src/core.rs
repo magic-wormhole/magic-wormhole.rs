@@ -295,7 +295,7 @@ impl Wormhole {
         } = mailbox_connection;
 
         /* Send PAKE */
-        let (pake_state, pake_msg_ser) = key::make_pake(code.as_ref(), &config.id);
+        let (pake_state, pake_msg_ser) = key::make_pake(code.as_str(), &config.id);
         server.send_peer_message(Phase::PAKE, pake_msg_ser).await?;
 
         /* Receive PAKE */
@@ -692,20 +692,6 @@ impl FromStr for Nameplate {
     }
 }
 
-/// Deprecated: Use the [`std::fmt::Display`] implementation
-impl From<Nameplate> for String {
-    fn from(value: Nameplate) -> Self {
-        value.0
-    }
-}
-
-/// Deprecated: Use the [`std::fmt::Display`] implementation
-impl AsRef<str> for Nameplate {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
 /// This is a compromise. Generally we want to be wordlist-agnostic here. But
 /// we can't ignore that the PGP wordlist is the most common wordlist in use.
 ///
@@ -864,16 +850,6 @@ impl Code {
         Self(format!("{nameplate}-{password}"))
     }
 
-    /// Split the code into nameplate and password
-    #[deprecated(since = "0.7.2", note = "Use [Self::nameplate] and [Self::password]")]
-    pub fn split(&self) -> (Nameplate, String) {
-        let mut iter = self.0.splitn(2, '-');
-        #[expect(unsafe_code)]
-        let nameplate = unsafe { Nameplate::new_unchecked(iter.next().unwrap()) };
-        let password = iter.next().unwrap();
-        (nameplate, password.to_string())
-    }
-
     /// Retrieve only the nameplate
     pub fn nameplate(&self) -> Nameplate {
         // Safety: We checked the validity of the nameplate before
@@ -891,12 +867,9 @@ impl Code {
             Password::new_unchecked(self.0.splitn(2, '-').last().unwrap())
         }
     }
-}
 
-/// Deprecated: Use the [`std::fmt::Display`] implementation
-impl From<Code> for String {
-    fn from(value: Code) -> Self {
-        value.0
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -914,12 +887,5 @@ impl FromStr for Code {
             None if s.is_empty() => Err(ParseCodeError::Empty),
             None => Err(ParseCodeError::SeparatorMissing),
         }
-    }
-}
-
-/// Deprecated: Use the [`std::fmt::Display`] implementation
-impl AsRef<str> for Code {
-    fn as_ref(&self) -> &str {
-        &self.0
     }
 }

@@ -496,7 +496,7 @@ impl RendezvousServer {
             other => return Err(RendezvousError::invalid_message("allocated", other)),
         };
 
-        self.send_message(&OutboundMessage::claim(nameplate.clone()))
+        self.send_message(&OutboundMessage::claim(nameplate.to_string()))
             .await?;
         let mailbox = match self.receive_reply().await? {
             RendezvousReply::Claimed(mailbox) => mailbox,
@@ -522,7 +522,7 @@ impl RendezvousServer {
             "Can only call in initial state, and only once"
         );
 
-        self.send_message(&OutboundMessage::claim(nameplate.clone()))
+        self.send_message(&OutboundMessage::claim(nameplate.to_string()))
             .await?;
         let mailbox = match self.receive_reply().await? {
             RendezvousReply::Claimed(mailbox) => mailbox,
@@ -568,7 +568,7 @@ impl RendezvousServer {
             .and_then(|state| state.nameplate.clone())
             .expect("Can only release an allocated nameplate, and only once");
 
-        self.send_message(&OutboundMessage::release(nameplate.as_ref()))
+        self.send_message(&OutboundMessage::release(nameplate.to_string()))
             .await?;
         match self.receive_reply().await? {
             RendezvousReply::Released => (),
@@ -610,7 +610,10 @@ impl RendezvousServer {
         {
             if let Some(nameplate) = nameplate {
                 self.connection
-                    .send_message(&OutboundMessage::release(nameplate), Some(&mut queue))
+                    .send_message(
+                        &OutboundMessage::release(nameplate.to_string()),
+                        Some(&mut queue),
+                    )
                     .await?;
                 match self.connection.receive_reply(Some(&mut queue)).await? {
                     RendezvousReply::Released => (),

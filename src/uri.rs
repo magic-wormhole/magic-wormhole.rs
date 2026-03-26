@@ -142,7 +142,7 @@ impl std::str::FromStr for WormholeTransferUri {
 impl From<&WormholeTransferUri> for url::Url {
     fn from(val: &WormholeTransferUri) -> Self {
         let mut url = url::Url::parse("wormhole-transfer:").unwrap();
-        url.set_path(val.code.as_ref());
+        url.set_path(val.code.as_str());
         /* Only do this if there are any query parameteres at all, otherwise the URL will have an ugly trailing '?'. */
         if val.rendezvous_server.is_some() || val.is_leader {
             let mut query = url.query_pairs_mut();
