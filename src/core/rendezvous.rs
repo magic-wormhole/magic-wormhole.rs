@@ -89,7 +89,7 @@ struct NameplateList(Vec<Nameplate>);
 
 #[cfg(not(target_family = "wasm"))]
 struct WsConnection {
-    connection: async_tungstenite::WebSocketStream<async_tungstenite::async_std::ConnectStream>,
+    connection: async_tungstenite::WebSocketStream<async_tungstenite::smol::ConnectStream>,
 }
 
 #[cfg(target_family = "wasm")]
@@ -355,7 +355,7 @@ impl RendezvousServer {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let (stream, _) = async_tungstenite::async_std::connect_async(relay_url).await?;
+            let (stream, _) = async_tungstenite::smol::connect_async(relay_url).await?;
             connection = WsConnection { connection: stream };
         }
 

@@ -22,7 +22,6 @@ edition = "2024"
 async-process = "2.5.0"
 arboard = "3.6"
 async-channel = "2.5"
-async-std = "1.13"
 async-trait = "0.1"
 base64 = "0.22.1"
 bytecodec = "0.5"
@@ -69,7 +68,7 @@ stun_codec = "0.4.0"
 tar = "0.4.33"
 thiserror = "2"
 time = "0.3.7"
-trycmd = "0.15"
+trycmd = "1.2"
 url = "2.2.2"
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -134,7 +133,6 @@ fuzzt = { version = "0.3.1", optional = true }
 stun_codec = { workspace = true, optional = true }
 bytecodec = { workspace = true, optional = true }
 noise-rust-crypto = { workspace = true, optional = true }
-async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 async-trait = { workspace = true, optional = true }
 noise-protocol = { workspace = true, optional = true }
 async-task = { workspace = true }
@@ -149,7 +147,7 @@ tar = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 libc = "0.2.101"
-async-tungstenite = { version = "0.30", features = ["async-std-runtime"] }
+async-tungstenite = { version = "0.34", features = ["smol-runtime"] }
 async-io = { workspace = true }
 async-net = { workspace = true }
 async-fs = { workspace = true }
@@ -157,7 +155,7 @@ async-fs = { workspace = true }
 # Transit
 
 socket2 = { version = "0.6", optional = true, features = ["all"] }
-if-addrs = { version = "0.14", optional = true }
+if-addrs = { version = "0.15", optional = true }
 
 # Transfer
 
