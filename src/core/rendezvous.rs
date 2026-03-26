@@ -324,7 +324,7 @@ impl MailboxMachine {
 
 /// The rendezvous server is a central server used for connection establishment
 pub(crate) struct RendezvousServer {
-    connection: WsConnection,
+    connection: Box<WsConnection>,
     state: Option<MailboxMachine>,
     side: MySide,
 }
@@ -411,7 +411,7 @@ impl RendezvousServer {
 
         Ok((
             Self {
-                connection,
+                connection: Box::new(connection),
                 state: None,
                 side,
             },

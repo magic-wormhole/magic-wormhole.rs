@@ -434,7 +434,7 @@ impl ReceiveRequest {
             run = async {
                 transit.send_record(&{
                     /* This must be split into two statements to appease the borrow checker (unfortunate side effect of borrow-through) */
-                    
+
                     PeerMessageV2::Answer(AnswerMessage {
                     files: answer.iter_files()
                         .map(|(path, inner, _size)| AnswerMessageInner {
