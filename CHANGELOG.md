@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] - 2026-03-26
 
 ### Added
 
@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- lib: Switched from async-std to smol/async-io
 - lib: Remove explicit entropy feature and make it the default
 - lib: Undeprecate direct access to Transit connections and unify the connection functions. `TransitConnector::connect` is now the only way to set up the connection, and accepts a `TransitRole` enum rather than an `is_leader` boolean. `leader_connect` and `follower_connect` are removed from the API.
 - lib: `transit::init()` is now undeprecated.
