@@ -1081,7 +1081,7 @@ async fn receive_inner_v1(
      * - If it doesn't, directly accept, but DON'T overwrite any files
      */
 
-    use number_prefix::NumberPrefix;
+    use unit_prefix::NumberPrefix;
     if !(noconfirm
         || util::ask_user(
             match should_use_color() {
@@ -1180,7 +1180,7 @@ async fn receive_inner_v2(
     let file_size = offer.total_size();
     let offer_name = offer.offer_name();
 
-    use number_prefix::NumberPrefix;
+    use unit_prefix::NumberPrefix;
     if !(noconfirm
         || util::ask_user(
             format!(
