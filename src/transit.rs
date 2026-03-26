@@ -51,13 +51,11 @@ pub struct TransitKey;
 
 impl KeyPurpose for TransitKey {}
 
-/// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
 #[derive(Debug)]
 pub(crate) struct TransitRxKey;
 
 impl KeyPurpose for TransitRxKey {}
 
-/// Deprecated: This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future
 #[derive(Debug)]
 pub(crate) struct TransitTxKey;
 
@@ -746,24 +744,6 @@ impl std::fmt::Display for TransitInfo {
             },
         }
     }
-}
-
-#[deprecated(
-    since = "0.7.0",
-    note = "use the `Display` implementation of `TransitInfo` instead"
-)]
-/// Deprecated: use the `Display` implementation of `TransitInfo` instead
-pub fn log_transit_connection(
-    conn_type: ConnectionType,
-    #[cfg(not(target_family = "wasm"))] peer_addr: SocketAddr,
-) {
-    let info = TransitInfo {
-        conn_type,
-        #[cfg(not(target_family = "wasm"))]
-        peer_addr,
-    };
-
-    tracing::info!("{info}");
 }
 
 /**

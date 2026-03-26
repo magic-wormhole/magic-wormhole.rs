@@ -7,14 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- cli: Add colors support
+- lib: `transit::TransitRole` enum with `Follower` and `Leader` variants for use with `TransitConnector::connect`
+
 ### Changed
 
 - lib: Remove explicit entropy feature and make it the default
 - lib: Undeprecate direct access to Transit connections and unify the connection functions. `TransitConnector::connect` is now the only way to set up the connection, and accepts a `TransitRole` enum rather than an `is_leader` boolean. `leader_connect` and `follower_connect` are removed from the API.
+- lib: `transit::init()` is now undeprecated.
+- lib: Renamed `transit::Abilities::ALL_ABILITIES` to `magic_wormhole::transit::Abilities::ALL`
+- lib: `Key` now has an `as_ref` implementation for the inner `crypto_secretbox::Key` instead of a public field
+- lib: `rendezvous::RendezvousError::IO` now contains a boxed tungstenite error to reduce error enum sizes
 
-### Added
+### Removed
 
-- cli: Add colors support
+- lib: `Wormhole::connect_with(out)_code`, `WormholeWelcome`, use `MailboxConnection::create()` and then `Wormhole::connect()` instead
+- lib: `Wormhole` public struct fields. Use the provided accessor methods instead.
+- lib: `GenericKey`, implement `KeyPurpose` on a custom struct instead
+- lib: `transit`: `TransitKey`, `TransitRxKey` and `TransitTxKey`
+- lib: `rendezvous::RendezvousServer` with no replacement
+- lib: `transit::log_transit_connection`, use the Display implementation of TransitInfo instead
+
+## [0.7.7] - 2026-03-10
+
+### Fixed
+
+- Fixes compilation error with cargo doc
+
+## [0.7.6] - 2025-04-05
+
+### Security
+
+- Fixed [RUSTSEC-2025-0004](https://rustsec.org/advisories/RUSTSEC-2025-0004.html)
+- Fixed [RUSTSEC-2025-0009](https://rustsec.org/advisories/RUSTSEC-2025-0009.html)
+- Fixed [RUSTSEC-2025-0022](https://rustsec.org/advisories/RUSTSEC-2025-0022.html)
 
 ## [0.7.5] - 2025-01-12
 
