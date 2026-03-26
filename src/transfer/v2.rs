@@ -434,7 +434,8 @@ impl ReceiveRequest {
             run = async {
                 transit.send_record(&{
                     /* This must be split into two statements to appease the borrow checker (unfortunate side effect of borrow-through) */
-                    let msg = PeerMessageV2::Answer(AnswerMessage {
+                    
+                    PeerMessageV2::Answer(AnswerMessage {
                     files: answer.iter_files()
                         .map(|(path, inner, _size)| AnswerMessageInner {
                             file: path,
@@ -442,8 +443,7 @@ impl ReceiveRequest {
                             sha256: inner.sha256,
                         })
                         .collect(),
-                    }).ser_msgpack();
-                    msg
+                    }).ser_msgpack()
                 }).await?;
 
                 receive_inner(&mut transit, &self.offer, answer, progress_handler).await

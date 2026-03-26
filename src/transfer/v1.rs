@@ -794,7 +794,7 @@ mod tar_helper {
 
     pub(crate) fn padding(size: u64) -> &'static [u8] {
         const BLOCK: [u8; 512] = [0; 512];
-        if size % 512 != 0 {
+        if !size.is_multiple_of(512) {
             &BLOCK[size as usize % 512..]
         } else {
             &[]
