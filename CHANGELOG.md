@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - lib: `transit`: `TransitKey`, `TransitRxKey` and `TransitTxKey`
 - lib: `rendezvous::RendezvousServer` with no replacement
 - lib: `transit::log_transit_connection`, use the Display implementation of TransitInfo instead
+- lib: `AppID` public field access: Use `AppID::new()` and `AsRef<str>::as_ref()` instead
+- lib: `MailboxConnection::mailbox()`, the `Mailbox` type was always private and therefore not useful
 
 ## [0.7.7] - 2026-03-10
 

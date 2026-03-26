@@ -338,7 +338,6 @@ impl std::fmt::Debug for RendezvousServer {
     }
 }
 
-#[expect(deprecated)]
 impl RendezvousServer {
     /**
      * Connect to the rendezvous server
