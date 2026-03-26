@@ -191,7 +191,7 @@ all = ["default", "forwarding", "fuzzy-complete"]
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
 tls = ["async-tungstenite/async-tls"]
-native-tls = ["async-tungstenite/async-native-tls"]
+native-tls = ["async-tungstenite/smol-native-tls"]
 # Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
 # By enabling this option you are opting out of semver stability.
 experimental-transfer-v2 = []
