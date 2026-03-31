@@ -6,6 +6,7 @@ Commands:
   send[..][aliases: tx]
   receive[..][aliases: rx]
   send-many[..]
+  send-message[..]
   forward[..]
 
 Options:
