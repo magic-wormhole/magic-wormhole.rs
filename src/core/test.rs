@@ -11,6 +11,7 @@ use crate::{
     self as magic_wormhole, AppConfig, AppID, Code, WormholeError, core::MailboxConnection,
     transit, util::timeout,
 };
+use macro_rules_attr::apply;
 use test_log::test;
 
 macro_rules! test {
@@ -69,7 +70,7 @@ fn default_relay_hints() -> Vec<transit::RelayHint> {
     ]
 }
 
-#[test(macro_rules_attribute::apply(test!))]
+#[apply(test)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_connect_with_unknown_code_and_allocate_passes() {
     let code = generate_random_code();
@@ -86,7 +87,7 @@ async fn test_connect_with_unknown_code_and_allocate_passes() {
         .unwrap()
 }
 
-#[test(macro_rules_attribute::apply(test!))]
+#[apply(test)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_connect_with_unknown_code_and_no_allocate_fails() {
     tracing::info!("hola!");
@@ -243,7 +244,7 @@ async fn file_offers()
 
 /** Send a file using the Rust implementation. This does not guarantee compatibility with Python! ;) */
 #[cfg(feature = "transfer")]
-#[test(macro_rules_attribute::apply(test!))]
+#[apply(test)]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
 async fn test_file_rust2rust() {
@@ -325,7 +326,7 @@ async fn test_file_rust2rust() {
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]
-#[test(macro_rules_attribute::apply(test!))]
+#[apply(test)]
 // TODO Wasm test disabled, it crashes
 // #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
 async fn test_send_many() {
@@ -451,7 +452,7 @@ async fn test_send_many() {
 }
 
 /// Try to send a file, but use a bad code, and see how it's handled
-#[test(macro_rules_attribute::apply(test!))]
+#[apply(test)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_wrong_code() {
     let (code_tx, code_rx) = futures::channel::oneshot::channel();
@@ -495,7 +496,7 @@ async fn test_wrong_code() {
 }
 
 /** Connect three people to the party and watch it explode … gracefully */
-#[test(macro_rules_attribute::apply(test!))]
+#[apply(test)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_crowded() {
     let initial_mailbox_connection = MailboxConnection::create(APP_CONFIG, 2).await.unwrap();
@@ -518,7 +519,7 @@ async fn test_crowded() {
     }
 }
 
-#[macro_rules_attribute::apply(test!)]
+#[apply(test)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
 async fn test_connect_with_code_expecting_nameplate() {
     let code = generate_random_code();
