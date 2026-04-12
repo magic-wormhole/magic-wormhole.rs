@@ -41,7 +41,7 @@ futures-concurrency = "7.7.1"
 hex = "0.4.2"
 hkdf = "0.12.2"
 indicatif = "0.18"
-macro_rules_attribute = "0.2"
+macro_rules_attr = "0.1"
 noise-protocol = "0.2"
 noise-rust-crypto = "0.6.0-rc.1"
 unit-prefix = "0.5"
@@ -168,7 +168,7 @@ wasmtimer = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
 eyre = { workspace = true }
 async-process = { workspace = true }
-macro_rules_attribute = { workspace = true }
+macro_rules_attr = { workspace = true }
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
