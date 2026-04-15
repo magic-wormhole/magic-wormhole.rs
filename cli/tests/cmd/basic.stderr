@@ -15,5 +15,3 @@ Options:
   -V, --version   Print version
 
 Run a subcommand with `--help` to know how it's used.
-To send files, use `wormhole send <PATH>`.
-To receive files, use `wormhole receive <CODE>`.
