@@ -250,9 +250,7 @@ enum WormholeCommand {
     arg_required_else_help = true,
     disable_help_subcommand = true,
     propagate_version = true,
-    after_help = "Run a subcommand with `--help` to know how it's used.\n\
-                 To send files, use `wormhole send <PATH>`.\n\
-                 To receive files, use `wormhole receive <CODE>`."
+    after_help = "Run a subcommand with `--help` to know how it's used."
 )]
 struct WormholeCli {
     /// Enable logging to stdout, for debugging purposes
