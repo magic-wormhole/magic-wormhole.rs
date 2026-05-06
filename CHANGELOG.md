@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- dev: Replace the `macro_rules_attribute` test helper to remove the unmaintained `paste` dependency
+
 ## [0.8.0] - 2026-03-26
 
 ### Added
@@ -16,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- dev: Replace the `macro_rules_attribute` test helper to remove the unmaintained `paste` dependency
 - lib: Switched from async-std to smol/async-io
 - lib: Remove explicit entropy feature and make it the default
 - lib: Undeprecate direct access to Transit connections and unify the connection functions. `TransitConnector::connect` is now the only way to set up the connection, and accepts a `TransitRole` enum rather than an `is_leader` boolean. `leader_connect` and `follower_connect` are removed from the API.
