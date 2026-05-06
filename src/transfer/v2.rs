@@ -1,6 +1,6 @@
 use futures::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use serde_derive::{Deserialize, Serialize};
-use sha2::{Sha256, digest::FixedOutput};
+use sha2::{Digest, Sha256, digest::FixedOutput};
 
 use crate::transit::TransitRole;
 
@@ -251,11 +251,9 @@ async fn send_inner(
         if let Some(sha256) = sha256 {
             content.seek(std::io::SeekFrom::Start(offset)).await?;
             let mut hasher = Sha256::default();
-            futures::io::copy(
-                (&mut content).take(offset),
-                &mut futures::io::AllowStdIo::new(&mut hasher),
-            )
-            .await?;
+            let mut take = (&mut content).take(offset);
+            take.read_exact(&mut buffer).await?;
+            hasher.update(&buffer);
             let our_hash = hasher.finalize_fixed();
 
             /* If it doesn't match, start at 0 instead of the originally requested offset */
