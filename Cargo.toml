@@ -191,6 +191,10 @@ all = ["default", "forwarding", "fuzzy-complete"]
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
 tls = ["async-tungstenite/async-tls"]
+futures-rustls-manual-roots = ["async-tungstenite/futures-rustls-manual-roots"]
+futures-rustls-native-certs = ["async-tungstenite/futures-rustls-native-certs"]
+futures-rustls-platform-verifier = ["async-tungstenite/futures-rustls-platform-verifier"]
+futures-rustls-webpki-roots = ["async-tungstenite/futures-rustls-webpki-roots"]
 native-tls = ["async-tungstenite/smol-native-tls"]
 # Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
 # By enabling this option you are opting out of semver stability.

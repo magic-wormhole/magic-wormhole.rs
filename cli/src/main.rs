@@ -280,6 +280,12 @@ fn main() -> eyre::Result<()> {
     smol::block_on(async_main())
 }
 
+#[cfg_attr(
+    feature = "tls",
+    deprecated(
+        note = "The 'tls' feature depends on the async-tls crate which in turn depends on an old unmaintained version of rustls. If you need websocket TLS support use one of the futures-rustls features."
+    )
+)]
 async fn async_main() -> eyre::Result<()> {
     color_eyre::install()?;
 
