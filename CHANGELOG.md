@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- lib: The `async-tls` feature has been removed
+
 ### Added
 
 - lib: support for encrypted websocket connections through `futures-rustls` as a future replacement for the `async-tls` dependency

@@ -52,7 +52,6 @@ trycmd = { workspace = true }
 clipboard = ["dep:arboard"]
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
-tls = ["magic-wormhole/tls"]
 futures-rustls-manual-roots = ["magic-wormhole/futures-rustls-manual-roots"]
 futures-rustls-native-certs = ["magic-wormhole/futures-rustls-native-certs"]
 futures-rustls-platform-verifier = ["magic-wormhole/futures-rustls-platform-verifier"]
