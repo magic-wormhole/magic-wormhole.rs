@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-07
+
+### Security
+
+- Fixed [RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436.html)
+- Fixed [RUSTSEC-2026-0097](https://rustsec.org/advisories/RUSTSEC-2026-0097)
+
 ### Changed
 
 - dev: Replace the `macro_rules_attribute` test helper to remove the unmaintained `paste` dependency
