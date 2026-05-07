@@ -190,7 +190,6 @@ all = ["default", "forwarding", "fuzzy-complete"]
 
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
-tls = ["async-tungstenite/async-tls"]
 futures-rustls-manual-roots = ["async-tungstenite/futures-rustls-manual-roots"]
 futures-rustls-native-certs = ["async-tungstenite/futures-rustls-native-certs"]
 futures-rustls-platform-verifier = ["async-tungstenite/futures-rustls-platform-verifier"]
