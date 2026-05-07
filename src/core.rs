@@ -283,6 +283,12 @@ impl Wormhole {
     /// Set up a Wormhole which is the client-client part of the connection setup
     ///
     /// The MailboxConnection already contains a rendezvous server with an opened mailbox.
+    #[cfg_attr(
+        feature = "tls",
+        deprecated(
+            note = "The 'tls' feature depends on the async-tls crate which in turn depends on an old unmaintained version of rustls. If you need websocket TLS support use one of the futures-rustls features."
+        )
+    )]
     pub async fn connect(
         mailbox_connection: MailboxConnection<impl serde::Serialize + Send + Sync + 'static>,
     ) -> Result<Self, WormholeError> {

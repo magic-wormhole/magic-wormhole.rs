@@ -53,6 +53,10 @@ clipboard = ["dep:arboard"]
 # TLS implementations for websocket connections via async-tungstenite
 # required for optional wss connection to the mailbox server
 tls = ["magic-wormhole/tls"]
+futures-rustls-manual-roots = ["magic-wormhole/futures-rustls-manual-roots"]
+futures-rustls-native-certs = ["magic-wormhole/futures-rustls-native-certs"]
+futures-rustls-platform-verifier = ["magic-wormhole/futures-rustls-platform-verifier"]
+futures-rustls-webpki-roots = ["magic-wormhole/futures-rustls-webpki-roots"]
 native-tls = ["magic-wormhole/native-tls"]
 # Enable experimental transfer-v2 support. The protocol is not yet finalized and is subject to change.
 experimental-transfer-v2 = ["magic-wormhole/experimental-transfer-v2"]
