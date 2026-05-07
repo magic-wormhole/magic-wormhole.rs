@@ -18,6 +18,7 @@ allow = [
     "Unicode-3.0",
     "Unlicense",
     "EUPL-1.2",
+    "CDLA-Permissive-2.0",
 ]
 
 [licenses.private]
