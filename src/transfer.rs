@@ -343,6 +343,7 @@ impl PeerMessage {
 pub async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     transit_abilities: transit::Abilities,
     offer: offer::OfferSend,
     transit_handler: impl FnOnce(transit::TransitInfo),
@@ -357,6 +358,7 @@ pub async fn send(
             return v2::send(
                 wormhole,
                 relay_hints,
+                stun_server,
                 transit_abilities,
                 offer,
                 progress_handler,
@@ -370,6 +372,7 @@ pub async fn send(
     v1::send(
         wormhole,
         relay_hints,
+        stun_server,
         transit_abilities,
         offer,
         progress_handler,
@@ -395,6 +398,7 @@ pub async fn send(
 pub async fn request(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
@@ -405,6 +409,7 @@ pub async fn request(
             v2::request(
                 wormhole,
                 relay_hints,
+                stun_server,
                 peer_version,
                 transit_abilities,
                 cancel,
@@ -412,9 +417,15 @@ pub async fn request(
             .await
             .map(|req| req.map(ReceiveRequest::V2))
         } else {
-            v1::request(wormhole, relay_hints, transit_abilities, cancel)
-                .await
-                .map(|req| req.map(ReceiveRequest::V1))
+            v1::request(
+                wormhole,
+                relay_hints,
+                stun_server,
+                transit_abilities,
+                cancel,
+            )
+            .await
+            .map(|req| req.map(ReceiveRequest::V1))
         }
     }
 }
@@ -435,10 +446,18 @@ pub async fn request(
 pub async fn request_file(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<v1::ReceiveRequest>, TransferError> {
-    v1::request(wormhole, relay_hints, transit_abilities, cancel).await
+    v1::request(
+        wormhole,
+        relay_hints,
+        stun_server,
+        transit_abilities,
+        cancel,
+    )
+    .await
 }
 
 /// Send a file to the other side
@@ -454,6 +473,7 @@ pub async fn request_file(
 pub async fn send_file<F, N, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     file: &mut F,
     file_name: N,
     file_size: u64,
@@ -471,6 +491,7 @@ where
     v1::send_file(
         wormhole,
         relay_hints,
+        stun_server,
         file,
         file_name,
         file_size,
@@ -494,6 +515,7 @@ where
 pub async fn send_file_or_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     file_path: N,
     file_name: M,
     transit_abilities: transit::Abilities,
@@ -517,6 +539,7 @@ where
         send_folder(
             wormhole,
             relay_hints,
+            stun_server,
             file_path,
             file_name,
             transit_abilities,
@@ -531,6 +554,7 @@ where
         send_file(
             wormhole,
             relay_hints,
+            stun_server,
             &mut file,
             file_name,
             file_size,
@@ -558,6 +582,7 @@ where
 pub async fn send_folder<N, M, G, H>(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     folder_path: N,
     folder_name: M,
     transit_abilities: transit::Abilities,
@@ -576,6 +601,7 @@ where
     v1::send_folder(
         wormhole,
         relay_hints,
+        stun_server,
         folder_name.into(),
         offer,
         transit_abilities,

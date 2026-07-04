@@ -72,6 +72,7 @@ impl TransitAck {
 pub(crate) async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     transit_abilities: transit::Abilities,
     offer: OfferSend,
     progress_handler: impl FnMut(u64, u64) + 'static,
@@ -86,6 +87,7 @@ pub(crate) async fn send(
         send_folder(
             wormhole,
             relay_hints,
+            stun_server,
             "<unnamed folder>".into(),
             folder,
             transit_abilities,
@@ -99,6 +101,7 @@ pub(crate) async fn send(
         send_folder(
             wormhole,
             relay_hints,
+            stun_server,
             folder_name,
             folder,
             transit_abilities,
@@ -121,6 +124,7 @@ pub(crate) async fn send(
         send_file(
             wormhole,
             relay_hints,
+            stun_server,
             &mut file,
             file_name,
             file_size,
@@ -136,6 +140,7 @@ pub(crate) async fn send(
 pub(crate) async fn send_file<F, G, H>(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     file: &mut F,
     file_name: impl Into<String>,
     file_size: u64,
@@ -150,7 +155,8 @@ where
     H: FnMut(u64, u64) + 'static,
 {
     let run = Box::pin(async {
-        let connector = transit::init(transit_abilities, None, relay_hints).await?;
+        let connector =
+            transit::init(transit_abilities, None, relay_hints, stun_server.as_deref()).await?;
 
         // We want to do some transit
         tracing::debug!("Sending transit message '{:?}", connector.our_hints());
@@ -236,6 +242,7 @@ where
 pub(crate) async fn send_folder(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     mut folder_name: String,
     folder: OfferSendEntry,
     transit_abilities: transit::Abilities,
@@ -244,7 +251,8 @@ pub(crate) async fn send_folder(
     cancel: impl Future<Output = ()>,
 ) -> Result<(), TransferError> {
     let run = Box::pin(async {
-        let connector = transit::init(transit_abilities, None, relay_hints).await?;
+        let connector =
+            transit::init(transit_abilities, None, relay_hints, stun_server.as_deref()).await?;
 
         // We want to do some transit
         tracing::debug!("Sending transit message '{:?}", connector.our_hints());
@@ -408,12 +416,14 @@ pub(crate) async fn send_folder(
 pub async fn request(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
 ) -> Result<Option<ReceiveRequest>, TransferError> {
     // Error handling
     let run = Box::pin(async {
-        let connector = transit::init(transit_abilities, None, relay_hints).await?;
+        let connector =
+            transit::init(transit_abilities, None, relay_hints, stun_server.as_deref()).await?;
 
         // send the transit message
         tracing::debug!("Sending transit message '{:?}", connector.our_hints());

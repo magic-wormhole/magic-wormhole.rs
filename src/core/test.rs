@@ -264,6 +264,7 @@ async fn test_file_rust2rust() {
                 transfer::send(
                     wormhole,
                     default_relay_hints(),
+                    None,
                     magic_wormhole::transit::Abilities::ALL,
                     offer,
                     &log_transit_connection,
@@ -289,6 +290,7 @@ async fn test_file_rust2rust() {
             /*let transfer::ReceiveRequest::V1(req) = transfer::request(
                 wormhole,
                 default_relay_hints(),
+                None,
                 magic_wormhole::transit::Abilities::ALL,
                 futures::future::pending(),
             )
@@ -300,6 +302,7 @@ async fn test_file_rust2rust() {
             let req = transfer::request_file(
                 wormhole,
                 default_relay_hints(),
+                None,
                 magic_wormhole::transit::Abilities::ALL,
                 futures::future::pending(),
             )
@@ -359,6 +362,7 @@ async fn test_send_many() {
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
+                        None,
                         magic_wormhole::transit::Abilities::ALL,
                         gen_offer().await?,
                         &log_transit_connection,
@@ -386,6 +390,7 @@ async fn test_send_many() {
                     crate::transfer::send(
                         wormhole,
                         default_relay_hints(),
+                        None,
                         magic_wormhole::transit::Abilities::ALL,
                         gen_offer().await?,
                         &log_transit_connection,
@@ -417,6 +422,7 @@ async fn test_send_many() {
         let req = transfer::request_file(
             wormhole,
             default_relay_hints(),
+            None,
             magic_wormhole::transit::Abilities::ALL,
             futures::future::pending(),
         )

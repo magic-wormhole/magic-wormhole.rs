@@ -148,6 +148,7 @@ pub async fn serve(
     mut wormhole: Wormhole,
     transit_handler: impl FnOnce(transit::TransitInfo),
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     targets: Vec<(Option<url::Host>, u16)>,
     cancel: impl Future<Output = ()>,
 ) -> Result<(), ForwardingError> {
@@ -165,6 +166,7 @@ pub async fn serve(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),
         relay_hints,
+        stun_server.as_deref(),
     )
     .await?;
 
@@ -535,6 +537,7 @@ pub async fn connect(
     mut wormhole: Wormhole,
     transit_handler: impl FnOnce(transit::TransitInfo),
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     bind_address: Option<std::net::IpAddr>,
     custom_ports: &[u16],
 ) -> Result<ConnectOffer, ForwardingError> {
@@ -547,6 +550,7 @@ pub async fn connect(
         our_version.transit_abilities,
         Some(peer_version.transit_abilities),
         relay_hints,
+        stun_server.as_deref(),
     )
     .await?;
     let bind_address = bind_address.unwrap_or_else(|| std::net::IpAddr::V6("::".parse().unwrap()));

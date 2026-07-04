@@ -103,10 +103,17 @@ async fn make_transit(
     wormhole: &mut Wormhole,
     role: TransitRole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<&str>,
     transit_abilities: transit::Abilities,
     peer_abilities: transit::Abilities,
 ) -> Result<(transit::Transit, transit::TransitInfo), TransferError> {
-    let connector = transit::init(transit_abilities, Some(peer_abilities), relay_hints).await?;
+    let connector = transit::init(
+        transit_abilities,
+        Some(peer_abilities),
+        relay_hints,
+        stun_server,
+    )
+    .await?;
 
     /* Send our transit hints */
     wormhole
@@ -155,6 +162,7 @@ async fn make_transit(
 pub async fn send(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     transit_abilities: transit::Abilities,
     offer: OfferSend,
     progress_handler: impl FnMut(u64, u64) + 'static,
@@ -172,6 +180,7 @@ pub async fn send(
                 &mut wormhole,
                 TransitRole::Leader,
                 relay_hints,
+                stun_server.as_deref(),
                 transit_abilities,
                 peer_abilities.transit_abilities,
             )
@@ -333,6 +342,7 @@ async fn send_inner(
 pub async fn request(
     mut wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     peer_version: AppVersion,
     transit_abilities: transit::Abilities,
     cancel: impl Future<Output = ()>,
@@ -348,6 +358,7 @@ pub async fn request(
                 &mut wormhole,
                 TransitRole::Follower,
                 relay_hints,
+                stun_server.as_deref(),
                 transit_abilities,
                 peer_abilities.transit_abilities,
             )

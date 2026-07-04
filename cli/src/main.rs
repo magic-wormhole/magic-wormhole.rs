@@ -126,6 +126,9 @@ struct CommonArgs {
         env = "WORMHOLE_RELAY_URL",
     )]
     relay_server: Vec<url::Url>,
+    /// Use a custom STUN server for NAT traversal (direct connection discovery).
+    #[arg(long, value_name = "HOSTNAME:PORT", env = "WORMHOLE_STUN_SERVER")]
+    stun_server: Option<String>,
     /// Use a custom rendezvous server. Both sides need to use the same value in order to find each other.
     #[arg(long, value_name = "ws://example.org", value_hint = clap::ValueHint::Url, env = "WORMHOLE_MAILBOX_URL")]
     rendezvous_server: Option<url::Url>,
@@ -330,7 +333,7 @@ async fn async_main() -> eyre::Result<()> {
             let offer = make_send_offer(files, file_name).await?;
 
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_hints) = match util::cancellable(
+            let (wormhole, _code, relay_hints, stun_server) = match util::cancellable(
                 Box::pin(parse_and_connect(
                     &mut term,
                     common,
@@ -349,7 +352,14 @@ async fn async_main() -> eyre::Result<()> {
                 Err(_) => return Ok(()),
             };
 
-            Box::pin(send(wormhole, relay_hints, offer, transit_abilities)).await?;
+            Box::pin(send(
+                wormhole,
+                relay_hints,
+                stun_server,
+                offer,
+                transit_abilities,
+            ))
+            .await?;
         },
         WormholeCommand::SendMany {
             tries,
@@ -365,7 +375,7 @@ async fn async_main() -> eyre::Result<()> {
             ..
         } => {
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, code, relay_hints) = {
+            let (wormhole, code, relay_hints, stun_server) = {
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
@@ -385,6 +395,7 @@ async fn async_main() -> eyre::Result<()> {
 
             Box::pin(send_many(
                 relay_hints,
+                stun_server,
                 &code,
                 files,
                 file_name,
@@ -404,7 +415,7 @@ async fn async_main() -> eyre::Result<()> {
             ..
         } => {
             let transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_hints) = {
+            let (wormhole, _code, relay_hints, stun_server) = {
                 let connect_fut = Box::pin(parse_and_connect(
                     &mut term,
                     common,
@@ -424,6 +435,7 @@ async fn async_main() -> eyre::Result<()> {
             Box::pin(receive(
                 wormhole,
                 relay_hints,
+                stun_server,
                 &file_path,
                 noconfirm,
                 transit_abilities,
@@ -496,7 +508,7 @@ async fn async_main() -> eyre::Result<()> {
                     app_config,
                     Some(&server_print_code),
                 ));
-                let (wormhole, _code, relay_hints) =
+                let (wormhole, _code, relay_hints, stun_server) =
                     match futures::future::select(connect_fut, ctrlc_handler()).await {
                         Either::Left((result, _)) => result?,
                         Either::Right(((), _)) => break,
@@ -505,6 +517,7 @@ async fn async_main() -> eyre::Result<()> {
                     wormhole,
                     &transit_handler,
                     relay_hints,
+                    stun_server,
                     targets.clone(),
                     ctrlc_handler(),
                 ))
@@ -525,7 +538,7 @@ async fn async_main() -> eyre::Result<()> {
             );
             let mut app_config = forwarding::APP_CONFIG;
             app_config.app_version.transit_abilities = parse_transit_args(&common);
-            let (wormhole, _code, relay_hints) = parse_and_connect(
+            let (wormhole, _code, relay_hints, stun_server) = parse_and_connect(
                 &mut term, common, code, None, false, false, app_config, None,
             )
             .await?;
@@ -534,6 +547,7 @@ async fn async_main() -> eyre::Result<()> {
                 wormhole,
                 &transit_handler,
                 relay_hints,
+                stun_server,
                 Some(bind_address),
                 &ports,
             )
@@ -612,7 +626,12 @@ async fn parse_and_connect(
     is_send: bool,
     mut app_config: magic_wormhole::AppConfig<impl serde::Serialize + Send + Sync + 'static>,
     print_code: Option<&PrintCodeFn>,
-) -> eyre::Result<(Wormhole, magic_wormhole::Code, Vec<transit::RelayHint>)> {
+) -> eyre::Result<(
+    Wormhole,
+    magic_wormhole::Code,
+    Vec<transit::RelayHint>,
+    Option<String>,
+)> {
     // TODO handle relay servers with multiple endpoints better
     let mut relay_hints: Vec<transit::RelayHint> = common_args
         .relay_server
@@ -627,6 +646,7 @@ async fn parse_and_connect(
                 .unwrap()],
         )?)
     }
+    let stun_server = common_args.stun_server;
 
     if code.is_none() && !is_send {
         code = Some(enter_code()?)
@@ -723,7 +743,7 @@ async fn parse_and_connect(
     print_welcome(term, mailbox_connection.welcome())?;
     let code = mailbox_connection.code().clone();
     let wormhole = Wormhole::connect(mailbox_connection).await?;
-    eyre::Result::<_>::Ok((wormhole, code, relay_hints))
+    eyre::Result::<_>::Ok((wormhole, code, relay_hints, stun_server))
 }
 
 async fn make_send_offer(
@@ -903,6 +923,7 @@ fn server_print_code(
 async fn send(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     offer: transfer::offer::OfferSend,
     transit_abilities: transit::Abilities,
 ) -> eyre::Result<()> {
@@ -911,6 +932,7 @@ async fn send(
     transfer::send(
         wormhole,
         relay_hints,
+        stun_server,
         transit_abilities,
         offer,
         &transit_handler,
@@ -925,6 +947,7 @@ async fn send(
 
 async fn send_many(
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     code: &magic_wormhole::Code,
     files: Vec<PathBuf>,
     file_name: Option<String>,
@@ -948,6 +971,7 @@ async fn send_many(
     /* Special-case the first send with reusing the existing connection */
     send_in_background(
         relay_hints.clone(),
+        stun_server.clone(),
         make_send_offer(files.clone(), file_name.clone()).await?,
         wormhole,
         term.clone(),
@@ -977,6 +1001,7 @@ async fn send_many(
 
         send_in_background(
             relay_hints.clone(),
+            stun_server.clone(),
             make_send_offer(files.clone(), file_name.clone()).await?,
             wormhole,
             term.clone(),
@@ -989,6 +1014,7 @@ async fn send_many(
 
     async fn send_in_background(
         relay_hints: Vec<transit::RelayHint>,
+        stun_server: Option<String>,
         offer: transfer::offer::OfferSend,
         wormhole: Wormhole,
         mut term: Term,
@@ -1005,6 +1031,7 @@ async fn send_many(
                 transfer::send(
                     wormhole,
                     relay_hints,
+                    stun_server,
                     transit_abilities,
                     offer,
                     &transit_handler,
@@ -1035,15 +1062,22 @@ async fn send_many(
 async fn receive(
     wormhole: Wormhole,
     relay_hints: Vec<transit::RelayHint>,
+    stun_server: Option<String>,
     target_dir: &std::path::Path,
     noconfirm: bool,
     transit_abilities: transit::Abilities,
 ) -> eyre::Result<()> {
     #[cfg(not(feature = "experimental-transfer-v2"))]
     {
-        let req = transfer::request_file(wormhole, relay_hints, transit_abilities, ctrlc_handler())
-            .await
-            .context("Could not get an offer")?;
+        let req = transfer::request_file(
+            wormhole,
+            relay_hints,
+            stun_server,
+            transit_abilities,
+            ctrlc_handler(),
+        )
+        .await
+        .context("Could not get an offer")?;
         /* If None, the task got cancelled */
         if let Some(req) = req {
             receive_inner_v1(req, target_dir, noconfirm).await
@@ -1053,9 +1087,15 @@ async fn receive(
     }
     #[cfg(feature = "experimental-transfer-v2")]
     {
-        let req = transfer::request(wormhole, relay_hints, transit_abilities, ctrlc_handler())
-            .await
-            .context("Could not get an offer")?;
+        let req = transfer::request(
+            wormhole,
+            relay_hints,
+            stun_server,
+            transit_abilities,
+            ctrlc_handler(),
+        )
+        .await
+        .context("Could not get an offer")?;
 
         match req {
             Some(transfer::ReceiveRequest::V1(req)) => {
@@ -1336,5 +1376,32 @@ mod test {
     #[test]
     fn verify_cli() {
         WormholeCli::command().debug_assert();
+    }
+
+    #[test]
+    fn stun_server_defaults_to_none() {
+        let cli = WormholeCli::parse_from(["wormhole-rs", "send", "some-file"]);
+        let WormholeCommand::Send { common, .. } = cli.command else {
+            panic!("Expected a Send command");
+        };
+        assert_eq!(common.stun_server, None);
+    }
+
+    #[test]
+    fn stun_server_can_be_set_via_cli_flag() {
+        let cli = WormholeCli::parse_from([
+            "wormhole-rs",
+            "send",
+            "--stun-server",
+            "stun.example.org:3478",
+            "some-file",
+        ]);
+        let WormholeCommand::Send { common, .. } = cli.command else {
+            panic!("Expected a Send command");
+        };
+        assert_eq!(
+            common.stun_server,
+            Some("stun.example.org:3478".to_string())
+        );
     }
 }
