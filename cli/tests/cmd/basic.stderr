@@ -3,8 +3,8 @@ Get things from one computer to another, safely
 Usage: wormhole-rs[EXE] [OPTIONS] <COMMAND>
 
 Commands:
-  send[..][aliases: tx]
-  receive[..][aliases: rx]
+  send       Send a file or a folder [alias: tx]
+  receive    Receive a file or a folder [alias: rx]
   send-many[..]
   forward[..]
 
