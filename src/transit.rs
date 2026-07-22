@@ -39,11 +39,10 @@ use transport::{TransitTransport, TransitTransportRx, TransitTransportTx};
 
 /// ULR to a default hosted relay server. Please don't abuse or DOS.
 pub const DEFAULT_RELAY_SERVER: &str = "tcp://transit.magic-wormhole.io:4001";
-// No need to make public, it's hard-coded anyways (:
-// Open an issue if you want an API for this
-// Use <stun.stunprotocol.org:3478> for non-production testing
+/// Default STUN server used to discover our own public IP address. Please don't abuse or DOS.
+/// For non-production testing, consider using `stun.stunprotocol.org:3478` instead.
 #[cfg(not(target_family = "wasm"))]
-const PUBLIC_STUN_SERVER: &str = "stun.piegames.de:3478";
+pub const DEFAULT_STUN_SERVER: &str = "stun.piegames.de:3478";
 
 /// Marker type for base key used in the Transit protocol.
 #[derive(Debug)]
@@ -725,15 +724,24 @@ impl std::fmt::Display for TransitInfo {
  * Initialize a relay handshake
  *
  * Bind a port and generate our [`Hints`]. This does not do any communication yet.
+ *
+ * `stun_server` optionally overrides the STUN server used to discover our own public IP
+ * address. If `None`, the default STUN server (`DEFAULT_STUN_SERVER`) is used. The expected
+ * format is `"HOSTNAME:PORT"`. If the hostname cannot be resolved, we fall back to not using
+ * STUN at all (i.e. no direct connection hints based on our public IP will be generated).
  */
 pub async fn init(
     mut abilities: Abilities,
     peer_abilities: Option<Abilities>,
     relay_hints: Vec<RelayHint>,
+    /* Only used on non-wasm targets, where we can actually do STUN queries and open sockets. */
+    #[allow(unused_variables)] stun_server: Option<&str>,
 ) -> Result<TransitConnector, std::io::Error> {
     let mut our_hints = Hints::default();
     #[cfg(not(target_family = "wasm"))]
     let mut sockets = None;
+    #[cfg(not(target_family = "wasm"))]
+    let stun_server = stun_server.unwrap_or(DEFAULT_STUN_SERVER);
 
     if let Some(peer_abilities) = peer_abilities {
         abilities = abilities.intersect(&peer_abilities);
@@ -750,7 +758,7 @@ pub async fn init(
 
             let socket: MaybeConnectedSocket = match crate::util::timeout(
                 std::time::Duration::from_secs(4),
-                transport::tcp_get_external_ip(),
+                transport::tcp_get_external_ip(stun_server),
             )
             .await
             .map_err(|_| StunError::Timeout)

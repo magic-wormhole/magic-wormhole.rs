@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - lib: support for encrypted websocket connections through `futures-rustls` as a future replacement for the `async-tls` dependency
+- lib, cli: allow configuring a custom STUN server via `transit::init`'s new `stun_server` parameter, or the CLI's `--stun-server` flag / `WORMHOLE_STUN_SERVER` environment variable
+
+### Changed
+
+- \[lib\]\[breaking\] changed the signature of `transit::init`, `transfer::send`, `transfer::request`, `transfer::request_file`, `transfer::send_file`, `transfer::send_folder`, `transfer::send_file_or_folder`, `forwarding::serve` and `forwarding::connect` to require a new `stun_server: Option<&str>` argument
 
 ## [0.8.1] - 2026-05-07
 

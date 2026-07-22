@@ -100,10 +100,12 @@ pub(super) fn set_socket_opts(socket: &socket2::Socket) -> std::io::Result<()> {
 
 /** Perform a STUN query to get the external IP address */
 #[cfg(not(target_family = "wasm"))]
-pub(super) async fn tcp_get_external_ip() -> Result<(SocketAddr, TcpStream), StunError> {
+pub(super) async fn tcp_get_external_ip(
+    stun_server: &str,
+) -> Result<(SocketAddr, TcpStream), StunError> {
     let mut socket = tcp_connect_custom(
         &"[::]:0".parse::<SocketAddr>().unwrap().into(),
-        &super::PUBLIC_STUN_SERVER
+        &stun_server
             .to_socket_addrs()?
             /* If you find yourself behind a NAT66, open an issue */
             .find(|x| x.is_ipv4())
