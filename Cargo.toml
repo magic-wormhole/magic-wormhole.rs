@@ -23,7 +23,7 @@ async-process = "2.5.0"
 arboard = "3.6"
 async-channel = "2.5"
 async-trait = "0.1"
-base64 = "0.22.1"
+base64 = "0.23.1"
 bytecodec = "0.5"
 clap = "4"
 clap_complete = "4"
@@ -146,7 +146,7 @@ tar = { workspace = true, optional = true }
 libc = "0.2.101"
 async-executor = { workspace = true }
 async-process = { workspace = true, optional = true }
-async-tungstenite = { version = "0.34", features = ["smol-runtime"] }
+async-tungstenite = { version = "0.35", features = ["smol-runtime"] }
 async-io = { workspace = true }
 async-net = { workspace = true }
 async-fs = { workspace = true }
