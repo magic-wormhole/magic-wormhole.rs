@@ -6,6 +6,7 @@ Commands:
   send       Send a file or a folder [alias: tx]
   receive    Receive a file or a folder [alias: rx]
   send-many[..]
+  send-message[..]
   forward[..]
 
 Options:

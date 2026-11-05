@@ -1,0 +1,32 @@
+Send some text from the command line
+
+Usage: wormhole-rs[EXE] send-message [OPTIONS] <TEXT>
+
+Arguments:
+  <TEXT>  
+
+Options:
+      --name <FILE_NAME>
+          Suggest a filename to the receiver [default: message.txt]
+      --relay-server <tcp://HOSTNAME:PORT>
+          Use a custom relay server (specify multiple times for multiple relays) [env: WORMHOLE_RELAY_URL=] [aliases: --relay]
+      --rendezvous-server <ws://example.org>
+          Use a custom rendezvous server. Both sides need to use the same value in order to find each other [env: WORMHOLE_MAILBOX_URL=]
+      --force-direct
+          Disable the relay server support and force a direct connection
+      --force-relay
+          Always route traffic over a relay server. This hides your IP address from the peer (but not from the server operators. Use Tor for that)
+      --code <CODE>
+          Enter a code instead of generating one automatically
+  -c, --code-length <NUMWORDS>
+          Length of code (in bytes/words) [default: 2]
+      --no-qr
+          Suppress QR code generation from send link
+  -v, --verbose
+          Enable logging to stdout, for debugging purposes
+      --no-color
+          Disable color output
+  -h, --help
+          Print help
+  -V, --version
+          Print version
