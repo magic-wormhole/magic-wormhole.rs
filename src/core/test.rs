@@ -323,6 +323,354 @@ async fn test_file_rust2rust() {
     }
 }
 
+/** Send a text message using a manually built text-offer sender (like the Go or Python implementations do: an offer with no transit message) and receive it */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_text_rust2rust() {
+    const TEXT: &str = "hello from the text test 🦀";
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        /* A text sender sends the offer and nothing else — no transit message */
+        wormhole
+            .send_json(&transfer::PeerMessage::offer_message_v1(TEXT))
+            .await?;
+
+        /* … and waits for the message_ack answer */
+        let answer = wormhole.receive_json::<serde_json::Value>().await??;
+        eyre::Result::<_>::Ok(answer)
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await?;
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+
+        let req = transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await?
+        .unwrap();
+
+        assert_eq!(req.file_name(), "message.txt");
+        assert_eq!(req.file_size(), TEXT.len() as u64);
+
+        let mut content = futures::io::Cursor::new(Vec::new());
+        req.accept(
+            &log_transit_connection,
+            |_received, _total| {},
+            &mut content,
+            futures::future::pending(),
+        )
+        .await?;
+
+        eyre::Result::<_>::Ok(content.into_inner())
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    let answer = outputs.0.unwrap();
+    let content = outputs.1.unwrap();
+
+    assert_eq!(answer["answer"]["message_ack"], "ok");
+    assert_eq!(content, TEXT.as_bytes());
+}
+
+/** A file offer that is not followed by a transit message must be rejected with an error */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_file_offer_then_non_transit_message() {
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        /* A file offer, but the next message is not a transit message */
+        wormhole
+            .send_json(&transfer::PeerMessage::offer_file_v1("empty.bin", 0))
+            .await?;
+        wormhole
+            .send_json(&transfer::PeerMessage::offer_message_v1(
+                "still not transit",
+            ))
+            .await?;
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await.expect("code channel closed");
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+        transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    assert!(outputs.0.is_ok());
+    match outputs.1 {
+        Ok(_) => panic!("expected an error, got a successful receive request"),
+        Err(error) => assert!(
+            format!("{error}").contains("Expected 'transit'"),
+            "unexpected error: {error}"
+        ),
+    }
+}
+
+/** A peer that sends its transit message twice must be rejected */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_double_transit_message_rejected() {
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        let connector = transit::init(
+            magic_wormhole::transit::Abilities::ALL,
+            None,
+            default_relay_hints(),
+        )
+        .await?;
+        let transit_msg = transfer::PeerMessage::transit_v1(
+            *connector.our_abilities(),
+            (**connector.our_hints()).clone(),
+        );
+        wormhole.send_json(&transit_msg).await?;
+        wormhole.send_json(&transit_msg).await?;
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await.expect("code channel closed");
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+        transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    assert!(outputs.0.is_ok());
+    match outputs.1 {
+        Ok(_) => panic!("expected an error, got a successful receive request"),
+        Err(error) => assert!(
+            format!("{error}").contains("Expected 'offer'"),
+            "unexpected error: {error}"
+        ),
+    }
+}
+
+/** A peer that sends its transit message *after* the file offer (instead of before) must still be accepted */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_file_offer_then_transit_message() {
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        /* Offer first … */
+        wormhole
+            .send_json(&transfer::PeerMessage::offer_file_v1("empty.bin", 0))
+            .await?;
+
+        /* … then transit */
+        let connector = transit::init(
+            magic_wormhole::transit::Abilities::ALL,
+            None,
+            default_relay_hints(),
+        )
+        .await?;
+        wormhole
+            .send_json(&transfer::PeerMessage::transit_v1(
+                *connector.our_abilities(),
+                (**connector.our_hints()).clone(),
+            ))
+            .await?;
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await.expect("code channel closed");
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+        transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    assert!(outputs.0.is_ok());
+    match outputs.1 {
+        Ok(request) => {
+            let request = request.expect("expected a receive request, got cancellation");
+            assert_eq!(request.file_name(), "empty.bin");
+            assert_eq!(request.file_size(), 0);
+        },
+        Err(error) => panic!("expected a receive request, got error: {error}"),
+    }
+}
+
+/** A peer that opens with a message that is neither a transit nor an offer message must be rejected */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_unexpected_first_message_rejected() {
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        /* An answer message is neither a transit nor an offer */
+        wormhole
+            .send_json(&transfer::PeerMessage::message_ack_v1("ok"))
+            .await?;
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await.expect("code channel closed");
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+        transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    assert!(outputs.0.is_ok());
+    match outputs.1 {
+        Ok(_) => panic!("expected an error, got a successful receive request"),
+        Err(error) => assert!(
+            format!("{error}").contains("Expected 'transit or offer'"),
+            "unexpected error: {error}"
+        ),
+    }
+}
+
+/** A directory offer must be surfaced as `<dirname>.zip` with the advertised zip size */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_directory_offer_becomes_zip_file() {
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        /* The other implementations (e.g. Python) send directory offers; this crate does not */
+        wormhole
+            .send_json(&transfer::PeerMessage::offer_directory_v1(
+                "somedirectory",
+                "zipped",
+                45,
+                1234,
+                10,
+            ))
+            .await?;
+
+        /* … followed by transit, like file senders do */
+        let connector = transit::init(
+            magic_wormhole::transit::Abilities::ALL,
+            None,
+            default_relay_hints(),
+        )
+        .await?;
+        wormhole
+            .send_json(&transfer::PeerMessage::transit_v1(
+                *connector.our_abilities(),
+                (**connector.our_hints()).clone(),
+            ))
+            .await?;
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await.expect("code channel closed");
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+        transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    assert!(outputs.0.is_ok());
+    match outputs.1 {
+        Ok(request) => {
+            let request = request.expect("expected a receive request, got cancellation");
+            assert_eq!(request.file_name(), "somedirectory.zip");
+            assert_eq!(request.file_size(), 45);
+        },
+        Err(error) => panic!("expected a receive request, got error: {error}"),
+    }
+}
+
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]

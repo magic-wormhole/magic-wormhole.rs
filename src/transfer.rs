@@ -268,20 +268,18 @@ pub(crate) enum PeerMessage {
 }
 
 impl PeerMessage {
-    #[allow(dead_code)]
-    fn offer_message_v1(msg: impl Into<String>) -> Self {
+    pub(crate) fn offer_message_v1(msg: impl Into<String>) -> Self {
         PeerMessage::Offer(v1::OfferMessage::Message(msg.into()))
     }
 
-    fn offer_file_v1(name: impl Into<String>, size: u64) -> Self {
+    pub(crate) fn offer_file_v1(name: impl Into<String>, size: u64) -> Self {
         PeerMessage::Offer(v1::OfferMessage::File {
             filename: name.into(),
             filesize: size,
         })
     }
 
-    #[allow(dead_code)]
-    fn offer_directory_v1(
+    pub(crate) fn offer_directory_v1(
         name: impl Into<String>,
         mode: impl Into<String>,
         compressed_size: u64,
@@ -297,8 +295,7 @@ impl PeerMessage {
         })
     }
 
-    #[allow(dead_code)]
-    fn message_ack_v1(msg: impl Into<String>) -> Self {
+    pub(crate) fn message_ack_v1(msg: impl Into<String>) -> Self {
         PeerMessage::Answer(v1::AnswerMessage::MessageAck(msg.into()))
     }
 
@@ -310,7 +307,7 @@ impl PeerMessage {
         PeerMessage::Error(msg.into())
     }
 
-    fn transit_v1(abilities: TransitAbilities, hints: transit::Hints) -> Self {
+    pub(crate) fn transit_v1(abilities: TransitAbilities, hints: transit::Hints) -> Self {
         PeerMessage::Transit(v1::TransitV1 {
             abilities_v1: abilities,
             hints_v1: hints,

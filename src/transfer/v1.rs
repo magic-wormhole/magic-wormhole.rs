@@ -413,33 +413,42 @@ pub async fn request(
 ) -> Result<Option<ReceiveRequest>, TransferError> {
     // Error handling
     let run = Box::pin(async {
-        let connector = transit::init(transit_abilities, None, relay_hints).await?;
-
-        // send the transit message
-        tracing::debug!("Sending transit message '{:?}", connector.our_hints());
-        wormhole
-            .send_json(&PeerMessage::transit_v1(
-                *connector.our_abilities(),
-                (**connector.our_hints()).clone(),
-            ))
-            .await?;
-
-        // receive transit message
-        let (their_abilities, their_hints): (transit::Abilities, transit::Hints) =
+        // Wait for the peer's first message. File senders send a transit message
+        // *before* the offer; text senders send only the offer (text messages
+        // don't use transit at all). Be liberal in what we accept: stash a
+        // transit message if it arrives first, and handle an offer at any time.
+        let mut their_transit: Option<(transit::Abilities, transit::Hints)> = None;
+        let offer = loop {
             match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
-                PeerMessage::Transit(transit) => {
-                    tracing::debug!("received transit message: {:?}", transit);
-                    (transit.abilities_v1, transit.hints_v1)
+                PeerMessage::Transit(transit_msg) => {
+                    tracing::debug!("received transit message: {:?}", transit_msg);
+                    if their_transit.is_some() {
+                        return Err(TransferError::unexpected_message(
+                            "offer",
+                            PeerMessage::Transit(transit_msg),
+                        ));
+                    }
+                    their_transit = Some((transit_msg.abilities_v1, transit_msg.hints_v1));
                 },
+                PeerMessage::Offer(offer) => break offer,
                 other => {
-                    bail!(TransferError::unexpected_message("transit", other));
+                    bail!(TransferError::unexpected_message("transit or offer", other));
                 },
-            };
+            }
+        };
 
-        // 3. receive file offer message from peer
-        let (filename, filesize) =
-            match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
-                PeerMessage::Offer(offer_type) => match offer_type {
+        match offer {
+            v1::OfferMessage::Message(message) => {
+                // Text offers don't use the transit protocol. Do NOT send a
+                // transit message in return: text senders don't expect one
+                // (some senders crash or error out when they receive one).
+                tracing::debug!("received text message offer ({} bytes)", message.len());
+                return Ok(IncomingTransfer::Text { message });
+            },
+            offer_type => {
+                // 3. A file offer. We now need the transit protocol; make sure we
+                //    either have the peer's transit message or wait for it.
+                let (filename, filesize) = match offer_type {
                     v1::OfferMessage::File { filename, filesize } => (filename, filesize),
                     v1::OfferMessage::Directory {
                         mut dirname,
@@ -450,13 +459,42 @@ pub async fn request(
                         (dirname, zipsize)
                     },
                     _ => bail!(TransferError::UnsupportedOffer),
-                },
-                other => {
-                    bail!(TransferError::unexpected_message("offer", other));
-                },
-            };
+                };
 
-        Ok((filename, filesize, connector, their_abilities, their_hints))
+                let (their_abilities, their_hints) = match their_transit {
+                    Some(found) => found,
+                    None => match wormhole.receive_json::<PeerMessage>().await??.check_err()? {
+                        PeerMessage::Transit(transit_msg) => {
+                            (transit_msg.abilities_v1, transit_msg.hints_v1)
+                        },
+                        other => {
+                            bail!(TransferError::unexpected_message("transit", other));
+                        },
+                    },
+                };
+
+                // Lazily set up our transit connector only for file transfers.
+                let connector = transit::init(transit_abilities, None, relay_hints).await?;
+
+                // Send our transit message now that we know the peer is doing a
+                // file transfer (text senders never see this).
+                tracing::debug!("Sending transit message '{:?}", connector.our_hints());
+                wormhole
+                    .send_json(&PeerMessage::transit_v1(
+                        *connector.our_abilities(),
+                        (**connector.our_hints()).clone(),
+                    ))
+                    .await?;
+
+                Ok(IncomingTransfer::File {
+                    filename,
+                    filesize,
+                    connector,
+                    their_abilities,
+                    their_hints,
+                })
+            },
+        }
     });
 
     futures::pin_mut!(cancel);
@@ -464,19 +502,46 @@ pub async fn request(
     cancel::handle_run_result_noclose(wormhole, result)
         .await
         .map(|inner: Option<_>| {
-            inner.map(
-                |((filename, filesize, connector, their_abilities, their_hints), wormhole, _)| {
-                    ReceiveRequest::new(
-                        filename,
-                        filesize,
-                        connector,
-                        their_abilities,
-                        their_hints,
-                        wormhole,
-                    )
-                },
-            )
+            inner.map(|(incoming, wormhole, _cancel)| {
+                IncomingTransfer::into_request(incoming, wormhole)
+            })
         })
+}
+
+/** The outcome of negotiating with the peer. */
+enum IncomingTransfer {
+    /// A file or directory was offered.
+    File {
+        filename: String,
+        filesize: u64,
+        connector: transit::TransitConnector,
+        their_abilities: transit::Abilities,
+        their_hints: transit::Hints,
+    },
+    /// A text message was offered. Already fully received; no transit needed.
+    Text { message: String },
+}
+
+impl IncomingTransfer {
+    fn into_request(self, wormhole: Wormhole) -> ReceiveRequest {
+        match self {
+            IncomingTransfer::File {
+                filename,
+                filesize,
+                connector,
+                their_abilities,
+                their_hints,
+            } => ReceiveRequest::new_file(
+                filename,
+                filesize,
+                connector,
+                their_abilities,
+                their_hints,
+                wormhole,
+            ),
+            IncomingTransfer::Text { message } => ReceiveRequest::new_text(message, wormhole),
+        }
+    }
 }
 
 /**
@@ -487,21 +552,50 @@ pub async fn request(
 #[must_use]
 pub struct ReceiveRequest {
     wormhole: Wormhole,
-    connector: TransitConnector,
+
+    inner: ReceiveInner,
 
     file_name: String,
 
-    /// The expected size of the file
+    /// The expected size of the transfer
     filesize: u64,
 
     #[allow(dead_code)]
     offer: Arc<Offer>,
-    their_abilities: transit::Abilities,
-    their_hints: Arc<transit::Hints>,
+}
+
+/** What kind of payload the peer offered us. */
+enum ReceiveInner {
+    /// A file or directory was offered. The payload is transferred over the
+    /// transit protocol.
+    File {
+        connector: TransitConnector,
+        their_abilities: transit::Abilities,
+        their_hints: Arc<transit::Hints>,
+    },
+    /// A text message was offered. It is already fully received; accepting
+    /// writes the message bytes and answers with a `message_ack`, rejecting
+    /// sends an error — no transit connection is made.
+    Text { message: String },
+}
+
+fn synthesize_offer(file_name: &str, filesize: u64) -> Arc<Offer> {
+    let mut content = BTreeMap::new();
+
+    // Synthesize an offer to make transfer v1 more similar to transfer v2
+    content.insert(
+        file_name.to_string(),
+        OfferEntry::RegularFile {
+            size: filesize,
+            content: (),
+        },
+    );
+
+    Arc::new(Offer { content })
 }
 
 impl ReceiveRequest {
-    fn new(
+    fn new_file(
         file_name: String,
         filesize: u64,
         connector: TransitConnector,
@@ -510,27 +604,36 @@ impl ReceiveRequest {
         wormhole: Wormhole,
     ) -> Self {
         let their_hints = Arc::new(their_hints);
-        let mut content = BTreeMap::new();
 
-        // Synthesize an offer to make transfer v1 more similar to transfer v2
-        content.insert(
-            file_name.clone(),
-            OfferEntry::RegularFile {
-                size: filesize,
-                content: (),
-            },
-        );
-
-        let offer = Arc::new(Offer { content });
+        let offer = synthesize_offer(&file_name, filesize);
 
         Self {
             wormhole,
-            connector,
+            inner: ReceiveInner::File {
+                connector,
+                their_abilities,
+                their_hints,
+            },
             file_name,
             filesize,
             offer,
-            their_abilities,
-            their_hints,
+        }
+    }
+
+    fn new_text(message: String, wormhole: Wormhole) -> Self {
+        let filesize = message.len() as u64;
+        // Name it `message.txt` so clients that render small text-like files
+        // inline (like the web client) show it as text. The name is untrusted
+        // input anyway; clients must sanitize it.
+        let file_name = "message.txt".to_string();
+        let offer = synthesize_offer(&file_name, filesize);
+
+        Self {
+            wormhole,
+            inner: ReceiveInner::Text { message },
+            file_name,
+            filesize,
+            offer,
         }
     }
 
@@ -542,7 +645,7 @@ impl ReceiveRequest {
     pub async fn accept<F, G, W>(
         mut self,
         transit_handler: G,
-        progress_handler: F,
+        mut progress_handler: F,
         content_handler: &mut W,
         cancel: impl Future<Output = ()>,
     ) -> Result<(), TransferError>
@@ -552,34 +655,56 @@ impl ReceiveRequest {
         W: AsyncWrite + Unpin,
     {
         let run = Box::pin(async {
-            // send file ack.
-            tracing::debug!("Sending ack");
-            self.wormhole
-                .send_json(&PeerMessage::file_ack_v1("ok"))
-                .await?;
-
-            let (mut transit, info) = self
-                .connector
-                .connect(
-                    TransitRole::Follower,
+            match self.inner {
+                ReceiveInner::Text { ref message } => {
+                    // Text transfers don't use transit. Acknowledge with a
+                    // message_ack (that's the answer text senders wait for) and
+                    // write the message bytes to the output.
+                    tracing::debug!("Sending text message ack");
                     self.wormhole
-                        .key()
-                        .derive_transit_key(self.wormhole.appid()),
-                    self.their_abilities,
-                    self.their_hints.clone(),
-                )
-                .await?;
-            transit_handler(info);
+                        .send_json(&PeerMessage::message_ack_v1("ok"))
+                        .await?;
 
-            tracing::debug!("Beginning file transfer");
-            tcp_file_receive(
-                &mut transit,
-                self.filesize,
-                progress_handler,
-                content_handler,
-            )
-            .await?;
-            Ok(())
+                    progress_handler(0, message.len() as u64);
+                    content_handler.write_all(message.as_bytes()).await?;
+                    content_handler.close().await?;
+                    progress_handler(message.len() as u64, message.len() as u64);
+                    Ok(())
+                },
+                ReceiveInner::File {
+                    connector,
+                    their_abilities,
+                    their_hints,
+                } => {
+                    // send file ack.
+                    tracing::debug!("Sending ack");
+                    self.wormhole
+                        .send_json(&PeerMessage::file_ack_v1("ok"))
+                        .await?;
+
+                    let (mut transit, info) = connector
+                        .connect(
+                            TransitRole::Follower,
+                            self.wormhole
+                                .key()
+                                .derive_transit_key(self.wormhole.appid()),
+                            their_abilities,
+                            their_hints.clone(),
+                        )
+                        .await?;
+                    transit_handler(info);
+
+                    tracing::debug!("Beginning file transfer");
+                    tcp_file_receive(
+                        &mut transit,
+                        self.filesize,
+                        progress_handler,
+                        content_handler,
+                    )
+                    .await?;
+                    Ok(())
+                },
+            }
         });
 
         futures::pin_mut!(cancel);
