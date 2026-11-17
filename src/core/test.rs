@@ -603,6 +603,74 @@ async fn test_unexpected_first_message_rejected() {
     }
 }
 
+/** A directory offer must be surfaced as `<dirname>.zip` with the advertised zip size */
+#[cfg(feature = "transfer")]
+#[apply(test)]
+// TODO Wasm test disabled, it crashes
+// #[cfg_attr(target_arch = "wasm32", test(wasm_bindgen_test::wasm_bindgen_test))]
+async fn test_directory_offer_becomes_zip_file() {
+    let (code_tx, code_rx) = futures::channel::oneshot::channel();
+
+    let sender_task = async {
+        let mailbox_connection =
+            MailboxConnection::create(transfer::APP_CONFIG.id(TEST_APPID).clone(), 2).await?;
+        code_tx.send(mailbox_connection.code.clone()).unwrap();
+        let mut wormhole = crate::Wormhole::connect(mailbox_connection).await?;
+
+        /* The other implementations (e.g. Python) send directory offers; this crate does not */
+        wormhole
+            .send_json(&transfer::PeerMessage::offer_directory_v1(
+                "somedirectory",
+                "zipped",
+                45,
+                1234,
+                10,
+            ))
+            .await?;
+
+        /* … followed by transit, like file senders do */
+        let connector = transit::init(
+            magic_wormhole::transit::Abilities::ALL,
+            None,
+            default_relay_hints(),
+        )
+        .await?;
+        wormhole
+            .send_json(&transfer::PeerMessage::transit_v1(
+                *connector.our_abilities(),
+                (**connector.our_hints()).clone(),
+            ))
+            .await?;
+        eyre::Result::<_>::Ok(())
+    };
+
+    let receiver_task = async {
+        let code = code_rx.await.expect("code channel closed");
+        let config = transfer::APP_CONFIG.id(TEST_APPID);
+        let mailbox = MailboxConnection::connect(config, code, false).await?;
+        let wormhole = crate::Wormhole::connect(mailbox).await?;
+        transfer::request_file(
+            wormhole,
+            default_relay_hints(),
+            magic_wormhole::transit::Abilities::ALL,
+            futures::future::pending(),
+        )
+        .await
+    };
+
+    let outputs = (sender_task, receiver_task).join().await;
+
+    assert!(outputs.0.is_ok());
+    match outputs.1 {
+        Ok(request) => {
+            let request = request.expect("expected a receive request, got cancellation");
+            assert_eq!(request.file_name(), "somedirectory.zip");
+            assert_eq!(request.file_size(), 45);
+        },
+        Err(error) => panic!("expected a receive request, got error: {error}"),
+    }
+}
+
 /** Test the functionality used by the `send-many` subcommand.
  */
 #[cfg(feature = "transfer")]

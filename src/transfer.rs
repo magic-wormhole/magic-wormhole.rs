@@ -279,8 +279,7 @@ impl PeerMessage {
         })
     }
 
-    #[allow(dead_code)]
-    fn offer_directory_v1(
+    pub(crate) fn offer_directory_v1(
         name: impl Into<String>,
         mode: impl Into<String>,
         compressed_size: u64,
