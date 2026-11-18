@@ -2080,6 +2080,7 @@ dependencies = [
  "dialoguer",
  "env_logger",
  "futures",
+ "futures-lite",
  "indicatif",
  "magic-wormhole",
  "qr2term",

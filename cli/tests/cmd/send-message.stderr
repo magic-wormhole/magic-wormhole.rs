@@ -1,0 +1,6 @@
+error: the following required arguments were not provided:
+  <TEXT>
+
+Usage: wormhole-rs[EXE] send-message <TEXT>
+
+For more information, try '--help'.

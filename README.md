@@ -10,7 +10,6 @@ This is a Rust port of the Python version at <https://github.com/magic-wormhole/
 
 Features that are missing:
 
-- Text message sending
 - Folder sending (we can send folders, but it will send a tar ball which the other side will have to manually unpack)
 - Tor support
 
